@@ -1,6 +1,6 @@
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, TrendingUp, Zap } from "lucide-react";
+import { LayoutDashboard, Target, Settings, X, Menu } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -8,25 +8,30 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function Sidebar() {
+const Logo = () => (
+  <div className="flex items-center gap-3">
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="PropEdge">
+      <rect width="32" height="32" rx="8" fill="hsl(142 76% 45% / 0.15)" />
+      <path d="M8 24 L16 8 L24 24" stroke="hsl(142 76% 45%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <circle cx="16" cy="8" r="2.5" fill="hsl(142 76% 45%)" />
+      <line x1="10" y1="20" x2="22" y2="20" stroke="hsl(142 76% 45% / 0.5)" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+    <div>
+      <p className="font-bold text-foreground text-sm leading-tight">PropEdge</p>
+      <p className="text-xs text-muted-foreground leading-tight">Prediction Bot</p>
+    </div>
+  </div>
+);
+
+// ── Desktop sidebar (hidden on mobile) ──────────────────────────────────────
+export function DesktopSidebar() {
   const [location] = useHashLocation();
 
   return (
-    <aside className="w-56 flex-shrink-0 bg-card border-r border-border flex flex-col">
+    <aside className="hidden md:flex w-56 flex-shrink-0 bg-card border-r border-border flex-col">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-border">
-        <div className="flex items-center gap-3">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="PropEdge">
-            <rect width="32" height="32" rx="8" fill="hsl(142 76% 45% / 0.15)" />
-            <path d="M8 24 L16 8 L24 24" stroke="hsl(142 76% 45%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <circle cx="16" cy="8" r="2.5" fill="hsl(142 76% 45%)" />
-            <line x1="10" y1="20" x2="22" y2="20" stroke="hsl(142 76% 45% / 0.5)" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <div>
-            <p className="font-bold text-foreground text-sm leading-tight">PropEdge</p>
-            <p className="text-xs text-muted-foreground leading-tight">Prediction Bot</p>
-          </div>
-        </div>
+        <Logo />
       </div>
 
       {/* Nav */}
@@ -74,3 +79,32 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+// ── Mobile bottom tab bar ────────────────────────────────────────────────────
+export function MobileTabBar() {
+  const [location] = useHashLocation();
+
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch safe-bottom">
+      {navItems.map(({ href, label, icon: Icon }) => {
+        const isActive = location === href || (href !== "/" && location.startsWith(href));
+        return (
+          <Link key={href} href={href}>
+            <a
+              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-medium transition-colors ${
+                isActive ? "text-primary" : "text-muted-foreground"
+              }`}
+              data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
+            >
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+              {label}
+            </a>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+// Default export for backwards compat
+export default DesktopSidebar;
