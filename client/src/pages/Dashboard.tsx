@@ -46,8 +46,18 @@ export default function Dashboard() {
     },
   });
 
-  const highConf = bets.filter((b) => (b.confidenceScore ?? 0) >= (stats?.threshold ?? 80));
-  const recent = bets.slice(0, 12);
+  // Player props first, then by confidence score descending
+  const sortByProps = (a: Bet, b: Bet) => {
+    const aProp = a.betType === "player_prop" ? 1 : 0;
+    const bProp = b.betType === "player_prop" ? 1 : 0;
+    if (bProp !== aProp) return bProp - aProp;
+    return (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+  };
+
+  const highConf = bets
+    .filter((b) => (b.confidenceScore ?? 0) >= (stats?.threshold ?? 80))
+    .sort(sortByProps);
+  const recent = [...bets].sort(sortByProps).slice(0, 12);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -120,7 +130,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <h2 className="text-base font-bold text-foreground">🔥 Hot Picks</h2>
+              <h2 className="text-base font-bold text-foreground">🔥 Hot Picks <span className="text-xs font-normal text-muted-foreground ml-1">· props first</span></h2>
               <span className="text-xs font-mono bg-primary/15 text-primary px-2 py-0.5 rounded-md border border-primary/30">
                 {highConf.length} picks ≥{stats?.threshold ?? 80}/100
               </span>

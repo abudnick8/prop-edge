@@ -315,19 +315,43 @@ function computeConfidence(input: ScoreInput): ScoreResult {
     factors.push("Major sportsbook line — market-making quality pricing");
   }
 
-  // 3. Bet type bonus
+  // 3. Bet type bonus — player props are the primary focus
   if (input.betType === "player_prop") {
-    score += 6;
-    factors.push("Player prop — high statistical predictability from recent form");
+    score += 15; // Primary focus: player props have the highest stat predictability
+    factors.push("Player prop — primary focus: highest statistical predictability from recent form & matchup data");
+    // Extra boost for specific high-predictability prop markets
+    const t = (input.title ?? "").toLowerCase();
+    if (t.includes("points") || t.includes("pts")) {
+      score += 4;
+      factors.push("Points prop — most stable stat, highly predictable from usage & matchup");
+    } else if (t.includes("rebound") || t.includes("reb")) {
+      score += 3;
+      factors.push("Rebounds prop — strong regression-to-mean stat");
+    } else if (t.includes("assist") || t.includes("ast")) {
+      score += 3;
+      factors.push("Assists prop — highly correlated with pace and role");
+    } else if (t.includes("pass") || t.includes("yds") || t.includes("yards")) {
+      score += 4;
+      factors.push("Passing/rushing yards prop — driven by role, target share & matchup");
+    } else if (t.includes("strikeout") || t.includes("k9") || t.includes("ks")) {
+      score += 5;
+      factors.push("Strikeout prop — most predictable MLB stat (K-rate consistency)");
+    } else if (t.includes("reception") || t.includes("catch") || t.includes("rec")) {
+      score += 3;
+      factors.push("Receptions prop — driven by target share & route participation");
+    } else if (t.includes("shot") || t.includes("goal")) {
+      score += 2;
+      factors.push("Shots/goals prop — correlated with ice time and power play role");
+    }
   } else if (input.betType === "moneyline") {
-    score += 3;
-    factors.push("Moneyline — binary outcome with clear market pricing");
-  } else if (input.betType === "spread") {
-    score += 4;
-    factors.push("Spread — adjusts for team strength differential");
-  } else if (input.betType === "total") {
     score += 2;
-    factors.push("Total — dependent on game pace/script factors");
+    factors.push("Moneyline — binary outcome, less predictable than player stats");
+  } else if (input.betType === "spread") {
+    score += 2;
+    factors.push("Spread — team-level bet, more variance than player props");
+  } else if (input.betType === "total") {
+    score += 1;
+    factors.push("Total — dependent on game pace/script, lower predictability");
   }
 
   // 4. Sport-specific adjustments
