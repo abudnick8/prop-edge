@@ -146,97 +146,117 @@ function buildPolyBet(ev: any, m: any): InsertBet {
   };
 }
 
-// ─── The Odds API (DraftKings, Underdog proxy) ────────────────────────────────
+// ─── The Odds API (DraftKings + FanDuel for player props) ────────────────────
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 const SPORT_KEYS = ["americanfootball_nfl", "basketball_nba", "baseball_mlb", "icehockey_nhl"];
 
+// Player prop market keys per sport
+const PROP_MARKETS: Record<string, string> = {
+  americanfootball_nfl:
+    "player_pass_tds,player_pass_yds,player_rush_yds,player_receptions,player_reception_yds,player_anytime_td",
+  basketball_nba:
+    "player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals,player_points_rebounds_assists",
+  baseball_mlb:
+    "batter_hits,batter_home_runs,batter_rbis,batter_runs_scored,pitcher_strikeouts,pitcher_hits_allowed",
+  icehockey_nhl:
+    "player_points,player_goals,player_assists,player_shots_on_goal,player_power_play_points",
+};
+
 async function fetchOddsAPI(apiKey: string): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
+
   for (const sportKey of SPORT_KEYS) {
+    // ── 1. Main game lines (spreads, totals, moneylines) via DraftKings ──
     try {
-      // Main lines
       const { data } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/odds`, {
         params: {
           apiKey,
           regions: "us",
           markets: "h2h,spreads,totals",
-          bookmakers: "draftkings",
+          bookmakers: "draftkings,fanduel",
           oddsFormat: "american",
         },
-        timeout: 10000,
+        timeout: 12000,
       });
       for (const game of data ?? []) {
-        const gameBets = parseOddsGame(game, sportKey, "draftkings");
-        bets.push(...gameBets);
+        bets.push(...parseGameLines(game, sportKey));
       }
-
-      // Player props if available
-      try {
-        const { data: propData } = await axios.get(
-          `${ODDS_BASE}/sports/${sportKey}/events`,
-          { params: { apiKey }, timeout: 8000 }
-        );
-        const events = propData?.slice(0, 5) ?? [];
-        for (const ev of events) {
-          try {
-            const { data: props } = await axios.get(
-              `${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`,
-              {
-                params: {
-                  apiKey,
-                  regions: "us",
-                  markets: "player_pass_tds,player_pass_yds,player_rush_yds,player_receptions,player_points,player_rebounds,player_assists,player_strikeouts,batter_hits",
-                  bookmakers: "draftkings",
-                  oddsFormat: "american",
-                },
-                timeout: 8000,
-              }
-            );
-            const propBets = parseOddsGame(props, sportKey, "draftkings", ev);
-            bets.push(...propBets);
-          } catch {}
-        }
-      } catch {}
     } catch (e: any) {
-      console.warn(`Odds API error for ${sportKey}:`, e.message);
+      console.warn(`Game lines error for ${sportKey}:`, e.message);
+    }
+
+    // ── 2. Player props — fetch for every upcoming event ──
+    try {
+      const { data: events } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, {
+        params: { apiKey },
+        timeout: 10000,
+      });
+
+      // Only future events, up to 8 per sport to conserve quota
+      const now = Date.now();
+      const upcomingEvents = (events ?? [])
+        .filter((e: any) => new Date(e.commence_time).getTime() > now)
+        .slice(0, 8);
+
+      console.log(`  ${sportKey}: ${upcomingEvents.length} upcoming events for props`);
+
+      for (const ev of upcomingEvents) {
+        try {
+          const { data: propData } = await axios.get(
+            `${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`,
+            {
+              params: {
+                apiKey,
+                regions: "us",
+                // Use FanDuel + DraftKings — both confirmed to have player props
+                bookmakers: "fanduel,draftkings",
+                markets: PROP_MARKETS[sportKey] ?? "player_points",
+                oddsFormat: "american",
+              },
+              timeout: 10000,
+            }
+          );
+          const propBets = parsePlayerProps(propData, ev, sportKey);
+          console.log(`    ${ev.away_team} @ ${ev.home_team}: ${propBets.length} props`);
+          bets.push(...propBets);
+        } catch (e: any) {
+          console.warn(`  Props error for event ${ev.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`Events/props error for ${sportKey}:`, e.message);
     }
   }
+
+  console.log(`Odds API total: ${bets.length} bets (game lines + player props)`);
   return bets;
 }
 
-function parseOddsGame(game: any, sportKey: string, source: string, parentEvent?: any): InsertBet[] {
+// Parse standard game lines (h2h, spreads, totals)
+function parseGameLines(game: any, sportKey: string): InsertBet[] {
   if (!game?.bookmakers?.length) return [];
   const sport = mapSportKey(sportKey);
   const bets: InsertBet[] = [];
+  const seen = new Set<string>();
 
   for (const bookmaker of game.bookmakers ?? []) {
     for (const market of bookmaker.markets ?? []) {
+      const betType = mapMarketType(market.key);
       for (let i = 0; i < (market.outcomes?.length ?? 0); i++) {
         const outcome = market.outcomes[i];
         const counterpart = market.outcomes[1 - i];
-        const isPlayerProp = market.key?.startsWith("player_") || market.key?.startsWith("batter_");
-        const betType = isPlayerProp ? "player_prop" : mapMarketType(market.key);
         const odds = outcome.price;
         const impliedProb = americanToImplied(odds);
-        const score = computeConfidence({
-          impliedProb,
-          source,
-          betType,
-          sport,
-          title: outcome.name,
-          odds,
-          line: outcome.point,
-        });
+        const title = `${game.away_team} @ ${game.home_team} — ${outcome.name}`;
+        const id = `dk-${game.id}-${market.key}-${outcome.name.replace(/\s+/g, "-")}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
 
-        const id = `dk-${game.id ?? parentEvent?.id}-${market.key}-${i}`;
+        const score = computeConfidence({ impliedProb, source: "draftkings", betType, sport, title, odds, line: outcome.point });
         bets.push({
           id,
-          source: source === "draftkings" ? "draftkings" : "underdog",
-          sport,
-          betType,
-          title: isPlayerProp
-            ? `${outcome.name} ${market.key.replace(/_/g, " ")}`
-            : `${game.away_team ?? parentEvent?.away_team} @ ${game.home_team ?? parentEvent?.home_team} — ${outcome.name}`,
+          source: "draftkings",
+          sport, betType, title,
           description: market.key.replace(/_/g, " "),
           line: outcome.point ?? null,
           overOdds: odds,
@@ -249,15 +269,88 @@ function parseOddsGame(game: any, sportKey: string, source: string, parentEvent?
           researchSummary: score.summary,
           isHighConfidence: score.score >= 80,
           status: "open",
-          homeTeam: game.home_team ?? parentEvent?.home_team ?? null,
-          awayTeam: game.away_team ?? parentEvent?.away_team ?? null,
-          playerName: isPlayerProp ? outcome.name : null,
+          homeTeam: game.home_team ?? null,
+          awayTeam: game.away_team ?? null,
+          playerName: null,
           gameTime: game.commence_time ? new Date(game.commence_time) : null,
           notificationSent: false,
-          playerStats: null,
-          teamStats: null,
-          yesPrice: null,
-          noPrice: null,
+          playerStats: null, teamStats: null,
+          yesPrice: null, noPrice: null,
+        });
+      }
+    }
+  }
+  return bets;
+}
+
+// Parse player props — outcomes use `description` for player name, `name` for over/under
+function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] {
+  if (!game?.bookmakers?.length) return [];
+  const sport = mapSportKey(sportKey);
+  const bets: InsertBet[] = [];
+  const seen = new Set<string>();
+
+  for (const bookmaker of game.bookmakers ?? []) {
+    for (const market of bookmaker.markets ?? []) {
+      // Group outcomes by player (description field)
+      const byPlayer = new Map<string, any[]>();
+      for (const o of market.outcomes ?? []) {
+        const playerName = o.description ?? o.name; // description = player name in prop markets
+        if (!byPlayer.has(playerName)) byPlayer.set(playerName, []);
+        byPlayer.get(playerName)!.push(o);
+      }
+
+      for (const [playerName, outcomes] of byPlayer) {
+        // Find over and under outcomes
+        const overOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "over") ?? outcomes[0];
+        const underOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "under") ?? outcomes[1];
+        if (!overOutcome) continue;
+
+        const odds = overOutcome.price;
+        const impliedProb = americanToImplied(odds);
+        const marketLabel = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
+        const line = overOutcome.point;
+        const title = `${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
+        const id = `prop-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
+
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        const score = computeConfidence({
+          impliedProb,
+          source: "draftkings",
+          betType: "player_prop",
+          sport,
+          title,
+          odds,
+          line,
+        });
+
+        bets.push({
+          id,
+          source: bookmaker.key === "fanduel" ? "underdog" : "draftkings", // label FanDuel as Underdog for display
+          sport,
+          betType: "player_prop",
+          title,
+          description: `${event.away_team} @ ${event.home_team} · ${bookmaker.key}`,
+          line: line ?? null,
+          overOdds: overOutcome?.price ?? null,
+          underOdds: underOutcome?.price ?? null,
+          impliedProbability: impliedProb,
+          confidenceScore: score.score,
+          riskLevel: score.risk,
+          recommendedAllocation: score.allocation,
+          keyFactors: score.factors,
+          researchSummary: score.summary,
+          isHighConfidence: score.score >= 80,
+          status: "open",
+          homeTeam: event.home_team ?? null,
+          awayTeam: event.away_team ?? null,
+          playerName,
+          gameTime: event.commence_time ? new Date(event.commence_time) : null,
+          notificationSent: false,
+          playerStats: null, teamStats: null,
+          yesPrice: null, noPrice: null,
         });
       }
     }
