@@ -66,12 +66,36 @@ export default function BetDetail() {
 
       {/* Hero Card */}
       <div className={`bg-card rounded-2xl border p-6 ${isHigh ? "border-primary/30" : "border-border"}`}>
+        {/* Pick Side Banner for player props */}
+        {(() => {
+          const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
+          if (bet.betType !== "player_prop" || !ts?.pickSide) return null;
+          const isOver = ts.pickSide === "over";
+          const odds = ts.pickedOdds;
+          const oddsStr = odds !== undefined ? (odds > 0 ? `+${odds}` : `${odds}`) : null;
+          return (
+            <div className={`flex items-center justify-between mb-4 px-4 py-3 rounded-xl font-bold text-base tracking-wide ${
+              isOver
+                ? "bg-green-500/15 border border-green-500/40 text-green-400"
+                : "bg-blue-500/15 border border-blue-500/40 text-blue-400"
+            }`}>
+              <span className="flex items-center gap-3">
+                <span className="text-xl">{isOver ? "▲" : "▼"}</span>
+                <span>{isOver ? "TAKE OVER" : "TAKE UNDER"}{bet.line !== null ? ` ${bet.line}` : ""}</span>
+              </span>
+              {oddsStr && <span className="font-mono">{oddsStr}</span>}
+            </div>
+          );
+        })()}
+
         <div className="flex items-start gap-5">
           {/* Big confidence ring */}
           <ConfidenceRingLarge score={score} />
 
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-foreground leading-tight mb-2">{bet.title}</h1>
+            <h1 className="text-xl font-bold text-foreground leading-tight mb-2">
+              {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
+            </h1>
 
             <div className="flex flex-wrap gap-2 mb-4">
               <SourceBadge source={bet.source} />

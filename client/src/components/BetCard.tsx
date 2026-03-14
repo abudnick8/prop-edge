@@ -103,6 +103,10 @@ function RiskBadge({ risk }: { risk: string | null }) {
 export default function BetCard({ bet, compact = false }: BetCardProps) {
   const score = bet.confidenceScore ?? 0;
   const isHigh = score >= 80;
+  const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number; overProb?: number; underProb?: number } | null;
+  const pickSide = bet.betType === "player_prop" ? teamStats?.pickSide : null;
+  const pickedOdds = teamStats?.pickedOdds;
+  const oddsDisplay = pickedOdds !== undefined ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : null;
 
   return (
     <Link href={`/bets/${bet.id}`}>
@@ -112,12 +116,34 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           isHigh ? "border-primary/30" : "border-border"
         }`}
       >
+        {/* Pick Side Banner — player props only */}
+        {pickSide && (
+          <div
+            className={`flex items-center justify-between mb-3 px-3 py-2 rounded-lg font-bold text-sm tracking-wide ${
+              pickSide === "over"
+                ? "bg-green-500/15 border border-green-500/40 text-green-400"
+                : "bg-blue-500/15 border border-blue-500/40 text-blue-400"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base">{pickSide === "over" ? "▲" : "▼"}</span>
+              <span>{pickSide === "over" ? "TAKE OVER" : "TAKE UNDER"}{bet.line !== null ? ` ${bet.line}` : ""}</span>
+            </span>
+            {oddsDisplay && (
+              <span className="font-mono text-sm">{oddsDisplay}</span>
+            )}
+          </div>
+        )}
+
         {/* Top row */}
         <div className="flex items-start gap-4">
           <ConfidenceRing score={score} />
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1.5">
-              <p className="font-semibold text-sm text-foreground leading-tight line-clamp-2">{bet.title}</p>
+              <p className="font-semibold text-sm text-foreground leading-tight line-clamp-2">
+                {/* Strip the [TAKE OVER/UNDER ...] prefix from title for cleaner display */}
+                {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
+              </p>
               <ChevronRight size={14} className="text-muted-foreground flex-shrink-0 mt-0.5" />
             </div>
             <div className="flex flex-wrap items-center gap-1.5 mb-2">

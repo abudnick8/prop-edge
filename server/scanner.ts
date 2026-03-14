@@ -306,25 +306,42 @@ function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] 
         const underOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "under") ?? outcomes[1];
         if (!overOutcome) continue;
 
-        const odds = overOutcome.price;
-        const impliedProb = americanToImplied(odds);
+        const overOddsVal: number = overOutcome.price;
+        const underOddsVal: number | null = underOutcome?.price ?? null;
+
+        // Determine which side to pick based on implied probability
+        const overProb = americanToImplied(overOddsVal);
+        const underProb = underOddsVal !== null ? americanToImplied(underOddsVal) : 1 - overProb;
+        const pickSide: "over" | "under" = overProb >= underProb ? "over" : "under";
+        const pickedOdds = pickSide === "over" ? overOddsVal : underOddsVal!;
+        const pickedProb = pickSide === "over" ? overProb : underProb;
+
         const marketLabel = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
         const line = overOutcome.point;
-        const title = `${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
+        const sideLabel = pickSide === "over" ? "TAKE OVER" : "TAKE UNDER";
+        const oddsDisplay = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
+        const baseTitle = `${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
+        const title = `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] ${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)}`;
         const id = `prop-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
 
         if (seen.has(id)) continue;
         seen.add(id);
 
         const score = computeConfidence({
-          impliedProb,
+          impliedProb: pickedProb,
           source: "draftkings",
           betType: "player_prop",
           sport,
-          title,
-          odds,
+          title: baseTitle,
+          odds: pickedOdds,
           line,
         });
+
+        // Prepend pick side as first key factor
+        const keyFactors = [
+          `Pick: ${sideLabel}${line !== undefined ? ` ${line}` : ""} (${oddsDisplay})`,
+          ...(score.factors ?? []),
+        ];
 
         bets.push({
           id,
@@ -334,14 +351,14 @@ function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] 
           title,
           description: `${event.away_team} @ ${event.home_team} · ${bookmaker.key}`,
           line: line ?? null,
-          overOdds: overOutcome?.price ?? null,
-          underOdds: underOutcome?.price ?? null,
-          impliedProbability: impliedProb,
+          overOdds: overOddsVal,
+          underOdds: underOddsVal,
+          impliedProbability: pickedProb,
           confidenceScore: score.score,
           riskLevel: score.risk,
           recommendedAllocation: score.allocation,
-          keyFactors: score.factors,
-          researchSummary: score.summary,
+          keyFactors,
+          researchSummary: `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] — ${score.summary}`,
           isHighConfidence: score.score >= 80,
           status: "open",
           homeTeam: event.home_team ?? null,
@@ -349,7 +366,8 @@ function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] 
           playerName,
           gameTime: event.commence_time ? new Date(event.commence_time) : null,
           notificationSent: false,
-          playerStats: null, teamStats: null,
+          playerStats: null,
+          teamStats: { pickSide, pickedOdds, overProb: Math.round(overProb * 100), underProb: Math.round(underProb * 100) },
           yesPrice: null, noPrice: null,
         });
       }
@@ -599,7 +617,9 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
       await storage.addNotification({
         id: `notif-${bet.id}-${Date.now()}`,
         betId: bet.id,
-        message: `🔥 ${bet.title} — ${bet.confidenceScore}/100 confidence | ${bet.source.toUpperCase()} | Suggest ${bet.recommendedAllocation}% allocation`,
+        message: bet.betType === "player_prop" && bet.teamStats && (bet.teamStats as any).pickSide
+          ? `🔥 ${(bet.teamStats as any).pickSide === "over" ? "▲ TAKE OVER" : "▼ TAKE UNDER"} — ${bet.playerName ?? bet.title} — ${bet.confidenceScore}/100 confidence | ${bet.source.toUpperCase()} | Suggest ${bet.recommendedAllocation}% allocation`
+          : `🔥 ${bet.title} — ${bet.confidenceScore}/100 confidence | ${bet.source.toUpperCase()} | Suggest ${bet.recommendedAllocation}% allocation`,
         confidenceScore: bet.confidenceScore,
         dismissed: false,
       });
