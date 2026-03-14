@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* PropEdge — Deep field green + electric accent for sports betting */
+    --background: 220 15% 7%;
+    --foreground: 210 20% 92%;
+
+    --card: 220 14% 10%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 14% 10%;
+    --popover-foreground: 210 20% 92%;
+
+    /* Electric green for high-confidence signals */
+    --primary: 142 76% 45%;
+    --primary-foreground: 220 15% 7%;
+
+    --secondary: 220 12% 16%;
+    --secondary-foreground: 210 15% 75%;
+
+    --muted: 220 12% 14%;
+    --muted-foreground: 210 10% 55%;
+
+    --accent: 220 12% 18%;
+    --accent-foreground: 210 20% 92%;
+
+    /* Orange for risk signals */
+    --destructive: 24 95% 53%;
+    --destructive-foreground: 220 15% 7%;
+
+    --border: 220 10% 18%;
+    --input: 220 10% 16%;
+    --ring: 142 76% 45%;
+
+    --radius: 0.5rem;
+
+    /* Custom tokens */
+    --high-conf: 142 76% 45%;
+    --medium-conf: 43 95% 56%;
+    --low-conf: 24 95% 53%;
+    --kalshi: 188 100% 42%;
+    --polymarket: 262 52% 60%;
+    --draftkings: 214 100% 60%;
+    --underdog: 32 95% 55%;
+
+    --font-body: 'General Sans', 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .dark {
+    --background: 220 15% 7%;
+    --foreground: 210 20% 92%;
+    --card: 220 14% 10%;
+    --card-foreground: 210 20% 92%;
+    --popover: 220 14% 10%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 142 76% 45%;
+    --primary-foreground: 220 15% 7%;
+    --secondary: 220 12% 16%;
+    --secondary-foreground: 210 15% 75%;
+    --muted: 220 12% 14%;
+    --muted-foreground: 210 10% 55%;
+    --accent: 220 12% 18%;
+    --accent-foreground: 210 20% 92%;
+    --destructive: 24 95% 53%;
+    --destructive-foreground: 220 15% 7%;
+    --border: 220 10% 18%;
+    --input: 220 10% 16%;
+    --ring: 142 76% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    min-height: 100dvh;
+  }
+
+  .font-mono {
+    font-family: var(--font-mono) !important;
+  }
+}
+
+/* Confidence score ring animations */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(142 76% 45% / 0.3); }
+  50% { box-shadow: 0 0 0 8px hsl(142 76% 45% / 0); }
+}
+
+.high-conf-pulse {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+/* Score arc gradient */
+.score-high { color: hsl(142 76% 45%); }
+.score-medium { color: hsl(43 95% 56%); }
+.score-low { color: hsl(24 95% 53%); }
+
+/* Source badges */
+.source-kalshi { background: hsl(188 100% 42% / 0.15); color: hsl(188 100% 60%); border-color: hsl(188 100% 42% / 0.3); }
+.source-polymarket { background: hsl(262 52% 60% / 0.15); color: hsl(262 52% 75%); border-color: hsl(262 52% 60% / 0.3); }
+.source-draftkings { background: hsl(214 100% 60% / 0.15); color: hsl(214 100% 72%); border-color: hsl(214 100% 60% / 0.3); }
+.source-underdog { background: hsl(32 95% 55% / 0.15); color: hsl(32 95% 68%); border-color: hsl(32 95% 55% / 0.3); }
+
+/* Sport badges */
+.sport-nfl { background: hsl(0 75% 45% / 0.15); color: hsl(0 75% 65%); border-color: hsl(0 75% 45% / 0.3); }
+.sport-nba { background: hsl(24 95% 53% / 0.15); color: hsl(24 95% 68%); border-color: hsl(24 95% 53% / 0.3); }
+.sport-mlb { background: hsl(214 100% 60% / 0.15); color: hsl(214 100% 72%); border-color: hsl(214 100% 60% / 0.3); }
+.sport-nhl { background: hsl(188 100% 42% / 0.15); color: hsl(188 100% 60%); border-color: hsl(188 100% 42% / 0.3); }
+
+/* Notification bell shake */
+@keyframes bell-shake {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30%, 50%, 70% { transform: rotate(-8deg); }
+  20%, 40%, 60%, 80% { transform: rotate(8deg); }
+  90% { transform: rotate(-4deg); }
+}
+.bell-ring { animation: bell-shake 0.8s ease-in-out; }
+
+/* Scan loading pulse */
+@keyframes scan-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.scanning { animation: scan-pulse 1.2s ease-in-out infinite; }
+
+/* Card hover */
+.bet-card {
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.bet-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 32px hsl(220 15% 4% / 0.5);
+}
+
+/* Progress bar */
+.confidence-bar {
+  background: linear-gradient(90deg, hsl(24 95% 53%), hsl(43 95% 56%) 50%, hsl(142 76% 45%));
+  border-radius: 9999px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: hsl(220 15% 9%); }
+::-webkit-scrollbar-thumb { background: hsl(220 10% 22%); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(220 10% 30%); }
