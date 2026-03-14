@@ -157,6 +157,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   🔥 Hot Pick
                 </span>
               )}
+              {!bet.gameTime && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 uppercase tracking-wide">
+                  📅 Season Futures
+                </span>
+              )}
             </div>
 
             {!compact && (

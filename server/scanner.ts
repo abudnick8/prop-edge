@@ -172,18 +172,10 @@ const SEASON_FUTURES_KEYS = [
   "golf_us_open_winner",
 ];
 
-// Season-long player prop markets (available before/during season start)
-// These are anytime-season or full-season accumulator props
-const SEASON_PROP_MARKETS: Record<string, string> = {
-  baseball_mlb:
-    "batter_home_runs_season,pitcher_strikeouts_season,batter_hits_season,batter_rbis_season",
-  basketball_nba:
-    "player_points_season,player_rebounds_season,player_assists_season,player_threes_season",
-  americanfootball_nfl:
-    "player_pass_tds_season,player_rush_yds_season,player_reception_yds_season",
-  icehockey_nhl:
-    "player_goals_season,player_assists_season",
-};
+// Season-long player props are handled via SEASON_FUTURES_KEYS (outright winner markets).
+// The Odds API does not support "_season" market strings — those do not exist.
+// Season prop analysis is delivered through championship outrights (World Series winner,
+// NBA title winner, etc.) which are confirmed active and return real lines.
 
 // Player prop market keys per sport (game-level)
 const PROP_MARKETS: Record<string, string> = {
@@ -362,7 +354,9 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
                 const odds = outcome.price;
                 const impliedProb = americanToImplied(odds);
                 const oddsDisplay = odds > 0 ? `+${odds}` : `${odds}`;
-                const title = `${outcome.name} to win ${market.sport_title ?? futuresKey.replace(/_/g, " ")}`;
+                const sportLabel = mapSportKey(futuresKey);
+                const eventLabel = market.sport_title ?? futuresKey.replace(/_/g, " ").replace(/winner$/, "Winner");
+                const title = `${outcome.name} to win ${eventLabel}`;
                 const id = `futures-${futuresKey}-${outcome.name.replace(/\s+/g, "-")}-${bk.key}`;
                 const score = computeConfidence({
                   impliedProb,
@@ -387,7 +381,7 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
                   riskLevel: score.risk,
                   recommendedAllocation: score.allocation,
                   keyFactors: [`Season futures pick: ${oddsDisplay}`, ...score.factors],
-                  researchSummary: `[FUTURES ${oddsDisplay}] — ${score.summary}`,
+                  researchSummary: `[SEASON FUTURES ${oddsDisplay}] — ${score.summary}`,
                   isHighConfidence: score.score >= 80,
                   status: "open",
                   homeTeam: null,

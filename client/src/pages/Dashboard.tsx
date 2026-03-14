@@ -3,10 +3,11 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState } from "react";
+import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 
 interface Stats {
   total: number;
@@ -19,6 +20,7 @@ interface Stats {
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const [dayFilter, setDayFilter] = useState<DayFilter>("today");
 
   const { data: bets = [], isLoading } = useQuery<Bet[]>({
     queryKey: ["/api/bets"],
@@ -54,13 +56,32 @@ export default function Dashboard() {
     return (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
   };
 
-  const highConf = bets
-    .filter((b) => (b.confidenceScore ?? 0) >= (stats?.threshold ?? 80))
-    .sort(sortByProps);
-  const recent = [...bets].sort(sortByProps).slice(0, 12);
+  // Day-filtered bets
+  const dayBets = filterByDay(bets, dayFilter).sort(sortByProps);
+  const threshold = stats?.threshold ?? 80;
+
+  const highConf = dayBets.filter((b) => (b.confidenceScore ?? 0) >= threshold);
+  const recent = dayBets.slice(0, 12);
+
+  // Badge counts for tabs
+  const todayCount = countByDay(bets, "today");
+  const tomorrowCount = countByDay(bets, "tomorrow");
+  const allCount = bets.length;
+
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const fmtDay = (d: Date) =>
+    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  const DAY_TABS: { key: DayFilter; label: string; sub: string; count: number }[] = [
+    { key: "today",    label: "Today",    sub: fmtDay(today),    count: todayCount    },
+    { key: "tomorrow", label: "Tomorrow", sub: fmtDay(tomorrow), count: tomorrowCount },
+    { key: "all",      label: "All Bets", sub: "incl. futures",  count: allCount      },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -89,7 +110,7 @@ export default function Dashboard() {
           loading={isLoading}
         />
         <StatCard
-          label={`≥${stats?.threshold ?? 80}/100 Picks`}
+          label={`≥${threshold}/100 Picks`}
           value={stats?.highConf ?? highConf.length}
           icon={<Target size={16} />}
           highlight
@@ -124,15 +145,49 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Day Filter Tabs */}
+      <div className="flex items-center gap-2 border-b border-border pb-1">
+        <Calendar size={14} className="text-muted-foreground mr-1 flex-shrink-0" />
+        {DAY_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setDayFilter(tab.key)}
+            data-testid={`tab-day-${tab.key}`}
+            className={`relative flex flex-col items-start px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+              dayFilter === tab.key
+                ? "border-primary text-primary bg-primary/5"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent"
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+                  dayFilter === tab.key
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </span>
+            <span className="text-[10px] text-muted-foreground font-normal">{tab.sub}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Hot Picks Section */}
       {highConf.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <h2 className="text-base font-bold text-foreground">🔥 Hot Picks <span className="text-xs font-normal text-muted-foreground ml-1">· props first</span></h2>
+              <h2 className="text-base font-bold text-foreground">
+                🔥 Hot Picks
+                <span className="text-xs font-normal text-muted-foreground ml-1">· props first</span>
+              </h2>
               <span className="text-xs font-mono bg-primary/15 text-primary px-2 py-0.5 rounded-md border border-primary/30">
-                {highConf.length} picks ≥{stats?.threshold ?? 80}/100
+                {highConf.length} picks ≥{threshold}/100
               </span>
             </div>
             <Link href="/bets?filter=high">
@@ -150,7 +205,9 @@ export default function Dashboard() {
       {/* All Recent */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-foreground">All Markets</h2>
+          <h2 className="text-base font-bold text-foreground">
+            {dayFilter === "today" ? "Today's Markets" : dayFilter === "tomorrow" ? "Tomorrow's Markets" : "All Markets"}
+          </h2>
           <Link href="/bets">
             <a className="text-xs text-primary hover:underline">View all →</a>
           </Link>
@@ -162,11 +219,30 @@ export default function Dashboard() {
               <Skeleton key={i} className="h-44 rounded-xl" />
             ))}
           </div>
-        ) : bets.length === 0 ? (
+        ) : dayBets.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-border rounded-xl">
             <AlertCircle size={32} className="mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm font-medium text-foreground">No markets loaded yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Click Scan Now to load prediction markets</p>
+            {bets.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-foreground">No markets loaded yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Click Scan Now to load prediction markets</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-foreground">
+                  No {dayFilter === "today" ? "today's" : "tomorrow's"} games found
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 mb-3">
+                  There may be no games scheduled — try All Bets to see futures and upcoming games
+                </p>
+                <button
+                  onClick={() => setDayFilter("all")}
+                  className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
+                >
+                  Show All Bets
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -176,6 +252,20 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      {/* Season/Futures note when on Today/Tomorrow with no results but All has some */}
+      {dayFilter !== "all" && dayBets.length === 0 && bets.filter(b => !b.gameTime).length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
+          <Calendar size={16} className="text-primary mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Season Futures Available</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {bets.filter(b => !b.gameTime).length} season outright & futures picks are available —
+              they don't have a single game date. Switch to <button onClick={() => setDayFilter("all")} className="text-primary hover:underline">All Bets</button> to see them.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -210,6 +300,12 @@ const TERMS = [
     badge: "Bet Type",
     color: "text-blue-400",
     def: "A bet on an individual player's stats in a game — e.g. 'LeBron James Over 25.5 points.' Doesn't depend on who wins the game, only on the player's personal performance.",
+  },
+  {
+    term: "Season Futures",
+    badge: "Bet Type",
+    color: "text-yellow-400",
+    def: "A bet on a season-long outcome — e.g. 'Yankees to win the World Series' or 'Shohei Ohtani to lead MLB in home runs.' These are available before and during the season, and appear in All Bets (not day-filtered).",
   },
   {
     term: "Implied Probability",
