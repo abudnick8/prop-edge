@@ -3,9 +3,10 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useState } from "react";
 
 interface Stats {
   total: number;
@@ -98,6 +99,9 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* How to Read */}
+      <HowToRead />
+
       {/* Sport breakdown */}
       {stats?.bySport && (
         <div className="flex flex-wrap gap-3">
@@ -162,6 +166,108 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+const TERMS = [
+  {
+    term: "Confidence Score",
+    badge: "e.g. 84/100",
+    color: "text-primary",
+    def: "Our algorithm's rating of how likely a bet is to win. 80+ is considered high confidence and will trigger an alert. Factors in market consensus, source reliability, sport, and bet type.",
+  },
+  {
+    term: "Moneyline",
+    badge: "Bet Type",
+    color: "text-blue-400",
+    def: "A straight-up bet on who wins the game. No point spread involved. Odds reflect how favored each team is — a -200 favorite means you risk $200 to win $100; a +170 underdog means a $100 bet wins $170.",
+  },
+  {
+    term: "Spread",
+    badge: "Bet Type",
+    color: "text-blue-400",
+    def: "A handicap given to the underdog to level the playing field. If the Chiefs are -6.5, they must win by 7+ for the bet to win. The underdog +6.5 wins if they lose by 6 or fewer, or win outright.",
+  },
+  {
+    term: "Total (Over/Under)",
+    badge: "Bet Type",
+    color: "text-blue-400",
+    def: "A bet on the combined score of both teams. If the total is 47.5, you bet Over (combined score 48+) or Under (combined score 47 or less). It doesn't matter who wins.",
+  },
+  {
+    term: "Player Prop",
+    badge: "Bet Type",
+    color: "text-blue-400",
+    def: "A bet on an individual player's stats in a game — e.g. 'LeBron James Over 25.5 points.' Doesn't depend on who wins the game, only on the player's personal performance.",
+  },
+  {
+    term: "Implied Probability",
+    badge: "Market Metric",
+    color: "text-yellow-400",
+    def: "The probability of winning implied by the betting odds. A -200 favorite has ~67% implied probability. On prediction markets like Kalshi, a price of $0.72 means the market thinks there's a 72% chance it hits.",
+  },
+  {
+    term: "Recommended Allocation",
+    badge: "Portfolio Sizing",
+    color: "text-green-400",
+    def: "The suggested percentage of your total bankroll to place on this bet, calculated using the Kelly Criterion (quarter-Kelly for safety). A 2.5% allocation on a $1,000 bankroll = $25 bet.",
+  },
+  {
+    term: "Risk Level",
+    badge: "Low / Medium / High",
+    color: "text-orange-400",
+    def: "Low = score ≥75 with >55% implied probability (strong edge). Medium = score ≥60 (reasonable lean). High = lower confidence, more uncertain outcome. Always size bets according to risk level.",
+  },
+  {
+    term: "Kalshi / Polymarket",
+    badge: "Sources",
+    color: "text-purple-400",
+    def: "Regulated prediction markets where real money is traded on outcomes. Prices reflect collective market intelligence — sharp bettors and traders. Generally more accurate than traditional sportsbook lines.",
+  },
+  {
+    term: "DraftKings / Underdog",
+    badge: "Sources",
+    color: "text-purple-400",
+    def: "Major licensed sportsbooks. Lines are set by professional oddsmakers and adjusted based on betting volume. DraftKings is used for spreads, totals, moneylines, and player props.",
+  },
+];
+
+function HowToRead() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        data-testid="button-how-to-read"
+        className="w-full flex items-center justify-between px-5 py-4 bg-card hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <BookOpen size={15} className="text-primary" />
+          <span className="text-sm font-semibold text-foreground">How to Read This App</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">— betting terms explained</span>
+        </div>
+        {open ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 pt-3 bg-card border-t border-border">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {TERMS.map((t) => (
+              <div key={t.term} className="bg-muted/30 rounded-lg p-3.5 border border-border/60">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-foreground">{t.term}</span>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted border border-border ${t.color}`}>
+                    {t.badge}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t.def}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
