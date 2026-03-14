@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Filter, SlidersHorizontal, Calendar } from "lucide-react";
+import { Search, Filter, SlidersHorizontal, Calendar, Trophy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 
 const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NCAAF", "Golf"];
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
-const SOURCES = ["All", "kalshi", "polymarket", "draftkings", "underdog"];
+const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog"];
+
+type MainTab = "daily" | "season";
 
 export default function AllBets() {
   const [search, setSearch] = useState("");
@@ -19,25 +21,43 @@ export default function AllBets() {
   const [minScore, setMinScore] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [dayFilter, setDayFilter] = useState<DayFilter>("today");
+  const [mainTab, setMainTab] = useState<MainTab>("daily");
 
   const { data: bets = [], isLoading } = useQuery<Bet[]>({
     queryKey: ["/api/bets"],
     refetchInterval: 30000,
   });
 
-  // 1. Day filter first
-  const dayBets = filterByDay(bets, dayFilter);
+  // Split bets: daily (have a gameTime) vs season (no gameTime)
+  const dailyBets = bets.filter((b) => !!b.gameTime);
+  const seasonBets = bets.filter((b) => !b.gameTime);
 
-  // 2. Then remaining filters
-  const filtered = dayBets.filter((b) => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || b.title.toLowerCase().includes(q) || (b.playerName ?? "").toLowerCase().includes(q);
-    const matchSport = sport === "All" || b.sport === sport;
-    const matchType = betType === "All" || b.betType === betType;
-    const matchSource = source === "All" || b.source === source;
-    const matchScore = (b.confidenceScore ?? 0) >= minScore;
-    return matchSearch && matchSport && matchType && matchSource && matchScore;
+  // Apply search/sport/type/source/score filters to a list
+  function applyFilters(list: Bet[]): Bet[] {
+    return list.filter((b) => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || b.title.toLowerCase().includes(q) || (b.playerName ?? "").toLowerCase().includes(q);
+      const matchSport = sport === "All" || b.sport === sport;
+      const matchType = betType === "All" || b.betType === betType;
+      const matchSource = source === "All" || b.source === source;
+      const matchScore = (b.confidenceScore ?? 0) >= minScore;
+      return matchSearch && matchSport && matchType && matchSource && matchScore;
+    });
+  }
+
+  // Daily tab: day filter first, then remaining filters
+  const dayBets = filterByDay(dailyBets, dayFilter);
+  const filteredDaily = applyFilters(dayBets).sort((a, b) => {
+    const aProp = a.betType === "player_prop" ? 1 : 0;
+    const bProp = b.betType === "player_prop" ? 1 : 0;
+    if (bProp !== aProp) return bProp - aProp;
+    return (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
   });
+
+  // Season tab: filters only (no day filter)
+  const filteredSeason = applyFilters(seasonBets).sort(
+    (a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0)
+  );
 
   // Badge counts
   const today = new Date();
@@ -47,10 +67,13 @@ export default function AllBets() {
     d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   const DAY_TABS: { key: DayFilter; label: string; sub: string; count: number }[] = [
-    { key: "today",    label: "Today",    sub: fmtDay(today),    count: countByDay(bets, "today")    },
-    { key: "tomorrow", label: "Tomorrow", sub: fmtDay(tomorrow), count: countByDay(bets, "tomorrow") },
-    { key: "all",      label: "All Bets", sub: "incl. futures",  count: bets.length                  },
+    { key: "today",    label: "Today",      sub: fmtDay(today),    count: countByDay(dailyBets, "today")    },
+    { key: "tomorrow", label: "Tomorrow",   sub: fmtDay(tomorrow), count: countByDay(dailyBets, "tomorrow") },
+    { key: "all",      label: "All Daily",  sub: "all upcoming",   count: dailyBets.length                  },
   ];
+
+  const activeCount = mainTab === "daily" ? filteredDaily.length : filteredSeason.length;
+  const totalCount  = mainTab === "daily" ? dailyBets.length   : seasonBets.length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -58,7 +81,7 @@ export default function AllBets() {
         <div>
           <h1 className="text-xl font-bold text-foreground">All Picks</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {filtered.length} of {bets.length} markets
+            {activeCount} of {totalCount} markets
           </p>
         </div>
         <button
@@ -72,36 +95,90 @@ export default function AllBets() {
         </button>
       </div>
 
-      {/* Day Filter Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-1">
-        <Calendar size={14} className="text-muted-foreground mr-1 flex-shrink-0" />
-        {DAY_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setDayFilter(tab.key)}
-            data-testid={`tab-day-${tab.key}`}
-            className={`relative flex flex-col items-start px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              dayFilter === tab.key
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                  dayFilter === tab.key
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {tab.count}
-                </span>
-              )}
+      {/* ── Main Tab Bar: Daily vs Season ── */}
+      <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border w-fit">
+        <button
+          onClick={() => setMainTab("daily")}
+          data-testid="tab-main-daily"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            mainTab === "daily"
+              ? "bg-card text-foreground shadow-sm border border-border"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Calendar size={13} />
+          Daily Picks
+          {dailyBets.length > 0 && (
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+              mainTab === "daily" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+            }`}>
+              {dailyBets.length}
             </span>
-            <span className="text-[10px] text-muted-foreground font-normal">{tab.sub}</span>
-          </button>
-        ))}
+          )}
+        </button>
+        <button
+          onClick={() => setMainTab("season")}
+          data-testid="tab-main-season"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            mainTab === "season"
+              ? "bg-card text-foreground shadow-sm border border-border"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Trophy size={13} />
+          Season Bets
+          {seasonBets.length > 0 && (
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+              mainTab === "season" ? "bg-yellow-500/20 text-yellow-400" : "bg-muted text-muted-foreground"
+            }`}>
+              {seasonBets.length}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Day Filter Sub-Tabs (Daily only) */}
+      {mainTab === "daily" && (
+        <div className="flex items-center gap-2 border-b border-border pb-1">
+          <Calendar size={14} className="text-muted-foreground mr-1 flex-shrink-0" />
+          {DAY_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setDayFilter(tab.key)}
+              data-testid={`tab-day-${tab.key}`}
+              className={`relative flex flex-col items-start px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+                dayFilter === tab.key
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent"
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+                    dayFilter === tab.key
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-normal">{tab.sub}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Season banner (Season only) */}
+      {mainTab === "season" && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl">
+          <Trophy size={15} className="text-yellow-400 flex-shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            Season-long futures and championship outrights. No game date — these resolve at the end of the season.
+          </p>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -151,22 +228,22 @@ export default function AllBets() {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {Array(9).fill(0).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : mainTab === "daily" && filteredDaily.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-border rounded-xl">
           <Filter size={32} className="mx-auto text-muted-foreground mb-3" />
-          {dayBets.length === 0 && bets.length > 0 ? (
+          {dayBets.length === 0 && dailyBets.length > 0 ? (
             <>
               <p className="text-sm font-medium text-foreground">
                 No {dayFilter === "today" ? "today's" : "tomorrow's"} games found
               </p>
               <p className="text-xs text-muted-foreground mt-1 mb-3">
-                No games scheduled for this day — try All Bets to see upcoming games and futures
+                No games scheduled for this day — try All Daily
               </p>
               <button
                 onClick={() => setDayFilter("all")}
                 className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
               >
-                Show All Bets
+                Show All Daily
               </button>
             </>
           ) : (
@@ -176,9 +253,15 @@ export default function AllBets() {
             </>
           )}
         </div>
+      ) : mainTab === "season" && filteredSeason.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-border rounded-xl">
+          <Trophy size={32} className="mx-auto text-muted-foreground mb-3" />
+          <p className="text-sm font-medium text-foreground">No season futures match your filters</p>
+          <p className="text-xs text-muted-foreground mt-1">Try clearing the search or adjusting filters</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((bet) => (
+          {(mainTab === "daily" ? filteredDaily : filteredSeason).map((bet) => (
             <BetCard key={bet.id} bet={bet} />
           ))}
         </div>
@@ -212,7 +295,7 @@ function FilterGroup({
                 : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
             }`}
           >
-            {opt === "player_prop" ? "Props" : opt === "All" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
+            {opt === "player_prop" ? "Props" : opt === "actionnetwork" ? "ActionNetwork" : opt === "All" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
           </button>
         ))}
       </div>

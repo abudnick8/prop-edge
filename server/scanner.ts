@@ -79,6 +79,115 @@ function buildKalshiBet(m: any): InsertBet {
   };
 }
 
+// ─── ActionNetwork public API (no key required) ─────────────────────────────
+// Provides public betting % (money & tickets) for spreads/totals/moneylines.
+// Used as a supplemental consensus signal, especially when Odds API quota is exhausted.
+const ACTION_SPORTS: Record<string, string> = {
+  NBA: "nba",
+  NFL: "nfl",
+  MLB: "mlb",
+  NHL: "nhl",
+  NCAAB: "ncaab",
+  NCAAF: "ncaaf",
+};
+// Book IDs for major US sportsbooks on ActionNetwork
+const ACTION_BOOK_IDS = "15,30,366,283,68,351,348,355,76,75";
+
+async function fetchActionNetwork(): Promise<InsertBet[]> {
+  const bets: InsertBet[] = [];
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+
+  for (const [sportLabel, sportSlug] of Object.entries(ACTION_SPORTS)) {
+    try {
+      const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${sportSlug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${dateStr}`;
+      const { data } = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://www.actionnetwork.com/",
+          "Origin": "https://www.actionnetwork.com",
+        },
+      });
+
+      const games = data?.games ?? data?.scoreboard ?? [];
+      for (const game of games) {
+        const homeTeam = game.home_team?.display_name ?? game.home_team?.name ?? "Home";
+        const awayTeam = game.away_team?.display_name ?? game.away_team?.name ?? "Away";
+        const gameTime = game.start_time ? new Date(game.start_time * 1000) : null;
+        const markets = game.public_betting ?? game.odds ?? [];
+
+        for (const mkt of markets) {
+          const betType: string =
+            mkt.type === "spread" ? "spread" :
+            mkt.type === "total" ? "total" : "moneyline";
+
+          // Money % tells us where sharp/public money is going
+          const homeMoneyPct = parseFloat(mkt.home_money ?? mkt.money_home ?? "50") / 100;
+          const awayMoneyPct = 1 - homeMoneyPct;
+
+          // Determine stronger side
+          const pickSide = homeMoneyPct >= awayMoneyPct ? "home" : "away";
+          const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+          const pickProb = pickSide === "home" ? homeMoneyPct : awayMoneyPct;
+
+          if (pickProb < 0.52) continue; // skip near-50/50 signals — not actionable
+
+          const line = mkt.current_line ?? mkt.line ?? null;
+          const lineStr = line != null ? ` ${line > 0 ? "+" : ""}${line}` : "";
+          const title = betType === "total"
+            ? `${awayTeam} @ ${homeTeam} — Total ${mkt.over_money_pct ?? Math.round(homeMoneyPct * 100)}% on Over`
+            : `${awayTeam} @ ${homeTeam} — ${pickTeam}${lineStr} (${Math.round(pickProb * 100)}% public money)`;
+
+          const id = `action-${sportSlug}-${game.id ?? game.game_id ?? Date.now()}-${betType}-${pickSide}`;
+          const score = computeConfidence({
+            impliedProb: pickProb,
+            source: "actionnetwork",
+            betType,
+            sport: sportLabel,
+            title,
+          });
+
+          bets.push({
+            id,
+            source: "actionnetwork",
+            sport: sportLabel,
+            betType,
+            title,
+            description: `Public betting consensus via ActionNetwork — ${Math.round(pickProb * 100)}% of money on ${pickTeam}`,
+            line: line ?? null,
+            overOdds: null,
+            underOdds: null,
+            impliedProbability: pickProb,
+            confidenceScore: score.score,
+            riskLevel: score.risk,
+            recommendedAllocation: score.allocation,
+            keyFactors: [`${Math.round(pickProb * 100)}% public money on ${pickTeam}`, ...score.factors],
+            researchSummary: score.summary,
+            isHighConfidence: score.score >= 80,
+            status: "open",
+            homeTeam,
+            awayTeam,
+            playerName: null,
+            gameTime,
+            notificationSent: false,
+            playerStats: null,
+            teamStats: null,
+            yesPrice: null,
+            noPrice: null,
+          });
+        }
+      }
+    } catch (e: any) {
+      console.warn(`ActionNetwork fetch error (${sportLabel}):`, e.message);
+    }
+  }
+  console.log(`ActionNetwork: ${bets.length} consensus picks`);
+  return bets;
+}
+
 // ─── Polymarket public API ────────────────────────────────────────────────────
 const POLY_BASE = "https://gamma-api.polymarket.com";
 
@@ -664,6 +773,9 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   } else if (input.source === "draftkings") {
     score += 5;
     factors.push("Major sportsbook line — market-making quality pricing");
+  } else if (input.source === "actionnetwork") {
+    score += 6;
+    factors.push("ActionNetwork public betting consensus — sharp vs. public money signal");
   }
 
   // 3. Bet type bonus — player props are the primary focus
@@ -854,13 +966,14 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     ...(settings.enabledOptionalSports ?? []),
   ];
 
-  // Fetch all live sources in parallel
-  const [kalshi, poly] = await Promise.all([
+  // Fetch all live sources in parallel (ActionNetwork is free, no key needed)
+  const [kalshi, poly, actionNet] = await Promise.all([
     fetchKalshiSports(),
     fetchPolymarketSports(),
+    fetchActionNetwork(),
   ]);
 
-  results.push(...kalshi, ...poly);
+  results.push(...kalshi, ...poly, ...actionNet);
 
   // Add Odds API data if key provided
   if (apiKey) {
