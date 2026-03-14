@@ -95,96 +95,190 @@ const ACTION_BOOK_IDS = "15,30,366,283,68,351,348,355,76,75";
 
 async function fetchActionNetwork(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
-  const today = new Date();
-  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  const seen = new Set<string>();
+
+  // Fetch today AND tomorrow to catch evening/late games across midnight UTC
+  const dates: string[] = [];
+  for (let offset = 0; offset <= 1; offset++) {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    dates.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`);
+  }
 
   for (const [sportLabel, sportSlug] of Object.entries(ACTION_SPORTS)) {
-    try {
-      const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${sportSlug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${dateStr}`;
-      const { data } = await axios.get(url, {
-        timeout: 10000,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Referer": "https://www.actionnetwork.com/",
-          "Origin": "https://www.actionnetwork.com",
-        },
-      });
+    for (const dateStr of dates) {
+      try {
+        const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${sportSlug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${dateStr}`;
+        const { data } = await axios.get(url, {
+          timeout: 10000,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.actionnetwork.com/",
+            "Origin": "https://www.actionnetwork.com",
+          },
+        });
 
-      const games = data?.games ?? data?.scoreboard ?? [];
-      for (const game of games) {
-        const homeTeam = game.home_team?.display_name ?? game.home_team?.name ?? "Home";
-        const awayTeam = game.away_team?.display_name ?? game.away_team?.name ?? "Away";
-        const gameTime = game.start_time ? new Date(game.start_time * 1000) : null;
-        const markets = game.public_betting ?? game.odds ?? [];
+        const games: any[] = data?.games ?? data?.scoreboard ?? [];
+        for (const game of games) {
+          // Skip already-finished games
+          const status = game.status ?? "";
+          if (status === "complete" || status === "closed" || status === "final") continue;
 
-        for (const mkt of markets) {
-          const betType: string =
-            mkt.type === "spread" ? "spread" :
-            mkt.type === "total" ? "total" : "moneyline";
+          // Resolve team names from teams[] array keyed by id
+          const teams: any[] = game.teams ?? [];
+          const awayTeamObj = teams.find((t: any) => t.id === game.away_team_id) ?? teams[0] ?? {};
+          const homeTeamObj = teams.find((t: any) => t.id === game.home_team_id) ?? teams[1] ?? {};
+          const awayTeam = awayTeamObj.full_name ?? awayTeamObj.display_name ?? "Away";
+          const homeTeam = homeTeamObj.full_name ?? homeTeamObj.display_name ?? "Home";
 
-          // Money % tells us where sharp/public money is going
-          const homeMoneyPct = parseFloat(mkt.home_money ?? mkt.money_home ?? "50") / 100;
-          const awayMoneyPct = 1 - homeMoneyPct;
+          // start_time is ISO string (e.g. "2026-03-15T00:30:00.000Z")
+          const gameTime = game.start_time ? new Date(game.start_time) : null;
 
-          // Determine stronger side
-          const pickSide = homeMoneyPct >= awayMoneyPct ? "home" : "away";
-          const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
-          const pickProb = pickSide === "home" ? homeMoneyPct : awayMoneyPct;
+          // Use the first odds entry (consensus line)
+          const oddsArr: any[] = game.odds ?? [];
+          const oddsLine = oddsArr[0] ?? null;
+          if (!oddsLine) continue;
 
-          if (pickProb < 0.52) continue; // skip near-50/50 signals — not actionable
+          // ── Moneyline pick ──
+          const mlHome = oddsLine.ml_home;
+          const mlAway = oddsLine.ml_away;
+          if (mlHome != null && mlAway != null) {
+            const homeProb = americanToImplied(mlHome);
+            const awayProb = americanToImplied(mlAway);
 
-          const line = mkt.current_line ?? mkt.line ?? null;
-          const lineStr = line != null ? ` ${line > 0 ? "+" : ""}${line}` : "";
-          const title = betType === "total"
-            ? `${awayTeam} @ ${homeTeam} — Total ${mkt.over_money_pct ?? Math.round(homeMoneyPct * 100)}% on Over`
-            : `${awayTeam} @ ${homeTeam} — ${pickTeam}${lineStr} (${Math.round(pickProb * 100)}% public money)`;
+            // Use public money % if available, otherwise fall back to implied prob
+            const homeMoneyRaw = oddsLine.ml_home_money;
+            const awayMoneyRaw = oddsLine.ml_away_money;
+            const usePublic = homeMoneyRaw != null && awayMoneyRaw != null;
+            const homeSignal = usePublic ? (homeMoneyRaw / 100) : homeProb;
+            const awaySignal = usePublic ? (awayMoneyRaw / 100) : awayProb;
 
-          const id = `action-${sportSlug}-${game.id ?? game.game_id ?? Date.now()}-${betType}-${pickSide}`;
-          const score = computeConfidence({
-            impliedProb: pickProb,
-            source: "actionnetwork",
-            betType,
-            sport: sportLabel,
-            title,
-          });
+            const pickSide = homeSignal >= awaySignal ? "home" : "away";
+            const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+            const pickedOdds = pickSide === "home" ? mlHome : mlAway;
+            const pickedProb = pickSide === "home" ? homeProb : awayProb;
 
-          bets.push({
-            id,
-            source: "actionnetwork",
-            sport: sportLabel,
-            betType,
-            title,
-            description: `Public betting consensus via ActionNetwork — ${Math.round(pickProb * 100)}% of money on ${pickTeam}`,
-            line: line ?? null,
-            overOdds: null,
-            underOdds: null,
-            impliedProbability: pickProb,
-            confidenceScore: score.score,
-            riskLevel: score.risk,
-            recommendedAllocation: score.allocation,
-            keyFactors: [`${Math.round(pickProb * 100)}% public money on ${pickTeam}`, ...score.factors],
-            researchSummary: score.summary,
-            isHighConfidence: score.score >= 80,
-            status: "open",
-            homeTeam,
-            awayTeam,
-            playerName: null,
-            gameTime,
-            notificationSent: false,
-            playerStats: null,
-            teamStats: null,
-            yesPrice: null,
-            noPrice: null,
-          });
+            if (pickedProb >= 0.52) { // only pick clear favorites
+              const label = usePublic
+                ? `${Math.round(homeSignal > awaySignal ? homeSignal : awaySignal)}% public money on ${pickTeam}`
+                : `ML favourite: ${pickedOdds > 0 ? "+" : ""}${pickedOdds}`;
+              const title = `${awayTeam} @ ${homeTeam} — ${pickTeam} ML (${pickedOdds > 0 ? "+" : ""}${pickedOdds})`;
+              const id = `action-${sportSlug}-${game.id}-ml`;
+              if (!seen.has(id)) {
+                seen.add(id);
+                const score = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds });
+                bets.push({
+                  id, source: "actionnetwork", sport: sportLabel, betType: "moneyline", title,
+                  description: `ActionNetwork line — ${label}`,
+                  line: null, overOdds: pickedOdds, underOdds: null,
+                  impliedProbability: pickedProb, confidenceScore: score.score,
+                  riskLevel: score.risk, recommendedAllocation: score.allocation,
+                  keyFactors: [label, ...score.factors], researchSummary: score.summary,
+                  isHighConfidence: score.score >= 80, status: "open",
+                  homeTeam, awayTeam, playerName: null, gameTime,
+                  notificationSent: false, playerStats: null, teamStats: null,
+                  yesPrice: null, noPrice: null,
+                });
+              }
+            }
+          }
+
+          // ── Spread pick ──
+          const spreadHome = oddsLine.spread_home;
+          const spreadHomeLine = oddsLine.spread_home_line;
+          const spreadAway = oddsLine.spread_away;
+          const spreadAwayLine = oddsLine.spread_away_line;
+          if (spreadHome != null && spreadHomeLine != null) {
+            const homeSpreadProb = americanToImplied(spreadHomeLine);
+            const awaySpreadProb = americanToImplied(spreadAwayLine ?? spreadHomeLine);
+
+            const homeSpreadMoney = oddsLine.spread_home_money;
+            const awaySpreadMoney = oddsLine.spread_away_money;
+            const usePublicSpread = homeSpreadMoney != null && awaySpreadMoney != null;
+            const homeSpreadSignal = usePublicSpread ? homeSpreadMoney / 100 : homeSpreadProb;
+            const awaySpreadSignal = usePublicSpread ? awaySpreadMoney / 100 : awaySpreadProb;
+
+            const pickSpreadSide = homeSpreadSignal >= awaySpreadSignal ? "home" : "away";
+            const pickSpreadTeam = pickSpreadSide === "home" ? homeTeam : awayTeam;
+            const pickSpreadLine = pickSpreadSide === "home" ? spreadHome : spreadAway;
+            const pickSpreadOdds = pickSpreadSide === "home" ? spreadHomeLine : (spreadAwayLine ?? spreadHomeLine);
+            const pickSpreadProb = pickSpreadSide === "home" ? homeSpreadProb : awaySpreadProb;
+            const lineStr = pickSpreadLine > 0 ? `+${pickSpreadLine}` : `${pickSpreadLine}`;
+            const oddsStr = pickSpreadOdds > 0 ? `+${pickSpreadOdds}` : `${pickSpreadOdds}`;
+
+            const spreadLabel = usePublicSpread
+              ? `${Math.round(homeSpreadSignal > awaySpreadSignal ? homeSpreadSignal : awaySpreadSignal)}% public on ${pickSpreadTeam} ${lineStr}`
+              : `${pickSpreadTeam} ${lineStr} (${oddsStr})`;
+            const spreadTitle = `${awayTeam} @ ${homeTeam} — ${pickSpreadTeam} ${lineStr} (${oddsStr})`;
+            const spreadId = `action-${sportSlug}-${game.id}-spread`;
+            if (!seen.has(spreadId)) {
+              seen.add(spreadId);
+              const score = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine });
+              bets.push({
+                id: spreadId, source: "actionnetwork", sport: sportLabel, betType: "spread", title: spreadTitle,
+                description: `ActionNetwork spread — ${spreadLabel}`,
+                line: pickSpreadLine, overOdds: pickSpreadOdds, underOdds: null,
+                impliedProbability: pickSpreadProb, confidenceScore: score.score,
+                riskLevel: score.risk, recommendedAllocation: score.allocation,
+                keyFactors: [spreadLabel, ...score.factors], researchSummary: score.summary,
+                isHighConfidence: score.score >= 80, status: "open",
+                homeTeam, awayTeam, playerName: null, gameTime,
+                notificationSent: false, playerStats: null, teamStats: null,
+                yesPrice: null, noPrice: null,
+              });
+            }
+          }
+
+          // ── Total pick ──
+          const total = oddsLine.total;
+          const overOdds = oddsLine.over;
+          const underOdds = oddsLine.under;
+          if (total != null && overOdds != null && underOdds != null) {
+            const overProb = americanToImplied(overOdds);
+            const underProb = americanToImplied(underOdds);
+
+            const overMoneyPct = oddsLine.total_over_money;
+            const underMoneyPct = oddsLine.total_under_money;
+            const usePublicTotal = overMoneyPct != null && underMoneyPct != null;
+            const overSignal = usePublicTotal ? overMoneyPct / 100 : overProb;
+            const underSignal = usePublicTotal ? underMoneyPct / 100 : underProb;
+
+            const pickTotalSide = overSignal >= underSignal ? "over" : "under";
+            const pickTotalOdds = pickTotalSide === "over" ? overOdds : underOdds;
+            const pickTotalProb = pickTotalSide === "over" ? overProb : underProb;
+            const totalOddsStr = pickTotalOdds > 0 ? `+${pickTotalOdds}` : `${pickTotalOdds}`;
+
+            const totalLabel = usePublicTotal
+              ? `${Math.round(overSignal > underSignal ? overSignal : underSignal)}% public on ${pickTotalSide.toUpperCase()} ${total}`
+              : `${pickTotalSide.toUpperCase()} ${total} (${totalOddsStr})`;
+            const totalTitle = `${awayTeam} @ ${homeTeam} — ${pickTotalSide === "over" ? "OVER" : "UNDER"} ${total} (${totalOddsStr})`;
+            const totalId = `action-${sportSlug}-${game.id}-total`;
+            if (!seen.has(totalId)) {
+              seen.add(totalId);
+              const score = computeConfidence({ impliedProb: pickTotalProb, source: "actionnetwork", betType: "total", sport: sportLabel, title: totalTitle, odds: pickTotalOdds, line: total });
+              bets.push({
+                id: totalId, source: "actionnetwork", sport: sportLabel, betType: "total", title: totalTitle,
+                description: `ActionNetwork total — ${totalLabel}`,
+                line: total, overOdds, underOdds,
+                impliedProbability: pickTotalProb, confidenceScore: score.score,
+                riskLevel: score.risk, recommendedAllocation: score.allocation,
+                keyFactors: [totalLabel, ...score.factors], researchSummary: score.summary,
+                isHighConfidence: score.score >= 80, status: "open",
+                homeTeam, awayTeam, playerName: null, gameTime,
+                notificationSent: false, playerStats: null, teamStats: null,
+                yesPrice: null, noPrice: null,
+              });
+            }
+          }
         }
+      } catch (e: any) {
+        console.warn(`ActionNetwork fetch error (${sportLabel} ${dateStr}):`, e.message);
       }
-    } catch (e: any) {
-      console.warn(`ActionNetwork fetch error (${sportLabel}):`, e.message);
     }
   }
-  console.log(`ActionNetwork: ${bets.length} consensus picks`);
+  console.log(`ActionNetwork: ${bets.length} game picks (moneyline + spread + total)`);
   return bets;
 }
 
