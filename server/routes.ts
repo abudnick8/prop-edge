@@ -67,6 +67,41 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── API Quota Check ─────────────────────────────────────────────────────
+  app.get("/api/quota", async (req, res) => {
+    try {
+      const settings = await storage.getSettings();
+      const apiKey = settings.oddsApiKey;
+      if (!apiKey) return res.json({ status: "no_key", used: null, remaining: null, resets: null });
+
+      const axios = (await import("axios")).default;
+      const response = await axios.head(
+        `https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`,
+        { timeout: 8000 }
+      );
+      const used = parseInt(response.headers["x-requests-used"] ?? "0");
+      const remaining = parseInt(response.headers["x-requests-remaining"] ?? "0");
+
+      // The Odds API resets on the 1st of each month UTC
+      const now = new Date();
+      const resetDate = new Date(Date.UTC(
+        now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear(),
+        now.getUTCMonth() === 11 ? 0 : now.getUTCMonth() + 1,
+        1
+      ));
+
+      res.json({
+        status: remaining > 0 ? "ok" : "exhausted",
+        used,
+        remaining,
+        resets: resetDate.toISOString(),
+        plan: "free_500",
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Settings ─────────────────────────────────────────────────────────────
   app.get("/api/settings", async (req, res) => {
     try {
