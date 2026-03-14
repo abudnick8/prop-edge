@@ -380,6 +380,192 @@ const SEASON_FUTURES_KEYS = [
 // Season prop analysis is delivered through championship outrights (World Series winner,
 // NBA title winner, etc.) which are confirmed active and return real lines.
 
+// ─── Underdog Fantasy public API (player props — no key required) ──────────
+// Returns 5000+ active player props across NBA, NHL, MLB, NFL, WBC, PGA, MMA
+async function fetchUnderdogProps(): Promise<InsertBet[]> {
+  const bets: InsertBet[] = [];
+  try {
+    const { data } = await axios.get(
+      "https://api.underdogfantasy.com/beta/v5/over_under_lines",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json",
+          "Referer": "https://underdogfantasy.com/",
+          "Origin": "https://underdogfantasy.com",
+        },
+        timeout: 15000,
+      }
+    );
+
+    const lines: any[] = data.over_under_lines ?? [];
+    const appearances: any[] = data.appearances ?? [];
+    const players: any[] = data.players ?? [];
+    const games: any[] = data.games ?? [];
+
+    // Build lookup maps
+    const playerMap = new Map<string, any>();
+    for (const p of players) playerMap.set(p.id, p);
+
+    const gameMap = new Map<number, any>();
+    for (const g of games) gameMap.set(g.id, g);
+
+    const appearanceMap = new Map<string, any>();
+    for (const a of appearances) appearanceMap.set(a.id, a);
+
+    // Sport ID → canonical sport name mapping
+    const sportMap: Record<string, string> = {
+      NBA: "NBA", NFL: "NFL", MLB: "MLB", NHL: "NHL",
+      WBC: "MLB", CBB: "NCAAB", PGA: "Golf", MMA: "MMA",
+      BOXING: "Boxing", NCAAF: "NCAAF", F1SZN: "Other",
+    };
+
+    // Core sports to include (skip FIFA, esports, etc.)
+    const includedSports = new Set(["NBA", "NFL", "MLB", "NHL", "WBC", "CBB", "PGA", "MMA"]);
+
+    // Stat type → display name mapping
+    const statDisplayMap: Record<string, string> = {
+      points: "Points",
+      rebounds: "Rebounds",
+      assists: "Assists",
+      pts_rebs_asts: "Pts+Rebs+Asts",
+      threes: "3-Pointers Made",
+      steals: "Steals",
+      blocks: "Blocks",
+      turnovers: "Turnovers",
+      goals: "Goals",
+      assists_hockey: "Assists",
+      shots: "Shots on Goal",
+      saves: "Saves",
+      hits: "Hits",
+      total_bases: "Total Bases",
+      strikeouts: "Strikeouts",
+      home_runs: "Home Runs",
+      rbi: "RBIs",
+      passing_yards: "Passing Yards",
+      rushing_yards: "Rushing Yards",
+      receiving_yards: "Receiving Yards",
+      receptions: "Receptions",
+      touchdowns: "Touchdowns",
+      kills: "Kills",
+      finishing_position: "Finishing Position",
+    };
+
+    const now = Date.now();
+    let count = 0;
+
+    for (const line of lines) {
+      if (line.status !== "active") continue;
+
+      const ou = line.over_under;
+      if (!ou || ou.category !== "player_prop") continue;
+
+      const appearanceStat = ou.appearance_stat;
+      if (!appearanceStat) continue;
+
+      const appearanceId = appearanceStat.appearance_id;
+      const appearance = appearanceMap.get(appearanceId);
+      if (!appearance) continue;
+
+      const player = playerMap.get(appearance.player_id);
+      if (!player) continue;
+
+      const sportId = player.sport_id ?? "";
+      if (!includedSports.has(sportId)) continue;
+
+      const sport = sportMap[sportId] ?? "Other";
+
+      const game = gameMap.get(appearance.match_id);
+      if (!game) continue;
+
+      // Skip in-progress and finished games
+      if (game.status === "complete" || game.status === "in_progress") continue;
+
+      const gameTime = game.scheduled_at ? new Date(game.scheduled_at).toISOString() : null;
+
+      // Skip if game already started
+      if (gameTime && new Date(gameTime).getTime() < now) continue;
+
+      const playerName = `${player.first_name} ${player.last_name}`;
+      const statName = appearanceStat.display_stat ?? statDisplayMap[appearanceStat.stat] ?? appearanceStat.stat ?? "Prop";
+      const statValue = parseFloat(line.stat_value ?? "0");
+
+      // Get odds from options (Higher = over, Lower = under)
+      const options = line.options ?? [];
+      const overOption = options.find((o: any) => o.choice === "higher");
+      const underOption = options.find((o: any) => o.choice === "lower");
+
+      const overOdds = overOption ? parseInt(overOption.american_price ?? "-110") : -110;
+      const underOdds = underOption ? parseInt(underOption.american_price ?? "-110") : -110;
+
+      // Implied probabilities
+      const toProb = (odds: number) =>
+        odds < 0 ? (-odds / (-odds + 100)) : (100 / (odds + 100));
+
+      const overProb = toProb(overOdds);
+      const underProb = toProb(underOdds);
+
+      // Pick the stronger side
+      const pickSide = overProb >= underProb ? "OVER" : "UNDER";
+      const pickedOdds = pickSide === "OVER" ? overOdds : underOdds;
+      const pickProb = Math.max(overProb, underProb);
+
+      // Only surface picks with meaningful edge (one side ≥52%)
+      if (pickProb < 0.52) continue;
+
+      const title = `[TAKE ${pickSide} ${statValue} @ ${pickedOdds > 0 ? "+" : ""}${pickedOdds}] ${playerName} — ${statName}`;
+      const description = `${playerName} is projected to go ${pickSide} ${statValue} ${statName}. ${sport} player prop from Underdog Fantasy. ${overOption?.selection_subheader ?? ""}`;
+
+      const confidence = computeConfidence({
+        impliedProb: pickProb,
+        source: "underdog",
+        betType: "player_prop",
+        sport,
+        title,
+        odds: pickedOdds,
+      });
+
+      const gameTimeVal = gameTime ? new Date(gameTime) : null;
+
+      bets.push({
+        id: `underdog_${line.id}`,
+        title,
+        description,
+        sport,
+        betType: "player_prop",
+        source: "underdog",
+        overOdds: overOdds,
+        underOdds: underOdds,
+        impliedProbability: pickProb,
+        confidenceScore: confidence.score,
+        riskLevel: confidence.risk,
+        recommendedAllocation: confidence.allocation,
+        keyFactors: [`${pickSide} ${statValue} ${statName}`, ...confidence.factors],
+        researchSummary: confidence.summary,
+        gameTime: gameTimeVal,
+        playerName,
+        isHighConfidence: confidence.score >= 80,
+        teamStats: {
+          pickSide,
+          pickedOdds,
+          overProb: Math.round(overProb * 100),
+          underProb: Math.round(underProb * 100),
+          playerName,
+          statType: statName,
+          statValue,
+          gameTitle: game.full_team_names_title ?? game.title,
+        },
+      });
+      count++;
+    }
+
+    console.log(`[Underdog] Fetched ${count} active player props`);
+  } catch (e: any) {
+    console.warn("[Underdog] fetch error:", e.message);
+  }
+  return bets;
+}
+
 // ─── Seed futures data ───────────────────────────────────────────────────────
 // Used as fallback when The Odds API quota is exhausted.
 // Updated periodically — reflects real DraftKings odds from the time of last build.
@@ -870,6 +1056,9 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   } else if (input.source === "actionnetwork") {
     score += 6;
     factors.push("ActionNetwork public betting consensus — sharp vs. public money signal");
+  } else if (input.source === "underdog") {
+    score += 7;
+    factors.push("Underdog Fantasy — real-money player prop lines from active market");
   }
 
   // 3. Bet type bonus — player props are the primary focus
@@ -1060,14 +1249,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     ...(settings.enabledOptionalSports ?? []),
   ];
 
-  // Fetch all live sources in parallel (ActionNetwork is free, no key needed)
-  const [kalshi, poly, actionNet] = await Promise.all([
+  // Fetch all live sources in parallel (ActionNetwork + Underdog are free, no key needed)
+  const [kalshi, poly, actionNet, underdog] = await Promise.all([
     fetchKalshiSports(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
+    fetchUnderdogProps(),
   ]);
 
-  results.push(...kalshi, ...poly, ...actionNet);
+  results.push(...kalshi, ...poly, ...actionNet, ...underdog);
 
   // Add Odds API data if key provided
   if (apiKey) {
