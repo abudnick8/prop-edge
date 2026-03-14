@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Filter, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL"];
+const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NCAAF", "Golf"];
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
 const SOURCES = ["All", "kalshi", "polymarket", "draftkings", "underdog"];
 

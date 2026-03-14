@@ -66,7 +66,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Scanning Kalshi · Polymarket · DraftKings · Underdog across NFL · NBA · MLB · NHL
+            Scanning Kalshi · Polymarket · DraftKings · Underdog across NFL · NBA · MLB · NHL · MMA · Boxing · + more
           </p>
         </div>
         <button

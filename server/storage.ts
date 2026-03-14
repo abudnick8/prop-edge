@@ -31,6 +31,8 @@ export class MemStorage implements IStorage {
     maxAllocationPercent: 5,
     enabledSports: ["NFL", "NBA", "MLB", "NHL"],
     enabledBetTypes: ["player_prop", "spread", "total", "moneyline"],
+    enabledOptionalSports: [],
+    enableSeasonProps: true,
     notificationsEnabled: true,
     scanIntervalMinutes: 30,
     oddsApiKey: process.env.ODDS_API_KEY ?? "f54e39712315e81e516157a786fd561a",

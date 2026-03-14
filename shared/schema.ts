@@ -50,6 +50,10 @@ export const settings = pgTable("settings", {
   maxAllocationPercent: real("max_allocation_percent").default(5),
   enabledSports: jsonb("enabled_sports").$type<string[]>().default(["NFL","NBA","MLB","NHL"]),
   enabledBetTypes: jsonb("enabled_bet_types").$type<string[]>().default(["player_prop","spread","total","moneyline"]),
+  // Optional sports toggles
+  enabledOptionalSports: jsonb("enabled_optional_sports").$type<string[]>().default([]),
+  // Season-long props & futures (pre-season player season totals + championship outrights)
+  enableSeasonProps: boolean("enable_season_props").default(true),
   notificationsEnabled: boolean("notifications_enabled").default(true),
   scanIntervalMinutes: integer("scan_interval_minutes").default(30),
   oddsApiKey: text("odds_api_key"),

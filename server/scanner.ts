@@ -148,9 +148,44 @@ function buildPolyBet(ev: any, m: any): InsertBet {
 
 // ─── The Odds API (DraftKings + FanDuel for player props) ────────────────────
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
-const SPORT_KEYS = ["americanfootball_nfl", "basketball_nba", "baseball_mlb", "icehockey_nhl"];
 
-// Player prop market keys per sport
+// Core sports — always scanned
+const CORE_SPORT_KEYS = ["americanfootball_nfl", "basketball_nba", "baseball_mlb", "icehockey_nhl"];
+
+// Optional sports — scanned when enabled in settings
+const OPTIONAL_SPORT_KEYS = [
+  "mma_mixed_martial_arts",
+  "boxing_boxing",
+  "basketball_ncaab",
+  "americanfootball_ncaaf",
+];
+
+// Season/futures markets — championship winner outrights (no game time, always kept)
+const SEASON_FUTURES_KEYS = [
+  "baseball_mlb_world_series_winner",
+  "basketball_nba_championship_winner",
+  "basketball_ncaab_championship_winner",
+  "icehockey_nhl_championship_winner",
+  "golf_masters_tournament_winner",
+  "golf_pga_championship_winner",
+  "golf_the_open_championship_winner",
+  "golf_us_open_winner",
+];
+
+// Season-long player prop markets (available before/during season start)
+// These are anytime-season or full-season accumulator props
+const SEASON_PROP_MARKETS: Record<string, string> = {
+  baseball_mlb:
+    "batter_home_runs_season,pitcher_strikeouts_season,batter_hits_season,batter_rbis_season",
+  basketball_nba:
+    "player_points_season,player_rebounds_season,player_assists_season,player_threes_season",
+  americanfootball_nfl:
+    "player_pass_tds_season,player_rush_yds_season,player_reception_yds_season",
+  icehockey_nhl:
+    "player_goals_season,player_assists_season",
+};
+
+// Player prop market keys per sport (game-level)
 const PROP_MARKETS: Record<string, string> = {
   americanfootball_nfl:
     "player_pass_tds,player_pass_yds,player_rush_yds,player_receptions,player_reception_yds,player_anytime_td",
@@ -160,13 +195,36 @@ const PROP_MARKETS: Record<string, string> = {
     "batter_hits,batter_home_runs,batter_rbis,batter_runs_scored,pitcher_strikeouts,pitcher_hits_allowed",
   icehockey_nhl:
     "player_points,player_goals,player_assists,player_shots_on_goal,player_power_play_points",
+  // Optional sports — game-level props
+  mma_mixed_martial_arts: "h2h", // MMA uses h2h only; props not well-supported
+  boxing_boxing: "h2h",
+  basketball_ncaab:
+    "player_points,player_rebounds,player_assists,player_threes",
+  americanfootball_ncaaf:
+    "player_pass_yds,player_rush_yds,player_reception_yds,player_pass_tds",
 };
 
-async function fetchOddsAPI(apiKey: string): Promise<InsertBet[]> {
+async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[]; enableSeasonProps?: boolean }): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
+  const enabledSports = settings?.enabledSports ?? ["NFL", "NBA", "MLB", "NHL"];
+  const enableSeasonProps = settings?.enableSeasonProps ?? true;
 
-  for (const sportKey of SPORT_KEYS) {
-    // ── 1. Main game lines (spreads, totals, moneylines) via DraftKings ──
+  // Determine which sport keys to scan
+  const sportKeyMap: Record<string, string> = {
+    americanfootball_nfl: "NFL", basketball_nba: "NBA", baseball_mlb: "MLB", icehockey_nhl: "NHL",
+    mma_mixed_martial_arts: "MMA", boxing_boxing: "Boxing",
+    basketball_ncaab: "NCAAB", americanfootball_ncaaf: "NCAAF",
+  };
+
+  const allGameKeys = [...CORE_SPORT_KEYS, ...OPTIONAL_SPORT_KEYS];
+  const activeSportKeys = allGameKeys.filter(
+    (k) => enabledSports.includes(sportKeyMap[k] ?? "Other")
+  );
+
+  for (const sportKey of activeSportKeys) {
+    const isMMAorBoxing = sportKey === "mma_mixed_martial_arts" || sportKey === "boxing_boxing";
+
+    // ── 1. Main game lines (spreads, totals, moneylines) ──
     try {
       const { data } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/odds`, {
         params: {
@@ -185,50 +243,175 @@ async function fetchOddsAPI(apiKey: string): Promise<InsertBet[]> {
       console.warn(`Game lines error for ${sportKey}:`, e.message);
     }
 
-    // ── 2. Player props — fetch for every upcoming event ──
-    try {
-      const { data: events } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, {
-        params: { apiKey },
-        timeout: 10000,
-      });
+    // ── 2. Player props (skip MMA/Boxing — h2h only for those) ──
+    if (!isMMAorBoxing) {
+      try {
+        const { data: events } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, {
+          params: { apiKey },
+          timeout: 10000,
+        });
 
-      // Only future events, up to 8 per sport to conserve quota
-      const now = Date.now();
-      const upcomingEvents = (events ?? [])
-        .filter((e: any) => new Date(e.commence_time).getTime() > now)
-        .slice(0, 8);
+        // Only future events, up to 8 per sport to conserve quota
+        const now = Date.now();
+        const upcomingEvents = (events ?? [])
+          .filter((e: any) => new Date(e.commence_time).getTime() > now)
+          .slice(0, 8);
 
-      console.log(`  ${sportKey}: ${upcomingEvents.length} upcoming events for props`);
+        console.log(`  ${sportKey}: ${upcomingEvents.length} upcoming events for props`);
 
-      for (const ev of upcomingEvents) {
-        try {
-          const { data: propData } = await axios.get(
-            `${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`,
-            {
-              params: {
-                apiKey,
-                regions: "us",
-                // Use FanDuel + DraftKings — both confirmed to have player props
-                bookmakers: "fanduel,draftkings",
-                markets: PROP_MARKETS[sportKey] ?? "player_points",
-                oddsFormat: "american",
-              },
-              timeout: 10000,
-            }
-          );
-          const propBets = parsePlayerProps(propData, ev, sportKey);
-          console.log(`    ${ev.away_team} @ ${ev.home_team}: ${propBets.length} props`);
-          bets.push(...propBets);
-        } catch (e: any) {
-          console.warn(`  Props error for event ${ev.id}:`, e.message);
+        for (const ev of upcomingEvents) {
+          try {
+            const { data: propData } = await axios.get(
+              `${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`,
+              {
+                params: {
+                  apiKey,
+                  regions: "us",
+                  bookmakers: "fanduel,draftkings",
+                  markets: PROP_MARKETS[sportKey] ?? "player_points",
+                  oddsFormat: "american",
+                },
+                timeout: 10000,
+              }
+            );
+            const propBets = parsePlayerProps(propData, ev, sportKey);
+            console.log(`    ${ev.away_team} @ ${ev.home_team}: ${propBets.length} props`);
+            bets.push(...propBets);
+          } catch (e: any) {
+            console.warn(`  Props error for event ${ev.id}:`, e.message);
+          }
         }
+      } catch (e: any) {
+        console.warn(`Events/props error for ${sportKey}:`, e.message);
       }
-    } catch (e: any) {
-      console.warn(`Events/props error for ${sportKey}:`, e.message);
+    }
+
+    // ── 3. Season-long player props (pre-season / full-season accumulators) ──
+    if (enableSeasonProps && SEASON_PROP_MARKETS[sportKey]) {
+      try {
+        const { data: events } = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, {
+          params: { apiKey },
+          timeout: 10000,
+        });
+        // Season props are often on the next upcoming event or a special "season" event
+        const futureEvents = (events ?? [])
+          .filter((e: any) => new Date(e.commence_time).getTime() > Date.now())
+          .slice(0, 3);
+
+        for (const ev of futureEvents) {
+          try {
+            const { data: seasonPropData } = await axios.get(
+              `${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`,
+              {
+                params: {
+                  apiKey,
+                  regions: "us",
+                  bookmakers: "fanduel,draftkings",
+                  markets: SEASON_PROP_MARKETS[sportKey],
+                  oddsFormat: "american",
+                },
+                timeout: 10000,
+              }
+            );
+            const seasonBets = parsePlayerProps(seasonPropData, ev, sportKey, true);
+            if (seasonBets.length > 0) {
+              console.log(`    ${sportKey} season props: ${seasonBets.length} found`);
+              bets.push(...seasonBets);
+            }
+          } catch (e: any) {
+            // Season markets may not exist yet — silently skip
+          }
+        }
+      } catch (e: any) {
+        console.warn(`Season props error for ${sportKey}:`, e.message);
+      }
     }
   }
 
-  console.log(`Odds API total: ${bets.length} bets (game lines + player props)`);
+  // ── 4. Season futures / championship winner outrights ──
+  if (enableSeasonProps) {
+    for (const futuresKey of SEASON_FUTURES_KEYS) {
+      const sport = mapSportKey(futuresKey);
+      // Only fetch if parent sport is enabled
+      const parentEnabled =
+        (futuresKey.startsWith("baseball_mlb") && enabledSports.includes("MLB")) ||
+        (futuresKey.startsWith("basketball_nba") && enabledSports.includes("NBA")) ||
+        (futuresKey.startsWith("basketball_ncaab") && enabledSports.includes("NCAAB")) ||
+        (futuresKey.startsWith("icehockey_nhl") && enabledSports.includes("NHL")) ||
+        (futuresKey.startsWith("golf_") && enabledSports.includes("Golf")) ||
+        true; // default include
+
+      if (!parentEnabled) continue;
+
+      try {
+        const { data } = await axios.get(`${ODDS_BASE}/sports/${futuresKey}/odds`, {
+          params: {
+            apiKey,
+            regions: "us",
+            markets: "outrights",
+            bookmakers: "draftkings,fanduel",
+            oddsFormat: "american",
+          },
+          timeout: 12000,
+        });
+
+        for (const market of data ?? []) {
+          for (const bk of market.bookmakers ?? []) {
+            for (const mk of bk.markets ?? []) {
+              for (const outcome of mk.outcomes ?? []) {
+                const odds = outcome.price;
+                const impliedProb = americanToImplied(odds);
+                const oddsDisplay = odds > 0 ? `+${odds}` : `${odds}`;
+                const title = `${outcome.name} to win ${market.sport_title ?? futuresKey.replace(/_/g, " ")}`;
+                const id = `futures-${futuresKey}-${outcome.name.replace(/\s+/g, "-")}-${bk.key}`;
+                const score = computeConfidence({
+                  impliedProb,
+                  source: bk.key === "fanduel" ? "underdog" : "draftkings",
+                  betType: "moneyline",
+                  sport: mapSportKey(futuresKey),
+                  title,
+                  odds,
+                });
+                bets.push({
+                  id,
+                  source: bk.key === "fanduel" ? "underdog" : "draftkings",
+                  sport: mapSportKey(futuresKey),
+                  betType: "moneyline",
+                  title,
+                  description: `Season outright — ${oddsDisplay} odds`,
+                  line: null,
+                  overOdds: odds,
+                  underOdds: null,
+                  impliedProbability: impliedProb,
+                  confidenceScore: score.score,
+                  riskLevel: score.risk,
+                  recommendedAllocation: score.allocation,
+                  keyFactors: [`Season futures pick: ${oddsDisplay}`, ...score.factors],
+                  researchSummary: `[FUTURES ${oddsDisplay}] — ${score.summary}`,
+                  isHighConfidence: score.score >= 80,
+                  status: "open",
+                  homeTeam: null,
+                  awayTeam: null,
+                  playerName: outcome.name,
+                  gameTime: null, // no game time — season-long; filterStale keeps nulls
+                  notificationSent: false,
+                  playerStats: null,
+                  teamStats: { pickSide: "over", pickedOdds: odds, overProb: Math.round(impliedProb * 100), underProb: 0, isFutures: true },
+                  yesPrice: null,
+                  noPrice: null,
+                });
+              }
+            }
+          }
+        }
+        console.log(`  Futures ${futuresKey}: done`);
+      } catch (e: any) {
+        console.warn(`Futures error for ${futuresKey}:`, e.message);
+      }
+    }
+  }
+
+  console.log(`Odds API total: ${bets.length} bets (game lines + props + futures)`);
   return bets;
 }
 
@@ -284,7 +467,7 @@ function parseGameLines(game: any, sportKey: string): InsertBet[] {
 }
 
 // Parse player props — outcomes use `description` for player name, `name` for over/under
-function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] {
+function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp = false): InsertBet[] {
   if (!game?.bookmakers?.length) return [];
   const sport = mapSportKey(sportKey);
   const bets: InsertBet[] = [];
@@ -320,9 +503,10 @@ function parsePlayerProps(game: any, event: any, sportKey: string): InsertBet[] 
         const line = overOutcome.point;
         const sideLabel = pickSide === "over" ? "TAKE OVER" : "TAKE UNDER";
         const oddsDisplay = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
-        const baseTitle = `${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
-        const title = `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] ${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)}`;
-        const id = `prop-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
+        const seasonTag = isSeasonProp ? "📅 SEASON — " : "";
+        const baseTitle = `${seasonTag}${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
+        const title = `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] ${seasonTag}${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)}`;
+        const id = `${isSeasonProp ? "season" : "prop"}-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
 
         if (seen.has(id)) continue;
         seen.add(id);
@@ -478,6 +662,21 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   } else if (input.sport === "NHL") {
     score += 2;
     factors.push("NHL — goalie variance is a key risk factor");
+  } else if (input.sport === "MMA") {
+    score += 4;
+    factors.push("MMA — sharp money in fight markets, high implied prob accuracy");
+  } else if (input.sport === "Boxing") {
+    score += 3;
+    factors.push("Boxing — moneyline market, concentrated sharp action");
+  } else if (input.sport === "NCAAB") {
+    score += 3;
+    factors.push("NCAAB — tournament format creates high-value lines");
+  } else if (input.sport === "NCAAF") {
+    score += 2;
+    factors.push("NCAAF — high variance but large sample of player stats");
+  } else if (input.sport === "Golf") {
+    score += 2;
+    factors.push("Golf — futures market, long-tail value picks");
   }
 
   // 5. Odds value check (for traditional sportsbook bets)
@@ -545,6 +744,19 @@ function mapSportKey(key: string): string {
     basketball_nba: "NBA",
     baseball_mlb: "MLB",
     icehockey_nhl: "NHL",
+    mma_mixed_martial_arts: "MMA",
+    boxing_boxing: "Boxing",
+    basketball_ncaab: "NCAAB",
+    americanfootball_ncaaf: "NCAAF",
+    // Season futures — mapped to sport group
+    baseball_mlb_world_series_winner: "MLB",
+    basketball_nba_championship_winner: "NBA",
+    basketball_ncaab_championship_winner: "NCAAB",
+    icehockey_nhl_championship_winner: "NHL",
+    golf_masters_tournament_winner: "Golf",
+    golf_pga_championship_winner: "Golf",
+    golf_the_open_championship_winner: "Golf",
+    golf_us_open_winner: "Golf",
   };
   return map[key] ?? "Other";
 }
@@ -577,6 +789,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   console.log("Running market scan...");
   const results: InsertBet[] = [];
 
+  // Load settings first so we can pass sport preferences to the scanner
+  const settings = await storage.getSettings();
+
+  // Build combined enabled sports list (core + optional)
+  const allEnabledSports = [
+    ...(settings.enabledSports ?? ["NFL", "NBA", "MLB", "NHL"]),
+    ...(settings.enabledOptionalSports ?? []),
+  ];
+
   // Fetch all live sources in parallel
   const [kalshi, poly] = await Promise.all([
     fetchKalshiSports(),
@@ -587,7 +808,10 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   // Add Odds API data if key provided
   if (apiKey) {
-    const odds = await fetchOddsAPI(apiKey);
+    const odds = await fetchOddsAPI(apiKey, {
+      enabledSports: allEnabledSports,
+      enableSeasonProps: settings.enableSeasonProps ?? true,
+    });
     results.push(...odds);
   }
 
@@ -610,7 +834,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   }
 
   // Generate notifications for new high-confidence bets (live data only)
-  const settings = await storage.getSettings();
+  // (settings already loaded above)
   const threshold = settings.confidenceThreshold ?? 80;
   for (const bet of fresh) {
     if ((bet.confidenceScore ?? 0) >= threshold && bet.isHighConfidence && !bet.notificationSent) {

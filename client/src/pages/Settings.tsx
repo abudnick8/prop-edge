@@ -3,11 +3,23 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, BarChart2, Zap, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, BarChart2, Zap, RefreshCw, Trophy, Calendar, Swords } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// ── Core sports (always shown) ──────────────────────────────────────────────
+const CORE_SPORTS = ["NFL", "NBA", "MLB", "NHL"];
+
+// ── Optional sports (toggled on/off) ────────────────────────────────────────
+const OPTIONAL_SPORTS = [
+  { key: "MMA",   label: "MMA",        description: "UFC, Bellator, ONE — fight moneylines" },
+  { key: "Boxing", label: "Boxing",    description: "Professional boxing matchups" },
+  { key: "NCAAB", label: "NCAAB",      description: "College basketball — March Madness + regular season" },
+  { key: "NCAAF", label: "NCAAF",      description: "College football" },
+  { key: "Golf",  label: "Golf",       description: "Masters, PGA Championship, US Open, The Open — outright winners" },
+];
 
 export default function Settings() {
   const { toast } = useToast();
@@ -37,6 +49,18 @@ export default function Settings() {
   const handleSave = () => {
     saveMutation.mutate({ ...form, oddsApiKey: oddsKey || null });
   };
+
+  // Toggle a sport in enabledOptionalSports
+  const toggleOptionalSport = (sportKey: string) => {
+    const current = (form.enabledOptionalSports as string[]) ?? [];
+    const updated = current.includes(sportKey)
+      ? current.filter((s) => s !== sportKey)
+      : [...current, sportKey];
+    setForm({ ...form, enabledOptionalSports: updated });
+  };
+
+  const isOptionalEnabled = (sportKey: string) =>
+    ((form.enabledOptionalSports as string[]) ?? []).includes(sportKey);
 
   if (isLoading) {
     return (
@@ -79,6 +103,62 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground mt-2">
             You'll be alerted when any pick scores {form.confidenceThreshold ?? 80}+ out of 100.
           </p>
+        </div>
+      </SettingsSection>
+
+      {/* Optional Sports */}
+      <SettingsSection
+        icon={<Swords size={16} />}
+        title="Optional Sports"
+        description="Enable additional sports beyond NFL, NBA, MLB, and NHL"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Core sports (NFL, NBA, MLB, NHL) are always scanned. Toggle extras below — changes apply on next scan.
+          </p>
+          {OPTIONAL_SPORTS.map((sport) => (
+            <div key={sport.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+              <div>
+                <p className="text-sm font-medium text-foreground">{sport.label}</p>
+                <p className="text-xs text-muted-foreground">{sport.description}</p>
+              </div>
+              <Switch
+                checked={isOptionalEnabled(sport.key)}
+                onCheckedChange={() => toggleOptionalSport(sport.key)}
+                data-testid={`switch-sport-${sport.key.toLowerCase()}`}
+              />
+            </div>
+          ))}
+        </div>
+      </SettingsSection>
+
+      {/* Season Props & Futures */}
+      <SettingsSection
+        icon={<Calendar size={16} />}
+        title="Season Props & Futures"
+        description="Pre-season and season-long player props, plus championship outright winners"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Enable Season-Long Props</p>
+              <p className="text-xs text-muted-foreground">
+                Includes full-season player totals (e.g. MLB home runs season O/U, NBA points season O/U)
+                and championship outright winners — useful even before a season starts
+              </p>
+            </div>
+            <Switch
+              checked={(form.enableSeasonProps as boolean) ?? true}
+              onCheckedChange={(v) => setForm({ ...form, enableSeasonProps: v })}
+              data-testid="switch-season-props"
+            />
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1 border border-border">
+            <p className="font-semibold text-foreground">What this includes:</p>
+            <p>• <span className="text-green-400">Player season totals</span> — MLB HR/K season O/U, NBA PTS/REB/AST season O/U, NFL passing/rushing yds season O/U</p>
+            <p>• <span className="text-yellow-400">Championship outrights</span> — MLB World Series, NBA title, NHL Cup, NCAA tournament, Golf majors</p>
+            <p>• <span className="text-blue-400">Pre-season value</span> — These markets open months before the season, often with better lines</p>
+          </div>
         </div>
       </SettingsSection>
 
@@ -173,7 +253,7 @@ export default function Settings() {
               data-testid="input-odds-api-key"
             />
             <p className="text-xs text-muted-foreground mt-1.5">
-              Unlocks live DraftKings lines and player props. Free tier at{" "}
+              Unlocks live DraftKings lines, player props, MMA, boxing, college sports, and season futures. Free tier at{" "}
               <a href="https://the-odds-api.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                 the-odds-api.com
               </a>{" "}
@@ -184,7 +264,6 @@ export default function Settings() {
             <p className="font-semibold text-foreground">Sources Without API Keys (Always Active)</p>
             <p>• <span className="text-primary">Kalshi</span> — Public API, no key needed</p>
             <p>• <span className="text-purple-400">Polymarket</span> — Public API, no key needed</p>
-            <p>• <span className="font-medium text-muted-foreground">Demo data</span> — Pre-loaded example picks always available</p>
           </div>
         </div>
       </SettingsSection>
