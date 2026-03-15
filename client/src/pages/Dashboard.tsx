@@ -70,26 +70,40 @@ export default function Dashboard() {
 
   const byConf = (a: Bet, b: Bet) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
 
-  // Split: daily (have gameTime) vs season (no gameTime)
-  const dailyBets = bets.filter((b) => !!b.gameTime);
-  const seasonBets = bets.filter((b) => !b.gameTime).sort(byConf);
+  // Season bets = explicitly tagged as season futures (moneyline with no gameTime on futures markets)
+  // Player props and team bets always show in main tabs regardless of gameTime
+  const SEASON_BET_TYPES = new Set(["moneyline", "spread", "total"]);
+  const seasonBets = bets.filter((b) => !b.gameTime && SEASON_BET_TYPES.has(b.betType ?? "")).sort(byConf);
 
-  // Day-filtered
-  const dayBets = filterByDay(dailyBets, dayFilter).sort(byConf);
+  // Daily bets = player props (always) + team bets that have a gameTime
+  const allPlayerProps = bets.filter((b) => b.betType === "player_prop").sort(byConf);
+  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && !!b.gameTime).sort(byConf);
+
+  // Day filter for props: if prop has gameTime use it; if no gameTime treat as "today" (live/upcoming)
+  const filterPropsByDay = (props: Bet[], day: DayFilter): Bet[] => {
+    if (day === "all") return props;
+    const { start, end } = day === "today"
+      ? { start: new Date().setHours(0,0,0,0), end: new Date().setHours(23,59,59,999) }
+      : { start: (() => { const d=new Date(); d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d.getTime(); })(),
+          end: (() => { const d=new Date(); d.setDate(d.getDate()+1); d.setHours(23,59,59,999); return d.getTime(); })() };
+    return props.filter((b) => {
+      if (!b.gameTime) return day === "today"; // no gameTime = treat as today
+      const t = new Date(b.gameTime).getTime();
+      return t >= start && t <= end;
+    });
+  };
+
+  const propBets = filterPropsByDay(allPlayerProps, dayFilter);
+  const teamBets = filterByDay(allTeamBets, dayFilter).sort(byConf);
   const threshold = stats?.threshold ?? 80;
 
-  // Player props
-  const propBets = dayBets.filter((b) => b.betType === "player_prop");
-  // Team bets (spread / total / moneyline)
-  const teamBets = dayBets.filter((b) => b.betType !== "player_prop");
-
   // Counts for tabs
-  const todayCount = countByDay(dailyBets, "today");
-  const tomorrowCount = countByDay(dailyBets, "tomorrow");
-  const allDailyCount = dailyBets.length;
+  const todayCount = filterPropsByDay(allPlayerProps, "today").length + countByDay(allTeamBets, "today");
+  const tomorrowCount = filterPropsByDay(allPlayerProps, "tomorrow").length + countByDay(allTeamBets, "tomorrow");
+  const allDailyCount = allPlayerProps.length + allTeamBets.length;
 
-  const propsTodayCount = filterByDay(dailyBets, "today").filter(b => b.betType === "player_prop").length;
-  const teamTodayCount = filterByDay(dailyBets, "today").filter(b => b.betType !== "player_prop").length;
+  const propsTodayCount = filterPropsByDay(allPlayerProps, "today").length;
+  const teamTodayCount = countByDay(allTeamBets, "today");
 
   const today = new Date();
   const tomorrow = new Date(today);
@@ -104,8 +118,8 @@ export default function Dashboard() {
   ];
 
   const MAIN_TABS: { key: MainTab; label: string; icon: React.ReactNode; count: number; color: string }[] = [
-    { key: "props",  label: "Player Props", icon: <Target size={13} />,   count: bets.filter(b => b.betType === "player_prop" && !!b.gameTime).length, color: "text-green-400" },
-    { key: "team",   label: "Team Bets",    icon: <Users size={13} />,    count: bets.filter(b => b.betType !== "player_prop" && !!b.gameTime).length, color: "text-blue-400" },
+    { key: "props",  label: "Player Props", icon: <Target size={13} />,   count: allPlayerProps.length, color: "text-green-400" },
+    { key: "team",   label: "Team Bets",    icon: <Users size={13} />,    count: allTeamBets.length, color: "text-blue-400" },
     { key: "season", label: "Season Bets",  icon: <Trophy size={13} />,   count: seasonBets.length, color: "text-yellow-400" },
   ];
 
