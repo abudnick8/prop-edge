@@ -462,7 +462,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   return (
     <div
       data-testid={`bet-card-${bet.id}`}
-      className={`bet-card block rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""}`}
+      className={`bet-card rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""}`}
       style={{
         background: `linear-gradient(145deg, hsl(265 30% 10%), hsl(265 28% 12%))`,
         borderColor: isHigh ? "rgba(245,158,11,0.4)" : "hsl(265 20% 18%)",
@@ -481,8 +481,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
       />
 
       {/* Main content — clicking navigates to detail */}
-      <Link href={`/bets/${bet.id}`}>
-        <a className="block relative p-4 cursor-pointer">
+      <Link href={`/bets/${bet.id}`} className="block relative p-4 cursor-pointer">
           {/* Pick Side Banner */}
           {pickSide && (
             <PickBanner pickSide={pickSide} line={bet.line} oddsDisplay={oddsDisplay} />
@@ -596,7 +595,6 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               </div>
             </>
           )}
-        </a>
       </Link>
 
       {/* Stats Expand Button — outside the link to avoid nav */}
