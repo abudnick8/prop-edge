@@ -430,7 +430,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/player-stats", sport, bet.playerName],
-    queryFn: () => apiRequest("GET", `/api/player-stats/${sport}/${encodeURIComponent(bet.playerName!)}`),
+    queryFn: () => apiRequest("GET", `/api/player-stats/${sport}/${encodeURIComponent(bet.playerName!)}`).then(r => r.json()),
     enabled: canFetch,
     staleTime: 15 * 60 * 1000,
     retry: 1,
