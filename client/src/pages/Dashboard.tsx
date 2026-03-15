@@ -70,14 +70,17 @@ export default function Dashboard() {
 
   const byConf = (a: Bet, b: Bet) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
 
-  // Season bets = explicitly tagged as season futures (moneyline with no gameTime on futures markets)
-  // Player props and team bets always show in main tabs regardless of gameTime
-  const SEASON_BET_TYPES = new Set(["moneyline", "spread", "total"]);
-  const seasonBets = bets.filter((b) => !b.gameTime && SEASON_BET_TYPES.has(b.betType ?? "")).sort(byConf);
+  // Season bets = season_prop (award markets like MVP, Cy Young) + futures (championship winner)
+  // Also include moneyline/spread/total with no gameTime (championship outrights)
+  const SEASON_BET_TYPES = new Set(["moneyline", "spread", "total", "season_prop", "futures"]);
+  const seasonBets = bets.filter((b) => {
+    if (b.betType === "season_prop" || b.betType === "futures") return true; // always season
+    return !b.gameTime && SEASON_BET_TYPES.has(b.betType ?? ""); // no gameTime = futures/outrights
+  }).sort(byConf);
 
   // Daily bets = player props (always) + team bets that have a gameTime
   const allPlayerProps = bets.filter((b) => b.betType === "player_prop").sort(byConf);
-  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && !!b.gameTime).sort(byConf);
+  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime).sort(byConf);
 
   // Day filter for props: if prop has gameTime use it; if no gameTime treat as "today" (live/upcoming)
   const filterPropsByDay = (props: Bet[], day: DayFilter): Bet[] => {
