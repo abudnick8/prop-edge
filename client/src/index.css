@@ -119,6 +119,8 @@
 .source-polymarket { background: hsl(262 52% 60% / 0.15); color: hsl(262 52% 75%); border-color: hsl(262 52% 60% / 0.3); }
 .source-draftkings { background: hsl(214 100% 60% / 0.15); color: hsl(214 100% 72%); border-color: hsl(214 100% 60% / 0.3); }
 .source-underdog { background: hsl(32 95% 55% / 0.15); color: hsl(32 95% 68%); border-color: hsl(32 95% 55% / 0.3); }
+.source-sportsgameodds { background: hsl(142 76% 42% / 0.15); color: hsl(142 76% 60%); border-color: hsl(142 76% 42% / 0.3); }
+.source-actionnetwork { background: hsl(355 90% 55% / 0.15); color: hsl(355 90% 68%); border-color: hsl(355 90% 55% / 0.3); }
 
 /* Sport badges */
 .sport-nfl { background: hsl(0 75% 45% / 0.15); color: hsl(0 75% 65%); border-color: hsl(0 75% 45% / 0.3); }

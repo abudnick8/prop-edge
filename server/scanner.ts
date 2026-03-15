@@ -1302,6 +1302,9 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   } else if (input.source === "underdog") {
     score += 7;
     factors.push("Underdog Fantasy — real-money player prop lines from active market");
+  } else if (input.source === "sportsgameodds") {
+    score += 8;
+    factors.push("SportsGameOdds — multi-book consensus player prop odds");
   }
 
   // 2b. Sharp money signal (ActionNetwork auth key — most powerful signal available)
@@ -1516,6 +1519,187 @@ function filterStale(bets: InsertBet[]): InsertBet[] {
   });
 }
 
+// ─── SportsGameOdds API — cross-book player prop odds ─────────────────────
+// Key: 8befbaf9705fc690a79e0b6ebeff6d8f
+// Free tier: leagueID or eventID required. Provides multi-book player props
+// for NBA, MLB, NHL, NFL with bookOverUnder lines and bookOdds.
+
+const SGO_KEY = process.env.SGO_API_KEY ?? null;
+const SGO_BASE = "https://api.sportsgameodds.com/v2";
+
+// Map of leagueID → array of stat IDs to fetch player props for
+const SGO_LEAGUE_STATS: Record<string, string[]> = {
+  NBA: ["points", "rebounds", "assists", "blocks", "steals", "threePointersMade", "points+rebounds+assists"],
+  MLB: ["pitching_strikeouts", "batting_hits", "batting_totalBases", "batting_homeRuns", "pitching_outs"],
+  NHL: ["shots", "goals+assists", "shots_onGoal", "points"],
+  NFL: ["passing_yards", "rushing_yards", "receiving_yards", "passing_touchdowns", "receptions"],
+};
+
+const SGO_SPORT_MAP: Record<string, string> = {
+  NBA: "NBA",
+  MLB: "MLB",
+  NHL: "NHL",
+  NFL: "NFL",
+  NCAAB: "NCAAB",
+};
+
+async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
+  if (!SGO_KEY) return [];
+
+  const bets: InsertBet[] = [];
+  const statDisplayMap: Record<string, string> = {
+    points: "Points", rebounds: "Rebounds", assists: "Assists",
+    blocks: "Blocks", steals: "Steals", threePointersMade: "3-Pointers Made",
+    "points+rebounds+assists": "Pts+Reb+Ast",
+    pitching_strikeouts: "Strikeouts", batting_hits: "Hits",
+    batting_totalBases: "Total Bases", batting_homeRuns: "Home Runs",
+    pitching_outs: "Outs Recorded",
+    shots: "Shots", "goals+assists": "Goals+Assists",
+    shots_onGoal: "Shots on Goal",
+    passing_yards: "Passing Yards", rushing_yards: "Rushing Yards",
+    receiving_yards: "Receiving Yards", passing_touchdowns: "Pass TDs",
+    receptions: "Receptions",
+  };
+
+  const toProb = (odds: number) =>
+    odds < 0 ? -odds / (-odds + 100) : 100 / (odds + 100);
+
+  for (const [leagueID, stats] of Object.entries(SGO_LEAGUE_STATS)) {
+    for (const statID of stats) {
+      const oddID = `${statID}-PLAYER_ID-game-ou-over`;
+      try {
+        const url = `${SGO_BASE}/events?leagueID=${leagueID}&oddID=${encodeURIComponent(oddID)}&ended=false&cancelled=false&includeOpposingOdds=true&apiKey=${SGO_KEY}`;
+        const resp = await fetch(url, { headers: { "User-Agent": "" } });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (!data.success || !Array.isArray(data.data)) continue;
+
+        const events: any[] = data.data;
+        for (const ev of events) {
+          const homeTeam = ev.teams?.home?.names?.medium ?? "";
+          const awayTeam = ev.teams?.away?.names?.medium ?? "";
+          const gameTitle = awayTeam && homeTeam ? `${awayTeam} @ ${homeTeam}` : "";
+          const startTime = ev.startTime ? new Date(ev.startTime) : null;
+          const odds = ev.odds ?? {};
+
+          // Extract player names from players array
+          const playerMap: Record<string, string> = {};
+          if (Array.isArray(ev.players)) {
+            for (const p of ev.players) {
+              if (p.playerID && p.firstName && p.lastName) {
+                playerMap[p.playerID] = `${p.firstName} ${p.lastName}`;
+              } else if (p.playerID && p.name) {
+                playerMap[p.playerID] = p.name;
+              }
+            }
+          }
+
+          // Process each over/under prop pair
+          for (const [oddKey, overOdd] of Object.entries(odds) as [string, any][]) {
+            if (!oddKey.endsWith("-over")) continue;
+            if (overOdd.ended || overOdd.cancelled) continue;
+
+            const playerID = overOdd.playerID ?? overOdd.statEntityID;
+            if (!playerID || playerID === "PLAYER_ID") continue;
+
+            // Get bookmaker odds
+            const overOddsRaw = overOdd.bookOdds ?? overOdd.fairOdds;
+            const line = overOdd.bookOverUnder ?? overOdd.fairOverUnder;
+            if (!overOddsRaw || !line) continue;
+
+            // Get corresponding under odd
+            const underKey = oddKey.replace("-over", "-under");
+            const underOdd = odds[underKey];
+            const underOddsRaw = underOdd?.bookOdds ?? underOdd?.fairOdds ?? overOddsRaw;
+
+            const overOddsNum = parseInt(overOddsRaw);
+            const underOddsNum = parseInt(underOddsRaw);
+            const lineNum = parseFloat(line);
+            if (isNaN(overOddsNum) || isNaN(lineNum)) continue;
+
+            const overProb = toProb(overOddsNum);
+            const underProb = toProb(underOddsNum);
+
+            // Pick stronger side
+            const pickSide = overProb >= underProb ? "OVER" : "UNDER";
+            const pickedOdds = pickSide === "OVER" ? overOddsNum : underOddsNum;
+            const pickProb = Math.max(overProb, underProb);
+
+            // Only include picks with meaningful edge (≥52%)
+            if (pickProb < 0.52) continue;
+
+            // Get player name
+            const playerName = playerMap[playerID] ??
+              playerID.replace(/_NBA|_MLB|_NHL|_NFL/g, "").replace(/_\d+$/g, "").replace(/_/g, " ");
+
+            const statName = statDisplayMap[statID] ?? statID;
+            const sport = SGO_SPORT_MAP[leagueID] ?? leagueID;
+            const oddsStr = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
+            const title = `[TAKE ${pickSide} ${lineNum} @ ${oddsStr}] ${playerName} — ${statName}`;
+            const description = `${playerName} is projected to go ${pickSide} ${lineNum} ${statName}. ${sport} player prop from SportsGameOdds (multi-book consensus).`;
+
+            const confidence = computeConfidence({
+              impliedProb: pickProb,
+              source: "sportsgameodds",
+              betType: "player_prop",
+              sport,
+              title,
+              odds: pickedOdds,
+              line: lineNum,
+            });
+
+            const id = `sgo_${ev.eventID}_${playerID}_${statID}`;
+
+            bets.push({
+              id,
+              title,
+              description,
+              sport,
+              betType: "player_prop",
+              source: "sportsgameodds",
+              overOdds: overOddsNum,
+              underOdds: underOddsNum,
+              impliedProbability: pickProb,
+              confidenceScore: confidence.score,
+              riskLevel: confidence.risk,
+              recommendedAllocation: confidence.allocation,
+              keyFactors: [`${pickSide} ${lineNum} ${statName} (SGO multi-book)`, ...confidence.factors],
+              researchSummary: confidence.summary,
+              gameTime: startTime,
+              playerName,
+              isHighConfidence: confidence.score >= 80,
+              teamStats: {
+                pickSide,
+                pickedOdds,
+                overProb: Math.round(overProb * 100),
+                underProb: Math.round(underProb * 100),
+                playerName,
+                statType: statName,
+                statValue: lineNum,
+                gameTitle,
+              },
+              homeTeam,
+              awayTeam,
+              line: lineNum,
+              yesPrice: null,
+              noPrice: null,
+              playerStats: null,
+              notificationSent: false,
+            });
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[SGO] Error fetching ${leagueID} ${statID}:`, e.message);
+      }
+    }
+  }
+
+  // Deduplicate: if same player+stat+game already exists from Underdog, SGO adds value
+  // but don't duplicate — keep SGO as supplement for lines not in Underdog
+  console.log(`[SportsGameOdds] Fetched ${bets.length} player prop picks across all leagues`);
+  return bets;
+}
+
 // ─── Main scanner ─────────────────────────────────────────────────────────────
 export async function runScan(apiKey?: string | null): Promise<{ scanned: number; highConfidence: number }> {
   console.log("Running market scan...");
@@ -1531,14 +1715,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   ];
 
   // Fetch all live sources in parallel (ActionNetwork + Underdog are free, no key needed)
-  const [kalshi, poly, actionNet, underdog] = await Promise.all([
+  const [kalshi, poly, actionNet, underdog, sgo] = await Promise.all([
     fetchKalshiSports(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
     fetchUnderdogProps(),
+    fetchSportsGameOddsProps(),
   ]);
 
-  results.push(...kalshi, ...poly, ...actionNet, ...underdog);
+  results.push(...kalshi, ...poly, ...actionNet, ...underdog, ...sgo);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;

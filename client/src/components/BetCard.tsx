@@ -71,7 +71,7 @@ function ScoreBar({ score }: { score: number }) {
 function SourceBadge({ source }: { source: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border source-${source} uppercase tracking-wide`}>
-      {source === "draftkings" ? "DK" : source === "polymarket" ? "Poly" : source === "underdog" ? "UD" : source}
+      {source === "draftkings" ? "DK" : source === "polymarket" ? "Poly" : source === "underdog" ? "UD" : source === "sportsgameodds" ? "SGO" : source === "actionnetwork" ? "AN" : source}
     </span>
   );
 }
