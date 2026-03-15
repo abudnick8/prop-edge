@@ -1,6 +1,6 @@
 import { Bet } from "@shared/schema";
-import { Link } from "wouter";
 import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2 } from "lucide-react";
+import BetDetailDrawer from "@/components/BetDetailDrawer";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -440,6 +440,10 @@ function PlayerStatsDrawer({ playerName, sport }: { playerName: string; sport: s
 // ── Main BetCard ──────────────────────────────────────────────────────────────
 export default function BetCard({ bet, compact = false }: BetCardProps) {
   const [statsOpen, setStatsOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
+
+  const openDrawer = (b = bet) => { setDrawerBet(b); setDrawerOpen(true); };
   const score = bet.confidenceScore ?? 0;
   const isHigh = score >= 80;
   const sport = bet.sport?.toUpperCase() ?? "NBA";
@@ -480,8 +484,8 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
         style={{ background: theme.gradient, opacity: isHigh ? 1 : 0.6 }}
       />
 
-      {/* Main content — clicking navigates to detail */}
-      <Link href={`/bets/${bet.id}`} className="block relative p-4 cursor-pointer">
+      {/* Main content — clicking opens drawer */}
+      <div onClick={() => openDrawer()} className="block relative p-4 cursor-pointer">
           {/* Pick Side Banner */}
           {pickSide && (
             <PickBanner pickSide={pickSide} line={bet.line} oddsDisplay={oddsDisplay} />
@@ -595,7 +599,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               </div>
             </>
           )}
-      </Link>
+      </div>
 
       {/* Stats Expand Button — outside the link to avoid nav */}
       {canShowStats && !compact && (
@@ -625,6 +629,13 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           )}
         </div>
       )}
+      {/* Bet Detail Drawer */}
+      <BetDetailDrawer
+        bet={drawerBet}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onSelectBet={(b) => openDrawer(b)}
+      />
     </div>
   );
 }
