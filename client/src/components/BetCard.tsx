@@ -1,14 +1,31 @@
 import { Bet } from "@shared/schema";
 import { Link } from "wouter";
-import { Clock, TrendingUp, AlertTriangle, Shield, ChevronRight, User, Zap } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface BetCardProps {
   bet: Bet;
   compact?: boolean;
 }
+
+// ── Sport emoji map ────────────────────────────────────────────────────────
+const SPORT_EMOJI: Record<string, string> = {
+  NBA: "🏀", NFL: "🏈", MLB: "⚾", NHL: "🏒",
+  NCAAB: "🎓", Golf: "⛳", Soccer: "⚽", Tennis: "🎾",
+};
+
+// ── Bet type emoji map ─────────────────────────────────────────────────────
+const BET_TYPE_EMOJI: Record<string, string> = {
+  player_prop: "🎯",
+  spread: "📊",
+  total: "🔢",
+  moneyline: "💰",
+  futures: "🏆",
+  season_long: "📅",
+};
 
 // ── Team logo helpers ────────────────────────────────────────────────────────
 
@@ -23,7 +40,6 @@ const NBA_ABBR: Record<string, string> = {
   "Orlando Magic": "orl", "Philadelphia 76ers": "phi", "Phoenix Suns": "phx",
   "Portland Trail Blazers": "por", "Sacramento Kings": "sac", "San Antonio Spurs": "sas",
   "Toronto Raptors": "tor", "Utah Jazz": "utah", "Washington Wizards": "wsh",
-  // short forms
   "Hawks": "atl", "Celtics": "bos", "Nets": "bkn", "Hornets": "cha", "Bulls": "chi",
   "Cavaliers": "cle", "Cavs": "cle", "Mavericks": "dal", "Mavs": "dal", "Nuggets": "den",
   "Pistons": "det", "Warriors": "gsw", "Rockets": "hou", "Pacers": "ind",
@@ -46,7 +62,6 @@ const NFL_ABBR: Record<string, string> = {
   "New York Jets": "nyj", "Philadelphia Eagles": "phi", "Pittsburgh Steelers": "pit",
   "San Francisco 49ers": "sf", "Seattle Seahawks": "sea", "Tampa Bay Buccaneers": "tb",
   "Tennessee Titans": "ten", "Washington Commanders": "wsh",
-  // short
   "Cardinals": "ari", "Falcons": "atl", "Ravens": "bal", "Bills": "buf",
   "Panthers": "car", "Bears": "chi", "Bengals": "cin", "Browns": "cle",
   "Cowboys": "dal", "Broncos": "den", "Lions": "det", "Packers": "gb",
@@ -69,7 +84,6 @@ const MLB_ABBR: Record<string, string> = {
   "Pittsburgh Pirates": "pit", "San Diego Padres": "sd", "San Francisco Giants": "sf",
   "Seattle Mariners": "sea", "St. Louis Cardinals": "stl", "Tampa Bay Rays": "tb",
   "Texas Rangers": "tex", "Toronto Blue Jays": "tor", "Washington Nationals": "wsh",
-  // short
   "Diamondbacks": "ari", "D-backs": "ari", "Braves": "atl", "Orioles": "bal",
   "Red Sox": "bos", "Cubs": "chc", "White Sox": "chw", "Reds": "cin",
   "Guardians": "cle", "Rockies": "col", "Tigers": "det", "Astros": "hou",
@@ -92,7 +106,6 @@ const NHL_ABBR: Record<string, string> = {
   "Seattle Kraken": "sea", "St. Louis Blues": "stl", "Tampa Bay Lightning": "tbl",
   "Toronto Maple Leafs": "tor", "Vancouver Canucks": "van", "Vegas Golden Knights": "vgk",
   "Washington Capitals": "wsh", "Winnipeg Jets": "wpg",
-  // short
   "Ducks": "ana", "Bruins": "bos", "Sabres": "buf", "Flames": "cgy",
   "Hurricanes": "car", "Canes": "car", "Blackhawks": "chi", "Avalanche": "col",
   "Avs": "col", "Blue Jackets": "cbj", "Stars": "dal", "Red Wings": "det",
@@ -117,7 +130,6 @@ function getTeamLogoUrl(teamName: string | null | undefined, sport: string): str
   else if (s === "NHL") abbr = NHL_ABBR[teamName];
 
   if (!abbr) {
-    // Try partial match
     const map = s === "NBA" ? NBA_ABBR : s === "NFL" ? NFL_ABBR : s === "MLB" ? MLB_ABBR : s === "NHL" ? NHL_ABBR : {};
     const key = Object.keys(map).find(k => teamName.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(teamName.toLowerCase()));
     if (key) abbr = map[key];
@@ -142,7 +154,6 @@ const SPORT_THEME: Record<string, { glow: string; gradient: string; accent: stri
 };
 
 // ── Player Headshot (NBA via ESPN CDN) ──────────────────────────────────────
-// We use a name→ESPN player ID mini-lookup for the most common NBA stars
 const NBA_PLAYER_ESPN_ID: Record<string, string> = {
   "LeBron James": "1966",       "Stephen Curry": "3975",     "Kevin Durant": "3202",
   "Giannis Antetokounmpo": "3032977", "Luka Doncic": "3945274",  "Joel Embiid": "3059318",
@@ -175,7 +186,6 @@ function ConfidenceRing({ score }: { score: number }) {
   const r = 24;
   const circumference = 2 * Math.PI * r;
   const fill = (score / 100) * circumference;
-  // Cosmic Gold palette: gold=high, cyan=mid, orange/red=low
   const color =
     score >= 80 ? "#f59e0b" : score >= 65 ? "#22d3ee" : "#f87171";
   const glowColor =
@@ -196,9 +206,7 @@ function ConfidenceRing({ score }: { score: number }) {
             </feMerge>
           </filter>
         </defs>
-        {/* Track */}
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.5" />
-        {/* Progress arc */}
         <circle
           cx={size/2} cy={size/2} r={r}
           fill="none"
@@ -230,15 +238,16 @@ function ConfidenceRing({ score }: { score: number }) {
 function SourceBadge({ source }: { source: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border source-${source} uppercase tracking-wide`}>
-      {source === "draftkings" ? "DK" : source === "polymarket" ? "Poly" : source === "underdog" ? "UD" : source === "sportsgameodds" ? "SGO" : source === "actionnetwork" ? "AN" : source}
+      {source === "draftkings" ? "🎲 DK" : source === "polymarket" ? "📈 Poly" : source === "underdog" ? "🐶 UD" : source === "sportsgameodds" ? "⚡ SGO" : source === "actionnetwork" ? "🔍 AN" : source}
     </span>
   );
 }
 
 function SportBadge({ sport }: { sport: string }) {
+  const emoji = SPORT_EMOJI[sport.toUpperCase()] ?? "🏅";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border sport-${sport.toLowerCase()} uppercase tracking-wide`}>
-      {sport}
+      {emoji} {sport}
     </span>
   );
 }
@@ -251,10 +260,10 @@ function RiskBadge({ risk }: { risk: string | null }) {
     high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
   };
   const Icon = risk === "low" ? Shield : risk === "medium" ? TrendingUp : AlertTriangle;
+  const riskEmoji = risk === "low" ? "✅" : risk === "medium" ? "⚠️" : "🔥";
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${classes[risk] ?? classes.medium} uppercase tracking-wide`}>
-      <Icon size={9} />
-      {risk} risk
+      {riskEmoji} {risk} risk
     </span>
   );
 }
@@ -314,7 +323,6 @@ function PickBanner({ pickSide, line, oddsDisplay }: { pickSide: string; line: n
         isOver ? "pick-over" : "pick-under"
       }`}
     >
-      {/* Shimmer sweep */}
       <div className="pick-shimmer" />
       <span className="relative flex items-center gap-2 z-10">
         <span className="text-base">{isOver ? "🔺" : "🔻"}</span>
@@ -327,12 +335,116 @@ function PickBanner({ pickSide, line, oddsDisplay }: { pickSide: string; line: n
   );
 }
 
+// ── Player Stats Drawer ───────────────────────────────────────────────────────
+interface PlayerStat {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+}
+
+interface PlayerStatsData {
+  name: string;
+  team?: string;
+  position?: string;
+  season?: string;
+  stats: PlayerStat[];
+  referenceUrl?: string;
+  source?: string;
+}
+
+function PlayerStatsDrawer({ playerName, sport }: { playerName: string; sport: string }) {
+  const sportUp = sport.toUpperCase();
+  const enabled = sportUp === "NBA" || sportUp === "NFL";
+
+  const { data, isLoading, isError } = useQuery<PlayerStatsData>({
+    queryKey: ["/api/player-stats", sportUp, playerName],
+    queryFn: () => apiRequest("GET", `/api/player-stats/${sportUp}/${encodeURIComponent(playerName)}`),
+    enabled,
+    staleTime: 15 * 60 * 1000,
+    retry: 1,
+  });
+
+  if (!enabled) return (
+    <div className="text-xs text-center py-3" style={{ color: "rgba(255,255,255,0.35)" }}>
+      📊 Stats available for NBA &amp; NFL players
+    </div>
+  );
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center gap-2 py-4 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+      <Loader2 size={13} className="animate-spin" />
+      Loading {playerName}'s stats...
+    </div>
+  );
+
+  if (isError || !data) return (
+    <div className="text-xs text-center py-3" style={{ color: "rgba(255,255,255,0.35)" }}>
+      📊 Stats not available right now
+    </div>
+  );
+
+  return (
+    <div className="stats-drawer pt-3 pb-1">
+      {/* Player info header */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-xs font-bold" style={{ color: "#f59e0b" }}>{data.name}</p>
+          {(data.team || data.position) && (
+            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+              {[data.position, data.team, data.season].filter(Boolean).join(" · ")}
+            </p>
+          )}
+        </div>
+        {data.referenceUrl && (
+          <a
+            href={data.referenceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border transition-colors hover:bg-white/5"
+            style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }}
+          >
+            <ExternalLink size={9} />
+            {data.source ?? "Reference"}
+          </a>
+        )}
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {data.stats.slice(0, 9).map((stat, i) => (
+          <div
+            key={i}
+            className="rounded-lg px-2 py-2 text-center"
+            style={{
+              background: stat.highlight ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${stat.highlight ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.07)"}`,
+            }}
+          >
+            <p
+              className="text-base font-black font-mono leading-none"
+              style={{ color: stat.highlight ? "#f59e0b" : "hsl(45 100% 90%)" }}
+            >
+              {stat.value}
+            </p>
+            <p className="text-[9px] mt-1 font-medium uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+              {stat.label}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main BetCard ──────────────────────────────────────────────────────────────
 export default function BetCard({ bet, compact = false }: BetCardProps) {
+  const [statsOpen, setStatsOpen] = useState(false);
   const score = bet.confidenceScore ?? 0;
   const isHigh = score >= 80;
   const sport = bet.sport?.toUpperCase() ?? "NBA";
   const theme = SPORT_THEME[sport] ?? SPORT_THEME.NBA;
+  const sportEmoji = SPORT_EMOJI[sport] ?? "🏅";
 
   const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
   const pickSideRaw = bet.betType === "player_prop" ? teamStats?.pickSide : null;
@@ -340,37 +452,37 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const pickedOdds = teamStats?.pickedOdds;
   const oddsDisplay = pickedOdds !== undefined ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : null;
 
-  // Team logos
   const homeLogoUrl = getTeamLogoUrl(bet.homeTeam, bet.sport);
   const awayLogoUrl = getTeamLogoUrl(bet.awayTeam, bet.sport);
-  // Player headshot
   const hasHeadshot = !!getPlayerHeadshotUrl(bet.playerName, bet.sport);
 
+  // Only player props with a player name can show stats
+  const canShowStats = bet.betType === "player_prop" && !!bet.playerName;
+
   return (
-    <Link href={`/bets/${bet.id}`}>
-      <a
-        data-testid={`bet-card-${bet.id}`}
-        className={`bet-card block rounded-xl border cursor-pointer relative overflow-hidden ${
-          isHigh ? "bet-card-hot" : ""
-        }`}
-        style={{
-          background: `linear-gradient(145deg, hsl(265 30% 10%), hsl(265 28% 12%))`,
-          borderColor: isHigh ? "rgba(245,158,11,0.4)" : "hsl(265 20% 18%)",
-        }}
-      >
-        {/* Sport-colored top gradient strip */}
-        <div
-          className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: theme.accent, opacity: isHigh ? 1 : 0.4 }}
-        />
+    <div
+      data-testid={`bet-card-${bet.id}`}
+      className={`bet-card block rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""}`}
+      style={{
+        background: `linear-gradient(145deg, hsl(265 30% 10%), hsl(265 28% 12%))`,
+        borderColor: isHigh ? "rgba(245,158,11,0.4)" : "hsl(265 20% 18%)",
+      }}
+    >
+      {/* Sport-colored top gradient strip */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[2px]"
+        style={{ background: theme.accent, opacity: isHigh ? 1 : 0.4 }}
+      />
 
-        {/* Background sport gradient */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: theme.gradient, opacity: isHigh ? 1 : 0.6 }}
-        />
+      {/* Background sport gradient */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: theme.gradient, opacity: isHigh ? 1 : 0.6 }}
+      />
 
-        <div className="relative p-4">
+      {/* Main content — clicking navigates to detail */}
+      <Link href={`/bets/${bet.id}`}>
+        <a className="block relative p-4 cursor-pointer">
           {/* Pick Side Banner */}
           {pickSide && (
             <PickBanner pickSide={pickSide} line={bet.line} oddsDisplay={oddsDisplay} />
@@ -402,12 +514,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 <SourceBadge source={bet.source} />
                 <SportBadge sport={bet.sport} />
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground capitalize">
-                  {bet.betType.replace("_", " ")}
+                  {BET_TYPE_EMOJI[bet.betType] ?? "🎰"} {bet.betType.replace("_", " ")}
                 </span>
                 {isHigh && (
                   <span className="hot-pick-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide">
-                    <Zap size={9} />
-                    Hot Pick
+                    🔥 Hot Pick
                   </span>
                 )}
                 {!bet.gameTime && (
@@ -421,13 +532,12 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mb-2">
                   {bet.playerName && (
                     <span className="flex items-center gap-1 font-medium text-foreground/70">
-                      <User size={10} />
-                      {bet.playerName}
+                      👤 {bet.playerName}
                     </span>
                   )}
                   {bet.homeTeam && (
                     <span className="flex items-center gap-1">
-                      {bet.awayTeam} @ {bet.homeTeam}
+                      {sportEmoji} {bet.awayTeam} @ {bet.homeTeam}
                     </span>
                   )}
                   {bet.gameTime && (
@@ -451,7 +561,6 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     color: score >= 80 ? "#22c55e" : score >= 65 ? "#eab308" : "#f97316"
                   }}>{score}/100</span>
                 </div>
-                {/* Score bar */}
                 <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
                   <div
                     className="h-full confidence-bar"
@@ -487,8 +596,37 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               </div>
             </>
           )}
+        </a>
+      </Link>
+
+      {/* Stats Expand Button — outside the link to avoid nav */}
+      {canShowStats && !compact && (
+        <div
+          className="relative border-t"
+          style={{ borderColor: "rgba(255,255,255,0.07)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setStatsOpen((o) => !o)}
+            data-testid={`btn-stats-${bet.id}`}
+            className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold transition-colors hover:bg-white/5"
+            style={{ color: statsOpen ? "#f59e0b" : "rgba(255,255,255,0.45)" }}
+          >
+            <BarChart2 size={12} />
+            {statsOpen ? "Hide Stats" : "📊 Player Stats"}
+            {statsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </button>
+
+          {statsOpen && (
+            <div
+              className="stats-slide-down px-4 pb-4"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <PlayerStatsDrawer playerName={bet.playerName!} sport={bet.sport} />
+            </div>
+          )}
         </div>
-      </a>
-    </Link>
+      )}
+    </div>
   );
 }
