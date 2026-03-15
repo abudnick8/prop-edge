@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { LayoutDashboard, Target, Settings, BarChart3 } from "lucide-react";
 
@@ -40,22 +40,22 @@ export function DesktopSidebar() {
         {navItems.map(({ href, label, icon: Icon, emoji }) => {
           const isActive = location === href || (href !== "/" && location.startsWith(href));
           return (
-            <Link key={href} href={href}>
-              <a
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                  isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                }`}
-                style={isActive ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b" } : {}}
-                data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
-              >
-                <span className="text-base w-5 text-center">{emoji}</span>
-                {label}
-                {href === "/tracker" && isActive && (
-                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(245,158,11,0.2)", color: "#f59e0b" }}>NEW</span>
-                )}
-              </a>
+            <Link
+              key={href}
+              href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                isActive
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              }`}
+              style={isActive ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b" } : {}}
+              data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
+            >
+              <span className="text-base w-5 text-center">{emoji}</span>
+              {label}
+              {href === "/tracker" && isActive && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(245,158,11,0.2)", color: "#f59e0b" }}>NEW</span>
+              )}
             </Link>
           );
         })}
@@ -94,16 +94,16 @@ export function MobileTabBar() {
       {navItems.map(({ href, label, icon: Icon }) => {
         const isActive = location === href || (href !== "/" && location.startsWith(href));
         return (
-          <Link key={href} href={href}>
-            <a
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-medium transition-colors ${
-                isActive ? "text-primary" : "text-muted-foreground"
-              }`}
-              data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
-            >
-              <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
-              {label}
-            </a>
+          <Link
+            key={href}
+            href={href}
+            className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-medium transition-colors ${
+              isActive ? "text-primary" : "text-muted-foreground"
+            }`}
+            data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
+          >
+            <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+            {label}
           </Link>
         );
       })}
