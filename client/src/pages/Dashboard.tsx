@@ -3,7 +3,7 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -319,6 +319,10 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      {/* ═══════════ ASK A QUESTION ═══════════ */}
+      <AskSection />
+
     </div>
   );
 }
@@ -460,6 +464,178 @@ function StatCard({ label, value, icon, highlight = false, loading = false, emoj
       ) : (
         <p className={`text-2xl font-bold font-mono ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
       )}
+    </div>
+  );
+}
+
+// ── Ask a Question ──────────────────────────────────────────────────────────
+
+const EXAMPLE_QUESTIONS = [
+  "Should I bet on LeBron over 25.5 points?",
+  "Is the Yankees moneyline a good bet tonight?",
+  "Best NBA player prop for tonight?",
+  "Should I bet the over on the Chiefs game?",
+  "Any high confidence MLB props today?",
+];
+
+function AskSection() {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ q: string; a: string }[]>([]);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const handleSubmit = async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed || isLoading) return;
+    setQuestion("");
+    setIsLoading(true);
+    setError(null);
+    setAnswer(null);
+    try {
+      const res = await apiRequest("POST", "/api/ask", { question: trimmed });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setHistory((prev) => [...prev, { q: trimmed, a: data.answer }]);
+      setAnswer(data.answer);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to get analysis");
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(question);
+    }
+  };
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden" data-testid="ask-section">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 bg-card border-b border-border">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 22%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
+          <MessageCircleQuestion size={15} className="text-primary" />
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+            Ask PropEdge
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">AI</span>
+          </h2>
+          <p className="text-xs text-muted-foreground">Ask about any bet — get analysis using live odds & stats</p>
+        </div>
+      </div>
+
+      <div className="bg-card px-5 py-4 space-y-4">
+        {/* Conversation history */}
+        {history.length > 0 && (
+          <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+            {history.map((item, i) => (
+              <div key={i} className="space-y-2">
+                {/* User question */}
+                <div className="flex justify-end">
+                  <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm text-foreground"
+                    style={{ background: "linear-gradient(135deg, hsl(43 100% 50% / 0.15), hsl(43 100% 50% / 0.08))", border: "1px solid hsl(43 100% 50% / 0.25)" }}>
+                    {item.q}
+                  </div>
+                </div>
+                {/* AI answer */}
+                <div className="flex justify-start gap-2">
+                  <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
+                    style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
+                    <Sparkles size={10} className="text-primary" />
+                  </div>
+                  <div className="max-w-[90%] px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {item.a}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
+              <Sparkles size={10} className="text-primary animate-pulse" />
+            </div>
+            <div className="flex items-center gap-1.5 px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-sm text-destructive">
+            <AlertCircle size={14} />
+            {error}
+          </div>
+        )}
+
+        {/* Example questions (show when no history) */}
+        {history.length === 0 && !isLoading && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground font-medium">Try asking:</p>
+            <div className="flex flex-wrap gap-2">
+              {EXAMPLE_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleSubmit(q)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  data-testid={`example-question-${q.slice(0, 10).replace(/\s/g, '-')}`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Input area */}
+        <div className="relative flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about a player, team, or specific bet... (Enter to send)"
+            rows={2}
+            className="flex-1 resize-none rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-colors"
+            data-testid="input-ask-question"
+            disabled={isLoading}
+          />
+          <button
+            onClick={() => handleSubmit(question)}
+            disabled={!question.trim() || isLoading}
+            data-testid="button-ask-submit"
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
+            style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", boxShadow: question.trim() ? "0 0 16px rgba(245,158,11,0.35)" : "none" }}
+          >
+            <Send size={15} style={{ color: "#1a0d00" }} />
+          </button>
+        </div>
+
+        {history.length > 0 && (
+          <button
+            onClick={() => { setHistory([]); setAnswer(null); setError(null); }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear conversation
+          </button>
+        )}
+      </div>
     </div>
   );
 }
