@@ -1,4 +1,4 @@
-import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification } from "@shared/schema";
+import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp } from "@shared/schema";
 
 export interface IStorage {
   // Bets
@@ -20,10 +20,18 @@ export interface IStorage {
   addNotification(n: InsertNotification): Promise<Notification>;
   dismissNotification(id: string): Promise<void>;
   clearNotifications(): Promise<void>;
+
+  // Tracked Props
+  getTrackedProps(): Promise<TrackedProp[]>;
+  getTrackedPropById(id: string): Promise<TrackedProp | undefined>;
+  addTrackedProp(prop: InsertTrackedProp): Promise<TrackedProp>;
+  updateTrackedProp(id: string, update: Partial<InsertTrackedProp>): Promise<TrackedProp | undefined>;
+  deleteTrackedProp(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
   private bets: Map<string, Bet> = new Map();
+  private trackedPropsMap: Map<string, TrackedProp> = new Map();
   private settings: Settings = {
     id: "default",
     confidenceThreshold: 80,
@@ -139,6 +147,45 @@ export class MemStorage implements IStorage {
 
   async clearNotifications(): Promise<void> {
     this.notifications.clear();
+  }
+
+  // ── Tracked Props ──────────────────────────────────────────────────────────
+  async getTrackedProps(): Promise<TrackedProp[]> {
+    return Array.from(this.trackedPropsMap.values()).sort(
+      (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+    );
+  }
+
+  async getTrackedPropById(id: string): Promise<TrackedProp | undefined> {
+    return this.trackedPropsMap.get(id);
+  }
+
+  async addTrackedProp(prop: InsertTrackedProp): Promise<TrackedProp> {
+    const record: TrackedProp = {
+      ...prop,
+      currentValue: prop.currentValue ?? null,
+      gamesPlayed: prop.gamesPlayed ?? null,
+      notes: prop.notes ?? null,
+      status: prop.status ?? "active",
+      teamName: prop.teamName ?? null,
+      season: prop.season ?? "2025-26",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.trackedPropsMap.set(prop.id, record);
+    return record;
+  }
+
+  async updateTrackedProp(id: string, update: Partial<InsertTrackedProp>): Promise<TrackedProp | undefined> {
+    const existing = this.trackedPropsMap.get(id);
+    if (!existing) return undefined;
+    const updated: TrackedProp = { ...existing, ...update, updatedAt: new Date() };
+    this.trackedPropsMap.set(id, updated);
+    return updated;
+  }
+
+  async deleteTrackedProp(id: string): Promise<void> {
+    this.trackedPropsMap.delete(id);
   }
 }
 
