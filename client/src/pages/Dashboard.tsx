@@ -106,7 +106,8 @@ export default function Dashboard() {
           onClick={() => scanMutation.mutate()}
           disabled={scanMutation.isPending}
           data-testid="button-scan"
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-60 transition-all"
+          style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", color: "#1a0d00", boxShadow: "0 0 20px rgba(245,158,11,0.35)" }}
         >
           <RefreshCw size={14} className={scanMutation.isPending ? "scanning" : ""} />
           {scanMutation.isPending ? "Scanning..." : "Scan Now"}
