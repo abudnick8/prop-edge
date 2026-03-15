@@ -43,7 +43,7 @@ export class MemStorage implements IStorage {
     enableSeasonProps: true,
     notificationsEnabled: true,
     scanIntervalMinutes: 30,
-    oddsApiKey: process.env.ODDS_API_KEY ?? "4134e9d0ec483414517b0ae8dea7437c",
+    oddsApiKey: "4134e9d0ec483414517b0ae8dea7437c", // hardcoded — Railway env var has wrong key, never use process.env here
     kalshiApiKey: null,
   };
   private notifications: Map<string, Notification> = new Map();
