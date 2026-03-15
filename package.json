@@ -78,7 +78,9 @@
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"
   },
-  "devDependencies": {
+  "devDependencies": {"@vitejs/plugin-legacy": "^8.0.0",
+"terser": "^5.46.0",
+
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.18",
     "@types/connect-pg-simple": "^7.0.3",
