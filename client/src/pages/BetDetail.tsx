@@ -231,7 +231,7 @@ function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statK
         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>{label} — Last {games.length} Games</span>
         {propLine != null && <span className="text-[10px] font-mono font-bold" style={{ color: "#f59e0b" }}>Line: {propLine}</span>}
       </div>
-      <div className="flex items-end gap-1.5" style={{ height: 48 }}>
+      <div className="flex items-end gap-1.5" style={{ height: 52 }}>
         {values.map((v, i) => {
           const pct = (v / max) * 100;
           const hitLine = propLine != null && v >= propLine;
@@ -260,6 +260,140 @@ function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statK
           <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Prop line ({propLine})</span>
           <div className="w-2 h-2 rounded-sm ml-2" style={{ background: "rgba(74,222,128,0.4)" }} />
           <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Hit</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Game Log Table — last N games with all stats, bet stat highlighted ──────
+function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: {
+  games: any[];
+  sport: string;
+  focusStatKey: string;
+  focusStatLabel: string;
+  propLine?: number | null;
+}) {
+  if (!games.length) return null;
+
+  // Define columns per sport — focus stat always shown prominently
+  const nbaCols = [
+    { key: "date_game", label: "Date", mono: false },
+    { key: "opp_id", label: "OPP", mono: false },
+    { key: "pts", label: "PTS" },
+    { key: "trb", label: "REB" },
+    { key: "ast", label: "AST" },
+    { key: "stl", label: "STL" },
+    { key: "blk", label: "BLK" },
+    { key: "tov", label: "TOV" },
+    { key: "mp", label: "MIN" },
+  ];
+
+  const nflCols = [
+    { key: "date_game", label: "Date", mono: false },
+    { key: "opp", label: "OPP", mono: false },
+    { key: "pass_yds", label: "P YDS" },
+    { key: "pass_td", label: "P TD" },
+    { key: "int", label: "INT" },
+    { key: "rush_yds", label: "RU YDS" },
+    { key: "rec_yds", label: "RE YDS" },
+  ];
+
+  const cols = sport === "NFL" ? nflCols : nbaCols;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
+          Game Log — Last {games.length} Games
+        </span>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)" }}>
+          ★ {focusStatLabel} highlighted
+        </span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+        <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              {cols.map(col => {
+                const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
+                return (
+                  <th key={col.key} className="px-2 py-2 text-center font-bold uppercase tracking-wide"
+                    style={{
+                      color: isFocus ? "#f59e0b" : "rgba(255,255,255,0.35)",
+                      background: isFocus ? "rgba(245,158,11,0.06)" : "transparent",
+                      whiteSpace: "nowrap",
+                      fontSize: "9px",
+                      letterSpacing: "0.08em",
+                    }}>
+                    {isFocus ? `★ ${col.label}` : col.label}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {games.map((g, rowIdx) => {
+              const focusVal = parseFloat(g[focusStatKey] ?? g["trb"] ?? "0") || 0;
+              const hitLine = propLine != null && focusVal >= propLine;
+              const rowBg = hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent";
+              return (
+                <tr key={rowIdx} style={{ background: rowBg, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  {cols.map(col => {
+                    const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
+                    const rawVal = g[col.key] ?? "—";
+                    const numVal = parseFloat(rawVal) || 0;
+                    const cellHit = isFocus && propLine != null && numVal >= propLine;
+                    const cellMiss = isFocus && propLine != null && numVal < propLine && rawVal !== "—" && rawVal !== "";
+                    // Format date
+                    let displayVal = rawVal || "—";
+                    if (col.key === "date_game" && rawVal && rawVal.length >= 7) {
+                      const parts = rawVal.split("-");
+                      displayVal = parts.length >= 3 ? `${parts[1]}/${parts[2]}` : rawVal;
+                    }
+                    return (
+                      <td key={col.key} className="px-2 py-2 text-center font-mono"
+                        style={{
+                          background: isFocus ? (cellHit ? "rgba(74,222,128,0.1)" : cellMiss ? "rgba(248,113,113,0.08)" : "rgba(245,158,11,0.04)") : "transparent",
+                          color: isFocus
+                            ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b")
+                            : col.key === "date_game" || col.key === "opp_id" || col.key === "opp"
+                              ? "rgba(255,255,255,0.4)"
+                              : "rgba(255,255,255,0.7)",
+                          fontWeight: isFocus ? "900" : "500",
+                          fontSize: isFocus ? "12px" : "11px",
+                          whiteSpace: "nowrap",
+                        }}>
+                        {isFocus && cellHit && "✓ "}
+                        {isFocus && cellMiss && "✗ "}
+                        {displayVal}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Legend */}
+      {propLine != null && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(74,222,128,0.3)" }} />
+            <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Hit ≥ {propLine}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(248,113,113,0.3)" }} />
+            <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Miss &lt; {propLine}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(245,158,11,0.3)" }} />
+            <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Focus stat column</span>
+          </div>
         </div>
       )}
     </div>
@@ -421,14 +555,21 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
               return null;
             })()}
 
-            {/* Last 5 games bar chart */}
+            {/* Last 5 games bar chart + full game log table */}
             {data.recentGames && data.recentGames.length > 0 && (
-              <div className="pt-1">
+              <div className="pt-1 space-y-4">
                 <MiniBarChart
                   games={data.recentGames}
                   statKey={statKey.key === "reb" ? "trb" : statKey.key}
                   propLine={bet.line}
                   label={statKey.label}
+                />
+                <GameLogTable
+                  games={data.recentGames}
+                  sport={sport}
+                  focusStatKey={statKey.key === "reb" ? "trb" : statKey.key}
+                  focusStatLabel={statKey.label}
+                  propLine={bet.line}
                 />
               </div>
             )}
