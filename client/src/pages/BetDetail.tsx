@@ -426,7 +426,7 @@ function StatVsLine({ statLabel, statValue, propLine }: { statLabel: string; sta
 // ── Player Stats Section ───────────────────────────────────────────────────
 function PlayerStatsSection({ bet }: { bet: Bet }) {
   const sport = bet.sport?.toUpperCase() ?? "";
-  const canFetch = !!bet.playerName && (sport === "NBA" || sport === "NFL");
+  const canFetch = !!bet.playerName && (sport === "NBA" || sport === "NFL" || sport === "MLB" || sport === "NHL");
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/player-stats", sport, bet.playerName],
