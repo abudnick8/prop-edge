@@ -95,7 +95,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         used,
         remaining,
         resets: resetDate.toISOString(),
-        plan: "free_500",
+        plan: remaining > 5000 ? "paid_20000" : "free_500",
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

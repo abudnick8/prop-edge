@@ -35,7 +35,7 @@ export class MemStorage implements IStorage {
     enableSeasonProps: true,
     notificationsEnabled: true,
     scanIntervalMinutes: 30,
-    oddsApiKey: process.env.ODDS_API_KEY ?? "f54e39712315e81e516157a786fd561a",
+    oddsApiKey: process.env.ODDS_API_KEY ?? "4134e9d0ec483414517b0ae8dea7437c",
     kalshiApiKey: null,
   };
   private notifications: Map<string, Notification> = new Map();

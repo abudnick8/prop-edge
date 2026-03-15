@@ -974,11 +974,11 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
           timeout: 10000,
         });
 
-        // Only future events, up to 8 per sport to conserve quota
+        // Future events — up to 20 per sport (paid key has 20k credits)
         const now = Date.now();
         const upcomingEvents = (events ?? [])
           .filter((e: any) => new Date(e.commence_time).getTime() > now)
-          .slice(0, 8);
+          .slice(0, 20);
 
         console.log(`  ${sportKey}: ${upcomingEvents.length} upcoming events for props`);
 
