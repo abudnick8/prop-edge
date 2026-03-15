@@ -51,11 +51,40 @@ export default function AllBets() {
   const dailyBets = bets.filter((b) => !!b.gameTime);
   const seasonBets = bets.filter((b) => !b.gameTime);
 
+  // Bet type keyword aliases — e.g. "HR" maps to home_run props, "TD" to touchdowns
+  const BET_TYPE_KEYWORDS: Record<string, string[]> = {
+    "HR": ["home run", "home_run", "batter_home_runs"],
+    "TD": ["touchdown", "anytime_td", "anytime td"],
+    "RBI": ["rbi", "batter_rbis"],
+    "K": ["strikeout", "pitcher_strikeouts"],
+    "3PT": ["three", "threes", "player_threes"],
+    "AST": ["assist", "player_assists"],
+    "REB": ["rebound", "player_rebounds"],
+    "PTS": ["point", "player_points"],
+    "SOG": ["shot", "shots_on_goal"],
+    "GOAL": ["goal", "player_goals"],
+  };
+
   // Apply search/sport/type/source/score filters to a list
   function applyFilters(list: Bet[]): Bet[] {
     return list.filter((b) => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || b.title.toLowerCase().includes(q) || (b.playerName ?? "").toLowerCase().includes(q);
+      const q = search.trim().toLowerCase();
+      let matchSearch = true;
+      if (q) {
+        // Check keyword aliases first (e.g. HR, TD, K)
+        const alias = BET_TYPE_KEYWORDS[search.trim().toUpperCase()];
+        const searchTerms = alias ? [q, ...alias] : [q];
+        matchSearch = searchTerms.some((term) =>
+          b.title.toLowerCase().includes(term) ||
+          (b.playerName ?? "").toLowerCase().includes(term) ||
+          (b.homeTeam ?? "").toLowerCase().includes(term) ||
+          (b.awayTeam ?? "").toLowerCase().includes(term) ||
+          (b.description ?? "").toLowerCase().includes(term) ||
+          (b.betType ?? "").toLowerCase().includes(term) ||
+          (b.researchSummary ?? "").toLowerCase().includes(term) ||
+          (b.keyFactors ?? []).some((kf) => kf.toLowerCase().includes(term))
+        );
+      }
       const matchSport = sport === "All" || b.sport === sport;
       const matchType = betType === "All" || b.betType === betType;
       const matchSource = source === "All" || b.source === source;
@@ -205,7 +234,7 @@ export default function AllBets() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search picks, players, teams..."
+          placeholder="Search player, team, or keyword (HR, TD, K, REB, AST...)"
           className="pl-9 bg-card border-border"
           data-testid="input-search"
         />
