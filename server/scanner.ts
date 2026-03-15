@@ -36,11 +36,14 @@ async function fetchKalshiSports(): Promise<InsertBet[]> {
   }
 }
 
-function buildKalshiBet(m: any): InsertBet {
-  const yesPrice = (m.yes_bid ?? m.last_price ?? 50) / 100;
+function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; playerName?: string; gameTime?: Date | null }): InsertBet {
+  // yes_ask_dollars is a dollar-denominated price (e.g. "0.55" = 55 cents = 55%)
+  // Fall back to yes_bid_dollars, last_price_dollars, or 0.5
+  const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
+  const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
   const noPrice = 1 - yesPrice;
-  const sport = detectSport(m.title + " " + m.event_ticker);
-  const betType = detectBetType(m.title);
+  const sport = overrides?.sport ?? detectSport(m.title + " " + (m.event_ticker ?? ""));
+  const betType = overrides?.betType ?? detectBetType(m.title);
   const score = computeConfidence({
     impliedProb: yesPrice,
     source: "kalshi",
@@ -68,8 +71,8 @@ function buildKalshiBet(m: any): InsertBet {
     status: "open",
     homeTeam: null,
     awayTeam: null,
-    playerName: null,
-    gameTime: m.close_time ? new Date(m.close_time) : null,
+    playerName: overrides?.playerName ?? null,
+    gameTime: overrides?.gameTime !== undefined ? overrides.gameTime : (m.close_time ? new Date(m.close_time) : null),
     notificationSent: false,
     playerStats: null,
     teamStats: null,
@@ -77,6 +80,183 @@ function buildKalshiBet(m: any): InsertBet {
     overOdds: null,
     underOdds: null,
   };
+}
+
+// ─── Kalshi WBC markets (targeted series fetch) ───────────────────────────────
+// Fetches WBC game winners, spreads, totals, and MVP awards from Kalshi
+async function fetchKalshiWBC(): Promise<InsertBet[]> {
+  const WBC_SERIES = [
+    { ticker: "KXWBCGAME",   betType: "moneyline",   sport: "MLB" },
+    { ticker: "KXWBCSPREAD", betType: "spread",       sport: "MLB" },
+    { ticker: "KXWBCTOTAL",  betType: "total",        sport: "MLB" },
+    { ticker: "KXWBCMVP",   betType: "season_prop",  sport: "MLB" },
+  ];
+  const bets: InsertBet[] = [];
+
+  for (const { ticker, betType, sport } of WBC_SERIES) {
+    try {
+      const { data } = await axios.get(`${KALSHI_BASE}/markets`, {
+        params: { status: "open", series_ticker: ticker, limit: 50 },
+        timeout: 10000,
+      });
+      const markets = (data?.markets ?? []) as any[];
+
+      // For totals: only keep the single "best" line (closest to 50/50 = most informative)
+      let filtered = markets;
+      if (ticker === "KXWBCTOTAL") {
+        // Group by event_ticker, pick the market closest to 50% yes_ask
+        const byEvent: Record<string, any[]> = {};
+        for (const m of markets) {
+          const ev = m.event_ticker ?? "unknown";
+          if (!byEvent[ev]) byEvent[ev] = [];
+          byEvent[ev].push(m);
+        }
+        filtered = [];
+        for (const group of Object.values(byEvent)) {
+          // Pick the line closest to 50 cents (most uncertain = most interesting to bet)
+          const best = group.reduce((a, b) => {
+            const aP = Math.abs(parseFloat(a.yes_ask_dollars ?? "0.5") - 0.5);
+            const bP = Math.abs(parseFloat(b.yes_ask_dollars ?? "0.5") - 0.5);
+            return aP < bP ? a : b;
+          });
+          filtered.push(best);
+        }
+      }
+
+      // For spreads: only keep -1.5 run lines (most standard)
+      if (ticker === "KXWBCSPREAD") {
+        // Group by event, keep one per team per event (the -1.5 line if available, else closest)
+        const byEvent: Record<string, any[]> = {};
+        for (const m of markets) {
+          const ev = m.event_ticker ?? "unknown";
+          if (!byEvent[ev]) byEvent[ev] = [];
+          byEvent[ev].push(m);
+        }
+        filtered = [];
+        for (const group of Object.values(byEvent)) {
+          // Prefer -1.5 lines (ticker suffix -USA2, -DOM2, -VEN2, -ITA2)
+          const halfRun = group.filter(m => m.ticker.endsWith("2"));
+          filtered.push(...(halfRun.length > 0 ? halfRun : group.slice(0, 2)));
+        }
+      }
+
+      // For MVP: extract player name from title "Will {Player} win World Baseball Classic MVP"
+      for (const m of filtered) {
+        const playerName = betType === "season_prop"
+          ? (m.title.match(/Will ([\w\s.]+?) win/)?.[1]?.trim() ?? null)
+          : null;
+
+        // Enrich title for WBC context
+        const enrichedTitle = betType === "season_prop"
+          ? m.title  // already descriptive
+          : `WBC: ${m.title}`;
+
+        bets.push(buildKalshiBet({ ...m, title: enrichedTitle }, {
+          sport,
+          betType,
+          playerName,
+          gameTime: m.close_time ? new Date(m.close_time) : null,
+        }));
+      }
+    } catch (e: any) {
+      console.warn(`Kalshi WBC ${ticker} fetch error:`, e.message);
+    }
+  }
+
+  console.log(`Kalshi WBC: ${bets.length} markets fetched`);
+  return bets;
+}
+
+// ─── Kalshi Season Award markets (MLB MVP, NFL MVP, NBA MVP) ──────────────────
+// These are season-long "who wins the award" markets = season_prop betType
+async function fetchKalshiSeasonAwards(): Promise<InsertBet[]> {
+  const AWARD_SERIES: Array<{ ticker: string; sport: string; label: string }> = [
+    { ticker: "KXMLBALMVP",  sport: "MLB", label: "AL MVP" },
+    { ticker: "KXMLBNLMVP",  sport: "MLB", label: "NL MVP" },
+    { ticker: "KXNBAMVP",    sport: "NBA", label: "NBA MVP" },
+    { ticker: "KXNFLMVP",    sport: "NFL", label: "NFL MVP" },
+    { ticker: "KXWBCMVP",    sport: "MLB", label: "WBC MVP" },  // also covered in WBC but deduplicated by ID
+  ];
+  const bets: InsertBet[] = [];
+
+  for (const { ticker, sport, label } of AWARD_SERIES) {
+    try {
+      const { data } = await axios.get(`${KALSHI_BASE}/markets`, {
+        params: { status: "open", series_ticker: ticker, limit: 100 },
+        timeout: 10000,
+      });
+      const markets = (data?.markets ?? []) as any[];
+
+      // Filter out TIE/Co-Winners and very low probability (<2%) options to keep signal high
+      const meaningful = markets.filter((m: any) => {
+        const price = parseFloat(m.yes_ask_dollars ?? "0");
+        const isTie = m.ticker.includes("-TIE");
+        return !isTie && price >= 0.02; // at least 2% implied probability
+      });
+
+      // Sort by yes_ask descending (highest probability first) and take top 15
+      meaningful.sort((a: any, b: any) => parseFloat(b.yes_ask_dollars ?? "0") - parseFloat(a.yes_ask_dollars ?? "0"));
+      const top = meaningful.slice(0, 15);
+
+      for (const m of top) {
+        // Extract player name from: "Will {Player} win {label}?" or "Who will win MVP?"
+        const playerName =
+          m.title.match(/Will ([\w\s.'\-Jr.]+?) win/)?.[1]?.trim() ??
+          m.title.match(/Will ([\w\s.'\-Jr.]+?)\?/)?.[1]?.trim() ??
+          null;
+
+        // Build a clean descriptive title
+        const cleanTitle = playerName
+          ? `${playerName} wins ${label}`
+          : m.title;
+
+        const price = parseFloat(m.yes_ask_dollars ?? "0.05");
+        const score = computeConfidence({
+          impliedProb: price,
+          source: "kalshi",
+          betType: "season_prop",
+          sport,
+          title: cleanTitle,
+        });
+
+        bets.push({
+          id: `kalshi-${m.ticker}`,
+          source: "kalshi",
+          sport,
+          betType: "season_prop",
+          title: cleanTitle,
+          description: `Kalshi prediction market: ${m.title} | Implied probability: ${Math.round(price * 100)}%`,
+          yesPrice: price,
+          noPrice: 1 - price,
+          impliedProbability: price,
+          confidenceScore: score.score,
+          riskLevel: score.risk,
+          recommendedAllocation: score.allocation,
+          keyFactors: [`Kalshi market implied prob: ${Math.round(price * 100)}%`, `Award: ${label}`, ...score.factors],
+          researchSummary: score.summary,
+          isHighConfidence: score.score >= 80,
+          status: "open",
+          homeTeam: null,
+          awayTeam: null,
+          playerName,
+          gameTime: null, // season awards have no game time
+          notificationSent: false,
+          playerStats: null,
+          teamStats: null,
+          line: null,
+          overOdds: null,
+          underOdds: null,
+        });
+      }
+
+      console.log(`Kalshi ${label}: ${top.length} award markets`);
+    } catch (e: any) {
+      console.warn(`Kalshi season awards ${ticker} fetch error:`, e.message);
+    }
+  }
+
+  console.log(`Kalshi Season Awards total: ${bets.length} markets`);
+  return bets;
 }
 
 // ─── ActionNetwork API ────────────────────────────────────────────────────────
@@ -1486,16 +1666,20 @@ function detectSport(text: string): string {
   const t = text.toLowerCase();
   if (t.includes("nfl") || t.includes("football") || t.includes("qb") || t.includes("touchdown") || t.includes("rushing") || t.includes("passing")) return "NFL";
   if (t.includes("nba") || t.includes("basketball") || t.includes("points") || t.includes("rebounds") || t.includes("assists")) return "NBA";
-  if (t.includes("mlb") || t.includes("baseball") || t.includes("strikeout") || t.includes("innings") || t.includes("hits")) return "MLB";
+  // WBC must be checked before generic MLB since WBC titles don't say "mlb"
+  if (t.includes("world baseball classic") || t.includes("wbc") || t.includes("kxwbc")) return "MLB";
+  if (t.includes("mlb") || t.includes("baseball") || t.includes("strikeout") || t.includes("innings") || t.includes("hits") || t.includes("runs")) return "MLB";
   if (t.includes("nhl") || t.includes("hockey") || t.includes("goals") || t.includes("puck")) return "NHL";
   return "Other";
 }
 
 function detectBetType(text: string): string {
   const t = text.toLowerCase();
-  if (t.includes("over") || t.includes("under") || t.includes("more than") || t.includes("less than") || t.includes("yds") || t.includes("points") || t.includes("prop")) return "player_prop";
-  if (t.includes("cover") || t.includes("spread") || t.includes("+") || t.match(/[-+]\d+\.5/)) return "spread";
-  if (t.includes("total") || t.includes("o/u")) return "total";
+  // Season-long awards and futures
+  if (t.includes("win mvp") || t.includes("wins mvp") || t.includes("win al mvp") || t.includes("win nl mvp") || t.includes("win nba mvp") || t.includes("win nfl mvp") || t.includes("win the mvp") || t.includes("win world baseball classic mvp") || t.includes("cy young") || t.includes("rookie of the year") || t.includes("wins award") || t.includes("world series") || t.includes("championship winner")) return "season_prop";
+  if (t.includes("over") || t.includes("under") || t.includes("more than") || t.includes("less than") || t.includes("yds") || t.includes("prop")) return "player_prop";
+  if (t.includes("cover") || t.includes("spread") || t.includes("wins by over") || t.match(/[-+]\d+\.5/)) return "spread";
+  if (t.includes("total") || t.includes("total runs") || t.includes("o/u")) return "total";
   return "moneyline";
 }
 
@@ -1742,13 +1926,26 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   // Fetch all live sources in parallel
   // Underdog and SGO removed — Odds API is the sole player prop source (reliable on all servers)
-  const [kalshi, poly, actionNet] = await Promise.all([
+  const [kalshi, kalshiWBC, kalshiAwards, poly, actionNet] = await Promise.all([
     fetchKalshiSports(),
+    fetchKalshiWBC(),
+    fetchKalshiSeasonAwards(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
   ]);
 
-  results.push(...kalshi, ...poly, ...actionNet);
+  // Merge all Kalshi results, deduplicating by ID (WBC MVP appears in both WBC and Awards)
+  const kalshiAll = [...kalshi];
+  const kalshiIds = new Set(kalshiAll.map(b => b.id));
+  for (const b of [...kalshiWBC, ...kalshiAwards]) {
+    if (!kalshiIds.has(b.id)) {
+      kalshiAll.push(b);
+      kalshiIds.add(b.id);
+    }
+  }
+
+  results.push(...kalshiAll, ...poly, ...actionNet);
+  console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards = ${kalshiAll.length} unique`);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
