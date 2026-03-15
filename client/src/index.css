@@ -91,7 +91,8 @@
     font-family: var(--font-body);
     font-size: 0.9375rem;
     line-height: 1.6;
-    min-height: 100dvh;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
     /* Cosmic space background */
     background: radial-gradient(ellipse at 20% 10%, rgba(139,92,246,0.12) 0%, transparent 50%),
                 radial-gradient(ellipse at 80% 80%, rgba(245,158,11,0.07) 0%, transparent 50%),
