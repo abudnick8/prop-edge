@@ -6,9 +6,3 @@ buildCommand = "npm ci && npm run build"
 startCommand = "node dist/index.cjs"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[nixpacks]
-aptPkgs = []
-
-[nixpacks.environment]
-NODE_VERSION = "20"
