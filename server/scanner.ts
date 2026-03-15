@@ -380,6 +380,139 @@ const SEASON_FUTURES_KEYS = [
 // Season prop analysis is delivered through championship outrights (World Series winner,
 // NBA title winner, etc.) which are confirmed active and return real lines.
 
+// ─── Apify DraftKings DFS — player salary/value boosts ─────────────────────────────────
+// Runs DraftKings DFS actor to get player salaries — high salary = implied high value/usage.
+// Returns a map of playerName (lowercase) → { salary, sport }.
+// One Apify call per scan, budget-aware (skips if quota would exceed $5/mo).
+const APIFY_ACTOR_ID = "0ZaPR6PaZu03JW9ov"; // DraftKings DFS scraper
+const APIFY_BASE = "https://api.apify.com/v2";
+
+// In-memory cache to avoid re-running Apify on every scan (30-min TTL)
+let apifyDFSCache: { data: Map<string, { salary: number; sport: string }>; ts: number } | null = null;
+const APIFY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+async function fetchApifyDFSSalaries(apifyKey: string): Promise<Map<string, { salary: number; sport: string }>> {
+  const now = Date.now();
+  if (apifyDFSCache && now - apifyDFSCache.ts < APIFY_CACHE_TTL) {
+    console.log(`[Apify] Using cached DFS salary data (${apifyDFSCache.data.size} players)`);
+    return apifyDFSCache.data;
+  }
+
+  const salaryMap = new Map<string, { salary: number; sport: string }>();
+  const sports = ["NBA", "NHL", "MLB", "NFL"];
+
+  try {
+    // Check monthly budget before running
+    const limitsRes = await axios.get(`${APIFY_BASE}/users/me/limits`, {
+      params: { token: apifyKey }, timeout: 5000,
+    });
+    const current = limitsRes.data?.data?.current?.monthlyUsageUsd ?? 0;
+    const limit = limitsRes.data?.data?.limits?.maxMonthlyUsageUsd ?? 5;
+    if (current > limit * 0.9) {
+      console.log(`[Apify] Budget near limit ($${current.toFixed(2)}/$${limit}) — skipping DFS fetch`);
+      return salaryMap;
+    }
+
+    // Run actor for each sport in parallel (budget: ~$0.30 each, ~$1.20 total)
+    const runs = await Promise.allSettled(
+      sports.map(sport =>
+        axios.post(
+          `${APIFY_BASE}/acts/${APIFY_ACTOR_ID}/runs`,
+          { sport },
+          { params: { token: apifyKey, waitForFinish: 45 }, timeout: 55000 }
+        )
+      )
+    );
+
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      const sport = sports[i];
+      if (run.status !== "fulfilled") {
+        console.warn(`[Apify] ${sport} run failed:`, (run as PromiseRejectedResult).reason?.message);
+        continue;
+      }
+      const dsId = run.value.data?.data?.defaultDatasetId;
+      if (!dsId) continue;
+
+      const itemsRes = await axios.get(`${APIFY_BASE}/datasets/${dsId}/items`, {
+        params: { token: apifyKey, limit: 500, clean: true }, timeout: 10000,
+      });
+      const items: any[] = itemsRes.data ?? [];
+
+      for (const item of items) {
+        if (item.type !== "player" || !item.playerName || !item.salary) continue;
+        const key = item.playerName.toLowerCase();
+        const existing = salaryMap.get(key);
+        if (!existing || item.salary > existing.salary) {
+          salaryMap.set(key, { salary: item.salary, sport });
+        }
+      }
+      console.log(`[Apify] ${sport}: loaded ${items.filter((x:any) => x.type === 'player').length} player salaries`);
+    }
+
+    apifyDFSCache = { data: salaryMap, ts: Date.now() };
+    console.log(`[Apify] Total DFS salary map: ${salaryMap.size} players`);
+  } catch (e: any) {
+    console.warn("[Apify] DFS fetch error:", e.message);
+  }
+
+  return salaryMap;
+}
+
+/**
+ * Boost confidence scores for player props where the player has a high DFS salary.
+ * High salary = DraftKings implies high projected usage/performance.
+ */
+function applyApifyDFSBoosts(
+  bets: InsertBet[],
+  salaryMap: Map<string, { salary: number; sport: string }>
+): InsertBet[] {
+  if (salaryMap.size === 0) return [...bets]; // Return a copy to prevent mutation bugs
+
+  // Per-sport salary thresholds for bonuses
+  const thresholds: Record<string, { top: number; mid: number }> = {
+    NBA: { top: 8000, mid: 6000 },
+    NHL: { top: 7000, mid: 5500 },
+    MLB: { top: 5000, mid: 3800 },
+    NFL: { top: 8000, mid: 6000 },
+  };
+
+  return bets.map(bet => {
+    if (bet.betType !== "player_prop") return bet;
+    const ts = bet.teamStats as any;
+    const pName = (ts?.playerName ?? bet.playerName ?? "").toLowerCase();
+    if (!pName) return bet;
+
+    const entry = salaryMap.get(pName);
+    if (!entry) return bet;
+
+    const thresh = thresholds[entry.sport] ?? { top: 7000, mid: 5000 };
+    let boost = 0;
+    let factor = "";
+
+    if (entry.salary >= thresh.top) {
+      boost = 8;
+      factor = `DraftKings DFS elite salary ($${entry.salary.toLocaleString()}) — top-tier projected usage`;
+    } else if (entry.salary >= thresh.mid) {
+      boost = 4;
+      factor = `DraftKings DFS solid salary ($${entry.salary.toLocaleString()}) — good projected value`;
+    } else {
+      boost = 1;
+      factor = `DraftKings DFS active ($${entry.salary.toLocaleString()})  — confirmed in game slate`;
+    }
+
+    const newScore = Math.min(99, (bet.confidenceScore ?? 50) + boost);
+    const newFactors = [...((bet.keyFactors as string[]) ?? []), factor];
+
+    return {
+      ...bet,
+      confidenceScore: newScore,
+      isHighConfidence: newScore >= 80,
+      keyFactors: newFactors,
+    };
+  });
+}
+
 // ─── Underdog Fantasy public API (player props — no key required) ──────────
 // Returns 5000+ active player props across NBA, NHL, MLB, NFL, WBC, PGA, MMA
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
@@ -478,13 +611,13 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
       const game = gameMap.get(appearance.match_id);
       if (!game) continue;
 
-      // Skip in-progress and finished games
-      if (game.status === "complete" || game.status === "in_progress") continue;
+      // Skip only completed/cancelled games — keep in-progress (live props still bettable)
+      if (game.status === "complete" || game.status === "cancelled") continue;
 
       const gameTime = game.scheduled_at ? new Date(game.scheduled_at).toISOString() : null;
 
-      // Skip if game already started
-      if (gameTime && new Date(gameTime).getTime() < now) continue;
+      // Skip if game started more than 4 hours ago (props likely settled)
+      if (gameTime && new Date(gameTime).getTime() < now - 4 * 60 * 60 * 1000) continue;
 
       const playerName = `${player.first_name} ${player.last_name}`;
       const statName = appearanceStat.display_stat ?? statDisplayMap[appearanceStat.stat] ?? appearanceStat.stat ?? "Prop";
@@ -1229,9 +1362,11 @@ function americanToImplied(odds: number): number {
 // Drop any market whose close/game time is already in the past.
 function filterStale(bets: InsertBet[]): InsertBet[] {
   const now = Date.now();
+  const GRACE_MS = 4 * 60 * 60 * 1000; // 4-hour grace — keep in-progress/live game props
   return bets.filter((b) => {
     if (!b.gameTime) return true; // no time info — keep (e.g. futures)
-    return new Date(b.gameTime).getTime() > now;
+    // Keep if game starts in future OR started within the last 4 hours (live/in-progress)
+    return new Date(b.gameTime).getTime() > now - GRACE_MS;
   });
 }
 
@@ -1258,6 +1393,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   ]);
 
   results.push(...kalshi, ...poly, ...actionNet, ...underdog);
+
+  // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
+  const apifyKey = process.env.APIFY_API_KEY ?? null;
+  if (apifyKey) {
+    const salaryMap = await fetchApifyDFSSalaries(apifyKey);
+    const boosted = applyApifyDFSBoosts(results, salaryMap);
+    results.length = 0;
+    results.push(...boosted);
+  }
 
   // Add Odds API data if key provided
   if (apiKey) {
