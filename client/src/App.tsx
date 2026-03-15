@@ -7,6 +7,7 @@ import Dashboard from "@/pages/Dashboard";
 import AllBets from "@/pages/AllBets";
 import BetDetail from "@/pages/BetDetail";
 import Settings from "@/pages/Settings";
+import TrackedProps from "@/pages/TrackedProps";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -19,6 +20,7 @@ function Router() {
         <Route path="/bets" component={AllBets} />
         <Route path="/bets/:id" component={BetDetail} />
         <Route path="/settings" component={Settings} />
+        <Route path="/tracker" component={TrackedProps} />
         <Route component={NotFound} />
       </Switch>
     </WouterRouter>
