@@ -471,12 +471,49 @@ function StatCard({ label, value, icon, highlight = false, loading = false, emoj
 // ── Ask a Question ──────────────────────────────────────────────────────────
 
 const EXAMPLE_QUESTIONS = [
-  "Should I bet on LeBron over 25.5 points?",
-  "Is the Yankees moneyline a good bet tonight?",
-  "Best NBA player prop for tonight?",
-  "Should I bet the over on the Chiefs game?",
+  "Build me a 4 player NBA parlay for today's games",
+  "Best NBA player props for tonight?",
+  "Should I bet on LeBron over 25.5 points tonight?",
   "Any high confidence MLB props today?",
+  "Give me a 3-leg parlay under $50",
 ];
+
+// Render answer text: bold **text**, line breaks, and leg separators
+function AnswerText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        // Parse **bold** segments
+        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+        const isLegLine = /^\*\*Leg \d+:/i.test(line);
+        const isVerdictLine = /^(🔥|⚠️|❌|✅)\s+(STRONG|MODERATE|HIGH RISK|PARLAY)/.test(line);
+        const isWhyLine = /^\s+Why:/i.test(line) || line.trim().startsWith("Why:");
+        const isConfLine = /Confidence:/.test(line) && /\/100/.test(line);
+        return (
+          <p key={i}
+            className={`text-sm leading-relaxed ${
+              isLegLine ? "font-bold mt-3 first:mt-0" : ""
+            } ${
+              isVerdictLine ? "font-bold text-base" : ""
+            } ${
+              isWhyLine ? "text-xs opacity-70 pl-3" : ""
+            } ${
+              isConfLine ? "text-xs opacity-80 pl-3" : ""
+            }`}
+            style={isLegLine ? { color: "hsl(43 100% 72%)" } : undefined}>
+            {parts.map((part, j) =>
+              part.startsWith("**") && part.endsWith("**")
+                ? <strong key={j} style={{ color: "hsl(43 100% 85%)" }}>{part.slice(2, -2)}</strong>
+                : <span key={j}>{part}</span>
+            )}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 function AskSection() {
   const [question, setQuestion] = useState("");
@@ -552,36 +589,58 @@ function AskSection() {
                     <Sparkles size={10} className="text-primary" />
                   </div>
                   <div className="flex-1 max-w-[90%] space-y-2">
-                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                      {item.a}
+                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-foreground">
+                      <AnswerText text={item.a} />
                     </div>
                     {item.relatedBets?.length > 0 && (
                       <div className="space-y-2 pl-1">
-                        <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                          <TrendingUp size={11} className="text-primary" />
-                          Related bets — by confidence
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
-                        </p>
-                        {item.relatedBets.map((bet: any) => {
+                        {/* Label: parlay legs vs similar bets */}
+                        {item.relatedBets[0]?.similarityReason === "parlay leg" ? (
+                          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            🏆 Parlay legs — tap to view full details
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <TrendingUp size={11} className="text-primary" />
+                            Similar bets — same player, team, or bet type
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
+                          </p>
+                        )}
+                        {item.relatedBets.map((bet: any, legIdx: number) => {
                           const conf = bet.confidenceScore ?? 0;
                           const confColor = conf >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 65 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
-                          const verdict = conf >= 80 ? "✅" : conf >= 65 ? "⚠️" : "❌";
+                          const verdict = conf >= 80 ? "✅ Strong" : conf >= 65 ? "⚠️ Moderate" : "❌ Risky";
+                          const isParlay = bet.similarityReason === "parlay leg";
                           const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? "+" + n : "" + n);
+                          const matchup = bet.homeTeam && bet.awayTeam ? `${bet.awayTeam} @ ${bet.homeTeam}` : null;
                           return (
-                            <div key={bet.id} className="p-3 rounded-xl border border-border bg-muted/20 space-y-1">
+                            <div key={bet.id} className="p-3 rounded-xl border bg-muted/20 space-y-1.5"
+                              style={{ borderColor: isParlay ? "hsl(43 100% 50% / 0.25)" : undefined }}>
                               <div className="flex items-center gap-1.5 flex-wrap">
+                                {isParlay && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{ background: "hsl(43 100% 50% / 0.15)", color: "hsl(43 100% 65%)", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
+                                    LEG {legIdx + 1}
+                                  </span>
+                                )}
                                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">{bet.sport}</span>
+                                {bet.betType === "player_prop" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">PROP</span>}
                                 <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${confColor}`}>{conf}/100</span>
-                                <span className="text-xs">{verdict}</span>
+                                <span className="text-[10px] text-muted-foreground">{verdict}</span>
                               </div>
                               <p className="text-xs font-semibold text-foreground leading-tight">{bet.title}</p>
+                              {matchup && <p className="text-[10px] text-muted-foreground">🏀 {matchup}</p>}
                               {(bet.line != null || bet.overOdds != null) && (
                                 <p className="text-[10px] text-muted-foreground">
-                                  {bet.line != null && `Line: ${bet.line}  `}
-                                  {bet.overOdds != null && `Over: ${fmtOdds(bet.overOdds)}  Under: ${fmtOdds(bet.underOdds)}`}
+                                  {bet.line != null && <span>Line: <strong>{bet.line}</strong>  </span>}
+                                  {bet.overOdds != null && <span>Over: {fmtOdds(bet.overOdds)}  Under: {fmtOdds(bet.underOdds)}</span>}
                                 </p>
                               )}
-                              {bet.keyFactors?.[0] && <p className="text-[10px] text-muted-foreground line-clamp-1">{bet.keyFactors[0]}</p>}
+                              {bet.keyFactors?.[0] && <p className="text-[10px] text-muted-foreground line-clamp-2">{bet.keyFactors[0]}</p>}
+                              {!isParlay && bet.similarityReason && bet.similarityReason !== "direct match" && (
+                                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.08)", color: "rgba(245,158,11,0.7)" }}>↗ {bet.similarityReason}</span>
+                              )}
                             </div>
                           );
                         })}
