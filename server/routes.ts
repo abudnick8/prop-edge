@@ -363,8 +363,30 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       const bets = await storage.getBets();
       const q = question.toLowerCase();
+      const byConf = (a: any, b: any) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
 
-      // ── Step 1: Score each bet for direct relevance to the question ──
+      // ─── Intent Detection ────────────────────────────────────────────────────────
+      // Detect parlay requests: "build me a 4 player parlay", "4 leg parlay", "parlay for tonight"
+      const parlayMatch = q.match(/(?:build|give|make|create|suggest|find|pick).*?(\d+)[- ]?(?:leg|player|pick|team|bet)?.*?parlay/i)
+        ?? q.match(/parlay.*?(\d+)[- ]?(?:leg|player|pick|team|bet)/i)
+        ?? q.match(/(\d+)[- ]?(?:leg|player|pick|team|bet)[- ]?parlay/i);
+      const isParlayRequest = !!parlayMatch || q.includes("parlay");
+      const parlayLegs = parlayMatch ? parseInt(parlayMatch[1]) : (q.includes("parlay") ? 4 : 0);
+
+      // Detect sport filter from question
+      const sportFilter = q.includes("nba") || q.includes("basketball") ? "NBA"
+        : q.includes("nfl") || q.includes("football") ? "NFL"
+        : q.includes("mlb") || q.includes("baseball") ? "MLB"
+        : q.includes("nhl") || q.includes("hockey") ? "NHL" : null;
+
+      // Detect if asking about best/top picks generally
+      const isTopPicksRequest = !isParlayRequest && (
+        q.includes("best") || q.includes("top") || q.includes("recommend") ||
+        q.includes("tonight") || q.includes("today") || q.includes("right now") ||
+        q.includes("what should") || q.includes("which bet") || q.includes("good bet")
+      ) && !q.match(/\b(is|should i|would|will|does|did|can|could)\b/);
+
+      // Score all bets by relevance to the question
       const words = q.split(/\s+/).filter((w) => w.length > 2);
       const scored = bets.map((b) => {
         let score = 0;
@@ -373,165 +395,226 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           b.sport, b.betType, b.source, b.researchSummary,
           ...(b.keyFactors ?? []),
         ].map((f) => (f ?? "").toLowerCase());
-
-        for (const f of fields) {
-          for (const word of words) {
-            if (f.includes(word)) score += 1;
-          }
-        }
-        // Exact player name match = big boost
-        if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) score += 3;
-        // Exact team match = big boost
+        for (const f of fields) for (const word of words) if (f.includes(word)) score += 1;
+        if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) score += 4;
         if ((b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) ||
-            (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w)))) score += 3;
+            (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w)))) score += 4;
         if (b.betType === "player_prop") score += 0.5;
         if ((b.confidenceScore ?? 0) >= 80) score += 1;
+        // Sport filter bonus
+        if (sportFilter && b.sport === sportFilter) score += 3;
         return { bet: b, score };
-      });
-
-      const byScore = [...scored].sort((a, b) => b.score - a.score || (b.bet.confidenceScore ?? 0) - (a.bet.confidenceScore ?? 0));
-      const topDirect = byScore.filter((s) => s.score > 0).slice(0, 4).map((s) => s.bet);
-
-      // Primary context for AI analysis
-      const context = topDirect.length > 0
-        ? topDirect
-        : bets.filter((b) => (b.confidenceScore ?? 0) >= 75).slice(0, 6);
-
-      // ── Step 2: Build "similar bets" from three pools ──
-      const topBet = context[0];
-      const byConf = (a: any, b: any) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
-      const seen = new Set(context.map((b) => b.id));
-
-      // Pool A: same player or same team (most specific)
-      const poolA = bets.filter((b) => {
-        if (seen.has(b.id)) return false;
-        if (topBet?.playerName && b.playerName &&
-            b.playerName.toLowerCase().includes(topBet.playerName.split(" ")[0].toLowerCase())) return true;
-        if (topBet?.homeTeam && b.homeTeam === topBet.homeTeam) return true;
-        if (topBet?.awayTeam && b.awayTeam === topBet.awayTeam) return true;
-        // Also match any question word against player/team name
-        if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) return true;
-        if (b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) return true;
-        if (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w))) return true;
-        return false;
-      }).sort(byConf).slice(0, 3);
-      poolA.forEach((b) => seen.add(b.id));
-
-      // Pool B: same bet type + same sport (e.g. other NBA player_prop points)
-      const poolB = bets.filter((b) => {
-        if (seen.has(b.id)) return false;
-        if (b.betType !== (topBet?.betType ?? "player_prop")) return false;
-        if (topBet?.sport && b.sport !== topBet.sport) return false;
-        return (b.confidenceScore ?? 0) >= 75;
-      }).sort(byConf).slice(0, 3);
-      poolB.forEach((b) => seen.add(b.id));
-
-      // Pool C: fill remaining with high-confidence props from same sport
-      const poolC = bets.filter((b) => {
-        if (seen.has(b.id)) return false;
-        if (topBet?.sport && b.sport !== topBet.sport) return false;
-        return b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 80;
-      }).sort(byConf).slice(0, 2);
-
-      // Combine: direct matches first, then similar by player/team, then by type, then by sport
-      const similarBets = [...context, ...poolA, ...poolB, ...poolC]
-        .filter((b, i, arr) => arr.findIndex((x) => x.id === b.id) === i) // dedupe
-        .sort(byConf)
-        .slice(0, 6)
-        .map((b) => ({
-          id: b.id,
-          title: b.title,
-          sport: b.sport,
-          betType: b.betType,
-          playerName: b.playerName ?? null,
-          homeTeam: b.homeTeam ?? null,
-          awayTeam: b.awayTeam ?? null,
-          confidenceScore: b.confidenceScore ?? null,
-          riskLevel: b.riskLevel ?? null,
-          line: b.line ?? null,
-          overOdds: b.overOdds ?? null,
-          underOdds: b.underOdds ?? null,
-          recommendedAllocation: b.recommendedAllocation ?? null,
-          keyFactors: (b.keyFactors ?? []).slice(0, 2),
-          gameTime: b.gameTime ?? null,
-          similarityReason: seen.has(b.id) && context.some((c) => c.id === b.id)
-            ? "direct match"
-            : poolA.some((p) => p.id === b.id) ? "same player/team"
-            : poolB.some((p) => p.id === b.id) ? "same bet type"
-            : "high confidence pick",
-        }));
-
-      const contextText = context.map((b, i) => {
-        const line = b.line != null ? ` | Line: ${b.line}` : "";
-        const over = b.overOdds != null ? ` | Over: ${b.overOdds > 0 ? "+" : ""}${b.overOdds}` : "";
-        const under = b.underOdds != null ? ` | Under: ${b.underOdds > 0 ? "+" : ""}${b.underOdds}` : "";
-        const conf = ` | Confidence: ${b.confidenceScore ?? "?"}/100`;
-        const risk = b.riskLevel ? ` | Risk: ${b.riskLevel}` : "";
-        const alloc = b.recommendedAllocation ? ` | Suggested: ${b.recommendedAllocation}% bankroll` : "";
-        const factors = b.keyFactors?.length ? `\n   Key factors: ${b.keyFactors.slice(0, 3).join("; ")}` : "";
-        const research = b.researchSummary ? `\n   Analysis: ${b.researchSummary.slice(0, 200)}` : "";
-        const player = b.playerName ? ` | Player: ${b.playerName}` : "";
-        const matchup = b.awayTeam && b.homeTeam ? ` | ${b.awayTeam} @ ${b.homeTeam}` : "";
-        return `${i + 1}. [${b.sport} ${b.betType}] ${b.title}${player}${matchup}${line}${over}${under}${conf}${risk}${alloc}${factors}${research}`;
-      }).join("\n\n");
+      }).sort((a, b) => b.score - a.score || byConf(a.bet, b.bet));
 
       const totalBets = bets.length;
       const propCount = bets.filter((b) => b.betType === "player_prop").length;
       const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 80).length;
 
-      const systemPrompt = `You are PropEdge, an expert sports betting analyst with access to live odds from DraftKings, FanDuel, BetMGM, and William Hill. Analyze bets using confidence scores, implied probability, line values, and key statistical factors. Be direct, concise (3-5 sentences), and always cite the confidence score. If no matching bet is in the data, say so honestly.`;
+      // Helper: format a single bet for display/text
+      function betSummary(b: any, idx: number): string {
+        const line = b.line != null ? ` | Line: ${b.line}` : "";
+        const over = b.overOdds != null ? ` | Over: ${b.overOdds > 0 ? "+" : ""}${b.overOdds}` : "";
+        const under = b.underOdds != null ? ` / Under: ${b.underOdds > 0 ? "+" : ""}${b.underOdds}` : "";
+        const conf = ` | Conf: ${b.confidenceScore ?? "?"}/100`;
+        const risk = b.riskLevel ? ` | Risk: ${b.riskLevel}` : "";
+        const matchup = b.awayTeam && b.homeTeam ? ` | ${b.awayTeam} @ ${b.homeTeam}` : "";
+        const factors = b.keyFactors?.length ? `\n   Why: ${b.keyFactors.slice(0, 3).join("; ")}` : "";
+        return `${idx}. [${b.sport} ${b.betType}] ${b.title}${matchup}${line}${over}${under}${conf}${risk}${factors}`;
+      }
 
-      const userPrompt = `Live database: ${totalBets} bets, ${propCount} player props, ${highConfCount} high-confidence (80+/100).
+      // Helper: serialize a bet for the relatedBets response
+      function serializeBet(b: any, reason: string) {
+        return {
+          id: b.id, title: b.title, sport: b.sport, betType: b.betType,
+          playerName: b.playerName ?? null, homeTeam: b.homeTeam ?? null, awayTeam: b.awayTeam ?? null,
+          confidenceScore: b.confidenceScore ?? null, riskLevel: b.riskLevel ?? null,
+          line: b.line ?? null, overOdds: b.overOdds ?? null, underOdds: b.underOdds ?? null,
+          recommendedAllocation: b.recommendedAllocation ?? null,
+          keyFactors: (b.keyFactors ?? []).slice(0, 2),
+          gameTime: b.gameTime ?? null,
+          similarityReason: reason,
+        };
+      }
 
-Most relevant bets from live data:
-${contextText || "No direct matches found in current data."}
+      let answer: string;
+      let relatedBets: any[] = [];
+
+      // ─── PARLAY MODE ────────────────────────────────────────────────────────
+      if (isParlayRequest) {
+        const n = Math.min(Math.max(parlayLegs, 2), 8); // clamp 2-8 legs
+
+        // Pick the top N bets, filtered by sport if specified, prioritizing props
+        let pool = bets.filter((b) => {
+          if (sportFilter && b.sport !== sportFilter) return false;
+          return (b.confidenceScore ?? 0) >= 70;
+        }).sort(byConf);
+
+        // Prefer player props if "player parlay" was mentioned
+        if (q.includes("player")) {
+          const props = pool.filter((b) => b.betType === "player_prop");
+          if (props.length >= n) pool = props;
+        }
+
+        // Deduplicate: no two legs from same player
+        const legs: any[] = [];
+        const usedPlayers = new Set<string>();
+        const usedGames = new Map<string, number>(); // gameKey -> count
+        for (const b of pool) {
+          if (legs.length >= n) break;
+          // Skip duplicate same player
+          if (b.playerName && usedPlayers.has(b.playerName.toLowerCase())) continue;
+          // Max 2 legs from same game
+          const gameKey = [b.homeTeam, b.awayTeam].filter(Boolean).sort().join("|");
+          if (gameKey && (usedGames.get(gameKey) ?? 0) >= 2) continue;
+          legs.push(b);
+          if (b.playerName) usedPlayers.add(b.playerName.toLowerCase());
+          if (gameKey) usedGames.set(gameKey, (usedGames.get(gameKey) ?? 0) + 1);
+        }
+
+        // Fallback: if not enough legs with filters, add top high-conf bets
+        if (legs.length < n) {
+          const fallback = bets.filter((b) => !legs.find((l) => l.id === b.id) && (b.confidenceScore ?? 0) >= 65)
+            .sort(byConf).slice(0, n - legs.length);
+          legs.push(...fallback);
+        }
+
+        relatedBets = legs.map((b) => serializeBet(b, "parlay leg"));
+
+        // Build the written answer
+        const sportLabel = sportFilter ? sportFilter : "multi-sport";
+        const legsText = legs.map((b, i) => {
+          const conf = b.confidenceScore ?? 0;
+          const verdict = conf >= 85 ? "✅ Strong" : conf >= 75 ? "⚠️ Moderate" : "⚠️ Risky";
+          const line = b.line != null ? ` (Line: ${b.line})` : "";
+          const odds = b.overOdds != null
+            ? ` — Over ${b.overOdds > 0 ? "+" : ""}${b.overOdds} / Under ${b.underOdds ?? "?"}` : "";
+          const matchup = b.awayTeam && b.homeTeam ? `\n   🏀 ${b.awayTeam} @ ${b.homeTeam}` : "";
+          const why = b.keyFactors?.slice(0, 2).join("; ") ?? b.researchSummary?.slice(0, 120) ?? "Market consensus";
+          return `**Leg ${i + 1}: ${b.title}**${line}${odds}\n   Confidence: ${conf}/100 ${verdict}${matchup}\n   Why: ${why}`;
+        }).join("\n\n");
+
+        const avgConf = legs.length ? Math.round(legs.reduce((s, b) => s + (b.confidenceScore ?? 0), 0) / legs.length) : 0;
+        const combinedVerdict = avgConf >= 82 ? "🔥 STRONG PARLAY" : avgConf >= 72 ? "⚠️ MODERATE PARLAY" : "❌ HIGH RISK PARLAY";
+
+        answer = `${combinedVerdict} — ${n}-Leg ${sportLabel} Parlay (avg confidence: ${avgConf}/100)\n\n${legsText}\n\n⚠️ Parlay reminder: each leg must hit. The more legs, the higher the payout but lower the overall probability. Consider splitting into 2-leg parlays to reduce risk.`;
+
+      // ─── SPECIFIC BET / PLAYER / TEAM QUESTION MODE ──────────────────────────
+      } else {
+        const topDirect = scored.filter((s) => s.score > 0).slice(0, Math.max(4, isTopPicksRequest ? 6 : 4));
+        const context = topDirect.length > 0
+          ? topDirect.map((s) => s.bet)
+          : bets.filter((b) => {
+              if (sportFilter && b.sport !== sportFilter) return false;
+              return (b.confidenceScore ?? 0) >= 78;
+            }).sort(byConf).slice(0, 5);
+
+        const contextText = context.map((b, i) => betSummary(b, i + 1)).join("\n\n");
+
+        // Build similar bets for the cards panel (different from the main context)
+        const seen = new Set(context.map((b) => b.id));
+        const topBet = context[0];
+        const poolA = bets.filter((b) => {
+          if (seen.has(b.id)) return false;
+          if (topBet?.playerName && b.playerName &&
+              b.playerName.toLowerCase().includes(topBet.playerName.split(" ")[0].toLowerCase())) return true;
+          if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) return true;
+          if (b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) return true;
+          if (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w))) return true;
+          return false;
+        }).sort(byConf).slice(0, 3);
+        poolA.forEach((b) => seen.add(b.id));
+
+        const poolB = bets.filter((b) => {
+          if (seen.has(b.id)) return false;
+          if (b.betType !== (topBet?.betType ?? "player_prop")) return false;
+          if (topBet?.sport && b.sport !== topBet.sport) return false;
+          return (b.confidenceScore ?? 0) >= 75;
+        }).sort(byConf).slice(0, 3);
+        poolB.forEach((b) => seen.add(b.id));
+
+        const poolC = bets.filter((b) => {
+          if (seen.has(b.id)) return false;
+          if (sportFilter && b.sport !== sportFilter) return false;
+          return b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 80;
+        }).sort(byConf).slice(0, 2);
+
+        relatedBets = [...context, ...poolA, ...poolB, ...poolC]
+          .filter((b, i, arr) => arr.findIndex((x) => x.id === b.id) === i)
+          .sort(byConf).slice(0, 6)
+          .map((b) => serializeBet(
+            b,
+            context.some((c) => c.id === b.id) ? "direct match"
+              : poolA.some((p) => p.id === b.id) ? "same player/team"
+              : poolB.some((p) => p.id === b.id) ? "same bet type" : "high confidence pick"
+          ));
+
+        const openaiKey = process.env.OPENAI_API_KEY;
+
+        if (openaiKey) {
+          const axiosLib = (await import("axios")).default;
+          const systemPrompt = `You are PropEdge, an expert sports betting analyst with access to live odds from DraftKings, FanDuel, BetMGM, and William Hill. Answer the user's EXACT question using the provided live bet data. Be direct and specific. If they ask about a specific player/team/bet, analyze exactly that. If they ask for a list or recommendations, provide that specific number. Always cite confidence scores and key factors.`;
+          const userPrompt = `Live database: ${totalBets} bets, ${propCount} player props, ${highConfCount} high-confidence (80+/100).
+
+Relevant bets from live data:
+${contextText || "No direct matches found."}
 
 User question: "${question}"
 
-Give a direct YES/NO recommendation with reasoning based on the data above. Include confidence score, key risk factors, and suggested allocation if available.`;
-
-      const openaiKey = process.env.OPENAI_API_KEY;
-      let answer: string;
-
-      if (openaiKey) {
-        const axios = (await import("axios")).default;
-        const aiRes = await axios.post(
-          "https://api.openai.com/v1/chat/completions",
-          {
-            model: "gpt-4o-mini",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            max_tokens: 400,
-            temperature: 0.4,
-          },
-          { headers: { Authorization: `Bearer ${openaiKey}` }, timeout: 20000 }
-        );
-        answer = aiRes.data.choices[0].message.content.trim();
-      } else {
-        // Rule-based fallback when no OpenAI key is set
-        if (context.length === 0) {
-          answer = `No matching bets found for your question. The database currently has ${totalBets} total bets (${propCount} player props, ${highConfCount} high-confidence). Try asking about a specific player, team, or sport in today\'s slate.`;
+Answer their question exactly as asked. Include specific bet titles, confidence scores, and why each is a good or bad pick.`;
+          try {
+            const aiRes = await axiosLib.post(
+              "https://api.openai.com/v1/chat/completions",
+              { model: "gpt-4o-mini", messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }], max_tokens: 600, temperature: 0.3 },
+              { headers: { Authorization: `Bearer ${openaiKey}` }, timeout: 20000 }
+            );
+            answer = aiRes.data.choices[0].message.content.trim();
+          } catch (e: any) {
+            answer = buildRuleBasedAnswer(context, question, totalBets, propCount, highConfCount, sportFilter);
+          }
         } else {
-          const top = context[0];
-          const conf = top.confidenceScore ?? 0;
-          const verdict = conf >= 80 ? "✅ STRONG BET" : conf >= 65 ? "⚠️ MODERATE — proceed carefully" : "❌ LOW CONFIDENCE — consider skipping";
-          const lineStr = top.line != null ? ` Line: ${top.line}.` : "";
-          const overStr = top.overOdds != null ? ` Over ${top.overOdds > 0 ? "+" : ""}${top.overOdds} / Under ${top.underOdds ?? "?"}.` : "";
-          const factors = top.keyFactors?.slice(0, 3).join(", ") ?? "market consensus";
-          const allocStr = top.recommendedAllocation ? ` Suggested allocation: ${top.recommendedAllocation}% of bankroll.` : "";
-          const researchStr = top.researchSummary ? ` ${top.researchSummary.slice(0, 180)}` : "";
-          answer = `${verdict}\n\n**${top.title}** — Confidence ${conf}/100 | Risk: ${top.riskLevel ?? "medium"}${lineStr}${overStr}${allocStr}\n\nKey factors: ${factors}.${researchStr}`;
+          answer = buildRuleBasedAnswer(context, question, totalBets, propCount, highConfCount, sportFilter);
         }
       }
 
-      res.json({ answer, relatedBets: similarBets });
+      res.json({ answer, relatedBets });
     } catch (e: any) {
       console.error("Ask error:", e.message);
       res.status(500).json({ error: "Analysis failed: " + e.message });
     }
   });
+
+  // Rule-based answer builder (used when OpenAI key not set)
+  function buildRuleBasedAnswer(
+    context: any[], question: string, totalBets: number, propCount: number, highConfCount: number, sportFilter: string | null
+  ): string {
+    if (context.length === 0) {
+      const sportMsg = sportFilter ? ` for ${sportFilter}` : "";
+      return `No matching bets found${sportMsg}. Database has ${totalBets} total (${propCount} props, ${highConfCount} high-confidence). Try asking about a specific player or team.`;
+    }
+
+    const isTopPicks = context.length > 1;
+    if (isTopPicks) {
+      const lines = context.map((b, i) => {
+        const conf = b.confidenceScore ?? 0;
+        const verdict = conf >= 82 ? "✅" : conf >= 70 ? "⚠️" : "❌";
+        const lineStr = b.line != null ? ` (${b.line})` : "";
+        const factors = b.keyFactors?.slice(0, 2).join("; ") ?? "";
+        return `${verdict} **${b.title}**${lineStr} — ${conf}/100\n   ${factors || b.researchSummary?.slice(0, 100) || ""}`;
+      }).join("\n\n");
+      const sportLabel = sportFilter ? `${sportFilter} ` : "";
+      return `📊 Top ${sportLabel}picks right now:\n\n${lines}`;
+    }
+
+    const top = context[0];
+    const conf = top.confidenceScore ?? 0;
+    const verdict = conf >= 80 ? "✅ STRONG BET" : conf >= 65 ? "⚠️ MODERATE" : "❌ LOW CONFIDENCE";
+    const lineStr = top.line != null ? ` | Line: ${top.line}` : "";
+    const overStr = top.overOdds != null ? ` | Over ${top.overOdds > 0 ? "+" : ""}${top.overOdds} / Under ${top.underOdds ?? "?"}` : "";
+    const factors = top.keyFactors?.slice(0, 3).join(", ") ?? "market consensus";
+    const allocStr = top.recommendedAllocation ? ` Suggested: ${top.recommendedAllocation}% bankroll.` : "";
+    const research = top.researchSummary ? ` ${top.researchSummary.slice(0, 180)}` : "";
+    return `${verdict}\n\n**${top.title}** — Confidence ${conf}/100 | Risk: ${top.riskLevel ?? "medium"}${lineStr}${overStr}\n${allocStr}\nKey factors: ${factors}.${research}`;
+  }
 
   app.get("/api/stats", async (req, res) => {
     try {
