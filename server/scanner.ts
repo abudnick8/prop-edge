@@ -1769,8 +1769,8 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
 
-  // Odds API — always run, use hardcoded fallback key if none provided
-  const effectiveOddsKey = apiKey ?? "4134e9d0ec483414517b0ae8dea7437c";
+  // Odds API — always use hardcoded key (Railway env var has wrong key, ignore apiKey param)
+  const effectiveOddsKey = "4134e9d0ec483414517b0ae8dea7437c";
   const odds = await fetchOddsAPI(effectiveOddsKey, {
     enabledSports: allEnabledSports,
     enableSeasonProps: settings.enableSeasonProps ?? true,
