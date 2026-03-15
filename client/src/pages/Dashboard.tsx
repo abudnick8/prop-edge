@@ -483,7 +483,7 @@ function AskSection() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<{ q: string; a: string }[]>([]);
+  const [history, setHistory] = useState<{ q: string; a: string; relatedBets: any[] }[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -498,7 +498,7 @@ function AskSection() {
       const res = await apiRequest("POST", "/api/ask", { question: trimmed });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setHistory((prev) => [...prev, { q: trimmed, a: data.answer }]);
+      setHistory((prev) => [...prev, { q: trimmed, a: data.answer, relatedBets: data.relatedBets ?? [] }]);
       setAnswer(data.answer);
     } catch (e: any) {
       setError(e.message ?? "Failed to get analysis");
@@ -551,8 +551,42 @@ function AskSection() {
                     style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
                     <Sparkles size={10} className="text-primary" />
                   </div>
-                  <div className="max-w-[90%] px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                    {item.a}
+                  <div className="flex-1 max-w-[90%] space-y-2">
+                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                      {item.a}
+                    </div>
+                    {item.relatedBets?.length > 0 && (
+                      <div className="space-y-2 pl-1">
+                        <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <TrendingUp size={11} className="text-primary" />
+                          Related bets — by confidence
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
+                        </p>
+                        {item.relatedBets.map((bet: any) => {
+                          const conf = bet.confidenceScore ?? 0;
+                          const confColor = conf >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 65 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
+                          const verdict = conf >= 80 ? "✅" : conf >= 65 ? "⚠️" : "❌";
+                          const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? "+" + n : "" + n);
+                          return (
+                            <div key={bet.id} className="p-3 rounded-xl border border-border bg-muted/20 space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">{bet.sport}</span>
+                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${confColor}`}>{conf}/100</span>
+                                <span className="text-xs">{verdict}</span>
+                              </div>
+                              <p className="text-xs font-semibold text-foreground leading-tight">{bet.title}</p>
+                              {(bet.line != null || bet.overOdds != null) && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  {bet.line != null && `Line: ${bet.line}  `}
+                                  {bet.overOdds != null && `Over: ${fmtOdds(bet.overOdds)}  Under: ${fmtOdds(bet.underOdds)}`}
+                                </p>
+                              )}
+                              {bet.keyFactors?.[0] && <p className="text-[10px] text-muted-foreground line-clamp-1">{bet.keyFactors[0]}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
