@@ -355,6 +355,117 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ─── Stats ────────────────────────────────────────────────────────────────
+  // ─── Ask a Question (AI bet analysis) ──────────────────────────────────────
+  app.post("/api/ask", async (req, res) => {
+    try {
+      const { question } = req.body as { question: string };
+      if (!question?.trim()) return res.status(400).json({ error: "question is required" });
+
+      const bets = await storage.getBets();
+      const q = question.toLowerCase();
+
+      // Score each bet by relevance to the question
+      const scored = bets.map((b) => {
+        let score = 0;
+        const fields = [
+          b.title, b.description, b.playerName, b.homeTeam, b.awayTeam,
+          b.sport, b.betType, b.source, b.researchSummary,
+          ...(b.keyFactors ?? []),
+        ].map((f) => (f ?? "").toLowerCase());
+
+        const words = q.split(/\s+/).filter((w) => w.length > 2);
+        for (const f of fields) {
+          for (const word of words) {
+            if (f.includes(word)) score += 1;
+          }
+        }
+        if (b.betType === "player_prop") score += 0.5;
+        if ((b.confidenceScore ?? 0) >= 80) score += 1;
+        return { bet: b, score };
+      });
+
+      const relevant = scored
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score || (b.bet.confidenceScore ?? 0) - (a.bet.confidenceScore ?? 0))
+        .slice(0, 8)
+        .map((s) => s.bet);
+
+      const context = relevant.length > 0
+        ? relevant
+        : bets.filter((b) => (b.confidenceScore ?? 0) >= 75).slice(0, 6);
+
+      const contextText = context.map((b, i) => {
+        const line = b.line != null ? ` | Line: ${b.line}` : "";
+        const over = b.overOdds != null ? ` | Over: ${b.overOdds > 0 ? "+" : ""}${b.overOdds}` : "";
+        const under = b.underOdds != null ? ` | Under: ${b.underOdds > 0 ? "+" : ""}${b.underOdds}` : "";
+        const conf = ` | Confidence: ${b.confidenceScore ?? "?"}/100`;
+        const risk = b.riskLevel ? ` | Risk: ${b.riskLevel}` : "";
+        const alloc = b.recommendedAllocation ? ` | Suggested: ${b.recommendedAllocation}% bankroll` : "";
+        const factors = b.keyFactors?.length ? `\n   Key factors: ${b.keyFactors.slice(0, 3).join("; ")}` : "";
+        const research = b.researchSummary ? `\n   Analysis: ${b.researchSummary.slice(0, 200)}` : "";
+        const player = b.playerName ? ` | Player: ${b.playerName}` : "";
+        const matchup = b.awayTeam && b.homeTeam ? ` | ${b.awayTeam} @ ${b.homeTeam}` : "";
+        return `${i + 1}. [${b.sport} ${b.betType}] ${b.title}${player}${matchup}${line}${over}${under}${conf}${risk}${alloc}${factors}${research}`;
+      }).join("\n\n");
+
+      const totalBets = bets.length;
+      const propCount = bets.filter((b) => b.betType === "player_prop").length;
+      const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 80).length;
+
+      const systemPrompt = `You are PropEdge, an expert sports betting analyst with access to live odds from DraftKings, FanDuel, BetMGM, and William Hill. Analyze bets using confidence scores, implied probability, line values, and key statistical factors. Be direct, concise (3-5 sentences), and always cite the confidence score. If no matching bet is in the data, say so honestly.`;
+
+      const userPrompt = `Live database: ${totalBets} bets, ${propCount} player props, ${highConfCount} high-confidence (80+/100).
+
+Most relevant bets from live data:
+${contextText || "No direct matches found in current data."}
+
+User question: "${question}"
+
+Give a direct YES/NO recommendation with reasoning based on the data above. Include confidence score, key risk factors, and suggested allocation if available.`;
+
+      const openaiKey = process.env.OPENAI_API_KEY;
+      let answer: string;
+
+      if (openaiKey) {
+        const axios = (await import("axios")).default;
+        const aiRes = await axios.post(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            max_tokens: 400,
+            temperature: 0.4,
+          },
+          { headers: { Authorization: `Bearer ${openaiKey}` }, timeout: 20000 }
+        );
+        answer = aiRes.data.choices[0].message.content.trim();
+      } else {
+        // Rule-based fallback when no OpenAI key is set
+        if (context.length === 0) {
+          answer = `No matching bets found for your question. The database currently has ${totalBets} total bets (${propCount} player props, ${highConfCount} high-confidence). Try asking about a specific player, team, or sport in today\'s slate.`;
+        } else {
+          const top = context[0];
+          const conf = top.confidenceScore ?? 0;
+          const verdict = conf >= 80 ? "✅ STRONG BET" : conf >= 65 ? "⚠️ MODERATE — proceed carefully" : "❌ LOW CONFIDENCE — consider skipping";
+          const lineStr = top.line != null ? ` Line: ${top.line}.` : "";
+          const overStr = top.overOdds != null ? ` Over ${top.overOdds > 0 ? "+" : ""}${top.overOdds} / Under ${top.underOdds ?? "?"}.` : "";
+          const factors = top.keyFactors?.slice(0, 3).join(", ") ?? "market consensus";
+          const allocStr = top.recommendedAllocation ? ` Suggested allocation: ${top.recommendedAllocation}% of bankroll.` : "";
+          const researchStr = top.researchSummary ? ` ${top.researchSummary.slice(0, 180)}` : "";
+          answer = `${verdict}\n\n**${top.title}** — Confidence ${conf}/100 | Risk: ${top.riskLevel ?? "medium"}${lineStr}${overStr}${allocStr}\n\nKey factors: ${factors}.${researchStr}${context.length > 1 ? `\n\n${context.length - 1} other related bet(s) also found.` : ""}`;
+        }
+      }
+
+      res.json({ answer, relevantBetIds: context.slice(0, 3).map((b) => b.id) });
+    } catch (e: any) {
+      console.error("Ask error:", e.message);
+      res.status(500).json({ error: "Analysis failed: " + e.message });
+    }
+  });
+
   app.get("/api/stats", async (req, res) => {
     try {
       const bets = await storage.getBets();
