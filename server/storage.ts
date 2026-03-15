@@ -42,6 +42,8 @@ export class MemStorage implements IStorage {
     enabledOptionalSports: [],
     enableSeasonProps: true,
     notificationsEnabled: true,
+    emailNotificationsEnabled: true,
+    notificationEmail: "adam.budnick@gdrh.org",
     scanIntervalMinutes: 30,
     oddsApiKey: "4134e9d0ec483414517b0ae8dea7437c", // hardcoded — Railway env var has wrong key, never use process.env here
     kalshiApiKey: null,
