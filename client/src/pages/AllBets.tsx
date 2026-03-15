@@ -47,9 +47,9 @@ export default function AllBets() {
     refetchInterval: 30000,
   });
 
-  // Split bets: daily (have a gameTime) vs season (no gameTime)
-  const dailyBets = bets.filter((b) => !!b.gameTime);
-  const seasonBets = bets.filter((b) => !b.gameTime);
+  // Split bets: season_prop/futures always go to Season tab; others by gameTime presence
+  const dailyBets = bets.filter((b) => b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime);
+  const seasonBets = bets.filter((b) => b.betType === "season_prop" || b.betType === "futures" || !b.gameTime);
 
   // Bet type keyword aliases — e.g. "HR" maps to home_run props, "TD" to touchdowns
   const BET_TYPE_KEYWORDS: Record<string, string[]> = {
