@@ -1,3 +1,4 @@
+# PropEdge Railway Config — updated 2026-03-15
 [build]
 builder = "nixpacks"
 buildCommand = "npm run build"
