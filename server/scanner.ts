@@ -95,6 +95,83 @@ const ACTION_BOOK_IDS = "15,30,366,283,68,351,348,355,76,75";
 // ActionNetwork API key (enables public betting % + sharp money data)
 const ACTION_API_KEY = process.env.ACTION_NETWORK_KEY ?? null;
 
+// ─── API-Sports (bb2db2357407d316eb56cc5cf0dcfcb8) — player stats for confidence boosts ───
+const API_SPORTS_KEY = process.env.API_SPORTS_KEY ?? null;
+const API_SPORTS_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hour cache — only 100 req/day
+let apiSportsCache: { ts: number; statsMap: Map<string, any> } | null = null;
+
+async function fetchApiSportsPlayerStats(): Promise<Map<string, any>> {
+  if (!API_SPORTS_KEY) return new Map();
+  if (apiSportsCache && Date.now() - apiSportsCache.ts < API_SPORTS_CACHE_TTL) {
+    return apiSportsCache.statsMap;
+  }
+
+  const statsMap = new Map<string, any>(); // keyed by "FIRSTNAME LASTNAME" normalized
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    // Fetch NBA games for today (1 request)
+    const nbaResp = await axios.get("https://v2.nba.api-sports.io/games", {
+      headers: { "x-rapidapi-key": API_SPORTS_KEY, "x-rapidapi-host": "v2.nba.api-sports.io" },
+      params: { date: today },
+      timeout: 8000,
+    });
+    const nbaGames: any[] = nbaResp.data?.response ?? [];
+    // Fetch player stats for up to 3 live/recent games (3 requests)
+    let reqCount = 0;
+    for (const game of nbaGames.slice(0, 3)) {
+      if (reqCount >= 3) break;
+      try {
+        const statsResp = await axios.get("https://v2.nba.api-sports.io/players/statistics", {
+          headers: { "x-rapidapi-key": API_SPORTS_KEY, "x-rapidapi-host": "v2.nba.api-sports.io" },
+          params: { game: game.id },
+          timeout: 8000,
+        });
+        const players: any[] = statsResp.data?.response ?? [];
+        for (const p of players) {
+          const name = `${p.player?.firstname ?? ""} ${p.player?.lastname ?? ""}`.trim().toLowerCase();
+          if (name) statsMap.set(name, p);
+        }
+        reqCount++;
+      } catch { /* silent */ }
+    }
+    console.log(`[API-Sports] NBA player stats loaded: ${statsMap.size} players from ${reqCount} games`);
+  } catch (e: any) {
+    console.warn("[API-Sports] Error:", e.message);
+  }
+
+  apiSportsCache = { ts: Date.now(), statsMap };
+  return statsMap;
+}
+
+function applyApiSportsBoosts(bets: InsertBet[], statsMap: Map<string, any>): InsertBet[] {
+  if (statsMap.size === 0) return bets;
+  return bets.map(bet => {
+    if (bet.betType !== "player_prop" || !bet.playerName) return bet;
+    const key = bet.playerName.toLowerCase();
+    const stats = statsMap.get(key);
+    if (!stats) return bet;
+    // Boost confidence if player has strong recent stats relevant to their prop
+    const statType = (bet.teamStats as any)?.statType?.toLowerCase() ?? "";
+    const points = stats.points ?? 0;
+    const rebounds = stats.totReb ?? 0;
+    const assists = stats.assists ?? 0;
+    let boost = 0;
+    let factor = "";
+    if (statType.includes("point") && points > 20) { boost = 3; factor = `Recent: ${points}pts avg`; }
+    else if (statType.includes("rebound") && rebounds > 8) { boost = 3; factor = `Recent: ${rebounds}reb avg`; }
+    else if (statType.includes("assist") && assists > 6) { boost = 3; factor = `Recent: ${assists}ast avg`; }
+    else if (points > 0 || rebounds > 0) { boost = 1; factor = `API-Sports: ${points}pts/${rebounds}reb`; }
+    if (boost === 0) return bet;
+    const newScore = Math.min(99, (bet.confidenceScore ?? 50) + boost);
+    return {
+      ...bet,
+      confidenceScore: newScore,
+      isHighConfidence: newScore >= 80,
+      keyFactors: [...(bet.keyFactors ?? []), factor].slice(0, 8),
+    };
+  });
+}
+
 async function fetchActionNetwork(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   const seen = new Set<string>();
@@ -1470,6 +1547,16 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     const boosted = applyApifyDFSBoosts(results, salaryMap);
     results.length = 0;
     results.push(...boosted);
+  }
+
+  // Apply API-Sports player stats boosts (6-hour cache, 100 req/day limit)
+  if (API_SPORTS_KEY) {
+    const statsMap = await fetchApiSportsPlayerStats();
+    if (statsMap.size > 0) {
+      const boosted = applyApiSportsBoosts(results, statsMap);
+      results.length = 0;
+      results.push(...boosted);
+    }
   }
 
   // Add Odds API data if key provided
