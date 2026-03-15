@@ -382,6 +382,97 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── Debug endpoint: test each data source independently ─────────────────
+  app.get("/api/debug-scan", async (req, res) => {
+    const results: Record<string, any> = {};
+    const axios = (await import("axios")).default;
+
+    // 1. Underdog
+    try {
+      const { data } = await axios.get(
+        "https://api.underdogfantasy.com/beta/v5/over_under_lines",
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://underdogfantasy.com/",
+            "Origin": "https://underdogfantasy.com",
+          },
+          timeout: 15000,
+        }
+      );
+      const lines = data?.over_under_lines ?? [];
+      const active = lines.filter((l: any) => l.status === "active");
+      results.underdog = { ok: true, total: lines.length, active: active.length };
+    } catch (e: any) {
+      results.underdog = { ok: false, error: e.message, code: e.response?.status };
+    }
+
+    // 2. SportsGameOdds
+    const sgoKey = process.env.SGO_API_KEY;
+    if (!sgoKey) {
+      results.sgo = { ok: false, error: "SGO_API_KEY not set" };
+    } else {
+      try {
+        const { data } = await axios.get(
+          `https://api.sportsgameodds.com/v2/events?leagueID=NBA&oddID=points-PLAYER_ID-game-ou-over&ended=false&cancelled=false&includeOpposingOdds=true&apiKey=${sgoKey}`,
+          { timeout: 15000 }
+        );
+        results.sgo = { ok: data.success, count: data.data?.length ?? 0, raw: data.success ? undefined : data };
+      } catch (e: any) {
+        results.sgo = { ok: false, error: e.message, code: e.response?.status };
+      }
+    }
+
+    // 3. Odds API
+    const oddsKey = process.env.ODDS_API_KEY;
+    if (!oddsKey) {
+      results.oddsApi = { ok: false, error: "ODDS_API_KEY not set" };
+    } else {
+      try {
+        const { data } = await axios.get(
+          `https://api.the-odds-api.com/v4/sports/basketball_nba/odds?apiKey=${oddsKey}&regions=us&markets=h2h&bookmakers=draftkings&oddsFormat=american`,
+          { timeout: 15000 }
+        );
+        results.oddsApi = { ok: true, games: data.length };
+      } catch (e: any) {
+        results.oddsApi = { ok: false, error: e.message, code: e.response?.status };
+      }
+    }
+
+    // 4. ActionNetwork
+    try {
+      const { data } = await axios.get(
+        "https://api.actionnetwork.com/web/v1/scoreboard/nba?period=game&bookIds=15,30,76,123&date=" +
+        new Date().toISOString().slice(0, 10).replace(/-/g, ""),
+        { timeout: 10000 }
+      );
+      results.actionNetwork = { ok: true, games: data?.games?.length ?? 0 };
+    } catch (e: any) {
+      results.actionNetwork = { ok: false, error: e.message };
+    }
+
+    // 5. Env vars present
+    results.envVars = {
+      ODDS_API_KEY: !!process.env.ODDS_API_KEY,
+      SGO_API_KEY: !!process.env.SGO_API_KEY,
+      ACTION_NETWORK_KEY: !!process.env.ACTION_NETWORK_KEY,
+      API_SPORTS_KEY: !!process.env.API_SPORTS_KEY,
+    };
+
+    // 6. Current bets in DB
+    const bets = await storage.getBets();
+    const byType: Record<string, number> = {};
+    const bySource: Record<string, number> = {};
+    for (const b of bets) {
+      byType[b.betType ?? "unknown"] = (byType[b.betType ?? "unknown"] ?? 0) + 1;
+      bySource[b.source ?? "unknown"] = (bySource[b.source ?? "unknown"] ?? 0) + 1;
+    }
+    results.currentBets = { total: bets.length, byType, bySource };
+
+    res.json(results);
+  });
+
   // Initial scan on startup — live data only, no demo fallback
   setTimeout(async () => {
     try {
