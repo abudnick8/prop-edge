@@ -908,23 +908,30 @@ function buildSeedFutures(): InsertBet[] {
   });
 }
 
-// Player prop market keys per sport (game-level)
+// Player prop market keys per sport (game-level) — Odds API paid tier supports all of these
 const PROP_MARKETS: Record<string, string> = {
   americanfootball_nfl:
-    "player_pass_tds,player_pass_yds,player_rush_yds,player_receptions,player_reception_yds,player_anytime_td",
+    "player_pass_tds,player_pass_yds,player_pass_completions,player_pass_attempts,player_pass_interceptions," +
+    "player_rush_yds,player_rush_attempts,player_rush_longest," +
+    "player_receptions,player_reception_yds,player_reception_longest,player_anytime_td,player_1st_td",
   basketball_nba:
-    "player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals,player_points_rebounds_assists",
+    "player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals," +
+    "player_points_rebounds_assists,player_points_rebounds,player_points_assists,player_rebounds_assists," +
+    "player_turnovers,player_double_double",
   baseball_mlb:
-    "batter_hits,batter_home_runs,batter_rbis,batter_runs_scored,pitcher_strikeouts,pitcher_hits_allowed",
+    "batter_hits,batter_home_runs,batter_rbis,batter_runs_scored,batter_total_bases," +
+    "batter_stolen_bases,batter_walks,pitcher_strikeouts,pitcher_hits_allowed," +
+    "pitcher_walks,pitcher_outs,pitcher_earned_runs",
   icehockey_nhl:
-    "player_points,player_goals,player_assists,player_shots_on_goal,player_power_play_points",
-  // Optional sports — game-level props
-  mma_mixed_martial_arts: "h2h", // MMA uses h2h only; props not well-supported
+    "player_points,player_goals,player_assists,player_shots_on_goal," +
+    "player_power_play_points,player_blocked_shots,player_total_saves",
+  // Optional sports
+  mma_mixed_martial_arts: "h2h",
   boxing_boxing: "h2h",
   basketball_ncaab:
-    "player_points,player_rebounds,player_assists,player_threes",
+    "player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals",
   americanfootball_ncaaf:
-    "player_pass_yds,player_rush_yds,player_reception_yds,player_pass_tds",
+    "player_pass_yds,player_rush_yds,player_reception_yds,player_pass_tds,player_receptions",
 };
 
 async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[]; enableSeasonProps?: boolean }): Promise<InsertBet[]> {
@@ -990,7 +997,7 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
                 params: {
                   apiKey,
                   regions: "us",
-                  bookmakers: "fanduel,draftkings",
+                  bookmakers: "fanduel,draftkings,betmgm,williamhill_us",
                   markets: PROP_MARKETS[sportKey] ?? "player_points",
                   oddsFormat: "american",
                 },
@@ -1170,75 +1177,96 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
 
       for (const [playerName, outcomes] of byPlayer) {
         // Find over and under outcomes
-        const overOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "over") ?? outcomes[0];
-        const underOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "under") ?? outcomes[1];
-        if (!overOutcome) continue;
+        const overOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "over");
+        const underOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "under");
 
-        const overOddsVal: number = overOutcome.price;
-        const underOddsVal: number | null = underOutcome?.price ?? null;
+        // Yes/No markets (double double, anytime TD, etc.) — pick the stronger side
+        const yesOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "yes");
+        const noOutcome = outcomes.find((o: any) => o.name?.toLowerCase() === "no");
 
-        // Determine which side to pick based on implied probability
-        const overProb = americanToImplied(overOddsVal);
-        const underProb = underOddsVal !== null ? americanToImplied(underOddsVal) : 1 - overProb;
-        const pickSide: "over" | "under" = overProb >= underProb ? "over" : "under";
-        const pickedOdds = pickSide === "over" ? overOddsVal : underOddsVal!;
-        const pickedProb = pickSide === "over" ? overProb : underProb;
+        let overOddsVal: number;
+        let underOddsVal: number | null;
+        let sideLabel: string;
+        let line: number | undefined;
 
-        const marketLabel = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
-        const line = overOutcome.point;
-        const sideLabel = pickSide === "over" ? "TAKE OVER" : "TAKE UNDER";
-        const oddsDisplay = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
-        const seasonTag = isSeasonProp ? "📅 SEASON — " : "";
-        const baseTitle = `${seasonTag}${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
-        const title = `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] ${seasonTag}${playerName} — ${marketLabel.charAt(0).toUpperCase() + marketLabel.slice(1)}`;
-        const id = `${isSeasonProp ? "season" : "prop"}-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
+        if (overOutcome && underOutcome) {
+          // Standard over/under prop
+          overOddsVal = overOutcome.price;
+          underOddsVal = underOutcome.price ?? null;
+          line = overOutcome.point;
+          const overProb = americanToImplied(overOddsVal);
+          const underProb = underOddsVal !== null ? americanToImplied(underOddsVal) : 1 - overProb;
+          const side = overProb >= underProb ? "over" : "under";
+          sideLabel = side === "over" ? "TAKE OVER" : "TAKE UNDER";
+          const pickedOdds_ = side === "over" ? overOddsVal : underOddsVal!;
+          const pickedProb_ = side === "over" ? overProb : underProb;
+          const marketLabel_ = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
+          const oddsDisplay_ = pickedOdds_ > 0 ? `+${pickedOdds_}` : `${pickedOdds_}`;
+          const seasonTag_ = isSeasonProp ? "\uD83D\uDCC5 SEASON \u2014 " : "";
+          const baseTitle_ = `${seasonTag_}${playerName} \u2014 ${marketLabel_.charAt(0).toUpperCase() + marketLabel_.slice(1)} ${line !== undefined ? `O/U ${line}` : ""}`;
+          const title = `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay_}] ${seasonTag_}${playerName} \u2014 ${marketLabel_.charAt(0).toUpperCase() + marketLabel_.slice(1)}`;
+          const id = `${isSeasonProp ? "season" : "prop"}-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const score = computeConfidence({ impliedProb: pickedProb_, source: bookmaker.key, betType: "player_prop", sport, title: baseTitle_, odds: pickedOdds_, line });
+          bets.push({
+            id, source: bookmaker.key, sport, betType: "player_prop", title,
+            description: `${event.away_team} @ ${event.home_team} \u00B7 ${bookmaker.key}`,
+            line: line ?? null, overOdds: overOddsVal, underOdds: underOddsVal,
+            impliedProbability: pickedProb_, confidenceScore: score.score, riskLevel: score.risk,
+            recommendedAllocation: score.allocation,
+            keyFactors: [`Pick: ${sideLabel}${line !== undefined ? ` ${line}` : ""} (${oddsDisplay_})`, ...(score.factors ?? [])],
+            researchSummary: `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
+            isHighConfidence: score.score >= 80, status: "open",
+            homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
+            playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
+            notificationSent: false, playerStats: null,
+            teamStats: { pickSide: side, pickedOdds: pickedOdds_, overProb: Math.round(pickedProb_ * 100), underProb: Math.round((1-pickedProb_) * 100), playerName, statType: marketLabel_, statValue: line, gameTitle: `${event.away_team} @ ${event.home_team}` },
+            yesPrice: null, noPrice: null,
+          });
+          continue;
+        } else if (yesOutcome) {
+          // Yes/No market — pick stronger side
+          overOddsVal = yesOutcome.price;
+          underOddsVal = noOutcome?.price ?? null;
+          line = undefined;
+          const yesProb = americanToImplied(overOddsVal);
+          const noProb = underOddsVal !== null ? americanToImplied(underOddsVal) : 1 - yesProb;
+          const side = yesProb >= noProb ? "yes" : "no";
+          const pickedOdds_ = side === "yes" ? overOddsVal : underOddsVal!;
+          const pickedProb_ = side === "yes" ? yesProb : noProb;
+          if (pickedOdds_ == null || isNaN(pickedOdds_)) continue; // skip if no valid odds
+          sideLabel = side === "yes" ? "YES" : "NO";
+          const marketLabel_ = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
+          const oddsDisplay_ = pickedOdds_ > 0 ? `+${pickedOdds_}` : `${pickedOdds_}`;
+          const seasonTag_ = isSeasonProp ? "\uD83D\uDCC5 SEASON \u2014 " : "";
+          const baseTitle_ = `${seasonTag_}${playerName} \u2014 ${marketLabel_.charAt(0).toUpperCase() + marketLabel_.slice(1)}`;
+          const title = `[${sideLabel} @ ${oddsDisplay_}] ${seasonTag_}${playerName} \u2014 ${marketLabel_.charAt(0).toUpperCase() + marketLabel_.slice(1)}`;
+          const id = `${isSeasonProp ? "season" : "prop"}-${event.id}-${market.key}-${playerName.replace(/\s+/g, "-")}-${bookmaker.key}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const score = computeConfidence({ impliedProb: pickedProb_, source: bookmaker.key, betType: "player_prop", sport, title: baseTitle_, odds: pickedOdds_ });
+          bets.push({
+            id, source: bookmaker.key, sport, betType: "player_prop", title,
+            description: `${event.away_team} @ ${event.home_team} \u00B7 ${bookmaker.key}`,
+            line: null, overOdds: overOddsVal, underOdds: underOddsVal,
+            impliedProbability: pickedProb_, confidenceScore: score.score, riskLevel: score.risk,
+            recommendedAllocation: score.allocation,
+            keyFactors: [`Pick: ${sideLabel} (${oddsDisplay_})`, ...(score.factors ?? [])],
+            researchSummary: `[${sideLabel} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
+            isHighConfidence: score.score >= 80, status: "open",
+            homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
+            playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
+            notificationSent: false, playerStats: null,
+            teamStats: { pickSide: side, pickedOdds: pickedOdds_, overProb: Math.round(pickedProb_ * 100), underProb: Math.round((1-pickedProb_) * 100), playerName, statType: marketLabel_, statValue: null, gameTitle: `${event.away_team} @ ${event.home_team}` },
+            yesPrice: null, noPrice: null,
+          });
+          continue;
+        } else {
+          continue; // skip unrecognized market structure
+        }
 
-        if (seen.has(id)) continue;
-        seen.add(id);
-
-        const score = computeConfidence({
-          impliedProb: pickedProb,
-          source: "draftkings",
-          betType: "player_prop",
-          sport,
-          title: baseTitle,
-          odds: pickedOdds,
-          line,
-        });
-
-        // Prepend pick side as first key factor
-        const keyFactors = [
-          `Pick: ${sideLabel}${line !== undefined ? ` ${line}` : ""} (${oddsDisplay})`,
-          ...(score.factors ?? []),
-        ];
-
-        bets.push({
-          id,
-          source: bookmaker.key === "fanduel" ? "underdog" : "draftkings", // label FanDuel as Underdog for display
-          sport,
-          betType: "player_prop",
-          title,
-          description: `${event.away_team} @ ${event.home_team} · ${bookmaker.key}`,
-          line: line ?? null,
-          overOdds: overOddsVal,
-          underOdds: underOddsVal,
-          impliedProbability: pickedProb,
-          confidenceScore: score.score,
-          riskLevel: score.risk,
-          recommendedAllocation: score.allocation,
-          keyFactors,
-          researchSummary: `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay}] — ${score.summary}`,
-          isHighConfidence: score.score >= 80,
-          status: "open",
-          homeTeam: event.home_team ?? null,
-          awayTeam: event.away_team ?? null,
-          playerName,
-          gameTime: event.commence_time ? new Date(event.commence_time) : null,
-          notificationSent: false,
-          playerStats: null,
-          teamStats: { pickSide, pickedOdds, overProb: Math.round(overProb * 100), underProb: Math.round(underProb * 100) },
-          yesPrice: null, noPrice: null,
-        });
+        // all cases handled above with continue — this is never reached
       }
     }
   }
@@ -1712,16 +1740,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     ...(settings.enabledOptionalSports ?? []),
   ];
 
-  // Fetch all live sources in parallel (ActionNetwork + Underdog are free, no key needed)
-  const [kalshi, poly, actionNet, underdog, sgo] = await Promise.all([
+  // Fetch all live sources in parallel
+  // Underdog and SGO removed — Odds API is the sole player prop source (reliable on all servers)
+  const [kalshi, poly, actionNet] = await Promise.all([
     fetchKalshiSports(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
-    fetchUnderdogProps(),
-    fetchSportsGameOddsProps(),
   ]);
 
-  results.push(...kalshi, ...poly, ...actionNet, ...underdog, ...sgo);
+  results.push(...kalshi, ...poly, ...actionNet);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
@@ -1742,14 +1769,13 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
 
-  // Add Odds API data if key provided
-  if (apiKey) {
-    const odds = await fetchOddsAPI(apiKey, {
-      enabledSports: allEnabledSports,
-      enableSeasonProps: settings.enableSeasonProps ?? true,
-    });
-    results.push(...odds);
-  }
+  // Odds API — always run, use hardcoded fallback key if none provided
+  const effectiveOddsKey = apiKey ?? "4134e9d0ec483414517b0ae8dea7437c";
+  const odds = await fetchOddsAPI(effectiveOddsKey, {
+    enabledSports: allEnabledSports,
+    enableSeasonProps: settings.enableSeasonProps ?? true,
+  });
+  results.push(...odds);
 
   // If no live data came back, seed with known futures so the app always has content
   if (results.length === 0) {
