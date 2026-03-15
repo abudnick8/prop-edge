@@ -1,11 +1,12 @@
 import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, X, Menu } from "lucide-react";
+import { LayoutDashboard, Target, Settings, BarChart3 } from "lucide-react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/bets", label: "All Picks", icon: Target },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
+  { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
+  { href: "/tracker", label: "Prop Tracker", icon: BarChart3, emoji: "📊" },
+  { href: "/settings", label: "Settings", icon: Settings, emoji: "⚙️" },
 ];
 
 const Logo = () => (
@@ -36,20 +37,24 @@ export function DesktopSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon, emoji }) => {
           const isActive = location === href || (href !== "/" && location.startsWith(href));
           return (
             <Link key={href} href={href}>
               <a
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                   isActive
-                    ? "bg-primary/10 text-primary"
+                    ? "text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 }`}
+                style={isActive ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b" } : {}}
                 data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
               >
-                <Icon size={16} />
+                <span className="text-base w-5 text-center">{emoji}</span>
                 {label}
+                {href === "/tracker" && isActive && (
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(245,158,11,0.2)", color: "#f59e0b" }}>NEW</span>
+                )}
               </a>
             </Link>
           );
