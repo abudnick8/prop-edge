@@ -55,6 +55,8 @@ export const settings = pgTable("settings", {
   // Season-long props & futures (pre-season player season totals + championship outrights)
   enableSeasonProps: boolean("enable_season_props").default(true),
   notificationsEnabled: boolean("notifications_enabled").default(true),
+  emailNotificationsEnabled: boolean("email_notifications_enabled").default(true),
+  notificationEmail: text("notification_email").default("adam.budnick@gdrh.org"),
   scanIntervalMinutes: integer("scan_interval_minutes").default(30),
   oddsApiKey: text("odds_api_key"),
   kalshiApiKey: text("kalshi_api_key"),
