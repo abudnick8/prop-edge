@@ -162,8 +162,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
       const limitedProps = Object.values(propsBySport).flat();
 
-      // Season bets (futures — no gameTime): top 200 total
-      const SEASON_LIMIT = 200;
+      // Season bets (futures — no gameTime): top 50 total
+      const SEASON_LIMIT = 50;
       const seasonBets = sorted
         .filter(b => b.betType !== 'player_prop' && !b.gameTime)
         .slice(0, SEASON_LIMIT);
