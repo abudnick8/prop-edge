@@ -93,10 +93,10 @@ const ACTION_SPORTS: Record<string, string> = {
 // Book IDs for major US sportsbooks on ActionNetwork
 const ACTION_BOOK_IDS = "15,30,366,283,68,351,348,355,76,75";
 // ActionNetwork API key (enables public betting % + sharp money data)
-const ACTION_API_KEY = process.env.ACTION_NETWORK_KEY ?? null;
+const ACTION_API_KEY = process.env.ACTION_NETWORK_KEY ?? "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2";
 
 // ─── API-Sports (bb2db2357407d316eb56cc5cf0dcfcb8) — player stats for confidence boosts ───
-const API_SPORTS_KEY = process.env.API_SPORTS_KEY ?? null;
+const API_SPORTS_KEY = process.env.API_SPORTS_KEY ?? "bb2db2357407d316eb56cc5cf0dcfcb8";
 const API_SPORTS_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hour cache — only 100 req/day
 let apiSportsCache: { ts: number; statsMap: Map<string, any> } | null = null;
 
@@ -974,11 +974,11 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
           timeout: 10000,
         });
 
-        // Future events — up to 20 per sport (paid key has 20k credits)
+        // Future events — up to 30 per sport (paid key has 18k+ credits)
         const now = Date.now();
         const upcomingEvents = (events ?? [])
           .filter((e: any) => new Date(e.commence_time).getTime() > now)
-          .slice(0, 20);
+          .slice(0, 30);
 
         console.log(`  ${sportKey}: ${upcomingEvents.length} upcoming events for props`);
 
@@ -1524,7 +1524,7 @@ function filterStale(bets: InsertBet[]): InsertBet[] {
 // Free tier: leagueID or eventID required. Provides multi-book player props
 // for NBA, MLB, NHL, NFL with bookOverUnder lines and bookOdds.
 
-const SGO_KEY = process.env.SGO_API_KEY ?? null;
+const SGO_KEY = process.env.SGO_API_KEY ?? "8befbaf9705fc690a79e0b6ebeff6d8f";
 const SGO_BASE = "https://api.sportsgameodds.com/v2";
 
 // Map of leagueID → array of stat IDs to fetch player props for
