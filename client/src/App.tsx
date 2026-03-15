@@ -8,6 +8,7 @@ import AllBets from "@/pages/AllBets";
 import BetDetail from "@/pages/BetDetail";
 import Settings from "@/pages/Settings";
 import TrackedProps from "@/pages/TrackedProps";
+import Ask from "@/pages/Ask";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -46,6 +47,7 @@ function App() {
                 <Route path="/bets/:id" component={BetDetail} />
                 <Route path="/settings" component={Settings} />
                 <Route path="/tracker" component={TrackedProps} />
+                <Route path="/ask" component={Ask} />
                 <Route component={NotFound} />
               </Switch>
             </div>
