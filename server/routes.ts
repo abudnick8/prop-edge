@@ -455,11 +455,33 @@ Give a direct YES/NO recommendation with reasoning based on the data above. Incl
           const factors = top.keyFactors?.slice(0, 3).join(", ") ?? "market consensus";
           const allocStr = top.recommendedAllocation ? ` Suggested allocation: ${top.recommendedAllocation}% of bankroll.` : "";
           const researchStr = top.researchSummary ? ` ${top.researchSummary.slice(0, 180)}` : "";
-          answer = `${verdict}\n\n**${top.title}** — Confidence ${conf}/100 | Risk: ${top.riskLevel ?? "medium"}${lineStr}${overStr}${allocStr}\n\nKey factors: ${factors}.${researchStr}${context.length > 1 ? `\n\n${context.length - 1} other related bet(s) also found.` : ""}`;
+          answer = `${verdict}\n\n**${top.title}** — Confidence ${conf}/100 | Risk: ${top.riskLevel ?? "medium"}${lineStr}${overStr}${allocStr}\n\nKey factors: ${factors}.${researchStr}`;
         }
       }
 
-      res.json({ answer, relevantBetIds: context.slice(0, 3).map((b) => b.id) });
+      // Return top 5 related bets sorted by confidence (skip the one already featured in answer)
+      const relatedBets = context
+        .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+        .slice(0, 5)
+        .map((b) => ({
+          id: b.id,
+          title: b.title,
+          sport: b.sport,
+          betType: b.betType,
+          playerName: b.playerName ?? null,
+          homeTeam: b.homeTeam ?? null,
+          awayTeam: b.awayTeam ?? null,
+          confidenceScore: b.confidenceScore ?? null,
+          riskLevel: b.riskLevel ?? null,
+          line: b.line ?? null,
+          overOdds: b.overOdds ?? null,
+          underOdds: b.underOdds ?? null,
+          recommendedAllocation: b.recommendedAllocation ?? null,
+          keyFactors: (b.keyFactors ?? []).slice(0, 2),
+          gameTime: b.gameTime ?? null,
+        }));
+
+      res.json({ answer, relatedBets });
     } catch (e: any) {
       console.error("Ask error:", e.message);
       res.status(500).json({ error: "Analysis failed: " + e.message });
