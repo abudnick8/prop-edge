@@ -216,3 +216,54 @@
   0%, 100% { opacity: 0.3; transform: scale(1); }
   50%       { opacity: 1;   transform: scale(1.4); }
 }
+
+/* ── Stats slide-down animation ─────────────────────────────────────────── */
+@keyframes stats-slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    max-height: 400px;
+    transform: translateY(0);
+  }
+}
+
+.stats-slide-down {
+  animation: stats-slide-down 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  overflow: hidden;
+}
+
+/* ── Stat bar fill animation ─────────────────────────────────────────────── */
+@keyframes stat-bar-fill {
+  from { width: 0%; }
+}
+.stat-bar-fill {
+  animation: stat-bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Tracker progress ring fill ─────────────────────────────────────────── */
+@keyframes ring-fill {
+  from { stroke-dashoffset: var(--ring-start, 150); }
+}
+.tracker-ring-arc {
+  animation: ring-fill 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Bounce-in for new prop cards ───────────────────────────────────────── */
+@keyframes bounce-in {
+  0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
+  60%  { transform: scale(1.02) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.prop-card-enter {
+  animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ── Status glow badges ─────────────────────────────────────────────────── */
+.status-active  { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+.status-hit     { background: rgba(74,222,128,0.12);  color: #4ade80; border-color: rgba(74,222,128,0.3); }
+.status-missed  { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.3); }
+.status-expired { background: rgba(148,163,184,0.1);  color: #94a3b8; border-color: rgba(148,163,184,0.2); }
