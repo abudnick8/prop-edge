@@ -77,3 +77,29 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ sentAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// Tracked Props — user-defined prop tracking
+export const trackedProps = pgTable("tracked_props", {
+  id: text("id").primaryKey(),
+  playerName: text("player_name").notNull(),
+  sport: text("sport").notNull(),           // NBA, NFL, MLB, NHL
+  statCategory: text("stat_category").notNull(), // Points, Assists, Rebounds, Passing Yards, etc.
+  propType: text("prop_type").notNull(),     // season_long | game
+  targetLine: real("target_line").notNull(), // the line to beat
+  direction: text("direction").notNull(),    // over | under
+  currentValue: real("current_value"),       // live progress (updated from BBR)
+  gamesPlayed: integer("games_played"),
+  notes: text("notes"),
+  status: text("status").default("active"),  // active | hit | missed | expired
+  teamName: text("team_name"),
+  season: text("season").default("2025-26"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTrackedPropSchema = createInsertSchema(trackedProps).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTrackedProp = z.infer<typeof insertTrackedPropSchema>;
+export type TrackedProp = typeof trackedProps.$inferSelect;
