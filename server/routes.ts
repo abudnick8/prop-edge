@@ -473,15 +473,31 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json(results);
   });
 
-  // Initial scan on startup — live data only, no demo fallback
-  setTimeout(async () => {
+  // Initial scan on startup with retry — ensures props load even if first attempt fails
+  const startupScan = async (attempt = 1) => {
     try {
+      console.log(`[startup] scan attempt ${attempt}...`);
       const settings = await storage.getSettings();
-      await runScan(settings.oddsApiKey);
+      const result = await runScan(settings.oddsApiKey);
+      const bets = await storage.getBets();
+      const propCount = bets.filter((b: any) => b.betType === 'player_prop').length;
+      console.log(`[startup] scan done: ${result.scanned} bets, ${propCount} props`);
+      // Retry if we got no props (Railway cold-start network issue)
+      if (propCount === 0 && attempt < 5) {
+        const delay = attempt * 15000; // 15s, 30s, 45s, 60s
+        console.log(`[startup] 0 props loaded, retrying in ${delay/1000}s...`);
+        setTimeout(() => startupScan(attempt + 1), delay);
+      }
     } catch (e: any) {
-      console.warn("Initial scan failed:", e.message);
+      console.warn(`[startup] scan attempt ${attempt} failed:`, e.message);
+      if (attempt < 5) {
+        const delay = attempt * 15000;
+        console.log(`[startup] retrying in ${delay/1000}s...`);
+        setTimeout(() => startupScan(attempt + 1), delay);
+      }
     }
-  }, 1000);
+  };
+  setTimeout(() => startupScan(), 3000); // 3s delay for Railway to fully initialize
 
   // Auto-scan every 30 min
   scanInterval = setInterval(async () => {
