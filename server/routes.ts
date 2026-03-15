@@ -589,6 +589,267 @@ Give a direct YES/NO recommendation with reasoning based on the data above. Incl
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── Refresh Tracked Props: auto-fetch live stats from ESPN + BBR ──────────
+  app.post("/api/refresh-tracked-props", async (req, res) => {
+    const axiosLib = (await import("axios")).default;
+    const cheerio = (await import("cheerio")).load;
+    const props = await storage.getTrackedProps();
+    const activeProps = props.filter(p => p.status === "active");
+
+    if (activeProps.length === 0) {
+      return res.json({ updated: 0, message: "No active props to refresh" });
+    }
+
+    // ESPN athlete lookup: search by name, return season stats
+    async function espnAthleteStats(playerName: string, sport: string): Promise<{ stats: Record<string, number>; source: string; athleteId?: string } | null> {
+      const sportMap: Record<string, { slug: string; statsUrl: (id: string) => string }> = {
+        NBA: {
+          slug: "basketball/nba",
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/stats?season=2025&seasontype=2`,
+        },
+        NFL: {
+          slug: "football/nfl",
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/stats?season=2024&seasontype=2`,
+        },
+        MLB: {
+          slug: "baseball/mlb",
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${id}/stats?season=2025&seasontype=2`,
+        },
+        NHL: {
+          slug: "hockey/nhl",
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/${id}/stats?season=2025&seasontype=2`,
+        },
+      };
+      const sportCfg = sportMap[sport];
+      if (!sportCfg) return null;
+
+      try {
+        // Step 1: Find athlete by name
+        const searchUrl = `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(playerName)}&limit=5&type=athlete&sport=${sportCfg.slug}`;
+        const searchResp = await axiosLib.get(searchUrl, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+        const hits = searchResp.data?.athletes ?? searchResp.data?.results ?? [];
+        let athleteId: string | null = null;
+        // Find best name match
+        const nameLower = playerName.toLowerCase();
+        for (const hit of hits) {
+          const candidate = (hit?.name ?? hit?.displayName ?? "").toLowerCase();
+          if (candidate.includes(nameLower.split(" ")[0]) || nameLower.includes(candidate.split(" ")[0])) {
+            athleteId = hit?.id ?? hit?.uid?.replace(/^.*athlete:\/\//,"") ?? null;
+            break;
+          }
+        }
+        if (!athleteId && hits.length > 0) athleteId = hits[0]?.id ?? null;
+        if (!athleteId) return null;
+
+        // Step 2: Get season stats
+        const statsResp = await axiosLib.get(sportCfg.statsUrl(athleteId), { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+        const statsData = statsResp.data;
+
+        // ESPN stats come as parallel arrays: categories[].stats[].name + values[]
+        const parsed: Record<string, number> = {};
+        const cats = statsData?.stats?.splits?.categories ?? statsData?.splits?.categories ?? [];
+        for (const cat of cats) {
+          const names: string[] = cat.names ?? [];
+          const values: any[] = cat.values ?? [];
+          names.forEach((name, i) => {
+            const v = parseFloat(values[i]);
+            if (!isNaN(v)) parsed[name.toLowerCase()] = v;
+          });
+        }
+        // Fallback: top-level stats object
+        if (Object.keys(parsed).length === 0) {
+          const flat = statsData?.athlete?.statistics ?? statsData?.statistics ?? {};
+          for (const [k, v] of Object.entries(flat)) {
+            const n = parseFloat(String(v));
+            if (!isNaN(n)) parsed[k.toLowerCase()] = n;
+          }
+        }
+
+        return Object.keys(parsed).length > 0 ? { stats: parsed, source: "ESPN", athleteId } : null;
+      } catch (e: any) {
+        console.warn(`[refresh] ESPN lookup failed for ${playerName} (${sport}):`, e.message);
+        return null;
+      }
+    }
+
+    // Baseball Reference season stats scrape (for MLB season_long props)
+    async function bbrSeasonStats(playerName: string): Promise<{ stats: Record<string, number>; source: string } | null> {
+      try {
+        const query = playerName.toLowerCase().replace(/[^a-z ]/g, "").replace(/ /g, "+");
+        const searchUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${query}&pid=&type=&redirect=1`;
+        const { data: html } = await axiosLib.get(searchUrl, {
+          timeout: 12000,
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+          maxRedirects: 5,
+        });
+        const $ = cheerio(html);
+        // Parse the standard stats table (batting or pitching)
+        const stats: Record<string, number> = {};
+        // Try to get 2025 season row from #batting_standard or #pitching_standard
+        const tables = ["#batting_standard", "#pitching_standard", "#standard_fielding"];
+        for (const tableId of tables) {
+          const rows = $(tableId).find("tbody tr").toArray();
+          // Find 2025 season row
+          for (const row of rows) {
+            const yr = $(row).find("[data-stat='year_id']").text().trim();
+            if (yr === "2025") {
+              const fields = [
+                "G","PA","AB","R","H","2B","3B","HR","RBI","SB","BB","SO","BA","OBP","SLG",
+                "W","L","ERA","GS","CG","SHO","SV","IP","H_allowed","ER","BB_allowed","SO_pitcher"
+              ];
+              for (const f of fields) {
+                const v = parseFloat($(row).find(`[data-stat='${f.toLowerCase()}']`).text().trim());
+                if (!isNaN(v)) stats[f.toLowerCase()] = v;
+              }
+              // Fallback: try attribute names
+              $(row).find("[data-stat]").each((_, el) => {
+                const attr = $(el).attr("data-stat") ?? "";
+                const v = parseFloat($(el).text().trim());
+                if (attr && !isNaN(v)) stats[attr.toLowerCase()] = v;
+              });
+              if (Object.keys(stats).length > 0) break;
+            }
+          }
+          if (Object.keys(stats).length > 0) break;
+        }
+        return Object.keys(stats).length > 0 ? { stats, source: "Baseball Reference" } : null;
+      } catch (e: any) {
+        console.warn(`[refresh] BBR failed for ${playerName}:`, e.message);
+        return null;
+      }
+    }
+
+    // Map TrackedProp statCategory → ESPN stat key(s) to try
+    function mapStatCategory(statCategory: string, sport: string): string[] {
+      const cat = statCategory.toLowerCase();
+      if (sport === "NBA") {
+        if (cat.includes("point")) return ["pts", "points", "avgpoints"];
+        if (cat.includes("assist")) return ["ast", "assists", "avgassists"];
+        if (cat.includes("rebound")) return ["reb", "rebounds", "totalrebounds", "avgtotalrebounds"];
+        if (cat.includes("3-point") || cat.includes("3pt") || cat.includes("three")) return ["3pm", "threepointersmade", "3ptm"];
+        if (cat.includes("steal")) return ["stl", "steals", "avgsteals"];
+        if (cat.includes("block")) return ["blk", "blocks", "avgblocks"];
+        if (cat.includes("minute")) return ["min", "minutes", "avgminutes"];
+        if (cat.includes("pra") || cat.includes("+")) return ["pts", "points"]; // sum multiple
+      }
+      if (sport === "NFL") {
+        if (cat.includes("passing yard")) return ["passingyards", "yds", "yards"];
+        if (cat.includes("passing td")) return ["passingtouchdowns", "td", "touchdowns"];
+        if (cat.includes("rushing yard")) return ["rushingyards", "yds"];
+        if (cat.includes("receiving yard")) return ["receivingyards", "yds"];
+        if (cat.includes("reception")) return ["receptions", "rec"];
+        if (cat.includes("interception")) return ["interceptions", "int"];
+        if (cat.includes("tackle")) return ["totaltackles", "tackles", "tot"];
+        if (cat.includes("sack")) return ["sacks"];
+      }
+      if (sport === "MLB") {
+        if (cat.includes("home run")) return ["hr"];
+        if (cat.includes("rbi")) return ["rbi"];
+        if (cat.includes("hit") && !cat.includes("pitcher")) return ["h"];
+        if (cat.includes("strikeout") || cat.includes("k")) return ["so", "so_pitcher", "k"];
+        if (cat.includes("era")) return ["era"];
+        if (cat.includes("stolen base")) return ["sb"];
+        if (cat.includes("batting avg")) return ["ba", "avg"];
+      }
+      if (sport === "NHL") {
+        if (cat.includes("goal")) return ["goals", "g"];
+        if (cat.includes("assist")) return ["assists", "a"];
+        if (cat.includes("point")) return ["points", "pts"];
+        if (cat.includes("shot")) return ["shots", "sog", "s"];
+        if (cat.includes("save")) return ["savepct", "svpct", "sv%"];
+        if (cat.includes("+/-") || cat.includes("plus")) return ["plusminus", "+/-"];
+      }
+      return [];
+    }
+
+    function extractStatValue(statsRecord: Record<string, number>, keys: string[]): number | null {
+      for (const k of keys) {
+        if (statsRecord[k] !== undefined) return statsRecord[k];
+      }
+      // partial match
+      for (const k of keys) {
+        const found = Object.keys(statsRecord).find(sk => sk.includes(k) || k.includes(sk));
+        if (found) return statsRecord[found];
+      }
+      return null;
+    }
+
+    // Process each active prop
+    const results: Array<{ id: string; playerName: string; sport: string; statCategory: string; oldValue: number | null; newValue: number | null; gamesPlayed: number | null; source: string; status: string }> = [];
+    let updatedCount = 0;
+
+    for (const prop of activeProps) {
+      let fetchedStats: { stats: Record<string, number>; source: string } | null = null;
+
+      // Try ESPN first (all sports)
+      const espnResult = await espnAthleteStats(prop.playerName, prop.sport);
+      if (espnResult) fetchedStats = espnResult;
+
+      // For MLB, also try Baseball Reference as backup
+      if (!fetchedStats && prop.sport === "MLB") {
+        fetchedStats = await bbrSeasonStats(prop.playerName);
+      }
+
+      if (!fetchedStats) {
+        results.push({ id: prop.id, playerName: prop.playerName, sport: prop.sport, statCategory: prop.statCategory, oldValue: prop.currentValue ?? null, newValue: null, gamesPlayed: prop.gamesPlayed ?? null, source: "not found", status: "no_data" });
+        continue;
+      }
+
+      const statKeys = mapStatCategory(prop.statCategory, prop.sport);
+      let newValue = extractStatValue(fetchedStats.stats, statKeys);
+
+      // Special case: PRA (Points+Rebounds+Assists) — sum the three
+      if (!newValue && prop.statCategory.toLowerCase().includes("+")) {
+        const pts = extractStatValue(fetchedStats.stats, ["pts","points"]) ?? 0;
+        const reb = extractStatValue(fetchedStats.stats, ["reb","rebounds","totalrebounds"]) ?? 0;
+        const ast = extractStatValue(fetchedStats.stats, ["ast","assists"]) ?? 0;
+        if (pts || reb || ast) newValue = pts + reb + ast;
+      }
+
+      // Extract games played
+      const gamesPlayed = extractStatValue(fetchedStats.stats, ["gp","games","g","gamesplayed"]);
+
+      // Determine new status: if season_long, check if target already hit/missed
+      let newStatus: string = prop.status ?? "active";
+      if (newValue !== null && prop.propType === "season_long" && prop.status === "active") {
+        if (prop.direction === "over" && newValue >= prop.targetLine) newStatus = "hit";
+        // (don't auto-mark as missed for season_long — season may not be over)
+      }
+
+      const updatePayload: any = { updatedAt: new Date() };
+      if (newValue !== null) updatePayload.currentValue = newValue;
+      if (gamesPlayed !== null) updatePayload.gamesPlayed = Math.round(gamesPlayed);
+      if (newStatus !== prop.status) updatePayload.status = newStatus;
+      // Store source in notes if not already there
+      if (fetchedStats.source && !(prop.notes ?? "").includes(fetchedStats.source)) {
+        updatePayload.notes = prop.notes ? `${prop.notes} | 📡 ${fetchedStats.source}` : `📡 Auto-updated from ${fetchedStats.source}`;
+      }
+
+      await storage.updateTrackedProp(prop.id, updatePayload);
+      updatedCount++;
+
+      results.push({
+        id: prop.id,
+        playerName: prop.playerName,
+        sport: prop.sport,
+        statCategory: prop.statCategory,
+        oldValue: prop.currentValue ?? null,
+        newValue: newValue ?? null,
+        gamesPlayed: gamesPlayed ? Math.round(gamesPlayed) : (prop.gamesPlayed ?? null),
+        source: fetchedStats.source,
+        status: newStatus,
+      });
+    }
+
+    console.log(`[refresh-tracked-props] Updated ${updatedCount}/${activeProps.length} props`);
+    res.json({
+      updated: updatedCount,
+      total: activeProps.length,
+      results,
+      refreshedAt: new Date().toISOString(),
+    });
+  });
+
   // ─── Debug endpoint: test each data source independently ─────────────────
   app.get("/api/debug-scan", async (req, res) => {
     const results: Record<string, any> = {};
