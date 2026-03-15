@@ -145,7 +145,36 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/bets", async (req, res) => {
     try {
       const bets = await storage.getBets();
-      res.json(bets);
+
+      // Sort all bets by confidence descending
+      const sorted = [...bets].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+
+      // Player props: top 100 per sport
+      const PROPS_PER_SPORT = 100;
+      const propsBySport: Record<string, any[]> = {};
+      for (const bet of sorted) {
+        if (bet.betType !== 'player_prop') continue;
+        const sport = bet.sport ?? 'OTHER';
+        if (!propsBySport[sport]) propsBySport[sport] = [];
+        if (propsBySport[sport].length < PROPS_PER_SPORT) {
+          propsBySport[sport].push(bet);
+        }
+      }
+      const limitedProps = Object.values(propsBySport).flat();
+
+      // Season bets (futures — no gameTime): top 200 total
+      const SEASON_LIMIT = 200;
+      const seasonBets = sorted
+        .filter(b => b.betType !== 'player_prop' && !b.gameTime)
+        .slice(0, SEASON_LIMIT);
+
+      // Team bets (spreads/totals/moneylines with gameTime): top 200 total
+      const TEAM_LIMIT = 200;
+      const teamBets = sorted
+        .filter(b => b.betType !== 'player_prop' && b.gameTime)
+        .slice(0, TEAM_LIMIT);
+
+      res.json([...limitedProps, ...teamBets, ...seasonBets]);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
