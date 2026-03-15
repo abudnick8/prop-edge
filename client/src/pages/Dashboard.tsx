@@ -22,7 +22,7 @@ type MainTab = "props" | "team" | "season";
 
 export default function Dashboard() {
   const { toast } = useToast();
-  const [dayFilter, setDayFilter] = useState<DayFilter>("today");
+  const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [mainTab, setMainTab] = useState<MainTab>("props");
 
   const { data: bets = [], isLoading } = useQuery<Bet[]>({
