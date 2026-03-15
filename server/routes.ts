@@ -48,7 +48,193 @@ const PFR_SLUG: Record<string, string> = {
   "Christian McCaffrey": "McC-Ch02","Derrick Henry": "HenrDe00",
 };
 
+// ── ESPN ID cache ─────────────────────────────────────────────────────────
+const ESPN_ID_CACHE: Record<string, string> = {
+  // Pre-seeded common NBA players (ESPN IDs)
+  "LeBron James": "1966",         "Stephen Curry": "3975",
+  "Kevin Durant": "3202",        "Giannis Antetokounmpo": "3032977",
+  "Luka Doncic": "3945274",      "Joel Embiid": "3059318",
+  "Nikola Jokic": "3112335",     "Jayson Tatum": "4065648",
+  "Devin Booker": "3136193",     "Damian Lillard": "6583",
+  "Anthony Davis": "6583", "Jimmy Butler": "6430",
+  "Kyrie Irving": "6442",        "Karl-Anthony Towns": "3136194",
+  "Trae Young": "4277905",       "Donovan Mitchell": "3908809",
+  "Bam Adebayo": "3934672",      "Paolo Banchero": "4432577",
+  "Tyrese Haliburton": "4278129","Anthony Edwards": "4431678",
+  "Shai Gilgeous-Alexander": "3934673", "Darius Garland": "4277903",
+  "Tyrese Maxey": "4277902",     "De'Aaron Fox": "3934671",
+  "OG Anunoby": "3934668",       "Mikal Bridges": "3934667",
+  "Scottie Barnes": "4431683",   "Jalen Green": "4433670",
+  "Cade Cunningham": "4278128",  "Evan Mobley": "4431685",
+  "Franz Wagner": "4278365",     "Josh Giddey": "4431686",
+  "DeMar DeRozan": "3011",       "Zach LaVine": "3064514",
+  "Brandon Ingram": "3136195",   "Draymond Green": "6589",
+  "Klay Thompson": "6475",       "Bradley Beal": "6580",
+  "Myles Turner": "3133628",     "Tobias Harris": "6618",
+  "Khris Middleton": "6609",     "Brook Lopez": "3971",
+  "Jaylen Brown": "3917376",     "Marcus Smart": "2990969",
+  "Kyle Lowry": "1966",          "Pascal Siakam": "3136196",
+  "Kristaps Porzingis": "3102531", "Julius Randle": "3064440",
+  "Jalen Brunson": "3936299",    "RJ Barrett": "4278060",
+  "Immanuel Quickley": "4395628","OB Toppin": "4432577",
+  "Deandre Ayton": "4066299",    "Cameron Johnson": "4066286",  "Saddiq Bey": "4432583",
+  "Caris LeVert": "2578260",     "Buddy Hield": "2490157",
+  "Aaron Nesmith": "4431682",    "T.J. McConnell": "2528210",
+  "Chris Duarte": "4432576",     "Bennedict Mathurin": "4432578",
+  "Andrew Nembhard": "4432579",  "Daniel Theis": "3934674",
+  "Damion Lee": "2578261",       "Max Christie": "4432580",
+  "Dennis Schroder": "3025779",  "Brice Sensabaugh": "4683706",
+  "Evan Fournier": "2528211",    "Nikola Vucevic": "4251",      "Zach Collins": "4066288",
+  "Derrick White": "3055807",    "Al Horford": "3213",
+  "Payton Pritchard": "4432581", "Sam Hauser": "4432582",
+  "Jordan Poole": "4278057",     "Bilal Coulibaly": "4683707",
+  "Kyle Kuzma": "4066289",       "Deni Avdija": "4432584",
+  "Monte Morris": "4066290",     "Malcolm Brogdon": "2578262",
+  "Bobby Portis": "3059319",
+  "Pat Connaughton": "2578263",  "MarJon Beauchamp": "4432585",
+  "AJ Green": "4683708",         "A.J. Green": "4683708",
+  "Thanasis Antetokounmpo": "3032978",
+};
+
+async function fetchESPNGameLog(playerName: string, sport: string): Promise<any> {
+  try {
+    const league = sport === "NBA" ? "nba" : sport === "NFL" ? "nfl" : sport === "MLB" ? "mlb" : sport === "NHL" ? "nhl" : "nba";
+    const sportsName = sport === "NBA" ? "basketball" : sport === "NFL" ? "football" : sport === "MLB" ? "baseball" : sport === "NHL" ? "hockey" : "basketball";
+
+    // Get ESPN ID - try cache first, then slug lookup
+    let espnId = ESPN_ID_CACHE[playerName];
+    if (!espnId) {
+      const slug = playerName.toLowerCase().replace(/['\.]/g, "").replace(/\s+/g, "-");
+      try {
+        const searchResp = await axios.get(
+          `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes?slug=${encodeURIComponent(slug)}&limit=5&active=true`,
+          { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+        );
+        const items = searchResp.data?.items ?? [];
+        if (items.length > 0) {
+          const ref = items[0]?.$ref ?? "";
+          const idMatch = ref.match(/athletes\/([0-9]+)/);
+          if (idMatch) espnId = idMatch[1];
+        }
+      } catch { /* slug lookup failed */ }
+    }
+    if (!espnId) return null;
+    ESPN_ID_CACHE[playerName] = espnId;
+
+    // Get the eventlog (last page = most recent games)
+    const elogResp = await axios.get(
+      `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes/${espnId}/eventlog?limit=25`,
+      { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    const elogData = elogResp.data;
+    const totalPages = elogData?.events?.pageCount ?? 1;
+
+    // Fetch the last page to get most recent games
+    const lastPageResp = await axios.get(
+      `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes/${espnId}/eventlog?limit=25&page=${totalPages}`,
+      { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    const allEvents: any[] = lastPageResp.data?.events?.items ?? [];
+
+    // Filter to played events and take last 5
+    const playedEvents = allEvents.filter((e: any) => e.played === true).slice(-5);
+
+    // Fetch stats + event date in parallel
+    const recentGames: any[] = [];
+    await Promise.all(playedEvents.map(async (ev: any) => {
+      try {
+        const statsRef = ev?.statistics?.$ref;
+        const eventRef = ev?.event?.$ref;
+        if (!statsRef) return;
+
+        const [statsResp, eventResp] = await Promise.all([
+          axios.get(statsRef, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }),
+          eventRef ? axios.get(eventRef, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }) : Promise.resolve({ data: {} }),
+        ]);
+
+        const cats: any[] = statsResp.data?.splits?.categories ?? [];
+        const gameStats: Record<string, any> = {};
+        for (const cat of cats) {
+          for (const s of (cat.stats ?? [])) {
+            gameStats[s.name] = s.value;
+          }
+        }
+
+        const eventDate = eventResp.data?.date ? eventResp.data.date.split("T")[0] : "";
+        const shortName = eventResp.data?.shortName ?? "";
+        // Extract opponent abbreviation from shortName like "MIL @ ATL" or "ATL vs MIL"
+        const parts = shortName.split(/\s+[@vs]+\s+/i);
+        const opp = parts.length >= 2 ? (parts[1] ?? parts[0]) : shortName;
+
+        recentGames.push({
+          date_game: eventDate,
+          opp_id: opp || "?",
+          pts: String(Math.round(gameStats.points ?? 0)),
+          trb: String(Math.round((gameStats.rebounds ?? 0))),
+          ast: String(Math.round(gameStats.assists ?? 0)),
+          stl: String(Math.round(gameStats.steals ?? 0)),
+          blk: String(Math.round(gameStats.blocks ?? 0)),
+          tov: String(Math.round(gameStats.turnovers ?? 0)),
+          mp: String(Math.round(gameStats.minutes ?? 0)),
+          fg_made: String(Math.round(gameStats.fieldGoalsMade ?? 0)),
+          fg_att: String(Math.round(gameStats.fieldGoalsAttempted ?? 0)),
+          fg3_made: String(Math.round(gameStats.threePointFieldGoalsMade ?? 0)),
+        });
+      } catch { /* skip this game */ }
+    }));
+
+    // Sort by date ascending (oldest → newest for chart display)
+    recentGames.sort((a, b) => a.date_game.localeCompare(b.date_game));
+
+    // Get season averages from statistics/0
+    let season: Record<string, string> = {};
+    try {
+      const statsResp = await axios.get(
+        `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes/${espnId}/statistics/0`,
+        { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      const cats: any[] = statsResp.data?.splits?.categories ?? [];
+      const allStats: Record<string, number> = {};
+      for (const cat of cats) {
+        for (const s of (cat.stats ?? [])) {
+          allStats[s.name] = s.value;
+        }
+      }
+      season = {
+        pts: String(+(allStats.avgPoints ?? 0).toFixed(1)),
+        reb: String(+(allStats.avgRebounds ?? 0).toFixed(1)),
+        ast: String(+(allStats.avgAssists ?? 0).toFixed(1)),
+        stl: String(+(allStats.avgSteals ?? 0).toFixed(1)),
+        blk: String(+(allStats.avgBlocks ?? 0).toFixed(1)),
+        fg_pct: allStats.fieldGoalPct ? String(+(allStats.fieldGoalPct).toFixed(1)) + "%" : "—",
+        fg3_pct: allStats.threePointFieldGoalPct ? String(+(allStats.threePointFieldGoalPct).toFixed(1)) + "%" : "—",
+        mpg: String(+(allStats.avgMinutes ?? 0).toFixed(1)),
+        gp: String(Math.round(allStats.gamesPlayed ?? 0)),
+        to: String(+(allStats.avgTurnovers ?? 0).toFixed(1)),
+      };
+    } catch { /* season stats unavailable */ }
+
+    return {
+      sport: sport.toUpperCase(),
+      name: playerName,
+      espnId,
+      bbrUrl: `https://www.espn.com/nba/player/_/id/${espnId}`,
+      season,
+      seasonLabel: "2024-25 Season Averages (ESPN)",
+      recentGames,
+    };
+  } catch (e: any) {
+    console.warn("ESPN game log fetch failed:", e.message);
+    return null;
+  }
+}
+
 async function fetchBBRStats(playerName: string): Promise<any> {
+  // First try ESPN (works for all active players)
+  const espnData = await fetchESPNGameLog(playerName, "NBA");
+  if (espnData) return espnData;
+
+  // Fallback to BBR slug map for legacy support
   const slug = BBR_SLUG[playerName];
   if (!slug) return null;
   const letter = slug[0];
@@ -77,12 +263,6 @@ async function fetchBBRStats(playerName: string): Promise<any> {
         g[stat] = $(row).find(`td[data-stat="${stat}"]`).text().trim();
       });
       if (g.pts) recentGames.push(g);
-    });
-
-    // Career stats header info
-    const playerInfo: Record<string, string> = {};
-    $("#info .p1 p").each((_, el) => {
-      playerInfo[$(el).find("span").first().text().trim()] = $(el).text().trim();
     });
 
     return {
@@ -341,10 +521,13 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return res.json(cached.data);
       }
       let data: any = null;
-      if (sport.toUpperCase() === "NBA") {
-        data = await fetchBBRStats(playerName);
-      } else if (sport.toUpperCase() === "NFL") {
+      const sportUp = sport.toUpperCase();
+      if (sportUp === "NBA") {
+        data = await fetchBBRStats(playerName); // ESPN-first with BBR fallback
+      } else if (sportUp === "NFL") {
         data = await fetchPFRStats(playerName);
+      } else if (sportUp === "MLB" || sportUp === "NHL") {
+        data = await fetchESPNGameLog(playerName, sportUp);
       }
       if (!data) return res.status(404).json({ error: "Player not found or stats unavailable" });
       STAT_CACHE.set(cacheKey, { data, ts: Date.now() });
