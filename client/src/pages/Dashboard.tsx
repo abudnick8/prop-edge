@@ -97,9 +97,9 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="text-xl font-bold text-foreground">🏆 Dashboard</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Kalshi · Polymarket · ActionNetwork · Underdog · NFL · NBA · MLB · NHL
+            📈 Kalshi · Polymarket · ActionNetwork · Underdog · 🏈 NFL · 🏀 NBA · ⚾ MLB · 🏒 NHL
           </p>
         </div>
         <button
@@ -116,10 +116,10 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Total Markets"    value={stats?.total ?? bets.length}                         icon={<Activity size={16} />}   loading={isLoading} />
-        <StatCard label={`≥${threshold}/100`} value={stats?.highConf ?? 0}                            icon={<Target size={16} />}     highlight loading={isLoading} />
-        <StatCard label="Avg Confidence"   value={stats?.avgScore ? `${stats.avgScore}/100` : "—"}     icon={<TrendingUp size={16} />} loading={isLoading} />
-        <StatCard label="Sources Active"   value={Object.keys(stats?.bySource ?? {}).length || "4"}    icon={<Zap size={16} />}        loading={isLoading} />
+        <StatCard label="Total Markets"    value={stats?.total ?? bets.length}                         icon={<Activity size={16} />}   loading={isLoading} emoji="📊" />
+        <StatCard label={`🔥 ≥${threshold}/100`} value={stats?.highConf ?? 0}                          icon={<Target size={16} />}     highlight loading={isLoading} emoji="🎯" />
+        <StatCard label="Avg Confidence"   value={stats?.avgScore ? `${stats.avgScore}/100` : "—"}     icon={<TrendingUp size={16} />} loading={isLoading} emoji="📈" />
+        <StatCard label="Sources Active"   value={Object.keys(stats?.bySource ?? {}).length || "4"}    icon={<Zap size={16} />}        loading={isLoading} emoji="⚡" />
       </div>
 
       {/* How to Read */}
@@ -414,11 +414,12 @@ function HowToRead() {
   );
 }
 
-function StatCard({ label, value, icon, highlight = false, loading = false }: {
-  label: string; value: string | number; icon: React.ReactNode; highlight?: boolean; loading?: boolean;
+function StatCard({ label, value, icon, highlight = false, loading = false, emoji }: {
+  label: string; value: string | number; icon: React.ReactNode; highlight?: boolean; loading?: boolean; emoji?: string;
 }) {
   return (
-    <div className={`bg-card rounded-xl border p-4 ${highlight ? "border-primary/30" : "border-border"}`}>
+    <div className={`bg-card rounded-xl border p-4 ${highlight ? "border-primary/30" : "border-border"}`}
+      style={highlight ? { boxShadow: "0 0 16px rgba(245,158,11,0.1)" } : {}}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-muted-foreground">{label}</p>
         <span className={highlight ? "text-primary" : "text-muted-foreground"}>{icon}</span>
