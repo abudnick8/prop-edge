@@ -3,7 +3,7 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, BarChart2, Zap, RefreshCw, Trophy, Calendar, Swords } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, BarChart2, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -225,17 +225,68 @@ export default function Settings() {
       </SettingsSection>
 
       {/* Notifications */}
-      <SettingsSection icon={<Bell size={16} />} title="Notifications" description="In-app alerts for high-confidence picks">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-foreground">Enable Alerts</p>
-            <p className="text-xs text-muted-foreground">Bell icon in top-right will ring when picks hit your threshold</p>
+      <SettingsSection icon={<Bell size={16} />} title="Notifications" description="Control how you get alerted when a bet hits your confidence threshold">
+        <div className="space-y-4">
+
+          {/* In-App */}
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-lg bg-primary/10 text-primary"><Smartphone size={15} /></span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">In-App Notifications</p>
+                <p className="text-xs text-muted-foreground">Bell icon + alert feed inside the app</p>
+              </div>
+            </div>
+            <Switch
+              checked={form.notificationsEnabled ?? true}
+              onCheckedChange={(v) => setForm({ ...form, notificationsEnabled: v })}
+              data-testid="switch-notifications-inapp"
+            />
           </div>
-          <Switch
-            checked={form.notificationsEnabled ?? true}
-            onCheckedChange={(v) => setForm({ ...form, notificationsEnabled: v })}
-            data-testid="switch-notifications"
-          />
+
+          {/* Email */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-lg bg-blue-500/10 text-blue-400"><Mail size={15} /></span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Email Notifications</p>
+                  <p className="text-xs text-muted-foreground">Email alert every 3 hours when high-confidence picks are found</p>
+                </div>
+              </div>
+              <Switch
+                checked={(form as any).emailNotificationsEnabled ?? true}
+                onCheckedChange={(v) => setForm({ ...form, emailNotificationsEnabled: v } as any)}
+                data-testid="switch-notifications-email"
+              />
+            </div>
+
+            {/* Email address field — only shown when email is on */}
+            {((form as any).emailNotificationsEnabled ?? true) && (
+              <div className="ml-11">
+                <Label className="mb-1.5 block text-xs">Send alerts to</Label>
+                <Input
+                  type="email"
+                  value={(form as any).notificationEmail ?? "adam.budnick@gdrh.org"}
+                  onChange={(e) => setForm({ ...form, notificationEmail: e.target.value } as any)}
+                  placeholder="your@email.com"
+                  className="bg-muted border-border text-sm h-8"
+                  data-testid="input-notification-email"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Alerts fire every 3 hours — only when picks hit your {form.confidenceThreshold ?? 80}+ threshold.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Both-off warning */}
+          {!(form.notificationsEnabled ?? true) && !((form as any).emailNotificationsEnabled ?? true) && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+              <Bell size={13} />
+              <span>All notifications are off. You won't be alerted when high-confidence picks appear.</span>
+            </div>
+          )}
         </div>
       </SettingsSection>
 
