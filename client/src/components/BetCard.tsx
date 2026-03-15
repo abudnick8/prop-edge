@@ -25,6 +25,7 @@ const BET_TYPE_EMOJI: Record<string, string> = {
   moneyline: "💰",
   futures: "🏆",
   season_long: "📅",
+  season_prop: "🏅",  // award props (MVP, Cy Young, etc.)
 };
 
 // ── Team logo helpers ────────────────────────────────────────────────────────
