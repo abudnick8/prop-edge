@@ -1574,10 +1574,12 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   let hardGateFailed = false;
   const hardGateReasons: string[] = [];
 
-  // Gate 1: implied prob must have real edge (≥53% for favorites, or ≤42% for contrarian)
-  if (prob >= 0.43 && prob < 0.53) {
+  // Gate 1: implied prob must have real edge — block only true coin-flip zone (48-52%)
+  // Note: -115 juice = 53.5% implied, which is standard and should NOT be gated.
+  // We only block the true toss-up band where there is genuinely no market edge.
+  if (prob >= 0.48 && prob < 0.52) {
     hardGateFailed = true;
-    hardGateReasons.push(`Near-50/50 odds (${Math.round(prob * 100)}% implied) — no identifiable edge`);
+    hardGateReasons.push(`True coin-flip pricing (${Math.round(prob * 100)}% implied) — no identifiable edge`);
   }
 
   // Gate 2: no over-juiced favorites for player props
