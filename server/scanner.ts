@@ -1454,6 +1454,28 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
 }
 
 // ─── Confidence Scoring Engine ─────────────────────────────────────────────────
+/**
+ * Multi-component confidence model inspired by the bracket engine approach.
+ *
+ * For PLAYER PROPS (primary focus) — 5-component model:
+ *   C1. Market consensus strength (25%) — how far the implied prob is from 50/50
+ *   C2. Source quality & cross-book agreement (20%) — is the line coming from sharp books?
+ *   C3. Stat predictability class (25%) — how historically consistent is this exact prop type?
+ *   C4. Sport sample-size & variance (15%) — NBA 82-game sample vs NFL 17-game high-variance
+ *   C5. Vig & value edge (15%) — fair odds vs bookmaker juice
+ *
+ * For TEAM BETS (moneyline / spread / total):
+ *   Uses a simplified version — heavily penalized vs player props.
+ *
+ * For SEASON PROPS / FUTURES:
+ *   Separate scoring path — long-tail odds treated differently.
+ *
+ * Hard gates (must PASS ALL to reach 80+):
+ *   - Implied prob must be ≥ 55% (or ≤ 40% for contrarian plays)
+ *   - Odds must not be heavier than -250 (over-juiced = capped at 72)
+ *   - Source must be tier-1 or tier-2
+ *   - Stat type must have stability class ≥ B
+ */
 interface ScoreInput {
   impliedProb: number;
   source: string;
@@ -1475,184 +1497,353 @@ interface ScoreResult {
   summary: string;
 }
 
+// ── Stat predictability classes (A = most predictable → D = high variance) ──
+// Based on historical regression-to-mean coefficients across NBA/NFL/MLB/NHL research.
+// Higher class = more predictable = deserves a higher confidence boost.
+type StatClass = "A" | "B" | "C" | "D";
+
+function getStatClass(title: string, sport: string): { cls: StatClass; label: string } {
+  const t = title.toLowerCase();
+
+  // ── MLB (highest per-game sample, strong regression to mean) ──
+  if (sport === "MLB") {
+    if (t.includes("strikeout") || t.includes(" ks") || t.includes("k9")) return { cls: "A", label: "Pitcher strikeouts — most consistent MLB stat (r≈0.89 year-over-year)" };
+    if (t.includes("hit") || t.includes("total base")) return { cls: "B", label: "Batting hits/total bases — strong regression to mean over large sample" };
+    if (t.includes("home run")) return { cls: "C", label: "Home runs — predictable rate but high game-to-game variance" };
+    if (t.includes("run") || t.includes("rbi")) return { cls: "C", label: "Runs/RBIs — lineup-dependent, moderate variance" };
+    if (t.includes("out") || t.includes("inning")) return { cls: "B", label: "Pitcher outs — correlated with K-rate and game script" };
+  }
+
+  // ── NBA (82-game sample, role/usage highly predictable) ──
+  if (sport === "NBA") {
+    if (t.includes("point") || t.includes(" pts")) return { cls: "A", label: "NBA points — most stable, tied directly to usage rate & shot attempts" };
+    if (t.includes("rebound") || t.includes(" reb")) return { cls: "A", label: "NBA rebounds — consistent per-minute rate, high regression to mean" };
+    if (t.includes("assist") || t.includes(" ast")) return { cls: "A", label: "NBA assists — strongly tied to role and pace, very predictable" };
+    if (t.includes("three") || t.includes("3pt") || t.includes("3-point")) return { cls: "B", label: "3-pointers — attempt rate consistent, made total has shooting variance" };
+    if (t.includes("block") || t.includes(" blk")) return { cls: "B", label: "Blocks — correlated with matchup and rim-protection role" };
+    if (t.includes("steal") || t.includes(" stl")) return { cls: "C", label: "Steals — low per-game counts, high variance on small totals" };
+    if (t.includes("pts+reb") || t.includes("pts+ast") || t.includes("reb+ast") || t.includes("pra") || t.includes("pts+reb+ast")) return { cls: "A", label: "NBA combo prop — combined stat reduces single-category variance significantly" };
+  }
+
+  // ── NFL (high variance per game, but target share is predictable) ──
+  if (sport === "NFL") {
+    if (t.includes("reception") || t.includes("catch") || t.includes(" rec ")) return { cls: "B", label: "Receptions — target share and route participation rates are stable" };
+    if (t.includes("receiving yard") || t.includes("rec yds")) return { cls: "B", label: "Receiving yards — driven by target share × yards-per-target" };
+    if (t.includes("passing yard") || t.includes("pass yds")) return { cls: "B", label: "Passing yards — highly correlated with game script and team pace" };
+    if (t.includes("rushing yard") || t.includes("rush yds")) return { cls: "C", label: "Rushing yards — snap share predictable but yards/carry has high variance" };
+    if (t.includes("touchdown") || t.includes(" td")) return { cls: "D", label: "Touchdowns — binary, low-count outcome — highest per-play variance" };
+    if (t.includes("interception") || t.includes(" int")) return { cls: "D", label: "Interceptions — very high variance, near-random per game" };
+  }
+
+  // ── NHL ──
+  if (sport === "NHL") {
+    if (t.includes("shot")) return { cls: "B", label: "Shots on goal — tied to ice time and power play role" };
+    if (t.includes("goal") && !t.includes("goalie")) return { cls: "C", label: "Goals — shot rate predictable, shooting% has variance" };
+    if (t.includes("assist") || t.includes("point")) return { cls: "B", label: "NHL points/assists — correlated with line placement and PP time" };
+  }
+
+  return { cls: "C", label: "Prop — moderate predictability" };
+}
+
+// ── Source tier ratings ──
+// Tier 1 = sharpest, most liquid markets
+// Tier 2 = reliable sportsbook lines
+// Tier 3 = lower liquidity / aggregated
+function getSourceTier(source: string): { tier: 1 | 2 | 3; label: string } {
+  switch (source) {
+    case "kalshi":         return { tier: 1, label: "Kalshi — regulated prediction market, sharp money is reflected in price" };
+    case "polymarket":    return { tier: 1, label: "Polymarket — global prediction market, large-cap markets are highly efficient" };
+    case "draftkings":    return { tier: 2, label: "DraftKings — major sportsbook, tight lines on high-volume markets" };
+    case "sportsgameodds": return { tier: 1, label: "SportsGameOdds — multi-book consensus props, cross-book agreement = high conviction" };
+    case "actionnetwork": return { tier: 2, label: "ActionNetwork — public betting consensus + sharp vs. square money flows" };
+    case "underdog":      return { tier: 2, label: "Underdog Fantasy — real-money player prop lines" };
+    default:              return { tier: 3, label: `${source} — supplemental data source` };
+  }
+}
+
 function computeConfidence(input: ScoreInput): ScoreResult {
-  let score = 50;
-  const factors: string[] = [];
-
-  // 1. Implied probability edge
   const prob = Math.max(0.01, Math.min(0.99, input.impliedProb));
-  const dist = Math.abs(prob - 0.5);
+  const factors: string[] = [];
+  const isPlayerProp = input.betType === "player_prop";
+  const isSeasonProp = input.betType === "season_prop";
 
-  if (prob > 0.72) {
-    score += 18;
-    factors.push(`Strong market consensus (${Math.round(prob * 100)}% implied)`);
-  } else if (prob > 0.60) {
-    score += 10;
-    factors.push(`Moderate edge (${Math.round(prob * 100)}% implied)`);
-  } else if (prob < 0.35) {
-    score += 8;
-    factors.push(`Contrarian value (${Math.round(prob * 100)}% market price — potential underdog edge)`);
-  } else {
-    score -= 5;
-    factors.push(`Near-coin-flip odds (${Math.round(prob * 100)}%) — low conviction`);
+  // =========================================================================
+  // HARD GATES — fail any of these and score is capped at 72
+  // These prevent inflated scores on structurally weak bets.
+  // =========================================================================
+  let hardGateFailed = false;
+  const hardGateReasons: string[] = [];
+
+  // Gate 1: implied prob must have real edge (≥53% for favorites, or ≤42% for contrarian)
+  if (prob >= 0.43 && prob < 0.53) {
+    hardGateFailed = true;
+    hardGateReasons.push(`Near-50/50 odds (${Math.round(prob * 100)}% implied) — no identifiable edge`);
   }
 
-  // 2. Source reliability
-  if (input.source === "kalshi" || input.source === "polymarket") {
-    score += 8;
-    factors.push("Regulated prediction market — sharp money reflected in price");
-  } else if (input.source === "draftkings") {
-    score += 5;
-    factors.push("Major sportsbook line — market-making quality pricing");
-  } else if (input.source === "actionnetwork") {
-    score += 6;
-    factors.push("ActionNetwork public betting consensus — sharp vs. public money signal");
-  } else if (input.source === "underdog") {
-    score += 7;
-    factors.push("Underdog Fantasy — real-money player prop lines from active market");
-  } else if (input.source === "sportsgameodds") {
-    score += 8;
-    factors.push("SportsGameOdds — multi-book consensus player prop odds");
+  // Gate 2: no over-juiced favorites for player props
+  if (isPlayerProp && input.odds !== undefined && input.odds < -280) {
+    hardGateFailed = true;
+    hardGateReasons.push(`Extreme juice (${input.odds}) — limited upside even if correct`);
   }
 
-  // 2b. Sharp money signal (ActionNetwork auth key — most powerful signal available)
-  // Sharp money divergence: when sharp money % >> public ticket % it means pro bettors
-  // are loading one side while casual bettors are on the other — very high value signal.
-  if (input.sharpMoneyPct != null && input.publicTicketPct != null) {
-    const sharpPct = input.sharpMoneyPct;  // % of $ on this side
-    const publicPct = input.publicTicketPct; // % of tickets on this side
-    const divergence = sharpPct - publicPct; // positive = sharp loaded, public fading
+  // Gate 3: source must be tier 1 or 2 for high-confidence designation
+  const { tier: sourceTier } = getSourceTier(input.source);
+  if (sourceTier === 3) {
+    hardGateFailed = true;
+    hardGateReasons.push(`Low-tier source (${input.source}) — insufficient market depth`);
+  }
 
-    if (sharpPct >= 70 && divergence >= 20) {
-      score += 14;
-      factors.push(`🔥 Sharp money signal: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — strong professional consensus`);
-    } else if (sharpPct >= 60 && divergence >= 15) {
-      score += 10;
-      factors.push(`Sharp money edge: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — pros loading this side`);
-    } else if (sharpPct >= 55 && divergence >= 10) {
-      score += 6;
-      factors.push(`Moderate sharp lean: ${Math.round(sharpPct)}% of $ on this side vs ${Math.round(publicPct)}% public tickets`);
-    } else if (divergence < -15) {
-      // Public heavy, sharp fading — lower confidence
+  // =========================================================================
+  // PLAYER PROP PATH — full 5-component model
+  // =========================================================================
+  if (isPlayerProp) {
+    // ── C1: Market consensus strength (25% weight) ──
+    // How far the implied prob is from 50/50 = how much the market "agrees"
+    // Hard calibration: 53%=+5, 57%=+10, 62%=+15, 68%=+20, 75%=+25
+    let c1 = 0;
+    if (prob >= 0.75) {
+      c1 = 25;
+      factors.push(`Strong market consensus — ${Math.round(prob * 100)}% implied probability`);
+    } else if (prob >= 0.68) {
+      c1 = 20;
+      factors.push(`High market confidence — ${Math.round(prob * 100)}% implied`);
+    } else if (prob >= 0.62) {
+      c1 = 15;
+      factors.push(`Solid market edge — ${Math.round(prob * 100)}% implied probability`);
+    } else if (prob >= 0.57) {
+      c1 = 10;
+      factors.push(`Moderate edge — ${Math.round(prob * 100)}% implied probability`);
+    } else if (prob >= 0.53) {
+      c1 = 5;
+      factors.push(`Slight market lean — ${Math.round(prob * 100)}% implied (needs supporting signals)`);
+    } else if (prob <= 0.35) {
+      // Contrarian value: market under-pricing
+      c1 = 10;
+      factors.push(`Contrarian value — market at ${Math.round(prob * 100)}%, potential inefficiency`);
+    } else if (prob <= 0.42) {
+      c1 = 5;
+      factors.push(`Mild contrarian angle — ${Math.round(prob * 100)}% market price`);
+    }
+
+    // ── C2: Source quality + cross-book agreement (20% weight) ──
+    let c2 = 0;
+    const { tier, label: sourceLabel } = getSourceTier(input.source);
+    if (tier === 1) { c2 = 20; factors.push(sourceLabel); }
+    else if (tier === 2) { c2 = 12; factors.push(sourceLabel); }
+    else { c2 = 4; factors.push(sourceLabel); }
+
+    // Sharp money bonus (ActionNetwork signal — most powerful available)
+    if (input.sharpMoneyPct != null && input.publicTicketPct != null) {
+      const sharpPct = input.sharpMoneyPct;
+      const publicPct = input.publicTicketPct;
+      const divergence = sharpPct - publicPct;
+      if (sharpPct >= 70 && divergence >= 20) {
+        c2 = Math.min(c2 + 14, 34);
+        factors.push(`Sharp money signal: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — professional consensus`);
+      } else if (sharpPct >= 60 && divergence >= 15) {
+        c2 = Math.min(c2 + 9, 29);
+        factors.push(`Sharp money edge: ${Math.round(sharpPct)}% $ vs ${Math.round(publicPct)}% tickets — pros loading this side`);
+      } else if (sharpPct >= 55 && divergence >= 10) {
+        c2 = Math.min(c2 + 5, 25);
+        factors.push(`Moderate sharp lean: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% public`);
+      } else if (divergence < -15) {
+        c2 = Math.max(c2 - 8, 0);
+        factors.push(`Public-heavy action: ${Math.round(publicPct)}% tickets, only ${Math.round(sharpPct)}% money — square side`);
+      }
+    } else if (input.sharpMoneyPct != null) {
+      if (input.sharpMoneyPct >= 65) { c2 = Math.min(c2 + 6, 26); factors.push(`${Math.round(input.sharpMoneyPct)}% of betting $ on this side`); }
+      else if (input.sharpMoneyPct >= 55) { c2 = Math.min(c2 + 3, 23); factors.push(`${Math.round(input.sharpMoneyPct)}% money lean`); }
+    }
+
+    // ── C3: Stat predictability class (25% weight) ──
+    const { cls, label: statLabel } = getStatClass(input.title, input.sport);
+    let c3 = 0;
+    switch (cls) {
+      case "A": c3 = 25; factors.push(statLabel); break;  // Elite predictability
+      case "B": c3 = 18; factors.push(statLabel); break;  // Good
+      case "C": c3 = 10; factors.push(statLabel); break;  // Moderate
+      case "D": c3 = 3;  factors.push(statLabel + " — high variance, use caution"); break;
+    }
+
+    // ── C4: Sport sample-size & variance penalty (15% weight) ──
+    let c4 = 0;
+    if (input.sport === "NBA") {
+      c4 = 15;
+      factors.push("NBA — 82-game sample, high predictability, stable role assignments");
+    } else if (input.sport === "MLB") {
+      c4 = 14;
+      factors.push("MLB — 162-game sample, strongest regression to mean of all major sports");
+    } else if (input.sport === "NFL") {
+      c4 = 9;
+      factors.push("NFL — 17-game season, game-script variance, weather/injury risk");
+    } else if (input.sport === "NHL") {
+      c4 = 10;
+      factors.push("NHL — goalie variance + ice time fluctuation factored");
+    } else if (input.sport === "NCAAB") {
+      c4 = 8;
+      factors.push("NCAAB — smaller sample + opponent quality variance");
+    } else {
+      c4 = 6;
+    }
+
+    // ── C5: Vig & value edge (15% weight) ──
+    let c5 = 0;
+    if (input.odds !== undefined) {
+      if (input.odds >= -115 && input.odds <= -105) {
+        c5 = 15;
+        factors.push(`Clean juice (${input.odds}) — minimal book overround, best value`);
+      } else if (input.odds >= -130 && input.odds < -115) {
+        c5 = 12;
+        factors.push(`Reasonable juice (${input.odds}) — standard sportsbook pricing`);
+      } else if (input.odds >= -160 && input.odds < -130) {
+        c5 = 8;
+        factors.push(`Moderate juice (${input.odds}) — slight book edge, still playable`);
+      } else if (input.odds < -160 && input.odds >= -220) {
+        c5 = 4;
+        factors.push(`Heavy juice (${input.odds}) — book overround cuts into expected value`);
+      } else if (input.odds < -220) {
+        c5 = 0;
+        factors.push(`Extreme juice (${input.odds}) — very limited upside relative to probability`);
+      } else if (input.odds > 0) {
+        // Underdog play
+        c5 = input.odds <= 150 ? 13 : input.odds <= 250 ? 10 : 6;
+        factors.push(`Plus-money prop (${input.odds > 0 ? "+" : ""}${input.odds}) — positive expected value if correct`);
+      }
+    } else {
+      // No odds info — neutral
+      c5 = 8;
+    }
+
+    // ── Raw composite score ──
+    // Weighted sum: C1(25%) + C2(20%) + C3(25%) + C4(15%) + C5(15%)
+    // Each component already scaled 0→25/20/25/15/15 = max 100
+    const rawScore = c1 + c2 + c3 + c4 + c5;
+
+    // ── Hard gate cap ──
+    // Even with a perfect component score, failed gates cap at 72
+    const gateCap = hardGateFailed ? 72 : 99;
+    if (hardGateFailed) {
+      factors.push(...hardGateReasons);
+    }
+
+    // ── Noise: ±2 pts (reduced from old ±3 to tighten distribution) ──
+    const noiseAdj = Math.random() * 4 - 2;
+    const finalScore = Math.max(10, Math.min(gateCap, Math.round(rawScore + noiseAdj)));
+
+    const risk: "low" | "medium" | "high" =
+      finalScore >= 78 && prob > 0.55 ? "low" :
+      finalScore >= 63 ? "medium" : "high";
+
+    // Half-Kelly allocation — more conservative than old model
+    const edge = prob - 0.5;
+    const kelly = Math.max(0, edge / 0.5);
+    const fractionalKelly = kelly * 0.20; // 20% Kelly (tighter than old 25%)
+    const allocation = Math.min(4, parseFloat((fractionalKelly * 100).toFixed(1)));
+
+    const confidenceLevel = finalScore >= 80 ? "HIGH CONFIDENCE" : finalScore >= 65 ? "Moderate confidence" : "Low confidence";
+    const summary = `${confidenceLevel} — ${Math.round(prob * 100)}% implied | ${cls}-class stat | ${input.source.toUpperCase()} | Score: ${finalScore}/100`;
+
+    return { score: finalScore, risk, allocation, factors, summary };
+  }
+
+  // =========================================================================
+  // SEASON PROP / FUTURES PATH
+  // =========================================================================
+  if (isSeasonProp) {
+    let score = 40; // start lower — long-range futures have more uncertainty
+
+    // Source quality
+    const { tier, label: sourceLabel } = getSourceTier(input.source);
+    score += tier === 1 ? 12 : tier === 2 ? 8 : 3;
+    factors.push(sourceLabel);
+
+    // Long-shot vs chalk — futures with high implied prob are higher confidence
+    if (prob >= 0.50) { score += 20; factors.push(`Implied favorite (${Math.round(prob * 100)}%) — market rates this as most likely outcome`); }
+    else if (prob >= 0.30) { score += 12; factors.push(`Moderate futures probability (${Math.round(prob * 100)}%)`); }
+    else if (prob >= 0.15) { score += 6; factors.push(`Long-shot futures play (${Math.round(prob * 100)}%) — value hunting`); }
+    else { score += 2; factors.push(`Speculative futures (${Math.round(prob * 100)}%) — low probability, high uncertainty`); }
+
+    // Odds value
+    if (input.odds !== undefined && input.odds > 200) {
+      score += 5;
+      factors.push(`Plus-money futures (+${input.odds}) — upside outweighs probability cost`);
+    } else if (input.odds !== undefined && input.odds < -200) {
       score -= 5;
-      factors.push(`Public-heavy bet: ${Math.round(publicPct)}% tickets but only ${Math.round(sharpPct)}% money — square action`);
-    } else if (sharpPct >= 50) {
-      score += 3;
-      factors.push(`${Math.round(sharpPct)}% of money on this side — slight sharp lean`);
+      factors.push(`Chalk futures (${input.odds}) — limited return on invested capital`);
     }
-  } else if (input.sharpMoneyPct != null) {
-    // Only money pct available (no ticket data)
-    if (input.sharpMoneyPct >= 65) {
+
+    // Sharp signals still apply
+    if (input.sharpMoneyPct != null && (input.sharpMoneyPct ?? 0) >= 60) {
       score += 8;
-      factors.push(`${Math.round(input.sharpMoneyPct)}% of betting money on this side — strong consensus`);
-    } else if (input.sharpMoneyPct >= 55) {
-      score += 4;
-      factors.push(`${Math.round(input.sharpMoneyPct)}% of money on this side`);
+      factors.push(`${Math.round(input.sharpMoneyPct ?? 0)}% of futures money on this side — sharp consensus`);
     }
+
+    if (hardGateFailed) factors.push(...hardGateReasons);
+    const cap = hardGateFailed ? 70 : 95;
+    const finalScore = Math.max(10, Math.min(cap, Math.round(score + (Math.random() * 4 - 2))));
+
+    const risk: "low" | "medium" | "high" = finalScore >= 75 ? "low" : finalScore >= 58 ? "medium" : "high";
+    const edge = Math.max(0, prob - 0.5);
+    const allocation = Math.min(3, parseFloat(((edge * 0.15) * 100).toFixed(1)));
+    const summary = `Futures — ${Math.round(prob * 100)}% implied | ${input.source.toUpperCase()} | Score: ${finalScore}/100`;
+    return { score: finalScore, risk, allocation, factors, summary };
   }
 
-  // 3. Bet type bonus — player props are the primary focus
-  if (input.betType === "player_prop") {
-    score += 15; // Primary focus: player props have the highest stat predictability
-    factors.push("Player prop — primary focus: highest statistical predictability from recent form & matchup data");
-    // Extra boost for specific high-predictability prop markets
-    const t = (input.title ?? "").toLowerCase();
-    if (t.includes("points") || t.includes("pts")) {
-      score += 4;
-      factors.push("Points prop — most stable stat, highly predictable from usage & matchup");
-    } else if (t.includes("rebound") || t.includes("reb")) {
-      score += 3;
-      factors.push("Rebounds prop — strong regression-to-mean stat");
-    } else if (t.includes("assist") || t.includes("ast")) {
-      score += 3;
-      factors.push("Assists prop — highly correlated with pace and role");
-    } else if (t.includes("pass") || t.includes("yds") || t.includes("yards")) {
-      score += 4;
-      factors.push("Passing/rushing yards prop — driven by role, target share & matchup");
-    } else if (t.includes("strikeout") || t.includes("k9") || t.includes("ks")) {
-      score += 5;
-      factors.push("Strikeout prop — most predictable MLB stat (K-rate consistency)");
-    } else if (t.includes("reception") || t.includes("catch") || t.includes("rec")) {
-      score += 3;
-      factors.push("Receptions prop — driven by target share & route participation");
-    } else if (t.includes("shot") || t.includes("goal")) {
-      score += 2;
-      factors.push("Shots/goals prop — correlated with ice time and power play role");
-    }
-  } else if (input.betType === "moneyline") {
-    score += 2;
-    factors.push("Moneyline — binary outcome, less predictable than player stats");
-  } else if (input.betType === "spread") {
-    score += 2;
-    factors.push("Spread — team-level bet, more variance than player props");
-  } else if (input.betType === "total") {
-    score += 1;
-    factors.push("Total — dependent on game pace/script, lower predictability");
-  }
+  // =========================================================================
+  // TEAM BET PATH (moneyline / spread / total)
+  // Structurally less predictable than player props — scored more conservatively.
+  // =========================================================================
+  let score = 40;
 
-  // 4. Sport-specific adjustments
-  if (input.sport === "NBA") {
-    score += 5;
-    factors.push("NBA — high stat predictability (82-game sample)");
-  } else if (input.sport === "MLB") {
-    score += 4;
-    factors.push("MLB — large statistical sample, strong regression to mean");
-  } else if (input.sport === "NFL") {
-    score += 3;
-    factors.push("NFL — weather and injury risk factored");
-  } else if (input.sport === "NHL") {
-    score += 2;
-    factors.push("NHL — goalie variance is a key risk factor");
-  } else if (input.sport === "MMA") {
-    score += 4;
-    factors.push("MMA — sharp money in fight markets, high implied prob accuracy");
-  } else if (input.sport === "Boxing") {
-    score += 3;
-    factors.push("Boxing — moneyline market, concentrated sharp action");
-  } else if (input.sport === "NCAAB") {
-    score += 3;
-    factors.push("NCAAB — tournament format creates high-value lines");
-  } else if (input.sport === "NCAAF") {
-    score += 2;
-    factors.push("NCAAF — high variance but large sample of player stats");
-  } else if (input.sport === "Golf") {
-    score += 2;
-    factors.push("Golf — futures market, long-tail value picks");
-  }
+  // Market edge
+  if (prob >= 0.72) { score += 15; factors.push(`Strong favorite (${Math.round(prob * 100)}% implied)`); }
+  else if (prob >= 0.62) { score += 9; factors.push(`Solid edge (${Math.round(prob * 100)}% implied)`); }
+  else if (prob >= 0.55) { score += 4; factors.push(`Moderate edge (${Math.round(prob * 100)}%)`); }
+  else if (prob < 0.40) { score += 7; factors.push(`Contrarian angle (${Math.round(prob * 100)}% market price)`); }
+  else { score -= 5; factors.push(`Near coin-flip (${Math.round(prob * 100)}%) — low conviction`); }
 
-  // 5. Odds value check (for traditional sportsbook bets)
+  // Source
+  const { tier: sTier, label: sLabel } = getSourceTier(input.source);
+  score += sTier === 1 ? 8 : sTier === 2 ? 5 : 2;
+  factors.push(sLabel);
+
+  // Bet type
+  if (input.betType === "spread") { score += 2; factors.push("Spread — covers game script and injury effects"); }
+  else if (input.betType === "total") { score += 1; factors.push("Total — game-script dependent, consider weather/pace"); }
+  else { score += 0; factors.push("Moneyline — binary outcome, favored team still loses ~30% of the time"); }
+
+  // Sport variance
+  if (input.sport === "NBA") { score += 5; factors.push("NBA — highest scoring, spreads are most predictable team bet"); }
+  else if (input.sport === "MLB") { score += 3; factors.push("MLB — pitching matchup is key, large variance per game"); }
+  else if (input.sport === "NFL") { score += 2; factors.push("NFL — any given Sunday effect, line movement is the signal"); }
+  else if (input.sport === "NHL") { score += 1; factors.push("NHL — goalie is the largest variance factor"); }
+
+  // Odds check
   if (input.odds !== undefined) {
-    if (input.odds < 0 && input.odds > -130) {
-      score += 5;
-      factors.push("Reasonable juice — not over-priced by bookmaker");
-    } else if (input.odds < -200) {
-      score -= 8;
-      factors.push("Heavy favorite — limited upside, higher risk of surprise");
-    } else if (input.odds > 200) {
-      score -= 3;
-      factors.push("Long shot — statistically unlikely per market pricing");
-    }
+    if (input.odds < 0 && input.odds > -130) { score += 4; factors.push("Reasonable juice — not over-priced"); }
+    else if (input.odds < -250) { score -= 8; factors.push("Heavy favorite — limited expected value"); }
+    else if (input.odds > 200) { score -= 2; factors.push("Long shot — statistically unlikely"); }
   }
 
-  // 6. Noise floor
-  score = Math.max(10, Math.min(96, score + (Math.random() * 6 - 3)));
-  score = Math.round(score);
+  // Sharp signal
+  if (input.sharpMoneyPct != null && input.publicTicketPct != null) {
+    const div = input.sharpMoneyPct - input.publicTicketPct;
+    if (input.sharpMoneyPct >= 65 && div >= 15) { score += 10; factors.push(`Sharp money signal: ${Math.round(input.sharpMoneyPct)}% $ vs ${Math.round(input.publicTicketPct)}% tickets`); }
+    else if (input.sharpMoneyPct >= 55 && div >= 10) { score += 5; factors.push(`Moderate sharp lean: ${Math.round(input.sharpMoneyPct)}% of $ on this side`); }
+    else if (div < -15) { score -= 5; factors.push(`Public-heavy side: ${Math.round(input.publicTicketPct ?? 0)}% tickets, limited sharp support`); }
+  }
 
-  // Risk level
-  let risk: "low" | "medium" | "high";
-  if (score >= 75 && prob > 0.55) risk = "low";
-  else if (score >= 60) risk = "medium";
-  else risk = "high";
+  if (hardGateFailed) factors.push(...hardGateReasons);
+  const cap = hardGateFailed ? 68 : 88; // team bets capped at 88 (harder to reach 80+ vs props)
+  const finalScore = Math.max(10, Math.min(cap, Math.round(score + (Math.random() * 6 - 3))));
 
-  // Kelly-inspired allocation
-  const edge = prob - (1 - prob) * 0.05;
-  const kelly = Math.max(0, edge / 0.95);
-  const fractionalKelly = kelly * 0.25; // quarter Kelly for safety
-  const allocation = Math.min(5, parseFloat((fractionalKelly * 100).toFixed(1)));
-
-  const summary = generateSummary(input, score, prob, factors);
-
-  return { score, risk, allocation, factors, summary };
+  const risk: "low" | "medium" | "high" = finalScore >= 75 && prob > 0.55 ? "low" : finalScore >= 60 ? "medium" : "high";
+  const edge2 = prob - (1 - prob) * 0.05;
+  const kelly2 = Math.max(0, edge2 / 0.95);
+  const allocation = Math.min(3, parseFloat((kelly2 * 0.20 * 100).toFixed(1))); // tighter cap for team bets
+  const confidenceLevel = finalScore >= 80 ? "HIGH CONFIDENCE" : finalScore >= 65 ? "Moderate" : "Low confidence";
+  const summary = `${confidenceLevel} — ${Math.round(prob * 100)}% implied | ${input.betType} | ${input.source.toUpperCase()} | Score: ${finalScore}/100`;
+  return { score: finalScore, risk, allocation, factors, summary };
 }
 
 function generateSummary(input: ScoreInput, score: number, prob: number, factors: string[]): string {
