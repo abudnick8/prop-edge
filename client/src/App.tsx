@@ -9,6 +9,7 @@ import BetDetail from "@/pages/BetDetail";
 import Settings from "@/pages/Settings";
 import TrackedProps from "@/pages/TrackedProps";
 import Ask from "@/pages/Ask";
+import Bracket from "@/pages/Bracket";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -48,6 +49,7 @@ function App() {
                 <Route path="/settings" component={Settings} />
                 <Route path="/tracker" component={TrackedProps} />
                 <Route path="/ask" component={Ask} />
+                <Route path="/bracket" component={Bracket} />
                 <Route component={NotFound} />
               </Switch>
             </div>
