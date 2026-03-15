@@ -460,7 +460,7 @@ function buildPolyBet(ev: any, m: any): InsertBet {
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 
 // Core sports — always scanned
-const CORE_SPORT_KEYS = ["americanfootball_nfl", "basketball_nba", "baseball_mlb", "icehockey_nhl"];
+const CORE_SPORT_KEYS = ["americanfootball_nfl", "basketball_nba", "baseball_mlb", "baseball_mlb_preseason", "icehockey_nhl"];
 
 // Optional sports — scanned when enabled in settings
 const OPTIONAL_SPORT_KEYS = [
@@ -941,7 +941,7 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
 
   // Determine which sport keys to scan
   const sportKeyMap: Record<string, string> = {
-    americanfootball_nfl: "NFL", basketball_nba: "NBA", baseball_mlb: "MLB", icehockey_nhl: "NHL",
+    americanfootball_nfl: "NFL", basketball_nba: "NBA", baseball_mlb: "MLB", baseball_mlb_preseason: "MLB", icehockey_nhl: "NHL",
     mma_mixed_martial_arts: "MMA", boxing_boxing: "Boxing",
     basketball_ncaab: "NCAAB", americanfootball_ncaaf: "NCAAF",
   };
