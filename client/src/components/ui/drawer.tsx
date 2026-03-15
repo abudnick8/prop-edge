@@ -43,12 +43,15 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background",
+        // Removed built-in drag handle div — BetDetailDrawer renders its own
+        // Removed h-auto so BetDetailDrawer can control height via style prop
+        // rounded-t-[10px] kept for the rounded top corners
+        "fixed inset-x-0 bottom-0 z-50 mt-24 flex flex-col rounded-t-[10px] border bg-background",
         className
       )}
       {...props}
     >
-      <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
+      {/* No built-in drag handle — each drawer renders its own */}
       {children}
     </DrawerPrimitive.Content>
   </DrawerPortal>

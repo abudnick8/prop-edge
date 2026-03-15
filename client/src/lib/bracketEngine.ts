@@ -1,36 +1,33 @@
 /**
- * PropEdge March Madness Bracket Engine v2
+ * PropEdge March Madness Bracket Engine v3
  *
- * Win probability model — 5 components with historically-calibrated weights:
+ * Win probability model — 5 components + historically-calibrated probabilistic draws
  *
- * 1. Seed-based base rate (30%)
- *    Historical NCAA upset rates by seed matchup (1965-2025, 60 years of data).
- *    e.g. 1v16 = 99.4% fav, 5v12 = 64.8% fav, 8v9 = 51.5% fav.
- *    This is the "common sense" anchor that prevents wild upsets on every line.
+ * HOW IT WORKS:
+ * 1. Compute a win probability for each matchup using 5 components
+ * 2. Apply hard floor/ceiling bounds per seed matchup (prevents impossible outcomes)
+ * 3. Use a PROBABILISTIC DRAW to determine the winner — not a deterministic pick
+ *    This is how real bracket simulators work and is why upsets occur at the right rate
  *
- * 2. Adjusted efficiency margin delta (30%)
- *    KenPom-style off/def ratings — best single predictor of tournament outcomes.
- *    Each +1 EM pt ≈ 1.8% win prob swing (calibrated to tournament, not reg season).
+ * Historical calibration (2015-2024, 10 NCAA tournaments):
+ * - R1 avg: ~7.5 upsets per 32-game first round across full bracket
+ * - 5v12: 35% upset rate (most famous bracket-busting matchup)
+ * - 6v11: 37% upset rate
+ * - 7v10: 40% upset rate
+ * - 8v9:  49% — coin flip (most upsets by count)
+ * - 1v16: 1.5% — UMBC 2018 is the only one in 40 years
+ * - 2v15: 7% — Mercer, FGCU, etc.
  *
- * 3. Scoring margin / record quality (15%)
- *    Season-long point differential as a secondary quality signal.
+ * Seed base rates (30% component weight):
+ * - 1v16: 98.5%, 2v15: 93.4%, 3v14: 84.8%, 4v13: 79.3%
+ * - 5v12: 64.8%, 6v11: 62.2%, 7v10: 60.2%, 8v9: 50.9%
  *
- * 4. Style matchup (15%)
- *    Pace, interior vs perimeter, rebounding, turnover battle.
- *    Bounded to ±0.10 total so style never overrides quality.
- *
- * 5. Momentum & schedule (10%)
- *    Recent form + strength of schedule as a small tiebreaker.
- *
- * Upset probability is calibrated so:
- * - 1v16: ~2%  (very rare, ~1 true upset in 60 yrs = UMBC 2018)
- * - 2v15: ~7%  (Mercer over Duke, etc.)
- * - 3v14: ~15%
- * - 4v13: ~21%
- * - 5v12: ~35% (5-seeds lose ~35% of the time historically)
- * - 6v11: ~37%
- * - 7v10: ~40%
- * - 8v9:  ~49% (virtual coin flip)
+ * Expected upset counts per full bracket generation (all rounds, probabilistic):
+ * - Round 1: ~7-9 upsets
+ * - Round 2: ~3-5 upsets
+ * - Sweet 16: ~1-3 upsets
+ * - Elite 8+: ~0-2 upsets
+ * - Total: ~12-16 upsets (matching real tournament averages)
  */
 
 import { NCAATeam, ALL_TEAMS, SEED_MATCHUPS, REGIONS, Region } from "../data/bracketData";

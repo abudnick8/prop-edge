@@ -287,12 +287,19 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
   const sport = bet.sport?.toUpperCase() ?? "";
   const canFetch = !!bet.playerName && (sport === "NBA" || sport === "NFL" || sport === "MLB" || sport === "NHL");
 
-  const { data, isLoading } = useQuery<any>({
+  const { data, isLoading, isError } = useQuery<any>({
     queryKey: ["/api/player-stats", sport, bet.playerName],
-    queryFn: () => apiRequest("GET", `/api/player-stats/${sport}/${encodeURIComponent(bet.playerName!)}`).then(r => r.json()),
+    queryFn: () =>
+      apiRequest("GET", `/api/player-stats/${sport}/${encodeURIComponent(bet.playerName!)}`)
+        .then(r => r.json()),
     enabled: canFetch,
-    staleTime: 15 * 60 * 1000,
+    // 30-min stale time so stats stay cached while drawer opens/closes
+    staleTime: 30 * 60 * 1000,
+    // Keep data in cache for 1 hour
+    gcTime: 60 * 60 * 1000,
+    // Retry once on failure — network hiccups on mobile
     retry: 1,
+    retryDelay: 1500,
   });
 
   const getStatKey = () => {
@@ -422,8 +429,11 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
             })()}
           </>
         )}
-        {!isLoading && !data && (
-          <p className="text-sm text-center py-4" style={{ color: "rgba(255,255,255,0.4)" }}>Stats not available for this player right now.</p>
+        {!isLoading && (isError || !data) && (
+          <div className="flex flex-col items-center gap-2 py-6">
+            <p className="text-xs text-center" style={{ color: "rgba(255,255,255,0.4)" }}>Stats unavailable for {bet.playerName} right now.</p>
+            <p className="text-[10px] text-center" style={{ color: "rgba(255,255,255,0.25)" }}>Try closing and reopening the drawer</p>
+          </div>
         )}
       </div>
     </div>
@@ -528,96 +538,130 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
   const scoreColor = score >= 80 ? "#f59e0b" : score >= 65 ? "#22d3ee" : "#f87171";
   const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
   const pickSide = bet.betType === "player_prop" ? ts?.pickSide?.toUpperCase() : undefined;
-  const accent = SPORT_ACCENT[bet.sport?.toUpperCase()] ?? "#f59e0b";
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    // shouldScaleBackground=false fixes Safari freeze/crash on iOS
+    // dismissible=true keeps swipe-to-close working on mobile
+    <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
       <DrawerContent
-        className="outline-none focus:outline-none max-h-[92vh]"
-        style={{ background: "hsl(265 35% 7%)", borderTop: `2px solid ${scoreColor}`, borderColor: "rgba(255,255,255,0.08)" }}
+        // Safari fix: avoid outline which causes repaint issues
+        // Use fixed height approach: 88dvh with fallback for older Safari
+        className="outline-none focus:outline-none"
+        style={{
+          background: "hsl(265 35% 7%)",
+          borderTop: `2px solid ${scoreColor}`,
+          // Height that works on Safari iOS — use dvh with px fallback
+          height: "88dvh",
+          maxHeight: "88dvh",
+          display: "flex",
+          flexDirection: "column",
+          // Safari needs this to not extend under the home indicator
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
       >
-        {/* Drag handle */}
-        <div className="mx-auto mt-3 mb-1 h-1 w-12 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} />
+        {/* Header — fixed, never scrolls */}
+        <div className="flex-shrink-0">
+          {/* Drag handle */}
+          <div className="mx-auto mt-3 mb-2 h-1 w-12 rounded-full" style={{ background: "rgba(255,255,255,0.18)" }} />
 
-        {/* Header */}
-        <div className="flex items-start gap-3 px-4 pt-2 pb-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          {/* Confidence ring */}
-          <div className="relative flex-shrink-0" style={{ width: 52, height: 52 }}>
-            <svg width={52} height={52} viewBox="0 0 52 52">
-              <circle cx={26} cy={26} r={21} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
-              <circle cx={26} cy={26} r={21} fill="none" stroke={scoreColor} strokeWidth="4"
-                strokeDasharray={2 * Math.PI * 21} strokeDashoffset={2 * Math.PI * 21 * (1 - score / 100)}
-                strokeLinecap="round" transform="rotate(-90 26 26)"
-                style={{ filter: `drop-shadow(0 0 6px ${scoreColor}88)` }} />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-sm font-black font-mono leading-none" style={{ color: scoreColor }}>{score}</span>
+          <div className="flex items-start gap-3 px-4 pt-1 pb-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            {/* Confidence ring */}
+            <div className="relative flex-shrink-0" style={{ width: 52, height: 52 }}>
+              <svg width={52} height={52} viewBox="0 0 52 52">
+                <circle cx={26} cy={26} r={21} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+                <circle cx={26} cy={26} r={21} fill="none" stroke={scoreColor} strokeWidth="4"
+                  strokeDasharray={2 * Math.PI * 21} strokeDashoffset={2 * Math.PI * 21 * (1 - score / 100)}
+                  strokeLinecap="round" transform="rotate(-90 26 26)"
+                  style={{ filter: `drop-shadow(0 0 6px ${scoreColor}88)` }} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-sm font-black font-mono leading-none" style={{ color: scoreColor }}>{score}</span>
+              </div>
             </div>
-          </div>
 
-          <div className="flex-1 min-w-0">
-            {pickSide && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase mb-1"
-                style={{ background: pickSide === "OVER" ? "rgba(74,222,128,0.15)" : "rgba(96,165,250,0.15)", color: pickSide === "OVER" ? "#4ade80" : "#60a5fa", border: `1px solid ${pickSide === "OVER" ? "rgba(74,222,128,0.3)" : "rgba(96,165,250,0.3)"}` }}>
-                {pickSide} {bet.line != null ? `${bet.line}` : ""}
-              </span>
-            )}
-            <p className="text-sm font-bold leading-tight" style={{ color: "hsl(45 100% 92%)" }}>
-              {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
-            </p>
-            {bet.playerName && <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>👤 {bet.playerName}</p>}
-            {bet.homeTeam && <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>{bet.awayTeam} @ {bet.homeTeam}</p>}
-            {bet.gameTime && <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}</p>}
-          </div>
+            <div className="flex-1 min-w-0">
+              {pickSide && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase mb-1"
+                  style={{ background: pickSide === "OVER" ? "rgba(74,222,128,0.15)" : "rgba(96,165,250,0.15)", color: pickSide === "OVER" ? "#4ade80" : "#60a5fa", border: `1px solid ${pickSide === "OVER" ? "rgba(74,222,128,0.3)" : "rgba(96,165,250,0.3)"}` }}>
+                  {pickSide} {bet.line != null ? `${bet.line}` : ""}
+                </span>
+              )}
+              <p className="text-sm font-bold leading-tight" style={{ color: "hsl(45 100% 92%)" }}>
+                {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
+              </p>
+              {bet.playerName && <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>👤 {bet.playerName}</p>}
+              {bet.homeTeam && <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>{bet.awayTeam} @ {bet.homeTeam}</p>}
+              {bet.gameTime && <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}</p>}
+            </div>
 
-          <DrawerClose asChild>
-            <button className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <X size={14} style={{ color: "rgba(255,255,255,0.6)" }} />
-            </button>
-          </DrawerClose>
+            <DrawerClose asChild>
+              <button
+                className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.08)", WebkitTapHighlightColor: "transparent" }}
+              >
+                <X size={15} style={{ color: "rgba(255,255,255,0.7)" }} />
+              </button>
+            </DrawerClose>
+          </div>
         </div>
 
-        {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-4" style={{ WebkitOverflowScrolling: "touch" }}>
-          {/* Odds bar */}
-          {(bet.overOdds != null || bet.underOdds != null) && (
-            <OddsBar overOdds={bet.overOdds} underOdds={bet.underOdds} pickSide={pickSide} />
-          )}
+        {/* Scrollable content area
+            Safari fix: explicit flex-1 + overflow-y-auto + -webkit-overflow-scrolling touch
+            The key is the parent must have a defined height (flex column + flex-1 child)
+        */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            // Safari requires explicit -webkit-overflow-scrolling for momentum scrolling
+            WebkitOverflowScrolling: "touch" as any,
+            // Prevent scroll from propagating to the page behind the drawer on Safari
+            overscrollBehavior: "contain",
+            // Min-height 0 forces flex child to respect parent height on Safari
+            minHeight: 0,
+          }}
+        >
+          <div className="px-4 py-4 space-y-4">
+            {/* Odds bar */}
+            {(bet.overOdds != null || bet.underOdds != null) && (
+              <OddsBar overOdds={bet.overOdds} underOdds={bet.underOdds} pickSide={pickSide} />
+            )}
 
-          {/* Player stats with game log */}
-          {bet.playerName && <PlayerStatsSection bet={bet} />}
+            {/* Player stats with game log */}
+            {bet.playerName && <PlayerStatsSection bet={bet} />}
 
-          {/* Confidence breakdown */}
-          <ConfidenceBreakdown
-            score={score}
-            keyFactors={bet.keyFactors as string[] | null}
-            riskLevel={bet.riskLevel}
-            impliedProbability={bet.impliedProbability}
-          />
+            {/* Confidence breakdown */}
+            <ConfidenceBreakdown
+              score={score}
+              keyFactors={bet.keyFactors as string[] | null}
+              riskLevel={bet.riskLevel}
+              impliedProbability={bet.impliedProbability}
+            />
 
-          {/* Key factors */}
-          {bet.keyFactors && (bet.keyFactors as string[]).length > 0 && (
-            <KeyFactorsPanel factors={bet.keyFactors as string[]} />
-          )}
+            {/* Key factors */}
+            {bet.keyFactors && (bet.keyFactors as string[]).length > 0 && (
+              <KeyFactorsPanel factors={bet.keyFactors as string[]} />
+            )}
 
-          {/* Research summary */}
-          {bet.researchSummary && (
-            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <BookOpen size={13} style={{ color: "#a78bfa" }} />
-                <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Analysis</span>
+            {/* Research summary */}
+            {bet.researchSummary && (
+              <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <BookOpen size={13} style={{ color: "#a78bfa" }} />
+                  <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Analysis</span>
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{bet.researchSummary}</p>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{bet.researchSummary}</p>
-            </div>
-          )}
+            )}
 
-          {/* Similar bets */}
-          <SimilarBets bet={bet} onSelectBet={onSelectBet} />
+            {/* Similar bets */}
+            <SimilarBets bet={bet} onSelectBet={onSelectBet} />
 
-          {/* Track result */}
-          <TrackResult bet={bet} />
+            {/* Track result */}
+            <TrackResult bet={bet} />
 
-          <div className="h-6" />
+            {/* Bottom padding for safe area + breathing room */}
+            <div style={{ height: "max(24px, env(safe-area-inset-bottom, 24px))" }} />
+          </div>
         </div>
       </DrawerContent>
     </Drawer>
