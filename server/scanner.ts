@@ -79,9 +79,9 @@ function buildKalshiBet(m: any): InsertBet {
   };
 }
 
-// ─── ActionNetwork public API (no key required) ─────────────────────────────
-// Provides public betting % (money & tickets) for spreads/totals/moneylines.
-// Used as a supplemental consensus signal, especially when Odds API quota is exhausted.
+// ─── ActionNetwork API ────────────────────────────────────────────────────────
+// With auth key: returns real public betting % + sharp money % for all books.
+// Without key: falls back to browser headers (public, no money data).
 const ACTION_SPORTS: Record<string, string> = {
   NBA: "nba",
   NFL: "nfl",
@@ -92,6 +92,8 @@ const ACTION_SPORTS: Record<string, string> = {
 };
 // Book IDs for major US sportsbooks on ActionNetwork
 const ACTION_BOOK_IDS = "15,30,366,283,68,351,348,355,76,75";
+// ActionNetwork API key (enables public betting % + sharp money data)
+const ACTION_API_KEY = process.env.ACTION_NETWORK_KEY ?? null;
 
 async function fetchActionNetwork(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
@@ -109,15 +111,24 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
     for (const dateStr of dates) {
       try {
         const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${sportSlug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${dateStr}`;
+        // Use auth key if available (unlocks public % + sharp money % data)
+        // NOTE: ActionNetwork API blocks requests with User-Agent header when auth key is used
+        // so we must set User-Agent to empty string to bypass that check.
         const { data } = await axios.get(url, {
           timeout: 10000,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.actionnetwork.com/",
-            "Origin": "https://www.actionnetwork.com",
-          },
+          headers: ACTION_API_KEY
+            ? {
+                "Authorization": `Bearer ${ACTION_API_KEY}`,
+                "Accept": "application/json",
+                "User-Agent": "",  // Must be empty — AN API blocks custom UAs with auth
+              }
+            : {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.actionnetwork.com/",
+                "Origin": "https://www.actionnetwork.com",
+              },
         });
 
         const games: any[] = data?.games ?? data?.scoreboard ?? [];
@@ -136,9 +147,15 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
           // start_time is ISO string (e.g. "2026-03-15T00:30:00.000Z")
           const gameTime = game.start_time ? new Date(game.start_time) : null;
 
-          // Use the first odds entry (consensus line)
+          // Find the best odds entry — prefer one with public/money % data (book 15 = DraftKings)
           const oddsArr: any[] = game.odds ?? [];
-          const oddsLine = oddsArr[0] ?? null;
+          if (oddsArr.length === 0) continue;
+          // Pick the entry with the most non-null money fields (auth key data is on book 15)
+          const oddsLine = oddsArr.reduce((best: any, curr: any) => {
+            const bestMoney = Object.keys(best).filter(k => k.includes('_money') && best[k] != null).length;
+            const currMoney = Object.keys(curr).filter(k => k.includes('_money') && curr[k] != null).length;
+            return currMoney > bestMoney ? curr : best;
+          }, oddsArr[0]);
           if (!oddsLine) continue;
 
           // ── Moneyline pick ──
@@ -148,9 +165,11 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const homeProb = americanToImplied(mlHome);
             const awayProb = americanToImplied(mlAway);
 
-            // Use public money % if available, otherwise fall back to implied prob
-            const homeMoneyRaw = oddsLine.ml_home_money;
-            const awayMoneyRaw = oddsLine.ml_away_money;
+            // Use public money % if available (requires auth key), otherwise fall back to implied prob
+            const homeMoneyRaw = oddsLine.ml_home_money;     // % of $ on home
+            const awayMoneyRaw = oddsLine.ml_away_money;     // % of $ on away
+            const homePublicRaw = oddsLine.ml_home_public;   // % of tickets on home
+            const awayPublicRaw = oddsLine.ml_away_public;   // % of tickets on away
             const usePublic = homeMoneyRaw != null && awayMoneyRaw != null;
             const homeSignal = usePublic ? (homeMoneyRaw / 100) : homeProb;
             const awaySignal = usePublic ? (awayMoneyRaw / 100) : awayProb;
@@ -159,16 +178,19 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
             const pickedOdds = pickSide === "home" ? mlHome : mlAway;
             const pickedProb = pickSide === "home" ? homeProb : awayProb;
+            // Sharp money % and public ticket % for this pick's side
+            const pickedSharpMoney = pickSide === "home" ? homeMoneyRaw : awayMoneyRaw;
+            const pickedPublicTicket = pickSide === "home" ? homePublicRaw : awayPublicRaw;
 
             if (pickedProb >= 0.52) { // only pick clear favorites
               const label = usePublic
-                ? `${Math.round(homeSignal > awaySignal ? homeSignal : awaySignal)}% public money on ${pickTeam}`
+                ? `${Math.round(homeSignal > awaySignal ? homeSignal : awaySignal)}% sharp money on ${pickTeam}`
                 : `ML favourite: ${pickedOdds > 0 ? "+" : ""}${pickedOdds}`;
               const title = `${awayTeam} @ ${homeTeam} — ${pickTeam} ML (${pickedOdds > 0 ? "+" : ""}${pickedOdds})`;
               const id = `action-${sportSlug}-${game.id}-ml`;
               if (!seen.has(id)) {
                 seen.add(id);
-                const score = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds });
+                const score = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds, sharpMoneyPct: pickedSharpMoney, publicTicketPct: pickedPublicTicket });
                 bets.push({
                   id, source: "actionnetwork", sport: sportLabel, betType: "moneyline", title,
                   description: `ActionNetwork line — ${label}`,
@@ -196,6 +218,8 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
 
             const homeSpreadMoney = oddsLine.spread_home_money;
             const awaySpreadMoney = oddsLine.spread_away_money;
+            const homeSpreadPublic = oddsLine.spread_home_public;
+            const awaySpreadPublic = oddsLine.spread_away_public;
             const usePublicSpread = homeSpreadMoney != null && awaySpreadMoney != null;
             const homeSpreadSignal = usePublicSpread ? homeSpreadMoney / 100 : homeSpreadProb;
             const awaySpreadSignal = usePublicSpread ? awaySpreadMoney / 100 : awaySpreadProb;
@@ -205,17 +229,19 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const pickSpreadLine = pickSpreadSide === "home" ? spreadHome : spreadAway;
             const pickSpreadOdds = pickSpreadSide === "home" ? spreadHomeLine : (spreadAwayLine ?? spreadHomeLine);
             const pickSpreadProb = pickSpreadSide === "home" ? homeSpreadProb : awaySpreadProb;
+            const pickedSpreadSharpMoney = pickSpreadSide === "home" ? homeSpreadMoney : awaySpreadMoney;
+            const pickedSpreadPublicTicket = pickSpreadSide === "home" ? homeSpreadPublic : awaySpreadPublic;
             const lineStr = pickSpreadLine > 0 ? `+${pickSpreadLine}` : `${pickSpreadLine}`;
             const oddsStr = pickSpreadOdds > 0 ? `+${pickSpreadOdds}` : `${pickSpreadOdds}`;
 
             const spreadLabel = usePublicSpread
-              ? `${Math.round(homeSpreadSignal > awaySpreadSignal ? homeSpreadSignal : awaySpreadSignal)}% public on ${pickSpreadTeam} ${lineStr}`
+              ? `${Math.round(homeSpreadSignal > awaySpreadSignal ? homeSpreadSignal : awaySpreadSignal)}% sharp money on ${pickSpreadTeam} ${lineStr}`
               : `${pickSpreadTeam} ${lineStr} (${oddsStr})`;
             const spreadTitle = `${awayTeam} @ ${homeTeam} — ${pickSpreadTeam} ${lineStr} (${oddsStr})`;
             const spreadId = `action-${sportSlug}-${game.id}-spread`;
             if (!seen.has(spreadId)) {
               seen.add(spreadId);
-              const score = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine });
+              const score = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine, sharpMoneyPct: pickedSpreadSharpMoney, publicTicketPct: pickedSpreadPublicTicket });
               bets.push({
                 id: spreadId, source: "actionnetwork", sport: sportLabel, betType: "spread", title: spreadTitle,
                 description: `ActionNetwork spread — ${spreadLabel}`,
@@ -241,6 +267,8 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
 
             const overMoneyPct = oddsLine.total_over_money;
             const underMoneyPct = oddsLine.total_under_money;
+            const overPublicPct = oddsLine.total_over_public;
+            const underPublicPct = oddsLine.total_under_public;
             const usePublicTotal = overMoneyPct != null && underMoneyPct != null;
             const overSignal = usePublicTotal ? overMoneyPct / 100 : overProb;
             const underSignal = usePublicTotal ? underMoneyPct / 100 : underProb;
@@ -248,16 +276,18 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const pickTotalSide = overSignal >= underSignal ? "over" : "under";
             const pickTotalOdds = pickTotalSide === "over" ? overOdds : underOdds;
             const pickTotalProb = pickTotalSide === "over" ? overProb : underProb;
+            const pickedTotalSharpMoney = pickTotalSide === "over" ? overMoneyPct : underMoneyPct;
+            const pickedTotalPublicTicket = pickTotalSide === "over" ? overPublicPct : underPublicPct;
             const totalOddsStr = pickTotalOdds > 0 ? `+${pickTotalOdds}` : `${pickTotalOdds}`;
 
             const totalLabel = usePublicTotal
-              ? `${Math.round(overSignal > underSignal ? overSignal : underSignal)}% public on ${pickTotalSide.toUpperCase()} ${total}`
+              ? `${Math.round(overSignal > underSignal ? overSignal : underSignal)}% sharp money on ${pickTotalSide.toUpperCase()} ${total}`
               : `${pickTotalSide.toUpperCase()} ${total} (${totalOddsStr})`;
             const totalTitle = `${awayTeam} @ ${homeTeam} — ${pickTotalSide === "over" ? "OVER" : "UNDER"} ${total} (${totalOddsStr})`;
             const totalId = `action-${sportSlug}-${game.id}-total`;
             if (!seen.has(totalId)) {
               seen.add(totalId);
-              const score = computeConfidence({ impliedProb: pickTotalProb, source: "actionnetwork", betType: "total", sport: sportLabel, title: totalTitle, odds: pickTotalOdds, line: total });
+              const score = computeConfidence({ impliedProb: pickTotalProb, source: "actionnetwork", betType: "total", sport: sportLabel, title: totalTitle, odds: pickTotalOdds, line: total, sharpMoneyPct: pickedTotalSharpMoney, publicTicketPct: pickedTotalPublicTicket });
               bets.push({
                 id: totalId, source: "actionnetwork", sport: sportLabel, betType: "total", title: totalTitle,
                 description: `ActionNetwork total — ${totalLabel}`,
@@ -1147,6 +1177,9 @@ interface ScoreInput {
   title: string;
   odds?: number;
   line?: number | null;
+  // ActionNetwork sharp money signals (when auth key is present)
+  sharpMoneyPct?: number | null;   // % of money on this side ("sharp" bettors)
+  publicTicketPct?: number | null; // % of tickets (public bettors) on this side
 }
 
 interface ScoreResult {
@@ -1192,6 +1225,42 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   } else if (input.source === "underdog") {
     score += 7;
     factors.push("Underdog Fantasy — real-money player prop lines from active market");
+  }
+
+  // 2b. Sharp money signal (ActionNetwork auth key — most powerful signal available)
+  // Sharp money divergence: when sharp money % >> public ticket % it means pro bettors
+  // are loading one side while casual bettors are on the other — very high value signal.
+  if (input.sharpMoneyPct != null && input.publicTicketPct != null) {
+    const sharpPct = input.sharpMoneyPct;  // % of $ on this side
+    const publicPct = input.publicTicketPct; // % of tickets on this side
+    const divergence = sharpPct - publicPct; // positive = sharp loaded, public fading
+
+    if (sharpPct >= 70 && divergence >= 20) {
+      score += 14;
+      factors.push(`🔥 Sharp money signal: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — strong professional consensus`);
+    } else if (sharpPct >= 60 && divergence >= 15) {
+      score += 10;
+      factors.push(`Sharp money edge: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — pros loading this side`);
+    } else if (sharpPct >= 55 && divergence >= 10) {
+      score += 6;
+      factors.push(`Moderate sharp lean: ${Math.round(sharpPct)}% of $ on this side vs ${Math.round(publicPct)}% public tickets`);
+    } else if (divergence < -15) {
+      // Public heavy, sharp fading — lower confidence
+      score -= 5;
+      factors.push(`Public-heavy bet: ${Math.round(publicPct)}% tickets but only ${Math.round(sharpPct)}% money — square action`);
+    } else if (sharpPct >= 50) {
+      score += 3;
+      factors.push(`${Math.round(sharpPct)}% of money on this side — slight sharp lean`);
+    }
+  } else if (input.sharpMoneyPct != null) {
+    // Only money pct available (no ticket data)
+    if (input.sharpMoneyPct >= 65) {
+      score += 8;
+      factors.push(`${Math.round(input.sharpMoneyPct)}% of betting money on this side — strong consensus`);
+    } else if (input.sharpMoneyPct >= 55) {
+      score += 4;
+      factors.push(`${Math.round(input.sharpMoneyPct)}% of money on this side`);
+    }
   }
 
   // 3. Bet type bonus — player props are the primary focus
