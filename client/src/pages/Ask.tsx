@@ -19,6 +19,7 @@ interface RelatedBet {
   recommendedAllocation: number | null;
   keyFactors: string[];
   gameTime: string | null;
+  similarityReason?: string;
 }
 
 interface HistoryItem {
@@ -68,6 +69,11 @@ function RelatedBetCard({ bet }: { bet: RelatedBet }) {
                 {bet.betType === "player_prop" ? "PROP" : bet.betType?.toUpperCase()}
               </span>
               <ConfBadge score={bet.confidenceScore} />
+              {bet.similarityReason && bet.similarityReason !== "direct match" && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-primary/8 text-primary/70 border-primary/20 italic">
+                  {bet.similarityReason}
+                </span>
+              )}
             </div>
             <p className="text-sm font-semibold text-foreground leading-tight truncate">{bet.title}</p>
             {bet.playerName && <p className="text-xs text-muted-foreground mt-0.5">{bet.playerName}</p>}
@@ -223,7 +229,7 @@ export default function Ask() {
                       <div className="flex items-center gap-2">
                         <TrendingUp size={12} className="text-primary" />
                         <p className="text-xs font-semibold text-foreground">
-                          Related bets — sorted by confidence
+                          Similar bets — same player, team, or bet type
                         </p>
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">
                           {item.relatedBets.length}
