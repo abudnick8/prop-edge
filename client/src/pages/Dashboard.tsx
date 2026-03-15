@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 
 interface Stats {
@@ -25,15 +25,32 @@ export default function Dashboard() {
   const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [mainTab, setMainTab] = useState<MainTab>("props");
 
-  const { data: bets = [], isLoading } = useQuery<Bet[]>({
+  const { data: bets = [], isLoading, refetch: refetchBets } = useQuery<Bet[]>({
     queryKey: ["/api/bets"],
-    refetchInterval: 30000,
+    // Poll every 5s when empty (cold start), every 30s once data is loaded
+    refetchInterval: (data) => (Array.isArray(data) && (data as Bet[]).length === 0 ? 5000 : 30000),
   });
 
-  const { data: stats } = useQuery<Stats>({
+  const { data: stats, refetch: refetchStats } = useQuery<Stats>({
     queryKey: ["/api/stats"],
-    refetchInterval: 30000,
+    refetchInterval: (data) => (bets.length === 0 ? 5000 : 30000),
   });
+
+  // Auto-trigger a scan once if data is empty after 3 seconds (cold start)
+  const autoScanned = useRef(false);
+  useEffect(() => {
+    if (!isLoading && bets.length === 0 && !autoScanned.current) {
+      const timer = setTimeout(() => {
+        autoScanned.current = true;
+        apiRequest("POST", "/api/scan").then(() => {
+          refetchBets();
+          refetchStats();
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        }).catch(() => {});
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, bets.length]);
 
   const scanMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/scan"),
@@ -161,8 +178,8 @@ export default function Dashboard() {
             <SkeletonGrid />
           ) : propBets.length === 0 ? (
             <EmptyState
-              title={dayFilter === "all" ? "No player props loaded" : `No player props for ${dayFilter === "today" ? "today" : "tomorrow"}`}
-              subtitle="Try a different day or hit Scan Now"
+              title={bets.length === 0 ? "⚡ Scanning markets..." : dayFilter === "all" ? "No player props loaded" : `No player props for ${dayFilter === "today" ? "today" : "tomorrow"}`}
+              subtitle={bets.length === 0 ? "Loading live picks from all sources — usually takes 20–30 seconds" : "Try a different day or hit Scan Now"}
               actions={
                 <div className="flex gap-2 justify-center flex-wrap">
                   {dayFilter !== "all" && (
@@ -209,8 +226,8 @@ export default function Dashboard() {
             <SkeletonGrid />
           ) : teamBets.length === 0 ? (
             <EmptyState
-              title={`No team bets for ${dayFilter === "today" ? "today" : dayFilter === "tomorrow" ? "tomorrow" : "upcoming days"}`}
-              subtitle="Spreads, totals, and moneylines appear here"
+              title={bets.length === 0 ? "⚡ Scanning markets..." : `No team bets for ${dayFilter === "today" ? "today" : dayFilter === "tomorrow" ? "tomorrow" : "upcoming days"}`}
+              subtitle={bets.length === 0 ? "Loading live picks — usually takes 20–30 seconds" : "Spreads, totals, and moneylines appear here"}
               actions={
                 <div className="flex gap-2 justify-center">
                   {dayFilter !== "all" && (
