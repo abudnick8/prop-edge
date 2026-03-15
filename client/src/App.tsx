@@ -16,7 +16,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter hook={useHashLocation}>
-        <div className="flex h-screen bg-background overflow-hidden">
+        <div className="flex bg-background overflow-hidden" style={{height: '100vh', minHeight: '-webkit-fill-available'}}>
           {/* Desktop: left sidebar — inside Router so Links have context */}
           <DesktopSidebar />
 
