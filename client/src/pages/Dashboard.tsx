@@ -3,7 +3,7 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Wifi, WifiOff, Info, Trophy } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -36,17 +36,6 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
-  const { data: quota } = useQuery<{
-    status: "ok" | "exhausted" | "no_key";
-    used: number | null;
-    remaining: number | null;
-    resets: string | null;
-    plan?: string;
-  }>({
-    queryKey: ["/api/quota"],
-    refetchInterval: 5 * 60 * 1000,
-    staleTime: 60 * 1000,
-  });
 
   const scanMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/scan"),
@@ -163,39 +152,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* API Quota Banner */}
-      {quota && quota.status !== "ok" && (
-        <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm ${
-          quota.status === "exhausted"
-            ? "bg-orange-500/10 border-orange-500/30 text-orange-300"
-            : "bg-muted border-border text-muted-foreground"
-        }`}>
-          {quota.status === "exhausted" ? <WifiOff size={16} className="flex-shrink-0 mt-0.5" /> : <Info size={16} className="flex-shrink-0 mt-0.5" />}
-          <div>
-            {quota.status === "exhausted" ? (
-              <>
-                <p className="font-semibold">The Odds API quota exhausted ({quota.used}/500 requests used)</p>
-                <p className="text-xs mt-0.5 text-orange-300/80">
-                  Live DraftKings lines and player props are paused until the quota resets on{" "}
-                  {quota.resets ? new Date(quota.resets).toLocaleDateString("en-US", { month: "long", day: "numeric" }) : "the 1st of next month"}.
-                  ActionNetwork, Kalshi, and Polymarket are still active. Season futures below are loaded from seed data.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-semibold">No Odds API key configured</p>
-                <p className="text-xs mt-0.5">Go to Settings → API Keys to add your The Odds API key for live DraftKings lines and player props.</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-      {quota && quota.status === "ok" && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Wifi size={12} className="text-green-400" />
-          <span>Odds API live · {quota.remaining} requests remaining this month</span>
-        </div>
-      )}
+
 
       {/* How to Read */}
       <HowToRead />
@@ -467,7 +424,7 @@ export default function Dashboard() {
                 <Trophy size={32} className="mx-auto text-muted-foreground mb-3" />
                 <p className="text-sm font-medium text-foreground">No season futures loaded yet</p>
                 <p className="text-xs text-muted-foreground mt-1 mb-3">
-                  Click Scan Now — seed futures load automatically when The Odds API quota is exhausted
+                  Click Scan Now to refresh all live markets
                 </p>
                 <button
                   onClick={() => scanMutation.mutate()}
