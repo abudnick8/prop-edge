@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Trash2, RefreshCw, TrendingUp, TrendingDown,
-  Target, Trophy, CheckCircle2, XCircle, Clock, Pencil, X, ChevronDown, ChevronUp, BarChart3, Flame
+  Target, Trophy, CheckCircle2, XCircle, Clock, Pencil, X, ChevronDown, ChevronUp, BarChart3, Flame, Zap, Database
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
@@ -484,11 +484,43 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
                 <div className="font-semibold mt-0.5 text-white/60">{prop.createdAt ? formatDistanceToNow(new Date(prop.createdAt), { addSuffix: true }) : "—"}</div>
               </div>
             </div>
+            {/* Data source tag */}
+            {prop.notes && (prop.notes.includes("ESPN") || prop.notes.includes("Baseball Reference")) && (
+              <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.15)" }}>
+                <span className="text-[10px]" style={{ color: "#22d3ee" }}>📡</span>
+                <span className="text-[10px] font-semibold" style={{ color: "rgba(34,211,238,0.8)" }}>
+                  Stats auto-fetched — {prop.notes.includes("ESPN") ? "ESPN" : "Baseball Reference"}
+                </span>
+                {prop.updatedAt && (
+                  <span className="ml-auto text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    {formatDistanceToNow(new Date(prop.updatedAt), { addSuffix: true })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+// ── Refresh result type ────────────────────────────────────────────────────────
+interface RefreshResult {
+  updated: number;
+  total: number;
+  refreshedAt: string;
+  results: Array<{
+    id: string;
+    playerName: string;
+    sport: string;
+    statCategory: string;
+    oldValue: number | null;
+    newValue: number | null;
+    gamesPlayed: number | null;
+    source: string;
+    status: string;
+  }>;
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
@@ -497,10 +529,34 @@ export default function TrackedProps() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProp, setEditingProp] = useState<TrackedProp | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "hit" | "missed">("all");
+  const [lastRefresh, setLastRefresh] = useState<{ at: Date; updated: number; total: number } | null>(null);
+  const [refreshDetails, setRefreshDetails] = useState<RefreshResult | null>(null);
+  const [showRefreshDetails, setShowRefreshDetails] = useState(false);
 
   const { data: props = [], isLoading } = useQuery<TrackedProp[]>({
     queryKey: ["/api/tracked-props"],
     refetchInterval: 60000,
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/refresh-tracked-props", {}),
+    onSuccess: async (res) => {
+      const data: RefreshResult = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/tracked-props"] });
+      setLastRefresh({ at: new Date(data.refreshedAt), updated: data.updated, total: data.total });
+      setRefreshDetails(data);
+      if (data.updated > 0) {
+        toast({
+          title: `📡 Stats Refreshed`,
+          description: `Updated ${data.updated} of ${data.total} active props from live sources.`,
+        });
+      } else {
+        toast({ title: `📡 Refresh Complete`, description: data.total === 0 ? "No active props to refresh." : `No new data found for ${data.total} props — try again later.` });
+      }
+    },
+    onError: (e: any) => {
+      toast({ title: "Refresh failed", description: e.message, variant: "destructive" });
+    },
   });
 
   const addMutation = useMutation({
@@ -579,22 +635,91 @@ export default function TrackedProps() {
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "hsl(45 100% 92%)" }}>
             📊 Prop Tracker
           </h1>
           <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Track season-long and game props — update progress as stats come in
+            Track season-long and game props — stats auto-fetched from ESPN &amp; Baseball Reference
           </p>
+          {lastRefresh && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-[10px] font-semibold" style={{ color: "rgba(74,222,128,0.7)" }}>
+                📡 Refreshed {formatDistanceToNow(lastRefresh.at, { addSuffix: true })} — {lastRefresh.updated}/{lastRefresh.total} updated
+              </span>
+              {refreshDetails && (
+                <button
+                  onClick={() => setShowRefreshDetails(!showRefreshDetails)}
+                  className="text-[10px] underline"
+                  style={{ color: "rgba(255,255,255,0.3)" }}>
+                  {showRefreshDetails ? "hide" : "details"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => { setEditingProp(null); setModalOpen(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold"
-          style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)", color: "#1a0d00", boxShadow: "0 0 20px rgba(245,158,11,0.35)" }}>
-          <Plus size={15} /> Track New Prop
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Refresh Stats button */}
+          <button
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all"
+            style={{
+              background: refreshMutation.isPending ? "rgba(34,211,238,0.06)" : "rgba(34,211,238,0.1)",
+              borderColor: "rgba(34,211,238,0.3)",
+              color: "#22d3ee",
+              opacity: refreshMutation.isPending ? 0.7 : 1,
+            }}
+            title="Fetch live stats from ESPN & Baseball Reference">
+            <RefreshCw size={12} className={refreshMutation.isPending ? "animate-spin" : ""} />
+            {refreshMutation.isPending ? "Fetching..." : "Refresh Stats"}
+          </button>
+          <button
+            onClick={() => { setEditingProp(null); setModalOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold"
+            style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)", color: "#1a0d00", boxShadow: "0 0 20px rgba(245,158,11,0.35)" }}>
+            <Plus size={15} /> Track New Prop
+          </button>
+        </div>
       </div>
+
+      {/* Refresh details panel */}
+      {showRefreshDetails && refreshDetails && (
+        <div className="rounded-xl border p-4" style={{ background: "rgba(0,0,0,0.3)", borderColor: "rgba(34,211,238,0.2)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Database size={13} style={{ color: "#22d3ee" }} />
+            <span className="text-xs font-bold" style={{ color: "#22d3ee" }}>Last Refresh Details</span>
+            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>{new Date(refreshDetails.refreshedAt).toLocaleTimeString()}</span>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {refreshDetails.results.map((r, i) => (
+              <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <div className="flex items-center gap-2">
+                  <span>{SPORT_EMOJI[r.sport]}</span>
+                  <span className="font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>{r.playerName}</span>
+                  <span style={{ color: "rgba(255,255,255,0.4)" }}>{r.statCategory}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {r.newValue !== null ? (
+                    <>
+                      {r.oldValue !== null && r.oldValue !== r.newValue && (
+                        <span className="font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>{r.oldValue} →</span>
+                      )}
+                      <span className="font-mono font-bold" style={{ color: "#4ade80" }}>{r.newValue}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: "rgba(255,255,255,0.3)" }}>no data</span>
+                  )}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: r.source === "not found" ? "rgba(248,113,113,0.1)" : "rgba(34,211,238,0.1)", color: r.source === "not found" ? "#f87171" : "#22d3ee" }}>
+                    {r.source === "not found" ? "not found" : r.source}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Summary stats */}
       {props.length > 0 && (
