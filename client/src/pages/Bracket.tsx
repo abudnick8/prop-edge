@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, TrendingUp, Zap, Search, Info, Target, Star } from "lucide-react";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, TrendingUp, Zap, Search, Info, Target, Star, Download } from "lucide-react";
 import { generateBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
+import { downloadBracketPDF } from "@/lib/bracketPdf";
 
 // ── Confidence Ring ────────────────────────────────────────────────────────
 function ConfidenceRing({ score, size = 40 }: { score: number; size?: number }) {
@@ -203,6 +204,17 @@ type BracketView = "bracket" | "teams" | "upsets" | "compare";
 export default function Bracket() {
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    if (!bracket) return;
+    setDownloading(true);
+    try {
+      await downloadBracketPDF(bracket);
+    } finally {
+      setDownloading(false);
+    }
+  };
   const [activeView, setActiveView] = useState<BracketView>("bracket");
   const [selectedRegion, setSelectedRegion] = useState<Region>("East");
   const [searchQuery, setSearchQuery] = useState("");
@@ -266,17 +278,33 @@ export default function Bracket() {
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">AI-powered bracket generator · {ALL_TEAMS.length} teams</p>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-60 shadow-lg"
-        >
-          {generating ? (
-            <><RefreshCw size={14} className="animate-spin" /> Simulating...</>
-          ) : (
-            <><Zap size={14} /> {bracket ? "Re-Generate" : "Generate Bracket"}</>
+        <div className="flex items-center gap-2">
+          {bracket && (
+            <button
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm font-semibold hover:border-primary/50 hover:text-primary transition-all disabled:opacity-60"
+              title="Download bracket as PDF"
+            >
+              {downloading ? (
+                <><RefreshCw size={13} className="animate-spin" /> Exporting...</>
+              ) : (
+                <><Download size={13} /> PDF</>
+              )}
+            </button>
           )}
-        </button>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-60 shadow-lg"
+          >
+            {generating ? (
+              <><RefreshCw size={14} className="animate-spin" /> Simulating...</>
+            ) : (
+              <><Zap size={14} /> {bracket ? "Re-Generate" : "Generate Bracket"}</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Info banner pre-generate */}
@@ -346,6 +374,13 @@ export default function Bracket() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{bracket.champion.analysis.split(".").slice(0, 2).join(". ")}.</p>
+            <button
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              className="mt-3 flex items-center gap-2 px-4 py-2 bg-primary/20 border border-primary/40 text-primary rounded-lg text-xs font-bold hover:bg-primary/30 transition-all disabled:opacity-60 w-full justify-center"
+            >
+              {downloading ? <><RefreshCw size={12} className="animate-spin" /> Building PDF...</> : <><Download size={12} /> Download Bracket PDF (2 pages)</>}
+            </button>
           </div>
 
           {/* Final Four summary */}
