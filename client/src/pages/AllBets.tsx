@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import BetCard from "@/components/BetCard";
@@ -22,6 +22,25 @@ export default function AllBets() {
   const [showFilters, setShowFilters] = useState(false);
   const [dayFilter, setDayFilter] = useState<DayFilter>("today");
   const [mainTab, setMainTab] = useState<MainTab>("daily");
+
+  // Read URL params to pre-set filters (e.g. ?type=player_prop from Dashboard)
+  useEffect(() => {
+    const hash = window.location.hash; // e.g. "#/bets?type=player_prop"
+    const qIndex = hash.indexOf("?");
+    if (qIndex !== -1) {
+      const params = new URLSearchParams(hash.slice(qIndex + 1));
+      const typeParam = params.get("type");
+      if (typeParam && BET_TYPES.includes(typeParam)) {
+        setBetType(typeParam);
+        setShowFilters(true);
+      }
+      const filterParam = params.get("filter");
+      if (filterParam === "high") {
+        setMinScore(80);
+        setShowFilters(true);
+      }
+    }
+  }, []);
 
   const { data: bets = [], isLoading } = useQuery<Bet[]>({
     queryKey: ["/api/bets"],

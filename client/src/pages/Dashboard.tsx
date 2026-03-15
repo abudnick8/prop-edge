@@ -81,6 +81,16 @@ export default function Dashboard() {
   const threshold = stats?.threshold ?? 80;
 
   const highConf = dayBets.filter((b) => (b.confidenceScore ?? 0) >= threshold);
+  // Dedicated player props — sorted by confidence, capped at 24 for display
+  const topProps = dayBets
+    .filter((b) => b.betType === "player_prop")
+    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+    .slice(0, 24);
+  // Team bets (non-props) for separate section
+  const teamBets = dayBets
+    .filter((b) => b.betType !== "player_prop")
+    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+    .slice(0, 12);
   const recent = dayBets.slice(0, 12);
 
   // Season bets high confidence
@@ -277,90 +287,129 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Hot Picks Section */}
-          {highConf.length > 0 && (
+          {/* ── TOP PLAYER PROPS (primary section) ── */}
+          {isLoading ? (
             <section>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <h2 className="text-base font-bold text-foreground">
-                    🔥 Hot Picks
-                    <span className="text-xs font-normal text-muted-foreground ml-1">· props first</span>
-                  </h2>
-                  <span className="text-xs font-mono bg-primary/15 text-primary px-2 py-0.5 rounded-md border border-primary/30">
-                    {highConf.length} picks ≥{threshold}/100
-                  </span>
-                </div>
-                <Link href="/bets?filter=high">
-                  <a className="text-xs text-primary hover:underline">View all →</a>
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {highConf.slice(0, 6).map((bet) => (
-                  <BetCard key={bet.id} bet={bet} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* All Daily */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-foreground">
-                {dayFilter === "today" ? "Today's Markets" : dayFilter === "tomorrow" ? "Tomorrow's Markets" : "All Daily Markets"}
-              </h2>
-              <Link href="/bets">
-                <a className="text-xs text-primary hover:underline">View all →</a>
-              </Link>
-            </div>
-
-            {isLoading ? (
+              <div className="h-6 w-48 bg-muted rounded mb-4" />
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {Array(6).fill(0).map((_, i) => (
                   <Skeleton key={i} className="h-44 rounded-xl" />
                 ))}
               </div>
-            ) : dayBets.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-border rounded-xl">
-                <AlertCircle size={32} className="mx-auto text-muted-foreground mb-3" />
-                {bets.length === 0 ? (
-                  <>
-                    <p className="text-sm font-medium text-foreground">No markets loaded yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">Click Scan Now to load prediction markets</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-foreground">
-                      No {dayFilter === "today" ? "today's" : "tomorrow's"} games found
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1 mb-3">
-                      No games scheduled — try All Daily or check Season Bets for futures
-                    </p>
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => setDayFilter("all")}
-                        className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
-                      >
-                        Show All Daily
-                      </button>
-                      <button
-                        onClick={() => setMainTab("season")}
-                        className="text-xs px-3 py-1.5 bg-yellow-500/10 text-yellow-400 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors"
-                      >
-                        View Season Bets ({seasonBets.length})
-                      </button>
+            </section>
+          ) : dayBets.length === 0 ? (
+            <div className="text-center py-16 border border-dashed border-border rounded-xl">
+              <AlertCircle size={32} className="mx-auto text-muted-foreground mb-3" />
+              {bets.length === 0 ? (
+                <>
+                  <p className="text-sm font-medium text-foreground">No markets loaded yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Click Scan Now to load prediction markets</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-foreground">
+                    No {dayFilter === "today" ? "today's" : "tomorrow's"} games found
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 mb-3">
+                    No games scheduled — try All Daily or check Season Bets for futures
+                  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setDayFilter("all")}
+                      className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
+                    >
+                      Show All Daily
+                    </button>
+                    <button
+                      onClick={() => setMainTab("season")}
+                      className="text-xs px-3 py-1.5 bg-yellow-500/10 text-yellow-400 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors"
+                    >
+                      View Season Bets ({seasonBets.length})
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Player Props — top priority section */}
+              {topProps.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <h2 className="text-base font-bold text-foreground">
+                        🎯 Top Player Props
+                      </h2>
+                      <span className="text-xs font-mono bg-green-500/15 text-green-400 px-2 py-0.5 rounded-md border border-green-500/30">
+                        {topProps.length} props
+                      </span>
                     </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {recent.map((bet) => (
-                  <BetCard key={bet.id} bet={bet} />
-                ))}
-              </div>
-            )}
-          </section>
+                    <Link href="/bets?type=player_prop">
+                      <a className="text-xs text-primary hover:underline">View all props →</a>
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {topProps.slice(0, 12).map((bet) => (
+                      <BetCard key={bet.id} bet={bet} />
+                    ))}
+                  </div>
+                  {topProps.length > 12 && (
+                    <p className="text-xs text-muted-foreground mt-3 text-center">
+                      Showing top 12 of {topProps.length} props —{" "}
+                      <Link href="/bets?type=player_prop"><a className="text-primary hover:underline">view all →</a></Link>
+                    </p>
+                  )}
+                </section>
+              )}
+
+              {/* Hot Picks (high confidence, any type) */}
+              {highConf.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <h2 className="text-base font-bold text-foreground">
+                        🔥 Hot Picks
+                        <span className="text-xs font-normal text-muted-foreground ml-1">· ≥80/100 confidence</span>
+                      </h2>
+                      <span className="text-xs font-mono bg-primary/15 text-primary px-2 py-0.5 rounded-md border border-primary/30">
+                        {highConf.length} picks
+                      </span>
+                    </div>
+                    <Link href="/bets?filter=high">
+                      <a className="text-xs text-primary hover:underline">View all →</a>
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {highConf.filter(b => b.betType === "player_prop").slice(0, 6).map((bet) => (
+                      <BetCard key={bet.id} bet={bet} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Team Bets (spreads, totals, moneylines) */}
+              {teamBets.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-bold text-foreground">
+                      Team Bets
+                      <span className="text-xs font-normal text-muted-foreground ml-2">spreads · totals · moneylines</span>
+                    </h2>
+                    <Link href="/bets">
+                      <a className="text-xs text-primary hover:underline">View all →</a>
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {teamBets.slice(0, 6).map((bet) => (
+                      <BetCard key={bet.id} bet={bet} />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
         </div>
       )}
 

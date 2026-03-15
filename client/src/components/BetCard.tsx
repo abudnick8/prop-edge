@@ -104,7 +104,8 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const score = bet.confidenceScore ?? 0;
   const isHigh = score >= 80;
   const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number; overProb?: number; underProb?: number } | null;
-  const pickSide = bet.betType === "player_prop" ? teamStats?.pickSide : null;
+  const pickSideRaw = bet.betType === "player_prop" ? teamStats?.pickSide : null;
+  const pickSide = pickSideRaw?.toUpperCase() ?? null; // normalize to OVER/UNDER
   const pickedOdds = teamStats?.pickedOdds;
   const oddsDisplay = pickedOdds !== undefined ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : null;
 
@@ -120,14 +121,14 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
         {pickSide && (
           <div
             className={`flex items-center justify-between mb-3 px-3 py-2 rounded-lg font-bold text-sm tracking-wide ${
-              pickSide === "over"
+              pickSide === "OVER"
                 ? "bg-green-500/15 border border-green-500/40 text-green-400"
                 : "bg-blue-500/15 border border-blue-500/40 text-blue-400"
             }`}
           >
             <span className="flex items-center gap-2">
-              <span className="text-base">{pickSide === "over" ? "▲" : "▼"}</span>
-              <span>{pickSide === "over" ? "TAKE OVER" : "TAKE UNDER"}{bet.line !== null ? ` ${bet.line}` : ""}</span>
+              <span className="text-base">{pickSide === "OVER" ? "▲" : "▼"}</span>
+              <span>{pickSide === "OVER" ? "TAKE OVER" : "TAKE UNDER"}{bet.line !== null ? ` ${bet.line}` : ""}</span>
             </span>
             {oddsDisplay && (
               <span className="font-mono text-sm">{oddsDisplay}</span>

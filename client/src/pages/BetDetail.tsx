@@ -70,7 +70,7 @@ export default function BetDetail() {
         {(() => {
           const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
           if (bet.betType !== "player_prop" || !ts?.pickSide) return null;
-          const isOver = ts.pickSide === "over";
+          const isOver = ts.pickSide?.toUpperCase() === "OVER";
           const odds = ts.pickedOdds;
           const oddsStr = odds !== undefined ? (odds > 0 ? `+${odds}` : `${odds}`) : null;
           return (
