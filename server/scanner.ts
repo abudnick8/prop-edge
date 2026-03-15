@@ -1569,9 +1569,7 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
       const oddID = `${statID}-PLAYER_ID-game-ou-over`;
       try {
         const url = `${SGO_BASE}/events?leagueID=${leagueID}&oddID=${encodeURIComponent(oddID)}&ended=false&cancelled=false&includeOpposingOdds=true&apiKey=${SGO_KEY}`;
-        const resp = await fetch(url, { headers: { "User-Agent": "" } });
-        if (!resp.ok) continue;
-        const data = await resp.json();
+        const { data } = await axios.get(url, { timeout: 15000 });
         if (!data.success || !Array.isArray(data.data)) continue;
 
         const events: any[] = data.data;
