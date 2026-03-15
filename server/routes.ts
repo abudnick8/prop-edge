@@ -364,7 +364,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const bets = await storage.getBets();
       const q = question.toLowerCase();
 
-      // Score each bet by relevance to the question
+      // ── Step 1: Score each bet for direct relevance to the question ──
+      const words = q.split(/\s+/).filter((w) => w.length > 2);
       const scored = bets.map((b) => {
         let score = 0;
         const fields = [
@@ -373,26 +374,92 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           ...(b.keyFactors ?? []),
         ].map((f) => (f ?? "").toLowerCase());
 
-        const words = q.split(/\s+/).filter((w) => w.length > 2);
         for (const f of fields) {
           for (const word of words) {
             if (f.includes(word)) score += 1;
           }
         }
+        // Exact player name match = big boost
+        if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) score += 3;
+        // Exact team match = big boost
+        if ((b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) ||
+            (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w)))) score += 3;
         if (b.betType === "player_prop") score += 0.5;
         if ((b.confidenceScore ?? 0) >= 80) score += 1;
         return { bet: b, score };
       });
 
-      const relevant = scored
-        .filter((s) => s.score > 0)
-        .sort((a, b) => b.score - a.score || (b.bet.confidenceScore ?? 0) - (a.bet.confidenceScore ?? 0))
-        .slice(0, 8)
-        .map((s) => s.bet);
+      const byScore = [...scored].sort((a, b) => b.score - a.score || (b.bet.confidenceScore ?? 0) - (a.bet.confidenceScore ?? 0));
+      const topDirect = byScore.filter((s) => s.score > 0).slice(0, 4).map((s) => s.bet);
 
-      const context = relevant.length > 0
-        ? relevant
+      // Primary context for AI analysis
+      const context = topDirect.length > 0
+        ? topDirect
         : bets.filter((b) => (b.confidenceScore ?? 0) >= 75).slice(0, 6);
+
+      // ── Step 2: Build "similar bets" from three pools ──
+      const topBet = context[0];
+      const byConf = (a: any, b: any) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+      const seen = new Set(context.map((b) => b.id));
+
+      // Pool A: same player or same team (most specific)
+      const poolA = bets.filter((b) => {
+        if (seen.has(b.id)) return false;
+        if (topBet?.playerName && b.playerName &&
+            b.playerName.toLowerCase().includes(topBet.playerName.split(" ")[0].toLowerCase())) return true;
+        if (topBet?.homeTeam && b.homeTeam === topBet.homeTeam) return true;
+        if (topBet?.awayTeam && b.awayTeam === topBet.awayTeam) return true;
+        // Also match any question word against player/team name
+        if (b.playerName && words.some((w) => b.playerName!.toLowerCase().includes(w))) return true;
+        if (b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) return true;
+        if (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w))) return true;
+        return false;
+      }).sort(byConf).slice(0, 3);
+      poolA.forEach((b) => seen.add(b.id));
+
+      // Pool B: same bet type + same sport (e.g. other NBA player_prop points)
+      const poolB = bets.filter((b) => {
+        if (seen.has(b.id)) return false;
+        if (b.betType !== (topBet?.betType ?? "player_prop")) return false;
+        if (topBet?.sport && b.sport !== topBet.sport) return false;
+        return (b.confidenceScore ?? 0) >= 75;
+      }).sort(byConf).slice(0, 3);
+      poolB.forEach((b) => seen.add(b.id));
+
+      // Pool C: fill remaining with high-confidence props from same sport
+      const poolC = bets.filter((b) => {
+        if (seen.has(b.id)) return false;
+        if (topBet?.sport && b.sport !== topBet.sport) return false;
+        return b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 80;
+      }).sort(byConf).slice(0, 2);
+
+      // Combine: direct matches first, then similar by player/team, then by type, then by sport
+      const similarBets = [...context, ...poolA, ...poolB, ...poolC]
+        .filter((b, i, arr) => arr.findIndex((x) => x.id === b.id) === i) // dedupe
+        .sort(byConf)
+        .slice(0, 6)
+        .map((b) => ({
+          id: b.id,
+          title: b.title,
+          sport: b.sport,
+          betType: b.betType,
+          playerName: b.playerName ?? null,
+          homeTeam: b.homeTeam ?? null,
+          awayTeam: b.awayTeam ?? null,
+          confidenceScore: b.confidenceScore ?? null,
+          riskLevel: b.riskLevel ?? null,
+          line: b.line ?? null,
+          overOdds: b.overOdds ?? null,
+          underOdds: b.underOdds ?? null,
+          recommendedAllocation: b.recommendedAllocation ?? null,
+          keyFactors: (b.keyFactors ?? []).slice(0, 2),
+          gameTime: b.gameTime ?? null,
+          similarityReason: seen.has(b.id) && context.some((c) => c.id === b.id)
+            ? "direct match"
+            : poolA.some((p) => p.id === b.id) ? "same player/team"
+            : poolB.some((p) => p.id === b.id) ? "same bet type"
+            : "high confidence pick",
+        }));
 
       const contextText = context.map((b, i) => {
         const line = b.line != null ? ` | Line: ${b.line}` : "";
@@ -459,29 +526,7 @@ Give a direct YES/NO recommendation with reasoning based on the data above. Incl
         }
       }
 
-      // Return top 5 related bets sorted by confidence (skip the one already featured in answer)
-      const relatedBets = context
-        .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
-        .slice(0, 5)
-        .map((b) => ({
-          id: b.id,
-          title: b.title,
-          sport: b.sport,
-          betType: b.betType,
-          playerName: b.playerName ?? null,
-          homeTeam: b.homeTeam ?? null,
-          awayTeam: b.awayTeam ?? null,
-          confidenceScore: b.confidenceScore ?? null,
-          riskLevel: b.riskLevel ?? null,
-          line: b.line ?? null,
-          overOdds: b.overOdds ?? null,
-          underOdds: b.underOdds ?? null,
-          recommendedAllocation: b.recommendedAllocation ?? null,
-          keyFactors: (b.keyFactors ?? []).slice(0, 2),
-          gameTime: b.gameTime ?? null,
-        }));
-
-      res.json({ answer, relatedBets });
+      res.json({ answer, relatedBets: similarBets });
     } catch (e: any) {
       console.error("Ask error:", e.message);
       res.status(500).json({ error: "Analysis failed: " + e.message });
