@@ -11,10 +11,10 @@ const navItems = [
 const Logo = () => (
   <div className="flex items-center gap-3">
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="PropEdge">
-      <rect width="32" height="32" rx="8" fill="hsl(142 76% 45% / 0.15)" />
-      <path d="M8 24 L16 8 L24 24" stroke="hsl(142 76% 45%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <circle cx="16" cy="8" r="2.5" fill="hsl(142 76% 45%)" />
-      <line x1="10" y1="20" x2="22" y2="20" stroke="hsl(142 76% 45% / 0.5)" strokeWidth="1.5" strokeLinecap="round" />
+      <rect width="32" height="32" rx="8" fill="rgba(245,158,11,0.12)" />
+      <path d="M8 24 L16 8 L24 24" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <circle cx="16" cy="8" r="2.5" fill="#f59e0b" />
+      <line x1="10" y1="20" x2="22" y2="20" stroke="rgba(245,158,11,0.45)" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
     <div>
       <p className="font-bold text-foreground text-sm leading-tight">PropEdge</p>
