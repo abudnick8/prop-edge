@@ -631,6 +631,45 @@ export default function Bracket() {
                   ))}
                 </div>
               )}
+
+              {/* ── Final Four + Championship ── */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">Final Four</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {bracket.finalFour.matchups.map((m, i) => (
+                    <div key={i} className="space-y-1">
+                      <p className="text-[9px] text-muted-foreground px-1 font-semibold uppercase">{i === 0 ? "Semifinal 1 — East vs West" : "Semifinal 2 — Midwest vs South"}</p>
+                      <MatchupCard result={m} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">Championship Game</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <MatchupCard result={bracket.championship} />
+              </div>
+
+              {/* Champion banner */}
+              <div className="bg-gradient-to-r from-primary/20 to-primary/5 border border-primary/40 rounded-xl p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <Trophy size={22} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-primary font-bold uppercase tracking-wide">🏆 Predicted Champion</p>
+                  <p className="text-base font-bold text-foreground truncate">{bracket.champion.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{bracket.champion.seed}-seed · {bracket.champion.region} · +{bracket.champion.championshipOdds.toLocaleString()} odds</p>
+                </div>
+                <ConfidenceRing score={bracket.confidenceScore} size={48} />
+              </div>
             </div>
           )}
 
