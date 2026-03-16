@@ -344,9 +344,12 @@ export function calculateMatchup(teamA: NCAATeam, teamB: NCAATeam): MatchupResul
     clampedProb = Math.min(Math.max(aWinProb, 0.15), 0.85);
   }
 
-  const winner = clampedProb >= 0.5 ? teamA : teamB;
-  const loser = clampedProb >= 0.5 ? teamB : teamA;
-  const winProb = clampedProb >= 0.5 ? clampedProb : 1 - clampedProb;
+  // Probabilistic draw — this is what makes upsets happen at historical rates
+  // Without Math.random(), the higher-seeded team ALWAYS wins (no upsets)
+  const aWins = Math.random() < clampedProb;
+  const winner = aWins ? teamA : teamB;
+  const loser = aWins ? teamB : teamA;
+  const winProb = aWins ? clampedProb : 1 - clampedProb;
 
   // Add key stats factors for display
   factors.push({
