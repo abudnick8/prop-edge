@@ -231,7 +231,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
     4, 9, C.gold, 5.5, true);
 
   // ── Layout: [East 4 rounds] [Final Four center] [West 4 rounds flipped]
-  //           [Midwest 4 rounds] [center] [South 4 rounds flipped]
+  //           [South 4 rounds] [center] [Midwest 4 rounds flipped]
   // Actually: split page into left half (East+Midwest) and right half (West+South)
   // with Final Four in the center column
 
@@ -248,11 +248,11 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   const regions = [
     { data: east,    x: 0,                    flip: false, label: "EAST",    color: C.gold   },
     { data: west,    x: sideW + centerW,       flip: true,  label: "WEST",    color: C.green  },
-    { data: midwest, x: 0,                    flip: false, label: "MIDWEST", color: C.purple },
-    { data: south,   x: sideW + centerW,       flip: true,  label: "SOUTH",   color: C.red    },
+    { data: south,   x: 0,                    flip: false, label: "SOUTH",   color: C.red    },
+    { data: midwest, x: sideW + centerW,       flip: true,  label: "MIDWEST", color: C.purple },
   ];
 
-  // We'll do top half (East left, West right) and bottom half (Midwest left, South right)
+  // We'll do top half (East left, West right) and bottom half (South left, Midwest right)
   // Split page horizontally at the midpoint
   const topH = pageH * 0.48;
   const botY = pageH * 0.52;
@@ -262,10 +262,10 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   const regionBanners = [
     { label: "EAST",    x: 0,              w: sideW,  y: 14 },
     { label: "WEST",    x: sideW+centerW,  w: sideW,  y: 14 },
-    { label: "MIDWEST", x: 0,              w: sideW,  y: botY },
-    { label: "SOUTH",   x: sideW+centerW,  w: sideW,  y: botY },
+    { label: "SOUTH",   x: 0,              w: sideW,  y: botY },
+    { label: "MIDWEST", x: sideW+centerW,  w: sideW,  y: botY },
   ];
-  const bannerColors = [C.gold, C.green, C.purple, C.red];
+  const bannerColors = [C.gold, C.green, C.red, C.purple];
   regionBanners.forEach(({ label, x, w, y }, i) => {
     const col = bannerColors[i];
     roundedRect(doc, x, y, w, 5, 0, [col[0]*0.12, col[1]*0.12, col[2]*0.12] as RGB);
@@ -379,8 +379,8 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   // Draw all 4 regions
   drawSimpleRegion(east,    0,              14,   sideW,  topH - 14,  false);
   drawSimpleRegion(west,    sideW+centerW,  14,   sideW,  topH - 14,  true);
-  drawSimpleRegion(midwest, 0,              botY, sideW,  botH,       false);
-  drawSimpleRegion(south,   sideW+centerW,  botY, sideW,  botH,       true);
+  drawSimpleRegion(south,   0,              botY, sideW,  botH,       false);
+  drawSimpleRegion(midwest, sideW+centerW,  botY, sideW,  botH,       true);
 
   // ── Center column: Final Four ────────────────────────────────────────────
   const cx = sideW;
