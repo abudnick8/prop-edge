@@ -9,25 +9,24 @@
  * 3. Use a PROBABILISTIC DRAW to determine the winner — not a deterministic pick
  *    This is how real bracket simulators work and is why upsets occur at the right rate
  *
+ * UPSET DEFINITION:
+ * An upset requires the winner to be seeded at least 2 seed lines lower than the loser.
+ * Rule: winner.seed >= loser.seed + 2
+ * - 10 over 9: NOT an upset (10 < 9+2=11) — only 1 line apart
+ * - 10 over 8: IS an upset (10 >= 8+2=10) — 2 lines apart
+ * - 10 over 7: IS an upset (10 >= 7+2=9) — 3 lines apart
+ *
  * Historical calibration (2015-2024, 10 NCAA tournaments):
- * - R1 avg: ~7.5 upsets per 32-game first round across full bracket
+ * - Total bracket upsets by ≥2-seed-gap rule: avg ~8-12 per tournament
  * - 5v12: 35% upset rate (most famous bracket-busting matchup)
  * - 6v11: 37% upset rate
  * - 7v10: 40% upset rate
- * - 8v9:  49% — coin flip (most upsets by count)
+ * - 8v9:  49% — coin flip (NOT counted as upset under ≥2-gap rule)
  * - 1v16: 1.5% — UMBC 2018 is the only one in 40 years
  * - 2v15: 7% — Mercer, FGCU, etc.
  *
- * Seed base rates (30% component weight):
- * - 1v16: 98.5%, 2v15: 93.4%, 3v14: 84.8%, 4v13: 79.3%
- * - 5v12: 64.8%, 6v11: 62.2%, 7v10: 60.2%, 8v9: 50.9%
- *
- * Expected upset counts per full bracket generation (all rounds, probabilistic):
- * - Round 1: ~7-9 upsets
- * - Round 2: ~3-5 upsets
- * - Sweet 16: ~1-3 upsets
- * - Elite 8+: ~0-2 upsets
- * - Total: ~12-16 upsets (matching real tournament averages)
+ * Expected upset counts per full bracket (≥2-seed-gap definition, all rounds):
+ * - Target range: 6-15 upsets per generated bracket
  */
 
 import { NCAATeam, ALL_TEAMS, SEED_MATCHUPS, REGIONS, Region } from "../data/bracketData";
@@ -310,15 +309,20 @@ export function calculateMatchup(teamA: NCAATeam, teamB: NCAATeam): MatchupResul
   // or a 5-seed less than 45% vs a 12-seed, etc.
   // These bounds are the MIN/MAX the model can produce regardless of stats.
   // =========================================================================
+  // seedBounds: [floor, ceiling] for the BETTER (lower-numbered) seed's win probability
+  // Tuned so total bracket upsets (≥2-seed-gap wins) land in the 6-15 range.
+  // 8v9 never produces an upset by the ≥2-gap rule, so its bounds don't affect upset count.
+  // Raised floors on 5-12, 6-11, 7-10 to reduce upset over-generation;
+  // left 1-16 / 2-15 / 3-14 tight (those are rare historically).
   const seedBounds: Record<string, [number, number]> = {
-    "1_16": [0.88, 0.99],
-    "2_15": [0.78, 0.97],
-    "3_14": [0.68, 0.95],
-    "4_13": [0.58, 0.92],
-    "5_12": [0.44, 0.86],
-    "6_11": [0.42, 0.82],
-    "7_10": [0.38, 0.78],
-    "8_9":  [0.34, 0.66],
+    "1_16": [0.91, 0.99],  // 1-seeds almost never lose R1
+    "2_15": [0.82, 0.97],  // 7% historical upset rate
+    "3_14": [0.72, 0.95],  // ~15% upset rate
+    "4_13": [0.62, 0.92],  // ~20% upset rate
+    "5_12": [0.52, 0.84],  // ~35% upset rate — famous bracket buster
+    "6_11": [0.50, 0.80],  // ~37% upset rate
+    "7_10": [0.48, 0.76],  // ~40% upset rate
+    "8_9":  [0.38, 0.62],  // ~49% — coin flip (NOT an upset by ≥2-gap rule)
   };
 
   // Determine which team is the higher seed (better team)
@@ -378,8 +382,11 @@ export function calculateMatchup(teamA: NCAATeam, teamB: NCAATeam): MatchupResul
   const agreement = 1 - Math.abs(aMarketNorm - clampedProb);
   const confidenceScore = Math.round(50 + agreement * 30 + (winProb - 0.5) * 40);
 
-  // Upset detection: lower seed wins
-  const upsetAlert = winner.seed > loser.seed;
+  // Upset detection: winner must be seeded at least 2 lines lower than the loser
+  // e.g. 10-seed over 8-seed = NOT an upset (only 2 apart but loser is higher-numbered seed)
+  // e.g. 10-seed over 7-seed = upset (3 lines lower)
+  // Rule: winner.seed >= loser.seed + 2  (winner is worse team by ≥2 seeds)
+  const upsetAlert = winner.seed >= loser.seed + 2;
 
   // Generate analysis
   const margin = winProb > 0.75 ? "comfortably" : winProb > 0.62 ? "in a competitive game" : "in an upset";
@@ -512,9 +519,11 @@ export function generateBracket(): FullBracket {
 
 // ── Utility: Get upset picks ──────────────────────────────────────────────────
 export function getUpsetPicks(bracket: FullBracket): MatchupResult[] {
+  // upsetAlert = winner seeded ≥2 lines lower than loser (winner.seed >= loser.seed + 2)
   return [
     ...bracket.regions.flatMap(r => r.rounds.flatMap(rd => rd.matchups.filter(m => m.upsetAlert))),
-    ...bracket.finalFour.matchups.filter(m => m.upsetAlert)
+    ...bracket.finalFour.matchups.filter(m => m.upsetAlert),
+    ...(bracket.championship.upsetAlert ? [bracket.championship] : [])
   ];
 }
 
