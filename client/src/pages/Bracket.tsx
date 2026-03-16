@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Download, Lock, Shuffle, X, ChevronDown as ChevronDownIcon } from "lucide-react";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2 } from "lucide-react";
 import { generateBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
-import { downloadBracketPDF } from "@/lib/bracketPdf";
 
 // ── Confidence Ring ────────────────────────────────────────────────────────
 function ConfidenceRing({ score, size = 40 }: { score: number; size?: number }) {
@@ -369,28 +368,15 @@ function ChampionPicker({
 }
 
 // ── Main Bracket page ──────────────────────────────────────────────────────
-type BracketView = "bracket" | "teams" | "upsets" | "compare";
+type BracketView = "bracket" | "teams" | "upsets" | "compare" | "analytics";
 
 export default function Bracket() {
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(false);
   const [showChampionPicker, setShowChampionPicker] = useState(false);
   const [lockedChampion, setLockedChampion] = useState<NCAATeam | null>(null);
 
-  const handleDownloadPDF = async () => {
-    if (!bracket) return;
-    setDownloading(true);
-    try {
-      await downloadBracketPDF(bracket);
-    } catch (err) {
-      console.error("PDF generation failed:", err);
-      alert("PDF download failed: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setDownloading(false);
-    }
-  };
   const [activeView, setActiveView] = useState<BracketView>("bracket");
   const [selectedRegion, setSelectedRegion] = useState<Region>("East");
   const [searchQuery, setSearchQuery] = useState("");
@@ -492,16 +478,11 @@ export default function Bracket() {
         <div className="flex items-center gap-2">
           {bracket && (
             <button
-              onClick={handleDownloadPDF}
-              disabled={downloading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm font-semibold hover:border-primary/50 hover:text-primary transition-all disabled:opacity-60"
-              title="Download bracket as PDF"
+              onClick={() => setActiveView("analytics")}
+              className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm font-semibold hover:border-primary/50 hover:text-primary transition-all"
+              title="View bracket analytics"
             >
-              {downloading ? (
-                <><RefreshCw size={13} className="animate-spin" /> Exporting...</>
-              ) : (
-                <><Download size={13} /> PDF</>
-              )}
+              <BarChart2 size={13} /> Analytics
             </button>
           )}
           <button
@@ -587,66 +568,17 @@ export default function Bracket() {
       {/* Bracket generated */}
       {bracket && !generating && (
         <>
-          {/* Champion callout */}
-          <div className="bg-gradient-to-r from-primary/20 to-primary/5 border border-primary/30 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-primary font-bold uppercase tracking-wide">🏆 Predicted Champion</p>
-                <p className="text-lg font-bold text-foreground mt-0.5">{bracket.champion.name}</p>
-                <p className="text-xs text-muted-foreground">{bracket.champion.seed}-seed · {bracket.champion.region} · +{bracket.champion.championshipOdds.toLocaleString()} odds</p>
-              </div>
-              <div className="text-right">
-                <ConfidenceRing score={bracket.confidenceScore} size={52} />
-                <p className="text-[9px] text-muted-foreground mt-1">Model confidence</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{bracket.champion.analysis.split(".").slice(0, 2).join(". ")}.</p>
-            <button
-              onClick={handleDownloadPDF}
-              disabled={downloading}
-              className="mt-3 flex items-center gap-2 px-4 py-2 bg-primary/20 border border-primary/40 text-primary rounded-lg text-xs font-bold hover:bg-primary/30 transition-all disabled:opacity-60 w-full justify-center"
-            >
-              {downloading ? <><RefreshCw size={12} className="animate-spin" /> Building PDF...</> : <><Download size={12} /> Download Bracket PDF (2 pages)</>}
-            </button>
-          </div>
-
-          {/* Final Four summary */}
-          <div className="bg-card border border-border rounded-xl p-4">
-            <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">Final Four Predictions</p>
-            <div className="grid grid-cols-2 gap-2">
-              {bracket.finalFour.matchups.map((m, i) => (
-                <div key={i} className="bg-muted/50 rounded-lg p-2.5 space-y-1.5">
-                  <p className="text-[9px] text-muted-foreground font-semibold uppercase">{i === 0 ? "East vs West" : "Midwest vs South"}</p>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center">{m.winner.seed}</span>
-                    <span className="text-xs font-bold text-foreground truncate">{m.winner.shortName}</span>
-                    <span className="text-[9px] text-primary ml-auto font-mono">{Math.round(m.winProbability * 100)}%</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 opacity-50">
-                    <span className="w-4 h-4 rounded-full bg-muted text-muted-foreground text-[9px] font-bold flex items-center justify-center">{m.loser.seed}</span>
-                    <span className="text-xs text-muted-foreground truncate">{m.loser.shortName}</span>
-                  </div>
-                  <ProbBar prob={m.winProbability} teamA={m.winner.shortName} teamB={m.loser.shortName} />
-                </div>
-              ))}
-            </div>
-
-            {/* Championship */}
-            <div className="mt-3 pt-3 border-t border-border">
-              <p className="text-[9px] text-muted-foreground font-semibold uppercase mb-2">Championship Game</p>
-              <MatchupCard result={bracket.championship} />
-            </div>
-          </div>
-
           {/* Nav tabs */}
           <div className="flex gap-1 bg-muted rounded-lg p-1">
-            {(["bracket", "teams", "upsets", "compare"] as BracketView[]).map(v => (
+            {(["bracket", "teams", "upsets", "compare", "analytics"] as BracketView[]).map(v => (
               <button
                 key={v}
                 onClick={() => setActiveView(v)}
                 className={`flex-1 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${activeView === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {v === "upsets" ? `Upsets (${upsets.length})` : v}
+                {v === "upsets" ? `Upsets (${upsets.length})` : v === "analytics" ? (
+                  <span className="flex items-center justify-center gap-1"><BarChart2 size={11} />Analytics</span>
+                ) : v}
               </button>
             ))}
           </div>
@@ -780,6 +712,114 @@ export default function Bracket() {
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {/* ── Analytics view ── */}
+          {activeView === "analytics" && (
+            <div className="space-y-4">
+              {/* Champion Card */}
+              <div className="bg-gradient-to-r from-primary/20 to-primary/5 border border-primary/30 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-[10px] text-primary font-bold uppercase tracking-wide">🏆 Predicted Champion</p>
+                    <p className="text-lg font-bold text-foreground mt-0.5">{bracket.champion.name}</p>
+                    <p className="text-xs text-muted-foreground">{bracket.champion.seed}-seed · {bracket.champion.region} · +{bracket.champion.championshipOdds.toLocaleString()} odds</p>
+                  </div>
+                  <div className="text-right">
+                    <ConfidenceRing score={bracket.confidenceScore} size={56} />
+                    <p className="text-[9px] text-muted-foreground mt-1">Model confidence</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{bracket.champion.analysis.split(".").slice(0, 2).join(". ")}.</p>
+
+                {/* Key Stats Grid */}
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Adj Off", value: bracket.champion.adjOffRating.toFixed(1), color: "text-green-400" },
+                    { label: "Adj Def", value: bracket.champion.adjDefRating.toFixed(1), color: "text-blue-400" },
+                    { label: "Eff Margin", value: `+${bracket.champion.adjEffMargin.toFixed(1)}`, color: "text-primary" },
+                    { label: "PPG", value: bracket.champion.ppg.toFixed(1), color: "text-foreground" },
+                    { label: "3PT%", value: `${(bracket.champion.fg3Pct * 100).toFixed(1)}%`, color: "text-yellow-400" },
+                    { label: "SOS", value: bracket.champion.strengthOfSchedule.toFixed(1), color: "text-muted-foreground" },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-black/20 rounded-lg p-2 text-center">
+                      <p className={`text-sm font-bold ${stat.color}`}>{stat.value}</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Final Four Predictions */}
+              <div className="bg-card border border-border rounded-xl p-4">
+                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">Final Four Predictions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {bracket.finalFour.matchups.map((m, i) => (
+                    <div key={i} className="bg-muted/50 rounded-lg p-2.5 space-y-1.5">
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">{i === 0 ? "East vs West" : "Midwest vs South"}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center">{m.winner.seed}</span>
+                        <span className="text-xs font-bold text-foreground truncate">{m.winner.shortName}</span>
+                        <span className="text-[9px] text-primary ml-auto font-mono">{Math.round(m.winProbability * 100)}%</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 opacity-50">
+                        <span className="w-4 h-4 rounded-full bg-muted text-muted-foreground text-[9px] font-bold flex items-center justify-center">{m.loser.seed}</span>
+                        <span className="text-xs text-muted-foreground truncate">{m.loser.shortName}</span>
+                      </div>
+                      <ProbBar prob={m.winProbability} teamA={m.winner.shortName} teamB={m.loser.shortName} />
+                    </div>
+                  ))}
+                </div>
+                {/* Championship */}
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-[9px] text-muted-foreground font-semibold uppercase mb-2">Championship Game</p>
+                  <MatchupCard result={bracket.championship} />
+                </div>
+              </div>
+
+              {/* Upsets Summary */}
+              <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+                <p className="text-xs font-bold text-yellow-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                  <AlertTriangle size={13} /> {upsets.length} Projected Upsets
+                </p>
+                {upsets.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No upsets projected in this bracket</p>
+                ) : (
+                  <div className="space-y-2">
+                    {upsets.slice(0, 5).map((u, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="bg-yellow-500/20 text-yellow-400 font-bold px-1.5 py-0.5 rounded text-[9px]">#{u.winner.seed} over #{u.loser.seed}</span>
+                        <span className="text-foreground font-semibold truncate">{u.winner.shortName}</span>
+                        <span className="text-muted-foreground">def.</span>
+                        <span className="text-muted-foreground truncate">{u.loser.shortName}</span>
+                        <span className="ml-auto font-mono text-primary text-[9px]">{Math.round(u.winProbability * 100)}%</span>
+                      </div>
+                    ))}
+                    {upsets.length > 5 && (
+                      <button onClick={() => setActiveView("upsets")} className="text-[10px] text-primary hover:underline">View all {upsets.length} upsets →</button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Region Winners */}
+              <div className="bg-card border border-border rounded-xl p-4">
+                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">Region Winners</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {bracket.regions.map(r => (
+                    <div key={r.region} className="bg-muted/50 rounded-lg p-3 space-y-1">
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">{r.region}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center shrink-0">{r.regionWinner.seed}</span>
+                        <span className="text-xs font-bold text-foreground truncate">{r.regionWinner.shortName}</span>
+                      </div>
+                      <p className="text-[9px] font-mono text-primary">+{r.regionWinner.championshipOdds.toLocaleString()}</p>
+                      <p className="text-[9px] text-green-400">Eff: +{r.regionWinner.adjEffMargin.toFixed(1)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
