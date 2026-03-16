@@ -10,11 +10,12 @@
  *    This is how real bracket simulators work and is why upsets occur at the right rate
  *
  * UPSET DEFINITION:
- * An upset requires the winner to be seeded at least 2 seed lines lower than the loser.
- * Rule: winner.seed >= loser.seed + 2
- * - 10 over 9: NOT an upset (10 < 9+2=11) — only 1 line apart
- * - 10 over 8: IS an upset (10 >= 8+2=10) — 2 lines apart
- * - 10 over 7: IS an upset (10 >= 7+2=9) — 3 lines apart
+ * An upset requires the winner to be seeded MORE THAN 2 lines lower than the loser.
+ * Rule: winner.seed >= loser.seed + 3
+ * - 10 over 9: NOT an upset — 1 line apart
+ * - 10 over 8: NOT an upset — 2 lines apart (too close)
+ * - 10 over 7: IS an upset — 3 lines apart
+ * - 12 over 5: IS an upset — 7 lines apart
  *
  * Historical calibration (2015-2024, 10 NCAA tournaments):
  * - Total bracket upsets by ≥2-seed-gap rule: avg ~8-12 per tournament
@@ -382,11 +383,11 @@ export function calculateMatchup(teamA: NCAATeam, teamB: NCAATeam): MatchupResul
   const agreement = 1 - Math.abs(aMarketNorm - clampedProb);
   const confidenceScore = Math.round(50 + agreement * 30 + (winProb - 0.5) * 40);
 
-  // Upset detection: winner must be seeded at least 2 lines lower than the loser
-  // e.g. 10-seed over 8-seed = NOT an upset (only 2 apart but loser is higher-numbered seed)
-  // e.g. 10-seed over 7-seed = upset (3 lines lower)
-  // Rule: winner.seed >= loser.seed + 2  (winner is worse team by ≥2 seeds)
-  const upsetAlert = winner.seed >= loser.seed + 2;
+  // Upset detection: winner must be MORE THAN 2 seed lines lower than the loser
+  // e.g. 10 over 9: NOT upset (1 apart), 10 over 8: NOT upset (2 apart)
+  // e.g. 10 over 7: IS upset (3 apart), 12 over 5: IS upset (7 apart)
+  // Rule: winner.seed >= loser.seed + 3
+  const upsetAlert = winner.seed >= loser.seed + 3;
 
   // Generate analysis
   const margin = winProb > 0.75 ? "comfortably" : winProb > 0.62 ? "in a competitive game" : "in an upset";
@@ -519,7 +520,7 @@ export function generateBracket(): FullBracket {
 
 // ── Utility: Get upset picks ──────────────────────────────────────────────────
 export function getUpsetPicks(bracket: FullBracket): MatchupResult[] {
-  // upsetAlert = winner seeded ≥2 lines lower than loser (winner.seed >= loser.seed + 2)
+  // upsetAlert = winner seeded >2 lines lower than loser (winner.seed >= loser.seed + 3)
   return [
     ...bracket.regions.flatMap(r => r.rounds.flatMap(rd => rd.matchups.filter(m => m.upsetAlert))),
     ...bracket.finalFour.matchups.filter(m => m.upsetAlert),
