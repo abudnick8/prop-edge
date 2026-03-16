@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, TrendingUp, Zap, Search, Info, Target, Star, Download } from "lucide-react";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Download, Lock, Shuffle, X, ChevronDown as ChevronDownIcon } from "lucide-react";
 import { generateBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
 import { downloadBracketPDF } from "@/lib/bracketPdf";
@@ -198,6 +198,176 @@ function TeamProfileCard({ team, onMatchup }: { team: NCAATeam; onMatchup: (t: N
   );
 }
 
+// ── Mode selector modal ────────────────────────────────────────────────────
+function ModeSelector({
+  onFullGenerate,
+  onPickWinner,
+  onClose,
+  isRegenerate,
+}: {
+  onFullGenerate: () => void;
+  onPickWinner: () => void;
+  onClose: () => void;
+  isRegenerate: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-foreground text-base">Generate Bracket</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-muted-foreground">How do you want to generate your bracket?</p>
+
+        {/* Option 1 — Full AI */}
+        <button
+          onClick={onFullGenerate}
+          className="w-full flex items-start gap-3 p-4 bg-primary/10 border border-primary/30 rounded-xl hover:bg-primary/20 transition-all text-left"
+        >
+          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+            <Shuffle size={16} className="text-primary" />
+          </div>
+          <div>
+            <p className="font-bold text-foreground text-sm">Full AI Generate</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Let the model simulate every game using odds, KenPom efficiency, pace matchups &amp; upset factors.
+            </p>
+          </div>
+        </button>
+
+        {/* Option 2 — Pick your winner */}
+        <button
+          onClick={onPickWinner}
+          className="w-full flex items-start gap-3 p-4 bg-muted border border-border rounded-xl hover:border-primary/40 hover:bg-muted/80 transition-all text-left"
+        >
+          <div className="w-9 h-9 rounded-full bg-muted-foreground/10 flex items-center justify-center shrink-0 mt-0.5">
+            <Lock size={16} className="text-muted-foreground" />
+          </div>
+          <div>
+            <p className="font-bold text-foreground text-sm">Pick Your Champion</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Lock in a specific team to win it all. The AI simulates the rest of the bracket around your pick.
+            </p>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Champion picker ────────────────────────────────────────────────────────
+function ChampionPicker({
+  onConfirm,
+  onBack,
+}: {
+  onConfirm: (team: NCAATeam) => void;
+  onBack: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState("");
+  const [regionFilter, setRegionFilter] = useState<Region | "All">("All");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    return ALL_TEAMS
+      .filter(t => !t.id.includes("prairie-view") && !t.id.includes("lehigh") && !t.id.includes("howard") && !t.id.includes("umbc") && !t.id.includes("miami-oh") && !t.id.includes("smu") && !t.id.includes("texas") && !t.id.includes("nc-state") || ALL_TEAMS.find(x=>x.id===t.id)) // include all
+      .filter(t => regionFilter === "All" || t.region === regionFilter)
+      .filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.shortName.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => {
+        const regionOrder: Region[] = ["East", "West", "Midwest", "South"];
+        const rA = regionOrder.indexOf(a.region), rB = regionOrder.indexOf(b.region);
+        return rA !== rB ? rA - rB : a.seed - b.seed;
+      });
+  }, [regionFilter, search]);
+
+  const selected = ALL_TEAMS.find(t => t.id === selectedId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm flex flex-col" style={{ maxHeight: "85vh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+          <div>
+            <h3 className="font-bold text-foreground text-base flex items-center gap-2"><Lock size={14} className="text-primary" /> Pick Your Champion</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Select the team you want to win it all</p>
+          </div>
+          <button onClick={onBack} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+        </div>
+
+        {/* Search + filter */}
+        <div className="p-3 space-y-2 border-b border-border shrink-0">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search team..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
+            />
+          </div>
+          <div className="flex gap-1 overflow-x-auto pb-0.5">
+            {(["All", ...REGIONS] as (Region | "All")[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRegionFilter(r)}
+                className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                  regionFilter === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >{r}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Team list */}
+        <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+          {filtered.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSelectedId(t.id)}
+              className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all ${
+                selectedId === t.id
+                  ? "bg-primary/15 border-primary/50 ring-1 ring-primary/30"
+                  : "bg-muted/40 border-border hover:border-primary/30 hover:bg-muted/70"
+              }`}
+            >
+              <span className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                selectedId === t.id ? "bg-primary/30 text-primary" : "bg-muted text-muted-foreground"
+              }`}>{t.seed}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
+                <p className="text-[10px] text-muted-foreground">{t.region} · {t.record}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] font-mono text-primary">+{t.championshipOdds.toLocaleString()}</p>
+                <p className="text-[9px] text-muted-foreground">{t.impliedChampionshipPct}%</p>
+              </div>
+              {selectedId === t.id && <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center shrink-0"><span className="text-[8px] text-white font-bold">✓</span></div>}
+            </button>
+          ))}
+        </div>
+
+        {/* Confirm */}
+        <div className="p-3 border-t border-border shrink-0">
+          {selected && (
+            <div className="flex items-center gap-2 mb-2 bg-primary/10 rounded-lg p-2">
+              <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center">{selected.seed}</span>
+              <span className="text-xs font-bold text-foreground flex-1">{selected.name}</span>
+              <span className="text-[10px] font-mono text-primary">+{selected.championshipOdds.toLocaleString()}</span>
+            </div>
+          )}
+          <button
+            onClick={() => selected && onConfirm(selected)}
+            disabled={!selectedId}
+            className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition-all"
+          >
+            <Lock size={13} /> Generate with {selected?.shortName ?? "Selected Team"} as Champion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Bracket page ──────────────────────────────────────────────────────
 type BracketView = "bracket" | "teams" | "upsets" | "compare";
 
@@ -205,6 +375,9 @@ export default function Bracket() {
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showModeSelector, setShowModeSelector] = useState(false);
+  const [showChampionPicker, setShowChampionPicker] = useState(false);
+  const [lockedChampion, setLockedChampion] = useState<NCAATeam | null>(null);
 
   const handleDownloadPDF = async () => {
     if (!bracket) return;
@@ -223,13 +396,32 @@ export default function Bracket() {
   const [compareResult, setCompareResult] = useState<MatchupResult | null>(null);
   const [teamPathTeam, setTeamPathTeam] = useState<NCAATeam | null>(null);
 
-  const handleGenerate = () => {
+  const runGenerate = (championId?: string) => {
+    setShowModeSelector(false);
+    setShowChampionPicker(false);
     setGenerating(true);
     setTimeout(() => {
-      const result = generateBracket();
+      const result = generateBracket(championId);
       setBracket(result);
       setGenerating(false);
     }, 800);
+  };
+
+  const handleGenerate = () => setShowModeSelector(true);
+
+  const handleFullGenerate = () => {
+    setLockedChampion(null);
+    runGenerate(undefined);
+  };
+
+  const handlePickWinner = () => {
+    setShowModeSelector(false);
+    setShowChampionPicker(true);
+  };
+
+  const handleConfirmChampion = (team: NCAATeam) => {
+    setLockedChampion(team);
+    runGenerate(team.id);
   };
 
   const upsets = useMemo(() => bracket ? getUpsetPicks(bracket) : [], [bracket]);
@@ -269,6 +461,22 @@ export default function Bracket() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
+      {/* Modals */}
+      {showModeSelector && (
+        <ModeSelector
+          isRegenerate={!!bracket}
+          onFullGenerate={handleFullGenerate}
+          onPickWinner={handlePickWinner}
+          onClose={() => setShowModeSelector(false)}
+        />
+      )}
+      {showChampionPicker && (
+        <ChampionPicker
+          onConfirm={handleConfirmChampion}
+          onBack={() => { setShowChampionPicker(false); setShowModeSelector(true); }}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -306,6 +514,22 @@ export default function Bracket() {
           </button>
         </div>
       </div>
+
+      {/* Locked champion badge */}
+      {lockedChampion && bracket && (
+        <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-xl px-3 py-2">
+          <Lock size={12} className="text-primary shrink-0" />
+          <span className="text-xs text-primary font-semibold flex-1">
+            Locked Pick: <span className="font-bold text-foreground">{lockedChampion.name}</span> ({lockedChampion.seed}-seed) as champion
+          </span>
+          <button
+            onClick={() => { setLockedChampion(null); runGenerate(undefined); }}
+            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <X size={11} /> Remove
+          </button>
+        </div>
+      )}
 
       {/* Info banner pre-generate */}
       {!bracket && !generating && (

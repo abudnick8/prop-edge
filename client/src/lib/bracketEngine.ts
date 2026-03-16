@@ -410,7 +410,35 @@ function getRegionTeams(region: Region): NCAATeam[] {
   return ALL_TEAMS.filter(t => t.region === region).sort((a, b) => a.seed - b.seed);
 }
 
-function simulateRegion(region: Region): GeneratedBracket {
+// Helper: force a locked team to win a matchup, otherwise use normal probabilistic draw
+function calculateMatchupWithLock(teamA: NCAATeam, teamB: NCAATeam, lockedId?: string): MatchupResult {
+  if (lockedId && (teamA.id === lockedId || teamB.id === lockedId)) {
+    const locked = teamA.id === lockedId ? teamA : teamB;
+    const other  = teamA.id === lockedId ? teamB : teamA;
+    // Run the full calculation so factors/analysis are populated, then override winner
+    const normal = calculateMatchup(teamA, teamB);
+    // If the locked team already won, return as-is
+    if (normal.winner.id === lockedId) return normal;
+    // Flip the result so locked team wins
+    const winProb = normal.winProbability > 0.5 ? 1 - normal.winProbability : normal.winProbability;
+    const upsetAlert = locked.seed >= other.seed + 3;
+    const analysis = upsetAlert
+      ? `UPSET (User Pick): ${locked.name} (${locked.seed}-seed) advances over ${other.name} (${other.seed}-seed). ${locked.analysis.split(".")[0]}.`
+      : `${locked.name} advances as your selected pick. ${locked.analysis.split(".")[0]}.`;
+    return {
+      ...normal,
+      winner: locked,
+      loser: other,
+      winProbability: Math.max(winProb, 0.35), // give at least 35% so score looks reasonable
+      upsetAlert,
+      analysis,
+      projectedScore: { winner: normal.projectedScore.winner, loser: normal.projectedScore.loser }
+    };
+  }
+  return calculateMatchup(teamA, teamB);
+}
+
+function simulateRegion(region: Region, lockedChampionId?: string): GeneratedBracket {
   const teams = getRegionTeams(region);
   const rounds: BracketRound[] = [];
 
@@ -431,7 +459,7 @@ function simulateRegion(region: Region): GeneratedBracket {
   const resolvedTeams: NCAATeam[] = [];
   for (const [seed, ts] of Object.entries(seedCounts)) {
     if (ts.length === 2) {
-      const result = calculateMatchup(ts[0], ts[1]);
+      const result = calculateMatchupWithLock(ts[0], ts[1], lockedChampionId);
       resolvedTeams.push(result.winner);
     } else {
       resolvedTeams.push(ts[0]);
@@ -443,19 +471,19 @@ function simulateRegion(region: Region): GeneratedBracket {
     const teamA = resolvedTeams.find(t => t.seed === aSeed);
     const teamB = resolvedTeams.find(t => t.seed === bSeed);
     if (teamA && teamB) {
-      r1matchups.push(calculateMatchup(teamA, teamB));
+      r1matchups.push(calculateMatchupWithLock(teamA, teamB, lockedChampionId));
     }
   }
 
   rounds.push({ round: 1, name: "Round of 64", matchups: r1matchups });
 
-  // Round 2 — Sweet 16 feed
+  // Round 2 — Round of 32
   const r2winners = r1matchups.map(m => m.winner);
   const r2matchups: MatchupResult[] = [];
-  const r2pairs: [number, number][] = [[0,1],[2,3],[4,5],[6,7]]; // index pairs from r1
+  const r2pairs: [number, number][] = [[0,1],[2,3],[4,5],[6,7]];
   for (const [i, j] of r2pairs) {
     if (r2winners[i] && r2winners[j]) {
-      r2matchups.push(calculateMatchup(r2winners[i], r2winners[j]));
+      r2matchups.push(calculateMatchupWithLock(r2winners[i], r2winners[j], lockedChampionId));
     }
   }
   rounds.push({ round: 2, name: "Round of 32", matchups: r2matchups });
@@ -465,7 +493,7 @@ function simulateRegion(region: Region): GeneratedBracket {
   const r3matchups: MatchupResult[] = [];
   for (let i = 0; i < r3winners.length; i += 2) {
     if (r3winners[i] && r3winners[i+1]) {
-      r3matchups.push(calculateMatchup(r3winners[i], r3winners[i+1]));
+      r3matchups.push(calculateMatchupWithLock(r3winners[i], r3winners[i+1], lockedChampionId));
     }
   }
   rounds.push({ round: 3, name: "Sweet 16", matchups: r3matchups });
@@ -474,7 +502,7 @@ function simulateRegion(region: Region): GeneratedBracket {
   const r4winners = r3matchups.map(m => m.winner);
   const r4matchups: MatchupResult[] = [];
   if (r4winners[0] && r4winners[1]) {
-    r4matchups.push(calculateMatchup(r4winners[0], r4winners[1]));
+    r4matchups.push(calculateMatchupWithLock(r4winners[0], r4winners[1], lockedChampionId));
   }
   rounds.push({ round: 4, name: "Elite Eight", matchups: r4matchups });
 
@@ -484,8 +512,12 @@ function simulateRegion(region: Region): GeneratedBracket {
 
 // ── Full bracket generation ───────────────────────────────────────────────────
 
-export function generateBracket(): FullBracket {
-  const regions = REGIONS.map(r => simulateRegion(r));
+/**
+ * Generate a full bracket.
+ * @param lockedChampionId  Optional team id — that team is forced to win every game they appear in.
+ */
+export function generateBracket(lockedChampionId?: string): FullBracket {
+  const regions = REGIONS.map(r => simulateRegion(r, lockedChampionId));
 
   // Final Four: traditional bracket (East vs West, Midwest vs South)
   const eastWinner = regions.find(r => r.region === "East")!.regionWinner;
@@ -493,8 +525,8 @@ export function generateBracket(): FullBracket {
   const midwestWinner = regions.find(r => r.region === "Midwest")!.regionWinner;
   const southWinner = regions.find(r => r.region === "South")!.regionWinner;
 
-  const sf1 = calculateMatchup(eastWinner, westWinner);
-  const sf2 = calculateMatchup(midwestWinner, southWinner);
+  const sf1 = calculateMatchupWithLock(eastWinner, westWinner, lockedChampionId);
+  const sf2 = calculateMatchupWithLock(midwestWinner, southWinner, lockedChampionId);
 
   const finalFour: BracketRound = {
     round: 5,
@@ -502,7 +534,7 @@ export function generateBracket(): FullBracket {
     matchups: [sf1, sf2]
   };
 
-  const championship = calculateMatchup(sf1.winner, sf2.winner);
+  const championship = calculateMatchupWithLock(sf1.winner, sf2.winner, lockedChampionId);
 
   const avgConfidence = [
     ...regions.flatMap(r => r.rounds.flatMap(rd => rd.matchups.map(m => m.confidenceScore)))
