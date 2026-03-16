@@ -359,10 +359,15 @@ function PlayerStatsDrawer({ playerName, sport }: { playerName: string; sport: s
 
   const { data, isLoading, isError } = useQuery<PlayerStatsData>({
     queryKey: ["/api/player-stats", sportUp, playerName],
-    queryFn: () => apiRequest("GET", `/api/player-stats/${sportUp}/${encodeURIComponent(playerName)}`),
+    // .then(r => r.json()) is required — apiRequest returns a Response, not parsed JSON
+    queryFn: () =>
+      apiRequest("GET", `/api/player-stats/${sportUp}/${encodeURIComponent(playerName)}`)
+        .then(r => r.json()),
     enabled,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
     retry: 1,
+    retryDelay: 1500,
   });
 
   if (!enabled) return (
@@ -486,7 +491,12 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
       />
 
       {/* Main content — clicking opens drawer */}
-      <div onClick={() => openDrawer()} className="block relative p-4 cursor-pointer">
+      {/* Safari fix: button instead of div for correct tap handling; no href so no blank page */}
+      <button
+        onClick={(e) => { e.preventDefault(); openDrawer(); }}
+        className="block w-full text-left relative p-4 cursor-pointer"
+        style={{ WebkitTapHighlightColor: "transparent", background: "transparent", border: "none" }}
+      >
           {/* Pick Side Banner */}
           {pickSide && (
             <PickBanner pickSide={pickSide} line={bet.line} oddsDisplay={oddsDisplay} />
@@ -600,7 +610,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               </div>
             </>
           )}
-      </div>
+      </button>
 
       {/* Stats Expand Button — outside the link to avoid nav */}
       {canShowStats && !compact && (
