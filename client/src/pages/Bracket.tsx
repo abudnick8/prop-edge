@@ -384,6 +384,9 @@ export default function Bracket() {
     setDownloading(true);
     try {
       await downloadBracketPDF(bracket);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("PDF download failed: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setDownloading(false);
     }

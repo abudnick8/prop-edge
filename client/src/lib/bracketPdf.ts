@@ -42,7 +42,9 @@ function fill(doc: jsPDF, c: RGB) { doc.setFillColor(c[0],c[1],c[2]); }
 function stroke(doc: jsPDF, c: RGB, lw = 0.25) { doc.setDrawColor(c[0],c[1],c[2]); doc.setLineWidth(lw); }
 function textCol(doc: jsPDF, c: RGB) { doc.setTextColor(c[0],c[1],c[2]); }
 
-function rect(doc: jsPDF, x:number,y:number,w:number,h:number, fc?:RGB, sc?:RGB, lw=0.2, r=0) {
+// rect(doc, x,y,w,h, r, fc?, sc?, lw)
+// r = corner radius (0 = sharp corners)
+function rect(doc: jsPDF, x:number,y:number,w:number,h:number, r=0, fc?:RGB, sc?:RGB, lw=0.2) {
   doc.setLineWidth(lw);
   if (fc) fill(doc,fc);
   if (sc) stroke(doc,sc,lw);
@@ -98,12 +100,12 @@ function drawLine(
 
   // Background
   const bg: RGB = slot.isWinner ? [22,30,52] : [12,16,28];
-  rect(doc, x, y, w, H, bg, slot.isWinner ? C.gold : C.border, slot.isWinner ? 0.35 : 0.15, 1);
+  rect(doc, x, y, w, H, 1, bg, slot.isWinner ? C.gold : C.border, slot.isWinner ? 0.35 : 0.15);
 
   // Seed badge
   const bw = 7.5;
   const badgeX = flip ? x + w - bw - 1 : x + 1;
-  rect(doc, badgeX, y+1, bw, H-2, slot.isWinner ? C.gold : C.border, undefined, 0, 1);
+  rect(doc, badgeX, y+1, bw, H-2, 1, slot.isWinner ? C.gold : C.border);
   t(doc, String(slot.team.seed), badgeX + bw/2, y + H/2 + 1.3,
     slot.isWinner ? C.bg : C.muted, 4, true, "center");
 
@@ -125,7 +127,7 @@ function drawLine(
   // Upset badge
   if (slot.upset && slot.isWinner) {
     const ux = flip ? x + 1 : x + w - 12;
-    rect(doc, ux, y+1.2, 11, H-2.4, C.goldDim, undefined, 0, 1);
+    rect(doc, ux, y+1.2, 11, H-2.4, 1, C.goldDim);
     t(doc, "UPSET", ux + 5.5, y + H/2 + 1.2, C.yellow, 3, true, "center");
   }
 
@@ -183,7 +185,7 @@ function drawRegion(
 
   // Region label banner (above round labels)
   const bannerY = ly;
-  rect(doc, lx, bannerY, rw, 8, [Math.round(labelColor[0]*0.10), Math.round(labelColor[1]*0.10), Math.round(labelColor[2]*0.10)] as RGB);
+  rect(doc, lx, bannerY, rw, 8, 0, [Math.round(labelColor[0]*0.10), Math.round(labelColor[1]*0.10), Math.round(labelColor[2]*0.10)] as RGB);
   t(doc, label, lx + rw/2, bannerY + 5.8, labelColor, 5.5, true, "center");
 
   const contentTop = ly + 8 + ROUND_LABEL_H + 1;
@@ -302,7 +304,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   fill(doc, C.bg); doc.rect(0,0,PW,PH,"F");
 
   // ── Header ────────────────────────────────────────────────────────────────
-  rect(doc, 0, 0, PW, 13, C.card);
+  rect(doc, 0, 0, PW, 13, 0, C.card);
   t(doc, "PropEdge · 2026 NCAA DIVISION I MEN'S BASKETBALL CHAMPIONSHIP",
     PW/2, 5.5, C.gold, 6.5, true, "center");
   t(doc, "AI-Predicted Bracket", PW/2, 10.5, C.muted, 3.5, false, "center");
@@ -314,7 +316,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
 
   // ── First Four strip ───────────────────────────────────────────────────
   const FF_H = 11;
-  rect(doc, 0, 13, PW, FF_H, [14,18,30] as RGB, C.border, 0.15);
+  rect(doc, 0, 13, PW, FF_H, 0, [14,18,30] as RGB, C.border, 0.15);
   t(doc, "FIRST FOUR® — DAYTON  3/17-3/18", PW/2, 17, C.gold, 3.8, true, "center");
 
   // First Four matchups (sourced directly from bracketData, not bracket simulation)
@@ -327,7 +329,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   const ffSlotW = (PW - 20) / 4;
   ffGames.forEach((g,i) => {
     const fx = 5 + i * (ffSlotW + (10/3));
-    rect(doc, fx, 20, ffSlotW-2, 3.5, [20,26,44] as RGB, C.border, 0.15, 0.8);
+    rect(doc, fx, 20, ffSlotW-2, 3.5, 0.8, [20,26,44] as RGB, C.border, 0.15);
     t(doc, g.label, fx + 2, 22.5, C.muted, 2.8, true);
     t(doc, g.game, fx + ffSlotW/2, 22.5, [160,170,200] as RGB, 2.8, false, "center");
   });
@@ -360,19 +362,19 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   doc.line(cx + CW/2, HEADER_TOTAL+1, cx + CW/2, PH-3);
 
   // "NATIONAL CHAMPIONSHIP" header
-  rect(doc, cx+2, HEADER_TOTAL+2, CW-4, 7, C.card, C.gold, 0.45, 1.5);
+  rect(doc, cx+2, HEADER_TOTAL+2, CW-4, 7, 1.5, C.card, C.gold, 0.45);
   t(doc, "NATIONAL", cx+CW/2, HEADER_TOTAL+6, C.gold, 4.5, true, "center");
   t(doc, "CHAMPIONSHIP  04/06", cx+CW/2, HEADER_TOTAL+10.5, C.gold, 3.2, false, "center");
 
   // ── Championship box (dead center) ────────────────────────────────────
   const ch      = bracket.championship;
   const champY  = PH/2 - 12;
-  rect(doc, cx+2, champY, CW-4, 24, [26,18,4] as RGB, C.gold, 0.5, 2);
+  rect(doc, cx+2, champY, CW-4, 24, 2, [26,18,4] as RGB, C.gold, 0.5);
   t(doc, "🏆", cx+5, champY+8.5, C.gold, 7);
   t(doc, clip(ch.winner.name,13), cx+14, champY+6, C.gold, 4.8, true);
   t(doc, `${ch.winner.seed}-seed · ${ch.winner.region}`, cx+14, champY+10.5, C.muted, 3.2);
   t(doc, `${Math.round(ch.winProbability*100)}% win prob`, cx+CW-4, champY+15, C.gold, 3.2, false, "right");
-  rect(doc, cx+3, champY+13, CW-6, 7, C.card, C.border, 0.15, 1);
+  rect(doc, cx+3, champY+13, CW-6, 7, 1, C.card, C.border, 0.15);
   t(doc, `Runner-up: ${ch.loser.shortName} (${ch.loser.seed})`,
     cx+CW/2, champY+17.5, C.muted, 3.2, false, "center");
 
@@ -437,13 +439,13 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   // ══════════════════════════════════════════════════════════════════════════
   doc.addPage();
   fill(doc, C.bg); doc.rect(0,0,PW,PH,"F");
-  rect(doc, 0,0,PW,13,C.card);
+  rect(doc, 0,0,PW,13,0,C.card);
   t(doc,"PropEdge — March Madness 2026 Analytics Report",PW/2,9,C.gold,8,true,"center");
 
   let cy = 19;
 
   // Champion section
-  rect(doc,4,cy,PW-8,40,C.card,C.gold,0.4,2);
+  rect(doc,4,cy,PW-8,40,2,C.card,C.gold,0.4);
   t(doc,"🏆  PREDICTED CHAMPION",10,cy+6,C.gold,6,true);
   t(doc,bracket.champion.name,10,cy+13,C.white,9,true);
   t(doc,`${bracket.champion.seed}-seed · ${bracket.champion.region} · +${bracket.champion.championshipOdds.toLocaleString()} title odds · ${toImplied(bracket.champion.championshipOdds)}% implied`,
