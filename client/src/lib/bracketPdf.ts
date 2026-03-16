@@ -1,486 +1,434 @@
 /**
  * PropEdge — March Madness 2026 Bracket PDF Generator
- * Builds a clean bracket PDF entirely in jsPDF (no html2canvas, no DOM capture).
- * Layout: full-page landscape, 4 regional columns + Final Four center.
+ * Classic NCAA bracket tree format:
+ *   Left half:  EAST (top-left)  + SOUTH (bottom-left)  — rounds flow LEFT → RIGHT toward center
+ *   Right half: WEST (top-right) + MIDWEST (bottom-right) — rounds flow RIGHT → LEFT toward center
+ *   Center column: Final Four + Championship
+ *
+ * Seed order per region (top → bottom in R1):
+ *   1, 16, 8, 9, 5, 12, 4, 13,  |  6, 11, 3, 14, 7, 10, 2, 15
  */
 
 import jsPDF from "jspdf";
-import { FullBracket, MatchupResult } from "./bracketEngine";
+import { FullBracket } from "./bracketEngine";
 import { NCAATeam } from "../data/bracketData";
 
 // ── Color palette ──────────────────────────────────────────────────────────
 const C = {
-  bg:          [10,  12,  20]  as [number,number,number],
-  card:        [18,  22,  36]  as [number,number,number],
-  border:      [38,  45,  65]  as [number,number,number],
-  gold:        [245,158,  11]  as [number,number,number],
-  goldDim:     [120, 76,   5]  as [number,number,number],
-  white:       [255,255,255]  as [number,number,number],
-  muted:       [120,130,155]  as [number,number,number],
-  green:       [ 16,185,129]  as [number,number,number],
-  red:         [239, 68, 68]  as [number,number,number],
-  yellow:      [234,179,  8]  as [number,number,number],
-  purple:      [168, 85,247]  as [number,number,number],
+  bg:       [10,  12,  20]  as [number,number,number],
+  card:     [18,  22,  36]  as [number,number,number],
+  border:   [38,  45,  65]  as [number,number,number],
+  gold:     [245,158,  11]  as [number,number,number],
+  white:    [255,255,255]  as [number,number,number],
+  muted:    [120,130,155]  as [number,number,number],
+  green:    [ 16,185,129]  as [number,number,number],
+  red:      [239, 68, 68]  as [number,number,number],
+  yellow:   [234,179,  8]  as [number,number,number],
+  purple:   [168, 85,247]  as [number,number,number],
+  dimGold:  [ 60, 40,  5]  as [number,number,number],
 };
-
 type RGB = [number,number,number];
 
 // ── PDF helpers ────────────────────────────────────────────────────────────
 function setFill(doc: jsPDF, c: RGB) { doc.setFillColor(c[0], c[1], c[2]); }
 function setStroke(doc: jsPDF, c: RGB) { doc.setDrawColor(c[0], c[1], c[2]); }
 function setTextColor(doc: jsPDF, c: RGB) { doc.setTextColor(c[0], c[1], c[2]); }
-function setFontSize(doc: jsPDF, size: number) { doc.setFontSize(size); }
 
-function roundedRect(doc: jsPDF, x: number, y: number, w: number, h: number, r: number, fill?: RGB, stroke?: RGB) {
+function roundedRect(doc: jsPDF, x: number, y: number, w: number, h: number, r: number, fill?: RGB, stroke?: RGB, lw = 0.2) {
+  doc.setLineWidth(lw);
   if (fill) setFill(doc, fill);
   if (stroke) setStroke(doc, stroke);
   doc.roundedRect(x, y, w, h, r, r, fill && stroke ? "FD" : fill ? "F" : "S");
 }
 
-function text(doc: jsPDF, str: string, x: number, y: number, color: RGB, size: number, bold = false, align: "left"|"center"|"right" = "left") {
+function txt(doc: jsPDF, str: string, x: number, y: number, color: RGB, size: number, bold = false, align: "left"|"center"|"right" = "left") {
   setTextColor(doc, color);
-  setFontSize(doc, size);
+  doc.setFontSize(size);
   doc.setFont("helvetica", bold ? "bold" : "normal");
   doc.text(str, x, y, { align });
 }
 
-// Truncate text to fit width
-function truncate(str: string, maxLen: number): string {
-  return str.length > maxLen ? str.slice(0, maxLen - 1) + "…" : str;
-}
+function trunc(s: string, max: number) { return s.length > max ? s.slice(0, max - 1) + "…" : s; }
 
-// Implied probability from moneyline
-function toImplied(ml: number): number {
+function toImplied(ml: number) {
   if (ml > 0) return Math.round(100 / (ml + 100) * 100);
   return Math.round(Math.abs(ml) / (Math.abs(ml) + 100) * 100);
 }
 
-// ── Match slot renderer ────────────────────────────────────────────────────
-function drawMatchSlot(
+// ── Team slot (one row in the bracket) ────────────────────────────────────
+// Returns the vertical center of the slot
+function drawTeamSlot(
   doc: jsPDF,
-  x: number, y: number, w: number,
+  x: number, y: number, w: number, slotH: number,
   team: NCAATeam,
   isWinner: boolean,
-  prob?: number,
+  winPct?: number,
   upsetAlert?: boolean
-) {
-  const h = 11;
-  const bgColor: RGB = isWinner ? [22, 30, 48] : [14, 18, 30];
-  const borderColor: RGB = isWinner ? C.gold : C.border;
+): number {
+  const bg: RGB  = isWinner ? [24, 32, 52] : [13, 17, 28];
+  const bdr: RGB = isWinner ? C.gold       : C.border;
+  const lw       = isWinner ? 0.35         : 0.15;
 
-  roundedRect(doc, x, y, w, h, 1.5, bgColor, borderColor);
-  doc.setLineWidth(isWinner ? 0.4 : 0.2);
+  roundedRect(doc, x, y, w, slotH, 1.2, bg, bdr, lw);
 
   // Seed badge
-  const badgeW = 9;
-  roundedRect(doc, x + 1.5, y + 1.5, badgeW, h - 3, 1,
-    isWinner ? C.gold : C.border);
-  text(doc, String(team.seed), x + 1.5 + badgeW/2, y + h/2 + 1.4,
-    isWinner ? C.bg : C.muted, 5.5, true, "center");
+  const bw = 8;
+  roundedRect(doc, x + 1.2, y + 1.2, bw, slotH - 2.4, 0.8, isWinner ? C.gold : C.border);
+  txt(doc, String(team.seed), x + 1.2 + bw / 2, y + slotH / 2 + 1.3, isWinner ? C.bg : C.muted, 4.5, true, "center");
 
-  // Team name
-  const maxNameLen = prob !== undefined ? 14 : 17;
-  text(doc, truncate(team.shortName, maxNameLen),
-    x + 13, y + h/2 + 1.4,
-    isWinner ? C.white : C.muted, 5.5, isWinner);
+  // Name
+  const nameX = x + bw + 3.5;
+  const maxW   = winPct !== undefined ? w - bw - 14 : w - bw - 5;
+  txt(doc, trunc(team.shortName, Math.floor(maxW / 2.2)), nameX, y + slotH / 2 + 1.3, isWinner ? C.white : C.muted, 4.5, isWinner);
 
-  // Win probability
-  if (prob !== undefined) {
-    const pct = `${Math.round(prob * 100)}%`;
-    text(doc, pct, x + w - 3, y + h/2 + 1.4,
-      isWinner ? C.gold : C.muted, 5, isWinner, "right");
+  // Win %
+  if (winPct !== undefined) {
+    txt(doc, `${Math.round(winPct * 100)}%`, x + w - 2, y + slotH / 2 + 1.3, isWinner ? C.gold : C.muted, 3.8, false, "right");
   }
 
   // Upset badge
   if (upsetAlert && isWinner) {
-    roundedRect(doc, x + w - 14, y + 1.5, 10, 4, 1, [60, 40, 0] as RGB);
-    text(doc, "UPSET", x + w - 9, y + 4.8, C.yellow, 3.5, true, "center");
+    roundedRect(doc, x + w - 14, y + 1.2, 11, slotH - 2.4, 1, C.dimGold);
+    txt(doc, "UPSET", x + w - 8.5, y + slotH / 2 + 1.2, C.yellow, 3.2, true, "center");
   }
+
+  return y + slotH / 2; // vertical center
 }
 
-// ── Draw a single matchup (two slots stacked) ──────────────────────────────
-function drawMatchup(
-  doc: jsPDF,
-  x: number, y: number, w: number,
-  result: MatchupResult
-): number {
-  const { winner, loser, winProbability, upsetAlert } = result;
-
-  // Winner on top
-  drawMatchSlot(doc, x, y, w, winner, true, winProbability, upsetAlert);
-  // Loser below
-  drawMatchSlot(doc, x, y + 12, w, loser, false);
-
-  return y + 25; // return next y position (two slots + gap)
+// ── Build a flat list of teams in R1 order for a region ───────────────────
+// Order: [1,16,8,9,5,12,4,13,6,11,3,14,7,10,2,15] top→bottom
+function getR1Teams(regionData: import("./bracketEngine").GeneratedBracket): NCAATeam[] {
+  const r1 = regionData.rounds[0]; // Round of 64
+  // Each matchup has winner + loser. We need the original seed-ordered pairs.
+  // The matchups are stored in seed order: [[1,16],[8,9],[5,12],[4,13],[6,11],[3,14],[7,10],[2,15]]
+  // Within each matchup, winner is on top (index 0), loser is below (index 1).
+  // We want: top half = matchups 0-3, bottom half = matchups 4-7
+  // Flatten: for each matchup, emit [winner, loser] (winner first = higher-ranked display pos)
+  const teams: NCAATeam[] = [];
+  for (const m of r1.matchups) {
+    // Put the LOWER seed (better team) first visually
+    const top    = m.winner.seed < m.loser.seed ? m.winner : m.loser;
+    const bottom = m.winner.seed < m.loser.seed ? m.loser  : m.winner;
+    teams.push(top, bottom);
+  }
+  return teams;
 }
 
-// ── Draw connector line between rounds ────────────────────────────────────
-function drawConnector(doc: jsPDF, x: number, y1: number, y2: number, toX: number) {
-  setStroke(doc, C.border);
-  doc.setLineWidth(0.3);
-  const midY = (y1 + y2) / 2;
-  doc.line(x, y1, x + 4, y1);
-  doc.line(x + 4, y1, x + 4, y2);
-  doc.line(x + 4, y2, toX, y2);
-}
-
-// ── Region column layout ───────────────────────────────────────────────────
-// Returns an array of [x, y] midpoint positions per matchup in each round
-function drawRegionColumn(
+// ── Classic bracket region renderer ───────────────────────────────────────
+// Draws a 4-round region starting at (startX, startY) with total size (totalW × totalH).
+// flip=true  → R1 on the RIGHT, E8 on the LEFT (right-side regions: West, Midwest)
+// flip=false → R1 on the LEFT,  E8 on the RIGHT (left-side regions: East, South)
+//
+// Returns an array of [centerY] values for each round's single Elite-Eight winner slot
+// (used to draw the connector to Final Four).
+function drawRegion(
   doc: jsPDF,
   regionData: import("./bracketEngine").GeneratedBracket,
-  startX: number,
-  columnW: number,
-  pageH: number,
-  flip: boolean // flip = right-side regions (draw rounds right-to-left)
-) {
-  const rounds = regionData.rounds;
-  const numRounds = rounds.length; // 4 rounds (R64, R32, S16, E8)
-  const slotH = 25; // height of one matchup slot pair
-  const roundW = Math.floor(columnW / numRounds) - 2;
+  startX: number, startY: number, totalW: number, totalH: number,
+  flip: boolean,
+  regionLabel: string,
+  labelColor: RGB
+): number /* E8 winner center Y */ {
 
-  // Calculate vertical spacing for each round
-  // R1: 8 matchups, R2: 4, R3: 2, R4: 1
-  const matchCounts = [8, 4, 2, 1];
-  const headerH = 18;
-  const usableH = pageH - headerH - 20;
+  const rounds = regionData.rounds; // [R64, R32, S16, E8]
+  const NUM_ROUNDS = 4;
 
-  // Positions of match centers per round (for connector drawing)
-  const roundPositions: number[][] = []; // [round][match] = centerY
+  // ── Column widths (fractions of totalW) ──────────────────────────────────
+  // R1 gets more width (16 teams to show), later rounds get less
+  const colFracs = flip
+    ? [0.19, 0.19, 0.22, 0.40]   // right-side: R1=rightmost, col[0]=E8 (leftmost)
+    : [0.40, 0.22, 0.19, 0.19];  // left-side:  R1=leftmost,  col[0]=R1
+  const colWidths = colFracs.map(f => totalW * f);
 
-  for (let r = 0; r < numRounds; r++) {
-    const round = rounds[r];
-    const matchCount = round.matchups.length;
-    const spacing = usableH / matchCount;
-    const roundX = flip
-      ? startX + columnW - (r + 1) * (roundW + 2)
-      : startX + r * (roundW + 2);
+  // Compute column X positions
+  let colX: number[] = new Array(NUM_ROUNDS);
+  if (!flip) {
+    colX[0] = startX;
+    for (let i = 1; i < NUM_ROUNDS; i++) colX[i] = colX[i - 1] + colWidths[i - 1] + 1;
+  } else {
+    // col[3] = leftmost (E8), col[0] = rightmost (R1)
+    colX[3] = startX;
+    for (let i = 2; i >= 0; i--) colX[i] = colX[i + 1] + colWidths[i + 1] + 1;
+  }
 
-    const positions: number[] = [];
+  // Slot heights per round
+  const slotH   = 9.5;  // height of one team row
+  const gap      = 1.2;  // gap between the two teams in a matchup
+  const matchupH = slotH * 2 + gap; // total height for a pair
 
-    // Round label
-    const labelX = roundX + roundW / 2;
-    roundedRect(doc, roundX, headerH - 8, roundW, 7, 1.5, C.card, C.border);
-    text(doc, round.name, labelX, headerH - 2.5, C.muted, 4, false, "center");
+  const usableH  = totalH - 12; // reserve top for region label
+  const topY     = startY + 12;
 
-    for (let m = 0; m < matchCount; m++) {
-      const matchup = round.matchups[m];
-      const centerY = headerH + spacing * m + spacing / 2 - slotH / 2;
-      const clampedY = Math.max(headerH + 2, Math.min(centerY, pageH - slotH - 8));
+  // ── Region label banner ───────────────────────────────────────────────────
+  roundedRect(doc, startX, startY, totalW, 9, 0, [Math.round(labelColor[0]*0.12), Math.round(labelColor[1]*0.12), Math.round(labelColor[2]*0.12)] as RGB);
+  txt(doc, regionLabel, startX + totalW / 2, startY + 6.5, labelColor, 5, true, "center");
 
-      drawMatchup(doc, roundX, clampedY, roundW, matchup);
-      positions.push(clampedY + slotH / 2 - 1);
-    }
+  // ── Round column labels ───────────────────────────────────────────────────
+  const roundNames = ["Round of 64", "Round of 32", "Sweet 16", "Elite Eight"];
+  for (let r = 0; r < NUM_ROUNDS; r++) {
+    // Which data round maps to which column?
+    const dataIdx = flip ? (NUM_ROUNDS - 1 - r) : r; // for flip, col0=E8=rounds[3]
+    // col r, dataIdx = rounds index
+    const cx = colX[r];
+    const cw = colWidths[r];
+    roundedRect(doc, cx, topY, cw, 5.5, 1, C.card, C.border, 0.15);
+    txt(doc, roundNames[flip ? NUM_ROUNDS - 1 - r : r], cx + cw / 2, topY + 4, C.muted, 2.8, false, "center");
+  }
 
-    roundPositions.push(positions);
+  const contentTopY = topY + 7;
+  const contentH    = usableH - 7;
 
-    // Draw connectors between this round and next
-    if (r < numRounds - 1) {
-      const nextRound = rounds[r + 1];
-      const nextCount = nextRound.matchups.length;
-      const nextSpacing = usableH / nextCount;
-      const nextRoundX = flip
-        ? startX + columnW - (r + 2) * (roundW + 2)
-        : startX + (r + 1) * (roundW + 2);
+  // centerYs[r][m] = vertical center of matchup m in data-round r
+  const centerYs: number[][] = [[], [], [], []];
 
-      for (let m = 0; m < nextCount; m++) {
-        const srcY1 = roundPositions[r][m * 2];
-        const srcY2 = roundPositions[r][m * 2 + 1];
-        const dstY = headerH + nextSpacing * m + nextSpacing / 2 - 1;
-        const connX = flip ? nextRoundX + roundW : roundX + roundW;
-        const connToX = flip ? nextRoundX + roundW + 4 : nextRoundX - 4;
-        // Simple midpoint connector
-        setStroke(doc, C.border);
-        doc.setLineWidth(0.25);
-        if (srcY1 && srcY2) {
-          const midY = (srcY1 + srcY2) / 2;
-          if (flip) {
-            doc.line(nextRoundX + roundW + 2, midY, roundX, midY);
-          } else {
-            doc.line(roundX + roundW, srcY1, roundX + roundW + 2, srcY1);
-            doc.line(roundX + roundW, srcY2, roundX + roundW + 2, srcY2);
-            doc.line(roundX + roundW + 2, srcY1, roundX + roundW + 2, srcY2);
-            doc.line(roundX + roundW + 2, midY, nextRoundX, midY);
-          }
-        }
+  // ── Draw each round ───────────────────────────────────────────────────────
+  for (let dataR = 0; dataR < NUM_ROUNDS; dataR++) {
+    const round   = rounds[dataR];
+    const colIdx  = flip ? (NUM_ROUNDS - 1 - dataR) : dataR;
+    const cx      = colX[colIdx];
+    const cw      = colWidths[colIdx];
+    const mc      = round.matchups.length; // 8,4,2,1
+
+    const spacing = contentH / mc;
+    const slotW   = cw - 2; // leave tiny margin
+
+    if (dataR === 0) {
+      // ── R1: Draw all 16 teams as individual pairs ──────────────────────
+      const r1Teams = getR1Teams(regionData);
+      // 8 matchups, each with 2 rows
+      for (let m = 0; m < mc; m++) {
+        const t1 = r1Teams[m * 2];     // top team (better seed)
+        const t2 = r1Teams[m * 2 + 1]; // bottom team
+        const matchup = round.matchups[m];
+
+        const centY = contentTopY + spacing * m + spacing / 2;
+        const pairTopY = centY - matchupH / 2;
+
+        // Top team slot
+        const t1IsWinner = matchup.winner.id === t1.id;
+        drawTeamSlot(doc, cx + 1, pairTopY, slotW, slotH, t1, t1IsWinner,
+          t1IsWinner ? matchup.winProbability : 1 - matchup.winProbability,
+          t1IsWinner ? matchup.upsetAlert : false
+        );
+
+        // Bottom team slot
+        const t2IsWinner = matchup.winner.id === t2.id;
+        drawTeamSlot(doc, cx + 1, pairTopY + slotH + gap, slotW, slotH, t2, t2IsWinner,
+          t2IsWinner ? matchup.winProbability : 1 - matchup.winProbability,
+          t2IsWinner ? matchup.upsetAlert : false
+        );
+
+        centerYs[dataR][m] = centY;
+      }
+    } else {
+      // ── R2-E8: Draw winner + loser for each matchup ───────────────────
+      for (let m = 0; m < mc; m++) {
+        const matchup = round.matchups[m];
+        const centY   = contentTopY + spacing * m + spacing / 2;
+        const pairTopY = centY - matchupH / 2;
+
+        drawTeamSlot(doc, cx + 1, pairTopY, slotW, slotH, matchup.winner, true, matchup.winProbability, matchup.upsetAlert);
+        drawTeamSlot(doc, cx + 1, pairTopY + slotH + gap, slotW, slotH, matchup.loser, false);
+
+        centerYs[dataR][m] = centY;
       }
     }
   }
 
-  return roundPositions;
+  // ── Draw bracket connector lines ──────────────────────────────────────────
+  // For each transition R→R+1, connect pairs of matchup centers to the next matchup
+  setStroke(doc, C.border);
+  doc.setLineWidth(0.25);
+
+  for (let dataR = 0; dataR < NUM_ROUNDS - 1; dataR++) {
+    const colIdx     = flip ? (NUM_ROUNDS - 1 - dataR) : dataR;
+    const nextColIdx = flip ? (NUM_ROUNDS - 2 - dataR) : dataR + 1;
+    const cx         = colX[colIdx];
+    const cw         = colWidths[colIdx];
+    const nextCx     = colX[nextColIdx];
+    const nextCw     = colWidths[nextColIdx];
+
+    const nextMc = rounds[dataR + 1].matchups.length;
+
+    for (let nm = 0; nm < nextMc; nm++) {
+      const srcY1 = centerYs[dataR][nm * 2];
+      const srcY2 = centerYs[dataR][nm * 2 + 1];
+      const dstY  = centerYs[dataR + 1][nm];
+
+      if (srcY1 === undefined || srcY2 === undefined || dstY === undefined) continue;
+
+      setStroke(doc, [50, 58, 80] as RGB);
+      doc.setLineWidth(0.2);
+
+      if (!flip) {
+        // Lines go right from this column to next
+        const connX = cx + cw + 1;
+        doc.line(cx + cw - 1, srcY1, connX, srcY1);
+        doc.line(cx + cw - 1, srcY2, connX, srcY2);
+        doc.line(connX, srcY1, connX, srcY2);
+        doc.line(connX, dstY, nextCx + 1, dstY);
+      } else {
+        // Lines go left from this column to next (which is to the left)
+        const connX = cx - 1;
+        doc.line(cx + 1, srcY1, connX, srcY1);
+        doc.line(cx + 1, srcY2, connX, srcY2);
+        doc.line(connX, srcY1, connX, srcY2);
+        doc.line(connX, dstY, nextCx + nextCw + 1, dstY);
+      }
+    }
+  }
+
+  // Return the E8 winner's center Y for Final Four connectors
+  return centerYs[3][0];
 }
 
-// ── Main PDF generator ─────────────────────────────────────────────────────
+// ── Main PDF export ────────────────────────────────────────────────────────
 export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();   // 297mm
-  const pageH = doc.internal.pageSize.getHeight();  // 210mm
+  const pageW = doc.internal.pageSize.getWidth();  // 297mm
+  const pageH = doc.internal.pageSize.getHeight(); // 210mm
 
-  // ── Page 1: Full Bracket Visual ──────────────────────────────────────────
+  // ── PAGE 1: Classic bracket tree ────────────────────────────────────────
 
   // Background
   setFill(doc, C.bg);
   doc.rect(0, 0, pageW, pageH, "F");
 
   // Header bar
-  roundedRect(doc, 0, 0, pageW, 14, 0, C.card);
-  text(doc, "🏆  PropEdge · March Madness 2026 Bracket", pageW / 2, 9, C.gold, 9, true, "center");
-  text(doc, `Generated ${new Date(bracket.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}`,
-    pageW - 4, 9, C.muted, 5, false, "right");
-  text(doc, `Champion: ${bracket.champion.name} (+${bracket.champion.championshipOdds.toLocaleString()})`,
-    4, 9, C.gold, 5.5, true);
+  roundedRect(doc, 0, 0, pageW, 12, 0, C.card);
+  txt(doc, "🏆  PropEdge · March Madness 2026 Bracket", pageW / 2, 8.5, C.gold, 8, true, "center");
+  txt(doc, `Champion: ${bracket.champion.name} (+${bracket.champion.championshipOdds.toLocaleString()})`, 4, 8.5, C.gold, 5, true);
+  txt(doc, `Generated ${new Date(bracket.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}`,
+    pageW - 4, 8.5, C.muted, 4.5, false, "right");
 
-  // ── Layout: [East 4 rounds] [Final Four center] [West 4 rounds flipped]
-  //           [South 4 rounds] [center] [Midwest 4 rounds flipped]
-  // Actually: split page into left half (East+Midwest) and right half (West+South)
-  // with Final Four in the center column
+  // ── Layout ────────────────────────────────────────────────────────────────
+  // Page split:
+  //   Left  half: sideW wide  → EAST (top), SOUTH (bottom)
+  //   Center:     centerW wide → Final Four + Championship
+  //   Right half: sideW wide  → WEST (top), MIDWEST (bottom)
+  const centerW = 40;
+  const sideW   = (pageW - centerW) / 2;  // ~128.5mm each
 
-  const centerW = 44; // Final Four center column
-  const sideW = (pageW - centerW) / 2;
-  const regionW = sideW / 2;  // each region column
+  // Vertical split: top 48%, bottom 52% (slight more for bottom)
+  const headerH = 12;
+  const midY    = headerH + (pageH - headerH) * 0.50;
+  const topH    = midY - headerH;
+  const botH    = pageH - midY;
 
   const east    = bracket.regions.find(r => r.region === "East")!;
   const west    = bracket.regions.find(r => r.region === "West")!;
-  const midwest = bracket.regions.find(r => r.region === "Midwest")!;
   const south   = bracket.regions.find(r => r.region === "South")!;
+  const midwest = bracket.regions.find(r => r.region === "Midwest")!;
 
-  // Region labels
-  const regions = [
-    { data: east,    x: 0,                    flip: false, label: "EAST",    color: C.gold   },
-    { data: west,    x: sideW + centerW,       flip: true,  label: "WEST",    color: C.green  },
-    { data: south,   x: 0,                    flip: false, label: "SOUTH",   color: C.red    },
-    { data: midwest, x: sideW + centerW,       flip: true,  label: "MIDWEST", color: C.purple },
-  ];
+  // Draw regions
+  const eastE8Y    = drawRegion(doc, east,    0,              headerH, sideW, topH, false, "EAST",    C.gold);
+  const westE8Y    = drawRegion(doc, west,    sideW + centerW, headerH, sideW, topH, true,  "WEST",    C.green);
+  const southE8Y   = drawRegion(doc, south,   0,              midY,    sideW, botH, false, "SOUTH",   C.red);
+  const midwestE8Y = drawRegion(doc, midwest, sideW + centerW, midY,    sideW, botH, true,  "MIDWEST", C.purple);
 
-  // We'll do top half (East left, West right) and bottom half (South left, Midwest right)
-  // Split page horizontally at the midpoint
-  const topH = pageH * 0.48;
-  const botY = pageH * 0.52;
-  const botH = pageH - botY;
-
-  // Draw region label banners
-  const regionBanners = [
-    { label: "EAST",    x: 0,              w: sideW,  y: 14 },
-    { label: "WEST",    x: sideW+centerW,  w: sideW,  y: 14 },
-    { label: "SOUTH",   x: 0,              w: sideW,  y: botY },
-    { label: "MIDWEST", x: sideW+centerW,  w: sideW,  y: botY },
-  ];
-  const bannerColors = [C.gold, C.green, C.red, C.purple];
-  regionBanners.forEach(({ label, x, w, y }, i) => {
-    const col = bannerColors[i];
-    roundedRect(doc, x, y, w, 5, 0, [col[0]*0.12, col[1]*0.12, col[2]*0.12] as RGB);
-    text(doc, label, x + w/2, y + 3.8, col, 4.5, true, "center");
-  });
-
-  // Helper: draw a simplified single-region bracket in a bounded box
-  function drawSimpleRegion(
-    regionData: import("./bracketEngine").GeneratedBracket,
-    startX: number, startY: number, totalW: number, totalH: number,
-    flip: boolean
-  ) {
-    const rounds = regionData.rounds;
-    const slotW = flip
-      ? [totalW*0.24, totalW*0.24, totalW*0.26, totalW*0.26]
-      : [totalW*0.26, totalW*0.26, totalW*0.24, totalW*0.24];
-
-    let xCursors = [0, 0, 0, 0];
-    if (!flip) {
-      xCursors[0] = startX;
-      xCursors[1] = startX + slotW[0] + 2;
-      xCursors[2] = startX + slotW[0] + slotW[1] + 4;
-      xCursors[3] = startX + slotW[0] + slotW[1] + slotW[2] + 6;
-    } else {
-      // Right-side regions: R1 on right, E8 on left (closest to center)
-      xCursors[3] = startX;
-      xCursors[2] = startX + slotW[3] + 2;
-      xCursors[1] = startX + slotW[3] + slotW[2] + 4;
-      xCursors[0] = startX + slotW[3] + slotW[2] + slotW[1] + 6;
-    }
-
-    const usableH = totalH - 12;
-
-    for (let r = 0; r < rounds.length; r++) {
-      const round = rounds[r];
-      const mc = round.matchups.length;
-      const rX = xCursors[r];
-      const rW = slotW[r];
-      const spacing = usableH / mc;
-
-      // Round label
-      const labelY = startY + 5;
-      text(doc, round.name, rX + rW/2, labelY, C.muted, 3.2, false, "center");
-
-      for (let m = 0; m < mc; m++) {
-        const matchup = round.matchups[m];
-        const slotH = 22;
-        const topSlot = startY + 8 + spacing * m + (spacing - slotH) / 2;
-
-        // Winner row
-        const winnerBg: RGB = [22, 30, 50];
-        roundedRect(doc, rX, topSlot, rW, 10, 1, winnerBg, C.border);
-        doc.setLineWidth(0.3);
-        // Seed
-        roundedRect(doc, rX+1, topSlot+1, 7, 8, 1, C.gold);
-        text(doc, String(matchup.winner.seed), rX+4.5, topSlot+6, C.bg, 4.5, true, "center");
-        text(doc, truncate(matchup.winner.shortName, 10), rX+10, topSlot+6.5, C.white, 4, true);
-        const pct = `${Math.round(matchup.winProbability*100)}%`;
-        text(doc, pct, rX+rW-2, topSlot+6.5, C.gold, 3.5, false, "right");
-        if (matchup.upsetAlert) {
-          roundedRect(doc, rX+rW-12, topSlot+2, 9, 3.5, 1, [50,35,0] as RGB);
-          text(doc, "UPSET", rX+rW-7.5, topSlot+4.5, C.yellow, 2.8, true, "center");
-        }
-
-        // Loser row
-        const loserBg: RGB = [14, 18, 30];
-        roundedRect(doc, rX, topSlot+11, rW, 10, 1, loserBg, [30,38,55] as RGB);
-        doc.setLineWidth(0.15);
-        roundedRect(doc, rX+1, topSlot+12, 7, 8, 1, C.border);
-        text(doc, String(matchup.loser.seed), rX+4.5, topSlot+17, C.muted, 4.5, false, "center");
-        text(doc, truncate(matchup.loser.shortName, 10), rX+10, topSlot+17.5, C.muted, 4, false);
-
-        // Connector to next round
-        if (r < rounds.length - 1) {
-          const nextMc = rounds[r+1].matchups.length;
-          const nextSpacing = usableH / nextMc;
-          const nextM = Math.floor(m / 2);
-          const nextSlotH = 22;
-          const nextTopSlot = startY + 8 + nextSpacing * nextM + (nextSpacing - nextSlotH) / 2;
-          const myMid = topSlot + 10.5;
-          const nextMid = nextTopSlot + 10.5;
-
-          setStroke(doc, C.border);
-          doc.setLineWidth(0.2);
-
-          if (!flip) {
-            const connX = rX + rW;
-            const nextX = xCursors[r+1];
-            doc.line(connX, myMid, connX + 1, myMid);
-            // vertical connector for pair
-            if (m % 2 === 1 && rounds[r].matchups[m-1]) {
-              const prevTopSlot = startY + 8 + spacing * (m-1) + (spacing - slotH) / 2 + 10.5;
-              doc.line(connX + 1, prevTopSlot, connX + 1, myMid);
-              doc.line(connX + 1, (prevTopSlot + myMid)/2, nextX, (prevTopSlot + myMid)/2);
-            }
-          } else {
-            const connX = rX;
-            const nextX = xCursors[r+1] + slotW[r+1];
-            doc.line(connX, myMid, connX - 1, myMid);
-            if (m % 2 === 1 && rounds[r].matchups[m-1]) {
-              const prevTopSlot = startY + 8 + spacing * (m-1) + (spacing - slotH) / 2 + 10.5;
-              doc.line(connX - 1, prevTopSlot, connX - 1, myMid);
-              doc.line(connX - 1, (prevTopSlot + myMid)/2, nextX, (prevTopSlot + myMid)/2);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Draw all 4 regions
-  drawSimpleRegion(east,    0,              14,   sideW,  topH - 14,  false);
-  drawSimpleRegion(west,    sideW+centerW,  14,   sideW,  topH - 14,  true);
-  drawSimpleRegion(south,   0,              botY, sideW,  botH,       false);
-  drawSimpleRegion(midwest, sideW+centerW,  botY, sideW,  botH,       true);
-
-  // ── Center column: Final Four ────────────────────────────────────────────
+  // ── Center column: Final Four ─────────────────────────────────────────────
   const cx = sideW;
   const cw = centerW;
 
-  // Center divider line
+  // Vertical divider
   setStroke(doc, C.border);
   doc.setLineWidth(0.3);
-  doc.line(cx + cw/2, 16, cx + cw/2, pageH - 4);
+  doc.line(cx + cw / 2, headerH + 1, cx + cw / 2, pageH - 4);
 
   // Final Four label
-  roundedRect(doc, cx + 2, 18, cw - 4, 6, 2, C.card, C.gold);
-  doc.setLineWidth(0.5);
-  text(doc, "FINAL FOUR", cx + cw/2, 22.5, C.gold, 5.5, true, "center");
+  roundedRect(doc, cx + 2, headerH + 2, cw - 4, 7, 2, C.card, C.gold, 0.5);
+  txt(doc, "FINAL FOUR", cx + cw / 2, headerH + 7.5, C.gold, 5.5, true, "center");
 
-  // SF1: East vs West (top half)
-  const sf1 = bracket.finalFour.matchups[0];
-  const sf2 = bracket.finalFour.matchups[1];
+  const sf1 = bracket.finalFour.matchups[0]; // East vs West
+  const sf2 = bracket.finalFour.matchups[1]; // Midwest vs South
+  const ch  = bracket.championship;
 
-  const sfY1 = topH * 0.28;
-  const sfY2 = botY + botH * 0.18;
-  const sfW = cw - 6;
-  const sfX = cx + 3;
+  const sfW  = cw - 6;
+  const sfX  = cx + 3;
+  const slotH = 9.5;
+  const gapH  = 1.2;
 
-  // SF1
-  text(doc, "East vs West", cx + cw/2, sfY1 - 2, C.muted, 3.5, false, "center");
-  roundedRect(doc, sfX, sfY1, sfW, 10, 1.5, [22,30,50] as RGB, C.gold);
-  doc.setLineWidth(0.4);
-  roundedRect(doc, sfX+1, sfY1+1, 8, 8, 1, C.gold);
-  text(doc, String(sf1.winner.seed), sfX+5, sfY1+6, C.bg, 5, true, "center");
-  text(doc, truncate(sf1.winner.shortName, 9), sfX+11, sfY1+6.5, C.white, 4.5, true);
-  text(doc, `${Math.round(sf1.winProbability*100)}%`, sfX+sfW-2, sfY1+6.5, C.gold, 4, false, "right");
+  // Championship label + box — positioned in vertical center
+  const champLabelY = pageH / 2 - 8;
+  roundedRect(doc, cx + 1, champLabelY - 6, cw - 2, 5.5, 1.5, C.card, C.gold, 0.5);
+  txt(doc, "CHAMPIONSHIP", cx + cw / 2, champLabelY - 1.8, C.gold, 4, true, "center");
 
-  roundedRect(doc, sfX, sfY1+11, sfW, 10, 1.5, [14,18,30] as RGB, C.border);
-  doc.setLineWidth(0.2);
-  roundedRect(doc, sfX+1, sfY1+12, 8, 8, 1, C.border);
-  text(doc, String(sf1.loser.seed), sfX+5, sfY1+17, C.muted, 5, false, "center");
-  text(doc, truncate(sf1.loser.shortName, 9), sfX+11, sfY1+17.5, C.muted, 4.5, false);
-
-  // SF2
-  text(doc, "Midwest vs South", cx + cw/2, sfY2 - 2, C.muted, 3.5, false, "center");
-  roundedRect(doc, sfX, sfY2, sfW, 10, 1.5, [22,30,50] as RGB, C.gold);
-  doc.setLineWidth(0.4);
-  roundedRect(doc, sfX+1, sfY2+1, 8, 8, 1, C.gold);
-  text(doc, String(sf2.winner.seed), sfX+5, sfY2+6, C.bg, 5, true, "center");
-  text(doc, truncate(sf2.winner.shortName, 9), sfX+11, sfY2+6.5, C.white, 4.5, true);
-  text(doc, `${Math.round(sf2.winProbability*100)}%`, sfX+sfW-2, sfY2+6.5, C.gold, 4, false, "right");
-
-  roundedRect(doc, sfX, sfY2+11, sfW, 10, 1.5, [14,18,30] as RGB, C.border);
-  doc.setLineWidth(0.2);
-  roundedRect(doc, sfX+1, sfY2+12, 8, 8, 1, C.border);
-  text(doc, String(sf2.loser.seed), sfX+5, sfY2+17, C.muted, 5, false, "center");
-  text(doc, truncate(sf2.loser.shortName, 9), sfX+11, sfY2+17.5, C.muted, 4.5, false);
-
-  // Championship
-  const champY = pageH / 2 - 14;
-  roundedRect(doc, cx + 1, champY - 6, cw - 2, 5, 1.5, C.card, C.gold);
-  doc.setLineWidth(0.5);
-  text(doc, "CHAMPIONSHIP", cx + cw/2, champY - 2, C.gold, 4.5, true, "center");
-
-  const ch = bracket.championship;
   // Champion box
-  roundedRect(doc, sfX - 1, champY, sfW + 2, 12, 2, [28, 20, 4] as RGB, C.gold);
-  doc.setLineWidth(0.6);
-  text(doc, "🏆", sfX + 2, champY + 7, C.gold, 7);
-  text(doc, truncate(ch.winner.name, 13), sfX + 11, champY + 5, C.gold, 5.5, true);
-  text(doc, `Seed ${ch.winner.seed} · ${ch.winner.region}`, sfX + 11, champY + 10.5, C.muted, 3.8);
-  text(doc, `${Math.round(ch.winProbability*100)}% win prob`, sfX + sfW - 1, champY + 7, C.gold, 3.8, true, "right");
+  const champBoxY = champLabelY;
+  roundedRect(doc, sfX - 1, champBoxY, sfW + 2, 22, 2, [28, 20, 4] as RGB, C.gold, 0.6);
+  txt(doc, "🏆", sfX + 2, champBoxY + 8, C.gold, 7);
+  txt(doc, trunc(ch.winner.name, 14), sfX + 12, champBoxY + 6, C.gold, 5, true);
+  txt(doc, `Seed ${ch.winner.seed} · ${ch.winner.region}`, sfX + 12, champBoxY + 11, C.muted, 3.5);
+  txt(doc, `${Math.round(ch.winProbability * 100)}% win prob`, sfX + sfW, champBoxY + 15, C.gold, 3.5, true, "right");
+  roundedRect(doc, sfX, champBoxY + 13, sfW, 8, 1.5, C.card, C.border, 0.15);
+  txt(doc, `Runner-up: ${ch.loser.shortName} (${ch.loser.seed})`, cx + cw / 2, champBoxY + 18.5, C.muted, 3.5, false, "center");
 
-  // Runner-up
-  roundedRect(doc, sfX, champY + 14, sfW, 8, 1.5, C.card, C.border);
-  doc.setLineWidth(0.2);
-  text(doc, `Runner-up: ${ch.loser.shortName} (${ch.loser.seed})`, cx + cw/2, champY + 19.5, C.muted, 3.8, false, "center");
+  // SF1 (East vs West) — top half
+  const sf1TopY = (headerH + champLabelY - 6) / 2 - (slotH * 2 + gapH) / 2;
+  txt(doc, "East vs West", cx + cw / 2, sf1TopY - 2, C.muted, 3, false, "center");
+  drawTeamSlot(doc, sfX, sf1TopY, sfW, slotH, sf1.winner, true, sf1.winProbability, sf1.upsetAlert);
+  drawTeamSlot(doc, sfX, sf1TopY + slotH + gapH, sfW, slotH, sf1.loser, false);
 
-  // Connector lines from SF winners to championship
-  setStroke(doc, [60, 50, 10] as RGB);
+  // SF2 (Midwest vs South) — bottom half
+  const sf2CenterAreaY = (champBoxY + 22 + pageH) / 2;
+  const sf2TopY = sf2CenterAreaY - (slotH * 2 + gapH) / 2;
+  txt(doc, "Midwest vs South", cx + cw / 2, sf2TopY - 2, C.muted, 3, false, "center");
+  drawTeamSlot(doc, sfX, sf2TopY, sfW, slotH, sf2.winner, true, sf2.winProbability, sf2.upsetAlert);
+  drawTeamSlot(doc, sfX, sf2TopY + slotH + gapH, sfW, slotH, sf2.loser, false);
+
+  // ── Connector lines: E8 winners → SF → Championship ─────────────────────
+  setStroke(doc, [55, 48, 10] as RGB);
   doc.setLineWidth(0.3);
-  doc.line(sfX + sfW/2, sfY1 + 10, sfX + sfW/2, champY);
-  doc.line(sfX + sfW/2, sfY2 + 10, sfX + sfW/2, champY + 12);
 
-  // ── Page 2: Analytics Report ─────────────────────────────────────────────
+  const sf1WinCenterY = sf1TopY + slotH / 2;
+  const sf2WinCenterY = sf2TopY + slotH / 2;
+  const champCenterY  = champBoxY + 5;
+
+  // East E8 → SF1 (left side into center)
+  doc.line(cx - 1, eastE8Y, cx + 3, eastE8Y);
+  doc.line(cx + 3, eastE8Y, cx + 3, sf1WinCenterY);
+  doc.line(cx + 3, sf1WinCenterY, sfX, sf1WinCenterY);
+
+  // West E8 → SF1 (right side into center)
+  doc.line(cx + cw + 1, westE8Y, cx + cw - 3, westE8Y);
+  doc.line(cx + cw - 3, westE8Y, cx + cw - 3, sf1WinCenterY);
+  doc.line(cx + cw - 3, sf1WinCenterY, sfX + sfW, sf1WinCenterY);
+
+  // South E8 → SF2
+  doc.line(cx - 1, southE8Y, cx + 3, southE8Y);
+  doc.line(cx + 3, southE8Y, cx + 3, sf2WinCenterY);
+  doc.line(cx + 3, sf2WinCenterY, sfX, sf2WinCenterY);
+
+  // Midwest E8 → SF2
+  doc.line(cx + cw + 1, midwestE8Y, cx + cw - 3, midwestE8Y);
+  doc.line(cx + cw - 3, midwestE8Y, cx + cw - 3, sf2WinCenterY);
+  doc.line(cx + cw - 3, sf2WinCenterY, sfX + sfW, sf2WinCenterY);
+
+  // SF winners → Championship
+  doc.line(sfX + sfW / 2, sf1TopY + slotH, sfX + sfW / 2, champBoxY);
+  doc.line(sfX + sfW / 2, sf2TopY, sfX + sfW / 2, champBoxY + 22);
+
+  // ── Page footer ───────────────────────────────────────────────────────────
+  txt(doc, "Created with Perplexity Computer · prop-edge.up.railway.app  |  Odds from DraftKings · Not financial advice",
+    pageW / 2, pageH - 2, C.muted, 2.8, false, "center");
+
+  // ── PAGE 2: Analytics Report ──────────────────────────────────────────────
   doc.addPage();
   setFill(doc, C.bg);
   doc.rect(0, 0, pageW, pageH, "F");
+  roundedRect(doc, 0, 0, pageW, 12, 0, C.card);
+  txt(doc, "PropEdge — March Madness 2026 Analytics Report", pageW / 2, 8.5, C.gold, 8, true, "center");
 
-  // Header
-  roundedRect(doc, 0, 0, pageW, 14, 0, C.card);
-  text(doc, "PropEdge — March Madness 2026 Analytics Report", pageW/2, 9, C.gold, 9, true, "center");
+  let curY = 18;
 
-  let curY = 20;
-
-  // ── Section 1: Champion Analysis
-  roundedRect(doc, 4, curY, pageW - 8, 38, 2, C.card, C.gold);
-  doc.setLineWidth(0.4);
-  text(doc, "🏆  PREDICTED CHAMPION", 10, curY + 6, C.gold, 6, true);
-  text(doc, bracket.champion.name, 10, curY + 13, C.white, 9, true);
-  text(doc, `${bracket.champion.seed}-seed · ${bracket.champion.region} Region · +${bracket.champion.championshipOdds.toLocaleString()} title odds · ${toImplied(bracket.champion.championshipOdds)}% implied`,
+  // ── Champion Section ──────────────────────────────────────────────────────
+  roundedRect(doc, 4, curY, pageW - 8, 40, 2, C.card, C.gold, 0.4);
+  txt(doc, "🏆  PREDICTED CHAMPION", 10, curY + 6, C.gold, 6, true);
+  txt(doc, bracket.champion.name, 10, curY + 13, C.white, 9, true);
+  txt(doc,
+    `${bracket.champion.seed}-seed · ${bracket.champion.region} Region · +${bracket.champion.championshipOdds.toLocaleString()} title odds · ${toImplied(bracket.champion.championshipOdds)}% implied`,
     10, curY + 19, C.muted, 4.5);
 
-  // Key stats grid
   const stats = [
     { label: "Adj. Offense", val: bracket.champion.adjOffRating.toFixed(1) },
     { label: "Adj. Defense", val: bracket.champion.adjDefRating.toFixed(1) },
@@ -493,105 +441,82 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
     const bx = 10 + i * 47;
     const by = curY + 23;
     roundedRect(doc, bx, by, 43, 11, 1.5, [18, 24, 40] as RGB);
-    text(doc, s.val, bx + 21.5, by + 5.5, C.gold, 6, true, "center");
-    text(doc, s.label, bx + 21.5, by + 9.5, C.muted, 3.2, false, "center");
+    txt(doc, s.val, bx + 21.5, by + 5.5, C.gold, 6, true, "center");
+    txt(doc, s.label, bx + 21.5, by + 9.5, C.muted, 3.2, false, "center");
   });
 
-  // Analysis blurb
   const blurb = bracket.champion.analysis.split(". ").slice(0, 2).join(". ") + ".";
-  const lines = doc.splitTextToSize(blurb, pageW - 20) as string[];
-  text(doc, lines[0] || "", 10, curY + 37, C.muted, 3.8);
+  txt(doc, (doc.splitTextToSize(blurb, pageW - 20) as string[])[0] ?? "", 10, curY + 37, C.muted, 3.8);
+  curY += 46;
 
-  curY += 44;
-
-  // ── Section 2: Final Four
-  text(doc, "FINAL FOUR", 10, curY + 5, C.gold, 5.5, true);
-  doc.setLineWidth(0.2);
+  // ── Final Four ────────────────────────────────────────────────────────────
+  txt(doc, "FINAL FOUR", 10, curY + 5, C.gold, 5.5, true);
+  doc.setLineWidth(0.2); setStroke(doc, C.gold);
   doc.line(10, curY + 7, pageW - 10, curY + 7);
-  setStroke(doc, C.gold);
   curY += 11;
 
-  const ffTeams = [
-    bracket.finalFour.matchups[0].winner,
-    bracket.finalFour.matchups[0].loser,
-    bracket.finalFour.matchups[1].winner,
-    bracket.finalFour.matchups[1].loser,
-  ];
+  const ffTeams  = [bracket.finalFour.matchups[0].winner, bracket.finalFour.matchups[0].loser, bracket.finalFour.matchups[1].winner, bracket.finalFour.matchups[1].loser];
   const ffLabels = ["East Winner", "West Winner", "Midwest Winner", "South Winner"];
   ffTeams.forEach((t, i) => {
     const bx = 4 + i * 72;
-    roundedRect(doc, bx, curY, 68, 22, 2, C.card, i < 2 ? C.gold : C.green);
-    doc.setLineWidth(i < 2 ? 0.4 : 0.3);
-    text(doc, ffLabels[i], bx + 34, curY + 5, C.muted, 3, false, "center");
-    text(doc, t.name, bx + 34, curY + 11, C.white, 4.5, true, "center");
-    text(doc, `${t.seed}-seed · +${t.championshipOdds.toLocaleString()}`, bx + 34, curY + 16, C.gold, 3.5, false, "center");
-    text(doc, `Margin: +${t.adjEffMargin.toFixed(1)} | Form: ${t.recentForm}`, bx + 34, curY + 20.5, C.muted, 3, false, "center");
+    roundedRect(doc, bx, curY, 68, 22, 2, C.card, i < 2 ? C.gold : C.green, i < 2 ? 0.4 : 0.3);
+    txt(doc, ffLabels[i], bx + 34, curY + 5, C.muted, 3, false, "center");
+    txt(doc, t.name, bx + 34, curY + 11, C.white, 4.5, true, "center");
+    txt(doc, `${t.seed}-seed · +${t.championshipOdds.toLocaleString()}`, bx + 34, curY + 16, C.gold, 3.5, false, "center");
+    txt(doc, `Margin: +${t.adjEffMargin.toFixed(1)} | Form: ${t.recentForm}`, bx + 34, curY + 20.5, C.muted, 3, false, "center");
   });
   curY += 27;
 
-  // ── Section 3: Upset picks
-  const upsets = bracket.regions.flatMap(r =>
-    r.rounds.flatMap(rd => rd.matchups.filter(m => m.upsetAlert))
-  );
-
+  // ── Upset Picks ───────────────────────────────────────────────────────────
+  const upsets = bracket.regions.flatMap(r => r.rounds.flatMap(rd => rd.matchups.filter(m => m.upsetAlert)));
   if (upsets.length > 0) {
-    text(doc, `⚠  PROJECTED UPSETS  (${upsets.length})`, 10, curY + 5, C.yellow, 5.5, true);
-    doc.setLineWidth(0.2);
-    setStroke(doc, C.yellow);
+    txt(doc, `⚠  PROJECTED UPSETS  (${upsets.length})`, 10, curY + 5, C.yellow, 5.5, true);
+    doc.setLineWidth(0.2); setStroke(doc, C.yellow);
     doc.line(10, curY + 7, pageW - 10, curY + 7);
     setStroke(doc, C.border);
     curY += 11;
 
     upsets.slice(0, 8).forEach((u, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const ux = 4 + col * 145;
-      const uy = curY + row * 16;
-      roundedRect(doc, ux, uy, 139, 13, 1.5, C.card, [60, 45, 5] as RGB);
-      doc.setLineWidth(0.3);
-      roundedRect(doc, ux + 1, uy + 1, 18, 11, 1, [60,40,0] as RGB);
-      text(doc, "UPSET", ux + 10, uy + 7.5, C.yellow, 4, true, "center");
-      text(doc, `${u.winner.seed}-seed ${u.winner.shortName} over ${u.loser.seed}-seed ${u.loser.shortName}`,
+      const col = i % 2, row = Math.floor(i / 2);
+      const ux = 4 + col * 145, uy = curY + row * 16;
+      roundedRect(doc, ux, uy, 139, 13, 1.5, C.card, [60, 45, 5] as RGB, 0.3);
+      roundedRect(doc, ux + 1, uy + 1, 18, 11, 1, C.dimGold);
+      txt(doc, "UPSET", ux + 10, uy + 7.5, C.yellow, 4, true, "center");
+      txt(doc, `${u.winner.seed}-seed ${u.winner.shortName} over ${u.loser.seed}-seed ${u.loser.shortName}`,
         ux + 22, uy + 5.5, C.white, 4.5, true);
-      text(doc, `${Math.round(u.winProbability*100)}% win prob · ${u.winner.region} Region · Proj: ${u.projectedScore.winner}-${u.projectedScore.loser}`,
+      txt(doc, `${Math.round(u.winProbability * 100)}% win prob · ${u.winner.region} Region · Proj: ${u.projectedScore.winner}-${u.projectedScore.loser}`,
         ux + 22, uy + 10.5, C.muted, 3.5);
     });
-
-    const upsetRows = Math.ceil(Math.min(upsets.length, 8) / 2);
-    curY += upsetRows * 16 + 4;
+    curY += Math.ceil(Math.min(upsets.length, 8) / 2) * 16 + 4;
   }
 
-  // ── Section 4: All region winners summary
+  // ── Region Winners ────────────────────────────────────────────────────────
   if (curY < pageH - 30) {
-    text(doc, "REGION WINNERS", 10, curY + 5, C.green, 5.5, true);
-    doc.setLineWidth(0.2);
-    setStroke(doc, C.green);
+    txt(doc, "REGION WINNERS", 10, curY + 5, C.green, 5.5, true);
+    doc.setLineWidth(0.2); setStroke(doc, C.green);
     doc.line(10, curY + 7, pageW - 10, curY + 7);
     setStroke(doc, C.border);
     curY += 11;
 
     bracket.regions.forEach((r, i) => {
-      const w = r.regionWinner;
-      const bx = 4 + i * 72;
-      roundedRect(doc, bx, curY, 68, 16, 1.5, C.card, C.border);
-      text(doc, r.region.toUpperCase(), bx + 34, curY + 5, C.gold, 3.5, true, "center");
-      text(doc, w.name, bx + 34, curY + 10, C.white, 4, true, "center");
-      text(doc, `${w.seed}-seed · +${w.championshipOdds.toLocaleString()} · ${w.record}`, bx + 34, curY + 15, C.muted, 3, false, "center");
+      const w = r.regionWinner, bx = 4 + i * 72;
+      roundedRect(doc, bx, curY, 68, 16, 1.5, C.card, C.border, 0.15);
+      txt(doc, r.region.toUpperCase(), bx + 34, curY + 5, C.gold, 3.5, true, "center");
+      txt(doc, w.name, bx + 34, curY + 10, C.white, 4, true, "center");
+      txt(doc, `${w.seed}-seed · +${w.championshipOdds.toLocaleString()} · ${w.record}`, bx + 34, curY + 15, C.muted, 3, false, "center");
     });
-
-    curY += 20;
   }
 
-  // ── Footer on both pages ─────────────────────────────────────────────────
+  // Footer
   const footerY = pageH - 5;
-  text(doc, "Created with Perplexity Computer · perplexity.ai/computer  |  PropEdge · prop-edge.up.railway.app  |  Odds from DraftKings · Not financial advice",
-    pageW / 2, footerY, C.muted, 3, false, "center");
+  txt(doc, "Created with Perplexity Computer · perplexity.ai/computer  |  PropEdge · prop-edge.up.railway.app  |  Odds from DraftKings · Not financial advice",
+    pageW / 2, footerY, C.muted, 2.8, false, "center");
 
   doc.setPage(1);
-  text(doc, "Created with Perplexity Computer · prop-edge.up.railway.app",
-    pageW / 2, pageH - 2, C.muted, 3, false, "center");
+  txt(doc, "Created with Perplexity Computer · prop-edge.up.railway.app",
+    pageW / 2, pageH - 2, C.muted, 2.8, false, "center");
 
-  // ── Save ─────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`PropEdge-Bracket-2026-${dateStr}.pdf`);
 }
