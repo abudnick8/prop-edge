@@ -58,7 +58,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   // ─── EAST REGION ─────────────────────────────────────────────────────────
   {
     id: "duke", name: "Duke Blue Devils", shortName: "Duke",
-    seed: 1, region: "East", record: "35-3", wins: 35, losses: 3,
+    seed: 1, region: "East", record: "32-2", wins: 32, losses: 2,
     championshipOdds: 300, ppg: 85.4, oppPpg: 66.8, scoringMargin: 18.6,
     fg2Pct: 54.2, fg3Pct: 37.8, ftPct: 74.1, threePointRate: 35,
     adjOffRating: 122.8, adjDefRating: 90.1, adjEffMargin: 32.7, pace: 70.2,
@@ -71,7 +71,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "uconn", name: "UConn Huskies", shortName: "UConn",
-    seed: 2, region: "East", record: "26-7", wins: 26, losses: 7,
+    seed: 2, region: "East", record: "29-5", wins: 29, losses: 5,
     championshipOdds: 2800, ppg: 78.3, oppPpg: 65.4, scoringMargin: 12.9,
     fg2Pct: 52.1, fg3Pct: 39.8, ftPct: 72.3, threePointRate: 38,
     adjOffRating: 116.8, adjDefRating: 92.4, adjEffMargin: 24.4, pace: 67.8,
@@ -84,7 +84,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "michigan-state", name: "Michigan State Spartans", shortName: "MSU",
-    seed: 3, region: "East", record: "25-8", wins: 25, losses: 8,
+    seed: 3, region: "East", record: "25-7", wins: 25, losses: 7,
     championshipOdds: 4000, ppg: 74.1, oppPpg: 65.2, scoringMargin: 8.9,
     fg2Pct: 51.8, fg3Pct: 34.6, ftPct: 73.8, threePointRate: 30,
     adjOffRating: 117.0, adjDefRating: 92.6, adjEffMargin: 24.4, pace: 66.1,
@@ -97,7 +97,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "kansas", name: "Kansas Jayhawks", shortName: "Kansas",
-    seed: 4, region: "East", record: "21-12", wins: 21, losses: 12,
+    seed: 4, region: "East", record: "23-10", wins: 23, losses: 10,
     championshipOdds: 6000, ppg: 76.8, oppPpg: 68.4, scoringMargin: 8.4,
     fg2Pct: 50.9, fg3Pct: 38.7, ftPct: 71.2, threePointRate: 37,
     adjOffRating: 113.2, adjDefRating: 97.1, adjEffMargin: 16.1, pace: 68.4,
@@ -110,7 +110,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "st-johns", name: "St. John's Red Storm", shortName: "St. John's",
-    seed: 5, region: "East", record: "27-6", wins: 27, losses: 6,
+    seed: 5, region: "East", record: "28-6", wins: 28, losses: 6,
     championshipOdds: 6000, ppg: 79.2, oppPpg: 68.1, scoringMargin: 11.1,
     fg2Pct: 53.4, fg3Pct: 35.2, ftPct: 74.6, threePointRate: 32,
     adjOffRating: 114.9, adjDefRating: 96.3, adjEffMargin: 18.6, pace: 69.8,
@@ -136,7 +136,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "ucla", name: "UCLA Bruins", shortName: "UCLA",
-    seed: 7, region: "East", record: "20-13", wins: 20, losses: 13,
+    seed: 7, region: "East", record: "23-11", wins: 23, losses: 11,
     championshipOdds: 15000, ppg: 74.8, oppPpg: 69.3, scoringMargin: 5.5,
     fg2Pct: 50.1, fg3Pct: 52.8, ftPct: 70.4, threePointRate: 42,
     adjOffRating: 109.8, adjDefRating: 99.2, adjEffMargin: 10.6, pace: 70.1,
@@ -281,7 +281,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "purdue", name: "Purdue Boilermakers", shortName: "Purdue",
-    seed: 2, region: "West", record: "27-6", wins: 27, losses: 6,
+    seed: 2, region: "West", record: "27-8", wins: 27, losses: 8,
     championshipOdds: 2500, ppg: 79.8, oppPpg: 66.2, scoringMargin: 13.6,
     fg2Pct: 51.4, fg3Pct: 39.2, ftPct: 74.8, threePointRate: 39,
     adjOffRating: 124.2, adjDefRating: 95.4, adjEffMargin: 28.8, pace: 68.2,
@@ -294,7 +294,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "gonzaga", name: "Gonzaga Bulldogs", shortName: "Gonzaga",
-    seed: 3, region: "West", record: "30-4", wins: 30, losses: 4,
+    seed: 3, region: "West", record: "30-3", wins: 30, losses: 3,
     championshipOdds: 4000, ppg: 84.2, oppPpg: 67.4, scoringMargin: 16.8,
     fg2Pct: 58.2, fg3Pct: 36.4, ftPct: 75.6, threePointRate: 33,
     adjOffRating: 116.2, adjDefRating: 92.1, adjEffMargin: 24.1, pace: 72.1,
@@ -307,7 +307,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "arkansas", name: "Arkansas Razorbacks", shortName: "Arkansas",
-    seed: 4, region: "West", record: "24-9", wins: 24, losses: 9,
+    seed: 4, region: "West", record: "26-8", wins: 26, losses: 8,
     championshipOdds: 6000, ppg: 80.4, oppPpg: 70.1, scoringMargin: 10.3,
     fg2Pct: 52.1, fg3Pct: 44.2, ftPct: 72.4, threePointRate: 38,
     adjOffRating: 122.4, adjDefRating: 96.2, adjEffMargin: 26.2, pace: 73.2,
@@ -320,7 +320,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "wisconsin", name: "Wisconsin Badgers", shortName: "Wisconsin",
-    seed: 5, region: "West", record: "24-9", wins: 24, losses: 9,
+    seed: 5, region: "West", record: "24-10", wins: 24, losses: 10,
     championshipOdds: 8000, ppg: 73.8, oppPpg: 65.4, scoringMargin: 8.4,
     fg2Pct: 51.2, fg3Pct: 36.8, ftPct: 76.2, threePointRate: 35,
     adjOffRating: 112.4, adjDefRating: 95.8, adjEffMargin: 16.6, pace: 65.4,
@@ -333,7 +333,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "byu", name: "BYU Cougars", shortName: "BYU",
-    seed: 6, region: "West", record: "23-10", wins: 23, losses: 10,
+    seed: 6, region: "West", record: "23-11", wins: 23, losses: 11,
     championshipOdds: 25000, ppg: 78.4, oppPpg: 70.2, scoringMargin: 8.2,
     fg2Pct: 50.8, fg3Pct: 36.4, ftPct: 71.8, threePointRate: 38,
     adjOffRating: 111.8, adjDefRating: 98.6, adjEffMargin: 13.2, pace: 70.4,
@@ -411,7 +411,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "nc-state", name: "NC State Wolfpack", shortName: "NC State",
-    seed: 11, region: "West", record: "19-14", wins: 19, losses: 14,
+    seed: 11, region: "West", record: "20-13", wins: 20, losses: 13,
     championshipOdds: 30000, ppg: 74.2, oppPpg: 69.8, scoringMargin: 4.4,
     fg2Pct: 51.2, fg3Pct: 36.8, ftPct: 71.4, threePointRate: 36,
     adjOffRating: 110.4, adjDefRating: 98.8, adjEffMargin: 11.6, pace: 70.4,
@@ -491,7 +491,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   // ─── MIDWEST REGION ──────────────────────────────────────────────────────
   {
     id: "michigan", name: "Michigan Wolverines", shortName: "Michigan",
-    seed: 1, region: "Midwest", record: "31-4", wins: 31, losses: 4,
+    seed: 1, region: "Midwest", record: "31-3", wins: 31, losses: 3,
     championshipOdds: 360, ppg: 82.8, oppPpg: 64.1, scoringMargin: 18.7,
     fg2Pct: 59.4, fg3Pct: 37.2, ftPct: 73.8, threePointRate: 33,
     adjOffRating: 122.1, adjDefRating: 90.8, adjEffMargin: 31.3, pace: 70.8,
@@ -504,7 +504,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "iowa-state", name: "Iowa State Cyclones", shortName: "Iowa St.",
-    seed: 2, region: "Midwest", record: "28-5", wins: 28, losses: 5,
+    seed: 2, region: "Midwest", record: "27-7", wins: 27, losses: 7,
     championshipOdds: 1500, ppg: 78.4, oppPpg: 65.8, scoringMargin: 12.6,
     fg2Pct: 51.8, fg3Pct: 50.2, ftPct: 74.2, threePointRate: 41,
     adjOffRating: 117.4, adjDefRating: 91.6, adjEffMargin: 25.8, pace: 69.4,
@@ -517,7 +517,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "virginia", name: "Virginia Cavaliers", shortName: "Virginia",
-    seed: 3, region: "Midwest", record: "26-7", wins: 26, losses: 7,
+    seed: 3, region: "Midwest", record: "29-5", wins: 29, losses: 5,
     championshipOdds: 7500, ppg: 72.4, oppPpg: 60.8, scoringMargin: 11.6,
     fg2Pct: 50.8, fg3Pct: 46.8, ftPct: 76.4, threePointRate: 47,
     adjOffRating: 116.4, adjDefRating: 93.0, adjEffMargin: 23.4, pace: 61.2,
@@ -530,7 +530,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "alabama", name: "Alabama Crimson Tide", shortName: "Alabama",
-    seed: 4, region: "Midwest", record: "22-11", wins: 22, losses: 11,
+    seed: 4, region: "Midwest", record: "23-9", wins: 23, losses: 9,
     championshipOdds: 18000, ppg: 91.7, oppPpg: 76.2, scoringMargin: 15.5,
     fg2Pct: 53.4, fg3Pct: 38.4, ftPct: 70.8, threePointRate: 42,
     adjOffRating: 119.4, adjDefRating: 99.8, adjEffMargin: 19.6, pace: 76.8,
@@ -543,7 +543,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "texas-tech", name: "Texas Tech Red Raiders", shortName: "Texas Tech",
-    seed: 5, region: "Midwest", record: "23-10", wins: 23, losses: 10,
+    seed: 5, region: "Midwest", record: "22-10", wins: 22, losses: 10,
     championshipOdds: 13000, ppg: 79.4, oppPpg: 68.4, scoringMargin: 11.0,
     fg2Pct: 52.4, fg3Pct: 40.1, ftPct: 72.4, threePointRate: 40,
     adjOffRating: 114.8, adjDefRating: 96.4, adjEffMargin: 18.4, pace: 70.8,
@@ -569,7 +569,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "kentucky", name: "Kentucky Wildcats", shortName: "Kentucky",
-    seed: 7, region: "Midwest", record: "22-11", wins: 22, losses: 11,
+    seed: 7, region: "Midwest", record: "21-13", wins: 21, losses: 13,
     championshipOdds: 20000, ppg: 74.8, oppPpg: 69.4, scoringMargin: 5.4,
     fg2Pct: 51.2, fg3Pct: 35.8, ftPct: 71.8, threePointRate: 35,
     adjOffRating: 109.8, adjDefRating: 98.2, adjEffMargin: 11.6, pace: 70.2,
@@ -712,7 +712,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "howard", name: "Howard Bison", shortName: "Howard",
-    seed: 16, region: "Midwest", record: "20-13", wins: 20, losses: 13,
+    seed: 16, region: "Midwest", record: "23-10", wins: 23, losses: 10,
     championshipOdds: 200000, ppg: 69.4, oppPpg: 66.8, scoringMargin: 2.6,
     fg2Pct: 48.8, fg3Pct: 33.4, ftPct: 69.2, threePointRate: 32,
     adjOffRating: 103.4, adjDefRating: 100.2, adjEffMargin: 3.2, pace: 67.8,
@@ -727,7 +727,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   // ─── SOUTH REGION ────────────────────────────────────────────────────────
   {
     id: "florida", name: "Florida Gators", shortName: "Florida",
-    seed: 1, region: "South", record: "28-5", wins: 28, losses: 5,
+    seed: 1, region: "South", record: "26-7", wins: 26, losses: 7,
     championshipOdds: 750, ppg: 79.8, oppPpg: 66.2, scoringMargin: 13.6,
     fg2Pct: 58.8, fg3Pct: 38.4, ftPct: 74.2, threePointRate: 33,
     adjOffRating: 121.0, adjDefRating: 91.8, adjEffMargin: 29.2, pace: 70.2,
@@ -740,7 +740,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "houston", name: "Houston Cougars", shortName: "Houston",
-    seed: 2, region: "South", record: "29-4", wins: 29, losses: 4,
+    seed: 2, region: "South", record: "28-6", wins: 28, losses: 6,
     championshipOdds: 1000, ppg: 74.8, oppPpg: 62.4, scoringMargin: 12.4,
     fg2Pct: 52.4, fg3Pct: 34.4, ftPct: 72.8, threePointRate: 31,
     adjOffRating: 118.2, adjDefRating: 91.4, adjEffMargin: 26.8, pace: 65.4,
@@ -753,7 +753,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "illinois", name: "Illinois Fighting Illini", shortName: "Illinois",
-    seed: 3, region: "South", record: "30-4", wins: 30, losses: 4,
+    seed: 3, region: "South", record: "24-8", wins: 24, losses: 8,
     championshipOdds: 1900, ppg: 82.4, oppPpg: 68.4, scoringMargin: 14.0,
     fg2Pct: 53.8, fg3Pct: 41.2, ftPct: 73.8, threePointRate: 38,
     adjOffRating: 124.8, adjDefRating: 94.2, adjEffMargin: 30.6, pace: 71.8,
@@ -766,7 +766,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "nebraska", name: "Nebraska Cornhuskers", shortName: "Nebraska",
-    seed: 4, region: "South", record: "22-11", wins: 22, losses: 11,
+    seed: 4, region: "South", record: "26-6", wins: 26, losses: 6,
     championshipOdds: 10000, ppg: 73.8, oppPpg: 61.4, scoringMargin: 12.4,
     fg2Pct: 51.8, fg3Pct: 40.2, ftPct: 74.8, threePointRate: 38,
     adjOffRating: 114.2, adjDefRating: 91.0, adjEffMargin: 23.2, pace: 67.4,
@@ -779,7 +779,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "vanderbilt", name: "Vanderbilt Commodores", shortName: "Vanderbilt",
-    seed: 5, region: "South", record: "22-11", wins: 22, losses: 11,
+    seed: 5, region: "South", record: "26-8", wins: 26, losses: 8,
     championshipOdds: 7500, ppg: 78.4, oppPpg: 67.8, scoringMargin: 10.6,
     fg2Pct: 52.4, fg3Pct: 38.2, ftPct: 73.4, threePointRate: 38,
     adjOffRating: 114.4, adjDefRating: 95.8, adjEffMargin: 18.6, pace: 70.4,
@@ -792,7 +792,7 @@ const rawTeams: Omit<NCAATeam, "impliedChampionshipPct">[] = [
   },
   {
     id: "north-carolina", name: "North Carolina Tar Heels", shortName: "UNC",
-    seed: 6, region: "South", record: "21-12", wins: 21, losses: 12,
+    seed: 6, region: "South", record: "24-8", wins: 24, losses: 8,
     championshipOdds: 25000, ppg: 78.8, oppPpg: 68.4, scoringMargin: 10.4,
     fg2Pct: 53.4, fg3Pct: 36.4, ftPct: 72.8, threePointRate: 33,
     adjOffRating: 113.8, adjDefRating: 96.4, adjEffMargin: 17.4, pace: 72.4,
