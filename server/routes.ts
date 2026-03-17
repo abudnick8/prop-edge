@@ -416,20 +416,34 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/debug/underdog", async (req, res) => {
     try {
       const axios = (await import("axios")).default;
-      const { data } = await axios.get(
-        "https://api.underdogfantasy.com/beta/v5/over_under_lines",
-        {
-          headers: {
-            "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0; iPhone14,3)",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-            "X-Platform": "ios",
-            "X-App-Version": "2.0.0",
-          },
-          timeout: 20000,
-          decompress: true,
+      const results: any = {};
+
+      // Try multiple endpoints + header combos to find what works on Railway
+      const attempts = [
+        { label: "v5_mobile_ua", url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)", "Accept": "application/json", "X-Platform": "ios" } },
+        { label: "v5_no_ua",     url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "Accept": "application/json" } },
+        { label: "v3_mobile_ua", url: "https://api.underdogfantasy.com/beta/v3/over_under_lines", headers: { "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)", "Accept": "application/json" } },
+        { label: "v5_curl_ua",   url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "User-Agent": "curl/7.88.1", "Accept": "application/json" } },
+      ];
+
+      for (const attempt of attempts) {
+        try {
+          const r = await axios.get(attempt.url, { headers: attempt.headers, timeout: 15000, decompress: true });
+          const lines = r.data?.over_under_lines ?? [];
+          results[attempt.label] = { status: 200, lines: lines.length };
+          if (lines.length > 0) { results.working = attempt.label; break; }
+        } catch (e: any) {
+          results[attempt.label] = { status: e.response?.status ?? "err", error: e.message.substring(0, 80) };
         }
-      );
+      }
+
+      if (!results.working) {
+        return res.json({ error: "All attempts failed", results });
+      }
+
+      // Use the working attempt to count props
+      const workingAttempt = attempts.find(a => a.label === results.working)!;
+      const { data } = await axios.get(workingAttempt.url, { headers: workingAttempt.headers, timeout: 20000, decompress: true });
       const lines = data.over_under_lines ?? [];
       const appearances = data.appearances ?? [];
       const players = data.players ?? [];
