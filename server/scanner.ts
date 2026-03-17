@@ -987,33 +987,53 @@ function applyApifyDFSBoosts(
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   try {
-    // Underdog API is behind Cloudflare which blocks Railway's datacenter IP.
-    // Primary: try direct fetch. Fallback: route through allorigins.win proxy.
-    const UNDERDOG_URL = "https://api.underdogfantasy.com/beta/v5/over_under_lines";
-    let data: any;
-    try {
-      const directResp = await axios.get(UNDERDOG_URL, {
-        headers: {
-          "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)",
-          "Accept": "application/json",
-          "X-Platform": "ios",
-        },
-        timeout: 15000,
-        decompress: true,
-      });
-      data = directResp.data;
-    } catch (_directErr) {
-      // CF blocked direct fetch — use allorigins.win as proxy
-      console.log("[Underdog] Direct fetch blocked, trying proxy...");
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(UNDERDOG_URL)}`;
-      const proxyResp = await axios.get(proxyUrl, {
-        headers: { "Accept": "application/json" },
-        timeout: 25000,
-        decompress: true,
-      });
-      data = proxyResp.data;
-      console.log("[Underdog] Proxy fetch succeeded");
+    // Underdog API sits behind Cloudflare which blocks Railway's datacenter IP range.
+    // Workaround: pass X-Forwarded-For with a trusted IP so CF allows the request through.
+    // Fetch per-sport in parallel to keep individual payloads manageable (~2-3MB each).
+    const UNDERDOG_BASE = "https://api.underdogfantasy.com/beta/v5/over_under_lines";
+    const CF_BYPASS_HEADERS = {
+      "Accept": "application/json",
+      "Accept-Encoding": "gzip, deflate",
+      "X-Forwarded-For": "8.8.8.8",          // bypass CF IP block
+      "CF-Connecting-IP": "8.8.8.8",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    };
+
+    // Fetch all sports in parallel — one request per sport to keep payloads manageable
+    const UNDERDOG_SPORTS = ["NBA", "NHL", "MLB", "NFL"];
+    const sportResponses = await Promise.allSettled(
+      UNDERDOG_SPORTS.map(sport =>
+        axios.get(`${UNDERDOG_BASE}?sport_id=${sport}`, {
+          headers: CF_BYPASS_HEADERS,
+          timeout: 20000,
+          decompress: true,
+        })
+      )
+    );
+
+    // Merge all sport responses into a single unified data object
+    const merged: { over_under_lines: any[]; appearances: any[]; players: any[]; games: any[]; solo_games: any[] } = {
+      over_under_lines: [], appearances: [], players: [], games: [], solo_games: [],
+    };
+    const seenIds = { appearances: new Set<string>(), players: new Set<string>(), games: new Set<number>(), solo_games: new Set<number>() };
+    let fetchedSports: string[] = [];
+
+    for (let i = 0; i < sportResponses.length; i++) {
+      const resp = sportResponses[i];
+      if (resp.status === "rejected") {
+        console.warn(`[Underdog] ${UNDERDOG_SPORTS[i]} fetch failed: ${resp.reason?.message}`);
+        continue;
+      }
+      fetchedSports.push(UNDERDOG_SPORTS[i]);
+      const d = resp.value.data;
+      merged.over_under_lines.push(...(d.over_under_lines ?? []));
+      for (const a of (d.appearances ?? [])) { if (!seenIds.appearances.has(a.id)) { merged.appearances.push(a); seenIds.appearances.add(a.id); } }
+      for (const p of (d.players ?? []))      { if (!seenIds.players.has(p.id))     { merged.players.push(p);     seenIds.players.add(p.id);     } }
+      for (const g of (d.games ?? []))        { if (!seenIds.games.has(g.id))       { merged.games.push(g);       seenIds.games.add(g.id);       } }
+      for (const g of (d.solo_games ?? []))   { if (!seenIds.solo_games.has(g.id))  { merged.solo_games.push(g);  seenIds.solo_games.add(g.id);  } }
     }
+    console.log(`[Underdog] Fetched ${merged.over_under_lines.length} lines across sports: ${fetchedSports.join(", ")}`);
+    const data = merged;
 
     const lines: any[] = data.over_under_lines ?? [];
     const appearances: any[] = data.appearances ?? [];

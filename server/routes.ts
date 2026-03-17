@@ -420,7 +420,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Try multiple endpoints + header combos to find what works on Railway
       const attempts = [
-        { label: "v5_mobile_ua", url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)", "Accept": "application/json", "X-Platform": "ios" } },
+        { label: "v5_xff_bypass", url: "https://api.underdogfantasy.com/beta/v5/over_under_lines?sport_id=NBA", headers: { "X-Forwarded-For": "8.8.8.8", "CF-Connecting-IP": "8.8.8.8", "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
         { label: "v5_no_ua",     url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "Accept": "application/json" } },
         { label: "v3_mobile_ua", url: "https://api.underdogfantasy.com/beta/v3/over_under_lines", headers: { "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)", "Accept": "application/json" } },
         { label: "v5_curl_ua",   url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "User-Agent": "curl/7.88.1", "Accept": "application/json" } },
