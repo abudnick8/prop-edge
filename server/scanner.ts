@@ -82,6 +82,165 @@ function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; 
   };
 }
 
+// ─── Kalshi Player Props (NBA/NHL/MLB individual stat thresholds) ────────────
+// Fetches individual player prop markets from Kalshi structured series
+// This serves as a backup when The Odds API quota is exhausted
+async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
+  const results: InsertBet[] = [];
+
+  // Series map: seriesTicker → { sport, statCategory, betType }
+  const NBA_SERIES: Record<string, { stat: string }> = {
+    KXNBAPTS: { stat: "Points" },
+    KXNBAAST: { stat: "Assists" },
+    KXNBAREB: { stat: "Rebounds" },
+    KXNBASTL: { stat: "Steals" },
+    KXNBABLK: { stat: "Blocks" },
+    KXNBA3PT: { stat: "3-Pointers" },
+  };
+
+  // Pick the best threshold line per player per stat (closest to 50% yes price = most interesting)
+  // We want the line where yes_ask is nearest 0.5 — that's the true prop line
+  const playerBestLine = new Map<string, { line: number; yesPrice: number; market: any; stat: string; sport: string; event: any }>();
+
+  for (const [seriesTicker, { stat }] of Object.entries(NBA_SERIES)) {
+    try {
+      // Get all open events for this series
+      const eventsRes = await axios.get(`${KALSHI_BASE}/events`, {
+        params: { status: "open", series_ticker: seriesTicker, limit: 20 },
+        timeout: 8000,
+      });
+      const events: any[] = eventsRes.data?.events ?? [];
+
+      for (const event of events) {
+        // Parse game teams from event ticker e.g. KXNBAPTS-26MAR17SASSAC → SAS vs SAC
+        const eventTitle: string = event.title ?? "";
+        const [awayPart, homePart] = eventTitle.split(" at ");
+        const awayTeam = awayPart?.trim() ?? null;
+        const homeTeam = homePart?.replace(/:.*/,"").trim() ?? null;
+        const gameTime = event.expected_expiration_time ? new Date(event.expected_expiration_time) : null;
+
+        // Get all markets within this event
+        const eventRes = await axios.get(`${KALSHI_BASE}/events/${event.event_ticker}`, {
+          timeout: 8000,
+        });
+        const markets: any[] = eventRes.data?.markets ?? [];
+
+        // Group by player (extracted from yes_sub_title e.g. "Victor Wembanyama: 20+")
+        const byPlayer = new Map<string, any[]>();
+        for (const m of markets) {
+          const sub: string = m.yes_sub_title ?? m.subtitle ?? "";
+          if (!sub.includes(":")) continue;
+          const playerName = sub.split(":")[0].trim();
+          if (!byPlayer.has(playerName)) byPlayer.set(playerName, []);
+          byPlayer.get(playerName)!.push({ ...m, _awayTeam: awayTeam, _homeTeam: homeTeam, _gameTime: gameTime });
+        }
+
+        // For each player, pick the line closest to 50% (most contested = true market line)
+        for (const [playerName, pMarkets] of byPlayer) {
+          const key = `${playerName}::${stat}`;
+          let best: any = null;
+          let bestDist = 999;
+          for (const m of pMarkets) {
+            const priceStr = m.yes_ask_dollars ?? m.last_price_dollars;
+            if (!priceStr) continue;
+            const price = parseFloat(priceStr);
+            const dist = Math.abs(price - 0.5);
+            if (dist < bestDist) {
+              bestDist = dist;
+              best = m;
+            }
+          }
+          if (!best) continue;
+
+          // Only update if this is better than what we already have
+          if (!playerBestLine.has(key) || bestDist < Math.abs((playerBestLine.get(key)!.yesPrice) - 0.5)) {
+            const priceStr = best.yes_ask_dollars ?? best.last_price_dollars;
+            playerBestLine.set(key, {
+              line: best.floor_strike ?? 0,
+              yesPrice: parseFloat(priceStr),
+              market: best,
+              stat,
+              sport: "NBA",
+              event,
+            });
+          }
+        }
+
+        // Throttle between event fetches
+        await new Promise(r => setTimeout(r, 150));
+      }
+
+      // Throttle between series
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e: any) {
+      console.warn(`Kalshi props fetch error (${seriesTicker}):`, e.message);
+    }
+  }
+
+  // Convert best lines to InsertBet objects
+  for (const [key, { line, yesPrice, market, stat, sport, event }] of playerBestLine) {
+    const playerName = key.split("::")[0];
+    const noPrice = 1 - yesPrice;
+    const sub: string = market.yes_sub_title ?? market.subtitle ?? "";
+    const threshold = sub.includes(":") ? sub.split(":")[1].trim() : `${line}+`;
+    const title = `${playerName} Over ${line} ${stat}`;
+    const eventTitle: string = event.title ?? "";
+    const [awayPart, homePart] = eventTitle.split(" at ");
+    const awayTeam = awayPart?.trim() ?? null;
+    const homeTeam = homePart?.replace(/:.*/,"").trim() ?? null;
+    const gameTime = market._gameTime ?? null;
+
+    // Convert 0-1 price to American odds for display
+    const impliedProb = yesPrice;
+    const overOdds = impliedProb >= 0.5
+      ? Math.round(-(impliedProb / (1 - impliedProb)) * 100)
+      : Math.round(((1 - impliedProb) / impliedProb) * 100);
+    const underOdds = noPrice >= 0.5
+      ? Math.round(-(noPrice / (1 - noPrice)) * 100)
+      : Math.round(((1 - noPrice) / noPrice) * 100);
+
+    const score = computeConfidence({
+      impliedProb: yesPrice,
+      source: "kalshi",
+      betType: "player_prop",
+      sport,
+      title,
+    });
+
+    results.push({
+      id: `kalshi-prop-${market.ticker}`,
+      source: "kalshi",
+      sport,
+      betType: "player_prop",
+      title,
+      description: `${playerName} to score ${threshold} ${stat} — Kalshi prediction market`,
+      line,
+      overOdds,
+      underOdds,
+      yesPrice,
+      noPrice,
+      impliedProbability: impliedProb,
+      confidenceScore: score.score,
+      riskLevel: score.risk,
+      recommendedAllocation: score.allocation,
+      keyFactors: score.factors,
+      researchSummary: score.summary,
+      isHighConfidence: score.score >= 80,
+      status: "open",
+      homeTeam,
+      awayTeam,
+      playerName,
+      gameTime,
+      notificationSent: false,
+      playerStats: null,
+      teamStats: null,
+    });
+  }
+
+  console.log(`Kalshi player props: ${results.length} props across NBA (Points/Assists/Rebounds/Steals/Blocks/3PT)`);
+  return results;
+}
+
 // ─── Kalshi WBC markets (targeted series fetch) ───────────────────────────────
 // Fetches WBC game winners, spreads, totals, and MVP awards from Kalshi
 async function fetchKalshiWBC(): Promise<InsertBet[]> {
@@ -2118,19 +2277,20 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   ];
 
   // Fetch all live sources in parallel
-  // Underdog and SGO removed — Odds API is the sole player prop source (reliable on all servers)
-  const [kalshi, kalshiWBC, kalshiAwards, poly, actionNet] = await Promise.all([
+  // Kalshi player props run in parallel with other sources as a permanent backup
+  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet] = await Promise.all([
     fetchKalshiSports(),
     fetchKalshiWBC(),
     fetchKalshiSeasonAwards(),
+    fetchKalshiPlayerProps(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
   ]);
 
-  // Merge all Kalshi results, deduplicating by ID (WBC MVP appears in both WBC and Awards)
+  // Merge all Kalshi results, deduplicating by ID
   const kalshiAll = [...kalshi];
   const kalshiIds = new Set(kalshiAll.map(b => b.id));
-  for (const b of [...kalshiWBC, ...kalshiAwards]) {
+  for (const b of [...kalshiWBC, ...kalshiAwards, ...kalshiProps]) {
     if (!kalshiIds.has(b.id)) {
       kalshiAll.push(b);
       kalshiIds.add(b.id);
@@ -2138,7 +2298,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   }
 
   results.push(...kalshiAll, ...poly, ...actionNet);
-  console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards = ${kalshiAll.length} unique`);
+  console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards + ${kalshiProps.length} player props = ${kalshiAll.length} unique`);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
