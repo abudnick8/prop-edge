@@ -1,6 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
+
+// MLB player props win tiebreakers on equal confidence scores
+const SPORT_PRIORITY: Record<string, number> = { MLB: 3, NBA: 2, NHL: 1, NFL: 1 };
+function byConfThenSport(a: Bet, b: Bet): number {
+  const d = (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+  if (d !== 0) return d;
+  const ap = a.betType === "player_prop" ? (SPORT_PRIORITY[a.sport] ?? 0) : 0;
+  const bp = b.betType === "player_prop" ? (SPORT_PRIORITY[b.sport] ?? 0) : 0;
+  return bp - ap;
+}
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Filter, SlidersHorizontal, Calendar, Trophy, Ticket } from "lucide-react";
@@ -101,16 +111,16 @@ export default function AllBets() {
   // Daily tab: day filter first, then remaining filters
   const dayBets = filterByDay(dailyBets, dayFilter);
   const filteredDaily = applyFilters(dayBets).sort((a, b) => {
+    // Props always before non-props
     const aProp = a.betType === "player_prop" ? 1 : 0;
     const bProp = b.betType === "player_prop" ? 1 : 0;
     if (bProp !== aProp) return bProp - aProp;
-    return (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+    // Within props: use MLB tiebreaker
+    return byConfThenSport(a, b);
   });
 
   // Season tab: filters only (no day filter)
-  const filteredSeason = applyFilters(seasonBets).sort(
-    (a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0)
-  );
+  const filteredSeason = applyFilters(seasonBets).sort(byConfThenSport);
 
   // Badge counts
   const today = new Date();

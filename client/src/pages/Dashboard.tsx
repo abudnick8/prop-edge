@@ -3,7 +3,7 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles, SlidersHorizontal, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -19,6 +19,17 @@ interface Stats {
 }
 
 type MainTab = "props" | "team" | "season";
+
+// ── Sort: confidence desc, MLB player props win tiebreakers ───────────────────
+const SPORT_PRIORITY: Record<string, number> = { MLB: 3, NBA: 2, NHL: 1, NFL: 1 };
+function byConfThenSport(a: Bet, b: Bet): number {
+  const scoreDiff = (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+  if (scoreDiff !== 0) return scoreDiff;
+  // Tiebreak: MLB player props float to top, then other sports
+  const aPrio = a.betType === "player_prop" ? (SPORT_PRIORITY[a.sport] ?? 0) : 0;
+  const bPrio = b.betType === "player_prop" ? (SPORT_PRIORITY[b.sport] ?? 0) : 0;
+  return bPrio - aPrio;
+}
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -68,7 +79,31 @@ export default function Dashboard() {
     },
   });
 
-  const byConf = (a: Bet, b: Bet) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+  // ── Filters state ────────────────────────────────────────────────────────────
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterSport, setFilterSport] = useState("All");
+  const [filterSource, setFilterSource] = useState("All");
+  const [filterMinScore, setFilterMinScore] = useState(0);
+  const [filterSearch, setFilterSearch] = useState("");
+
+  const SPORTS_LIST  = ["All", "NBA", "NFL", "MLB", "NHL"];
+  const SOURCES_LIST = ["All", "kalshi", "polymarket", "actionnetwork", "underdog"];
+
+  function applyDashFilters(list: Bet[]): Bet[] {
+    return list.filter((b) => {
+      const q = filterSearch.trim().toLowerCase();
+      const matchSearch = !q ||
+        b.title.toLowerCase().includes(q) ||
+        (b.playerName ?? "").toLowerCase().includes(q) ||
+        (b.homeTeam ?? "").toLowerCase().includes(q) ||
+        (b.awayTeam ?? "").toLowerCase().includes(q) ||
+        (b.description ?? "").toLowerCase().includes(q);
+      const matchSport  = filterSport  === "All" || b.sport   === filterSport;
+      const matchSource = filterSource === "All" || b.source  === filterSource;
+      const matchScore  = (b.confidenceScore ?? 0) >= filterMinScore;
+      return matchSearch && matchSport && matchSource && matchScore;
+    });
+  }
 
   // Season bets = season_prop (award markets like MVP, Cy Young) + futures (championship winner)
   // Also include moneyline/spread/total with no gameTime (championship outrights)
@@ -76,11 +111,11 @@ export default function Dashboard() {
   const seasonBets = bets.filter((b) => {
     if (b.betType === "season_prop" || b.betType === "futures") return true; // always season
     return !b.gameTime && SEASON_BET_TYPES.has(b.betType ?? ""); // no gameTime = futures/outrights
-  }).sort(byConf);
+  }).sort(byConfThenSport);
 
   // Daily bets = player props (always) + team bets that have a gameTime
-  const allPlayerProps = bets.filter((b) => b.betType === "player_prop").sort(byConf);
-  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime).sort(byConf);
+  const allPlayerProps = bets.filter((b) => b.betType === "player_prop").sort(byConfThenSport);
+  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime).sort(byConfThenSport);
 
   // Day filter for props: if prop has gameTime use it; if no gameTime treat as "today" (live/upcoming)
   const filterPropsByDay = (props: Bet[], day: DayFilter): Bet[] => {
@@ -96,8 +131,8 @@ export default function Dashboard() {
     });
   };
 
-  const propBets = filterPropsByDay(allPlayerProps, dayFilter);
-  const teamBets = filterByDay(allTeamBets, dayFilter).sort(byConf);
+  const propBets = applyDashFilters(filterPropsByDay(allPlayerProps, dayFilter));
+  const teamBets = applyDashFilters(filterByDay(allTeamBets, dayFilter)).sort(byConfThenSport);
   const threshold = stats?.threshold ?? 80;
 
   // Counts for tabs
@@ -185,6 +220,121 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
+
+      {/* ── Filter bar (Props + Team tabs only) ── */}
+      {(mainTab === "props" || mainTab === "team") && (
+        <div className="space-y-3">
+          {/* Search + toggle row */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                placeholder="Search player, team, keyword..."
+                className="w-full pl-8 pr-3 py-2 rounded-lg text-sm bg-card border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
+                data-testid="input-dash-search"
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex-shrink-0 ${
+                showFilters || filterSport !== "All" || filterSource !== "All" || filterMinScore > 0
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+              }`}
+              data-testid="button-dash-filters"
+            >
+              <SlidersHorizontal size={13} />
+              Filters
+              {(filterSport !== "All" || filterSource !== "All" || filterMinScore > 0) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              )}
+            </button>
+          </div>
+
+          {/* Expanded filter panel */}
+          {showFilters && (
+            <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Sport */}
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-2">Sport</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SPORTS_LIST.map((s) => (
+                      <button key={s} onClick={() => setFilterSport(s)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          filterSport === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
+                        }`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Source */}
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-2">Source</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SOURCES_LIST.map((s) => (
+                      <button key={s} onClick={() => setFilterSource(s)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          filterSource === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
+                        }`}>
+                        {s === "actionnetwork" ? "ActionNet" : s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Min Confidence */}
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-2">
+                    Min Confidence: <span className="text-foreground font-mono">{filterMinScore}</span>
+                  </label>
+                  <input type="range" min={0} max={95} step={5}
+                    value={filterMinScore}
+                    onChange={(e) => setFilterMinScore(Number(e.target.value))}
+                    className="w-full accent-primary"
+                    data-testid="input-dash-min-score"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                    <span>0</span><span className="text-primary font-bold">80+ 🔥</span><span>95</span>
+                  </div>
+                </div>
+              </div>
+              {/* Active filter chips + clear */}
+              {(filterSport !== "All" || filterSource !== "All" || filterMinScore > 0) && (
+                <div className="flex items-center gap-2 pt-1 border-t border-border flex-wrap">
+                  <span className="text-xs text-muted-foreground">Active:</span>
+                  {filterSport !== "All" && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      {filterSport}
+                      <button onClick={() => setFilterSport("All")} className="hover:text-red-400">×</button>
+                    </span>
+                  )}
+                  {filterSource !== "All" && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      {filterSource}
+                      <button onClick={() => setFilterSource("All")} className="hover:text-red-400">×</button>
+                    </span>
+                  )}
+                  {filterMinScore > 0 && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      ≥{filterMinScore} conf
+                      <button onClick={() => setFilterMinScore(0)} className="hover:text-red-400">×</button>
+                    </span>
+                  )}
+                  <button
+                    onClick={() => { setFilterSport("All"); setFilterSource("All"); setFilterMinScore(0); setFilterSearch(""); }}
+                    className="text-xs text-muted-foreground hover:text-red-400 ml-auto transition-colors"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ═══════════ PLAYER PROPS TAB ═══════════ */}
       {mainTab === "props" && (
