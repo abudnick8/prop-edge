@@ -587,21 +587,46 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     try {
       const bets = await storage.getBets();
 
-      // Sort all bets by confidence descending
-      const sorted = [...bets].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+      // Sort all bets by confidenceScore descending (fix: was using 'confidence' which is always undefined)
+      const sorted = [...bets].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
 
-      // Player props: top 100 per sport
+      // Player props: top 100 per sport, but ALWAYS include lotto bets (up to 20 per sport)
       const PROPS_PER_SPORT = 100;
+      const LOTTO_PER_SPORT = 20;
       const propsBySport: Record<string, any[]> = {};
+      const lottoBySport: Record<string, any[]> = {};
+
+      // First pass: collect lotto props (guaranteed to appear)
       for (const bet of sorted) {
         if (bet.betType !== 'player_prop') continue;
+        if (!bet.isLotto) continue;
         const sport = bet.sport ?? 'OTHER';
+        if (!lottoBySport[sport]) lottoBySport[sport] = [];
+        if (lottoBySport[sport].length < LOTTO_PER_SPORT) {
+          lottoBySport[sport].push(bet);
+        }
+      }
+
+      // Second pass: fill remaining slots with non-lotto props up to PROPS_PER_SPORT
+      const lottoIds = new Set(Object.values(lottoBySport).flat().map(b => b.id));
+      for (const bet of sorted) {
+        if (bet.betType !== 'player_prop') continue;
+        if (lottoIds.has(bet.id)) continue; // already included as lotto
+        const sport = bet.sport ?? 'OTHER';
+        const lottoCount = lottoBySport[sport]?.length ?? 0;
         if (!propsBySport[sport]) propsBySport[sport] = [];
-        if (propsBySport[sport].length < PROPS_PER_SPORT) {
+        if (propsBySport[sport].length < PROPS_PER_SPORT - lottoCount) {
           propsBySport[sport].push(bet);
         }
       }
-      const limitedProps = Object.values(propsBySport).flat();
+
+      // Merge lotto + regular props per sport
+      const limitedProps: any[] = [];
+      const allSports = new Set([...Object.keys(propsBySport), ...Object.keys(lottoBySport)]);
+      for (const sport of allSports) {
+        limitedProps.push(...(lottoBySport[sport] ?? []));
+        limitedProps.push(...(propsBySport[sport] ?? []));
+      }
 
       // Season bets (futures — no gameTime): top 50 total
       const SEASON_LIMIT = 50;
