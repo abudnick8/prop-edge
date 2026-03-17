@@ -12,6 +12,7 @@ import TrackedProps from "@/pages/TrackedProps";
 import Ask from "@/pages/Ask";
 import Bracket from "@/pages/Bracket";
 import Lotto from "@/pages/Lotto";
+import ClvTracker from "@/pages/ClvTracker";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -57,6 +58,7 @@ function App() {
                 <Route path="/tracker" component={TrackedProps} />
                 <Route path="/ask" component={Ask} />
                 <Route path="/bracket" component={Bracket} />
+                <Route path="/clv" component={ClvTracker} />
                 <Route component={NotFound} />
               </Switch>
             </div>

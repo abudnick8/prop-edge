@@ -1,4 +1,4 @@
-import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp } from "@shared/schema";
+import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp, ClvLine, InsertClvLine, ClvSnapshot, InsertClvSnapshot, ClvAlert, InsertClvAlert } from "@shared/schema";
 
 export interface IStorage {
   // Bets
@@ -27,6 +27,21 @@ export interface IStorage {
   addTrackedProp(prop: InsertTrackedProp): Promise<TrackedProp>;
   updateTrackedProp(id: string, update: Partial<InsertTrackedProp>): Promise<TrackedProp | undefined>;
   deleteTrackedProp(id: string): Promise<void>;
+
+  // CLV Line Value Tracker
+  getClvLines(): Promise<ClvLine[]>;
+  getClvLineById(id: string): Promise<ClvLine | undefined>;
+  addClvLine(line: InsertClvLine): Promise<ClvLine>;
+  updateClvLine(id: string, update: Partial<InsertClvLine>): Promise<ClvLine | undefined>;
+  deleteClvLine(id: string): Promise<void>;
+  // Snapshots
+  getClvSnapshots(clvLineId: string): Promise<ClvSnapshot[]>;
+  addClvSnapshot(snap: InsertClvSnapshot): Promise<ClvSnapshot>;
+  // Alerts
+  getClvAlerts(): Promise<ClvAlert[]>;
+  getClvAlertsByLine(clvLineId: string): Promise<ClvAlert[]>;
+  addClvAlert(alert: InsertClvAlert): Promise<ClvAlert>;
+  dismissClvAlert(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -190,6 +205,108 @@ export class MemStorage implements IStorage {
 
   async deleteTrackedProp(id: string): Promise<void> {
     this.trackedPropsMap.delete(id);
+  }
+
+  // ── CLV Line Value Tracker ─────────────────────────────────────────────────
+  private clvLinesMap: Map<string, ClvLine> = new Map();
+  private clvSnapshotsMap: Map<string, ClvSnapshot> = new Map();
+  private clvAlertsMap: Map<string, ClvAlert> = new Map();
+
+  async getClvLines(): Promise<ClvLine[]> {
+    return Array.from(this.clvLinesMap.values()).sort(
+      (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+    );
+  }
+
+  async getClvLineById(id: string): Promise<ClvLine | undefined> {
+    return this.clvLinesMap.get(id);
+  }
+
+  async addClvLine(line: InsertClvLine): Promise<ClvLine> {
+    const record: ClvLine = {
+      ...line,
+      eventId: line.eventId ?? null,
+      playerName: line.playerName ?? null,
+      openingLine: line.openingLine ?? null,
+      openingOdds: line.openingOdds ?? null,
+      currentLine: line.currentLine ?? null,
+      currentOdds: line.currentOdds ?? null,
+      closingLine: line.closingLine ?? null,
+      closingOdds: line.closingOdds ?? null,
+      clvBeat: line.clvBeat ?? null,
+      clvDelta: line.clvDelta ?? null,
+      lineMovePct: line.lineMovePct ?? null,
+      sharpnessScore: line.sharpnessScore ?? null,
+      alertThreshold: line.alertThreshold ?? 10,
+      alertDirection: line.alertDirection ?? "both",
+      status: line.status ?? "tracking",
+      gameTime: line.gameTime ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.clvLinesMap.set(line.id, record);
+    return record;
+  }
+
+  async updateClvLine(id: string, update: Partial<InsertClvLine>): Promise<ClvLine | undefined> {
+    const existing = this.clvLinesMap.get(id);
+    if (!existing) return undefined;
+    const updated: ClvLine = { ...existing, ...update, updatedAt: new Date() };
+    this.clvLinesMap.set(id, updated);
+    return updated;
+  }
+
+  async deleteClvLine(id: string): Promise<void> {
+    this.clvLinesMap.delete(id);
+  }
+
+  async getClvSnapshots(clvLineId: string): Promise<ClvSnapshot[]> {
+    return Array.from(this.clvSnapshotsMap.values())
+      .filter(s => s.clvLineId === clvLineId)
+      .sort((a, b) => (a.recordedAt?.getTime() ?? 0) - (b.recordedAt?.getTime() ?? 0));
+  }
+
+  async addClvSnapshot(snap: InsertClvSnapshot): Promise<ClvSnapshot> {
+    const record: ClvSnapshot = {
+      ...snap,
+      line: snap.line ?? null,
+      odds: snap.odds ?? null,
+      recordedAt: new Date(),
+    };
+    this.clvSnapshotsMap.set(snap.id, record);
+    return record;
+  }
+
+  async getClvAlerts(): Promise<ClvAlert[]> {
+    return Array.from(this.clvAlertsMap.values()).sort(
+      (a, b) => (b.firedAt?.getTime() ?? 0) - (a.firedAt?.getTime() ?? 0)
+    );
+  }
+
+  async getClvAlertsByLine(clvLineId: string): Promise<ClvAlert[]> {
+    return Array.from(this.clvAlertsMap.values())
+      .filter(a => a.clvLineId === clvLineId)
+      .sort((a, b) => (b.firedAt?.getTime() ?? 0) - (a.firedAt?.getTime() ?? 0));
+  }
+
+  async addClvAlert(alert: InsertClvAlert): Promise<ClvAlert> {
+    const record: ClvAlert = {
+      ...alert,
+      movePct: alert.movePct ?? null,
+      fromLine: alert.fromLine ?? null,
+      toLine: alert.toLine ?? null,
+      fromOdds: alert.fromOdds ?? null,
+      toOdds: alert.toOdds ?? null,
+      dismissed: alert.dismissed ?? false,
+      firedAt: new Date(),
+    };
+    this.clvAlertsMap.set(alert.id, record);
+    return record;
+  }
+
+  async dismissClvAlert(id: string): Promise<void> {
+    const alert = this.clvAlertsMap.get(id);
+    if (alert) this.clvAlertsMap.set(id, { ...alert, dismissed: true });
   }
 }
 

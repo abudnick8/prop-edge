@@ -49,79 +49,74 @@ const PFR_SLUG: Record<string, string> = {
 };
 
 // ── ESPN ID cache ─────────────────────────────────────────────────────────
-// ESPN ID cache — verified correct IDs. Uses ESPN athlete IDs (numeric).
-// Wrong IDs cause mismatched player stats in the drawer. Verified against ESPN.com.
+// ESPN ID cache — all IDs verified via ESPN core API roster scan + direct athlete lookup.
+// Any player NOT in this cache falls through to the dynamic resolveESPNId() function.
 const ESPN_ID_CACHE: Record<string, string> = {
-  // ── NBA ──────────────────────────────────────────────────────────────────
-  "LeBron James": "1966",           "Stephen Curry": "3975",
-  "Kevin Durant": "3202",           "Giannis Antetokounmpo": "3032977",
-  "Luka Doncic": "3945274",         "Joel Embiid": "3059318",
-  "Nikola Jokic": "3112335",        "Jayson Tatum": "4065648",
-  "Devin Booker": "3136193",        "Damian Lillard": "3032977",  // verified
-  "Anthony Davis": "3012",          // was wrong (was 6583 = Damian Lillard)
-  "Jimmy Butler": "6430",           "Kyrie Irving": "6442",
-  "Karl-Anthony Towns": "3136194",  "Trae Young": "4277905",
-  "Donovan Mitchell": "3908809",    "Bam Adebayo": "3934672",
-  "Paolo Banchero": "4432577",      "Tyrese Haliburton": "4278129",
-  "Anthony Edwards": "4431678",     "Shai Gilgeous-Alexander": "3934673",
-  "Darius Garland": "4277903",      "Tyrese Maxey": "4277902",
-  "De'Aaron Fox": "3934671",        "OG Anunoby": "3934668",
-  "Mikal Bridges": "3934667",       "Scottie Barnes": "4431683",
-  "Jalen Green": "4433670",         "Cade Cunningham": "4278128",
-  "Evan Mobley": "4431685",         "Franz Wagner": "4278365",
-  "Josh Giddey": "4431686",         "DeMar DeRozan": "3011",
-  "Zach LaVine": "3064514",         "Brandon Ingram": "3136195",
-  "Draymond Green": "6589",         "Klay Thompson": "6475",
-  "Bradley Beal": "6580",           "Myles Turner": "3133628",
-  "Tobias Harris": "6618",          "Khris Middleton": "6609",
-  "Brook Lopez": "3971",            "Jaylen Brown": "3917376",
-  "Marcus Smart": "2990969",        "Kyle Lowry": "2168",  // was wrong (was 1966 = LeBron)
-  "Pascal Siakam": "3136196",       "Kristaps Porzingis": "3102531",
-  "Julius Randle": "3064440",       "Jalen Brunson": "3936299",
-  "RJ Barrett": "4278060",          "Immanuel Quickley": "4395628",
-  "Deandre Ayton": "4066299",       "Cameron Johnson": "4066286",
-  "Buddy Hield": "2490157",         "T.J. McConnell": "2528210",
-  "Bennedict Mathurin": "4432578",  "Andrew Nembhard": "4432579",
-  "Dennis Schroder": "3025779",     "Nikola Vucevic": "4251",
-  "Derrick White": "3055807",       "Al Horford": "3213",
-  "Payton Pritchard": "4432581",    "Sam Hauser": "4432582",
-  "Jordan Poole": "4278057",        "Bilal Coulibaly": "4683707",
-  "Kyle Kuzma": "4066289",          "Deni Avdija": "4432584",
-  "Malcolm Brogdon": "2578262",     "Bobby Portis": "3059319",
-  "Thanasis Antetokounmpo": "3032978",
-  // ── NHL ──────────────────────────────────────────────────────────────────
-  "Connor McDavid": "3114717",      "Nathan MacKinnon": "2976833",
-  "David Pastrnak": "3042013",      "Auston Matthews": "3899937",
-  "Leon Draisaitl": "3042036",      "Nikita Kucherov": "2976836",
-  "Brady Tkachuk": "4233567",       "Kirill Kaprizov": "4233741",
-  "Matthew Tkachuk": "4233568",     "Mitchell Marner": "3900168",
-  "Sebastian Aho": "3900144",       "Mark Scheifele": "2976839",
-  "Jack Hughes": "4352726",         "Cole Caufield": "4352727",
-  "Aleksander Barkov": "3042014",   "Artemi Panarin": "3042015",
-  // ── MLB ──────────────────────────────────────────────────────────────────
-  "Shohei Ohtani": "39832",         "Mike Trout": "33912",
-  "Mookie Betts": "33039",          "Juan Soto": "4257216",
-  "Ronald Acuna Jr.": "4257217",    "Freddie Freeman": "30951",
-  "Yordan Alvarez": "4257218",      "Pete Alonso": "4257219",
-  "Bryce Harper": "32028",          "Trea Turner": "33041",
-  "Paul Goldschmidt": "28955",      "Nolan Arenado": "31962",
-  "Fernando Tatis Jr.": "4257220",  "Bo Bichette": "4257221",
-  "Vladimir Guerrero Jr.": "4257222", "Jose Ramirez": "31237",
-  "Julio Rodriguez": "4257223",     "Spencer Strider": "4257224",
-  "Gerrit Cole": "29947",           "Sandy Alcantara": "4257225",
-  // ── NFL ──────────────────────────────────────────────────────────────────
-  "Patrick Mahomes": "3139477",     "Josh Allen": "3918298",
-  "Lamar Jackson": "3916387",       "Joe Burrow": "3915511",
-  "Justin Herbert": "3915516",      "Jalen Hurts": "4040715",
-  "Tua Tagovailoa": "4040638",      "Dak Prescott": "2577417",
-  "Kyler Murray": "3916385",        "Trevor Lawrence": "4360310",
-  "Justin Jefferson": "4040715",    "Cooper Kupp": "3051392",
-  "Tyreek Hill": "2977187",         "Davante Adams": "16799",
-  "Travis Kelce": "2576336",        "Mark Andrews": "4035538",
-  "Stefon Diggs": "2976592",        "CeeDee Lamb": "4360438",
-  "Ja'Marr Chase": "4361579",       "Christian McCaffrey": "3054211",
-  "Derrick Henry": "2971618",       "Nick Chubb": "3054220",
-  "Austin Ekeler": "3045144",       "Dalvin Cook": "3054218",
+  // ── NBA (verified via ESPN core API active roster scan) ───────────────────
+  "LeBron James": "1966",              "Stephen Curry": "3975",
+  "Kevin Durant": "3202",              "Giannis Antetokounmpo": "3032977",
+  "Luka Doncic": "3945274",            "Joel Embiid": "3059318",
+  "Nikola Jokic": "3112335",           "Jayson Tatum": "4065648",
+  "Devin Booker": "3136193",           "Damian Lillard": "6606",
+  "Anthony Davis": "6583",             "Jimmy Butler": "6430",
+  "Kyrie Irving": "6442",              "Karl-Anthony Towns": "3136195",
+  "Trae Young": "4277905",             "Donovan Mitchell": "3908809",
+  "Bam Adebayo": "4066261",            "Paolo Banchero": "4432573",
+  "Tyrese Haliburton": "4396993",      "Anthony Edwards": "4594268",
+  "Shai Gilgeous-Alexander": "4278073","Darius Garland": "4396907",
+  "Tyrese Maxey": "4431678",           "De'Aaron Fox": "4066259",
+  "OG Anunoby": "3934719",             "Mikal Bridges": "3147657",
+  "Scottie Barnes": "4433134",         "Jalen Green": "4437244",
+  "Cade Cunningham": "4432166",        "Evan Mobley": "4432158",
+  "Franz Wagner": "4566434",           "Josh Giddey": "4871145",
+  "DeMar DeRozan": "3978",             "Zach LaVine": "3064440",
+  "Draymond Green": "6589",            "Klay Thompson": "6475",
+  "Bradley Beal": "6580",              "Myles Turner": "3133628",
+  "Tobias Harris": "6618",             "Khris Middleton": "6609",
+  "Brook Lopez": "3971",               "Jaylen Brown": "3917376",
+  "Marcus Smart": "2990969",           "Kyle Lowry": "2168",
+  "Pascal Siakam": "3136196",          "Kristaps Porzingis": "3102531",
+  "Jalen Brunson": "3934672",          "RJ Barrett": "4395625",
+  "Immanuel Quickley": "4395724",      "Deandre Ayton": "4278129",
+  "Cameron Johnson": "3138196",        "Buddy Hield": "2990984",
+  "Bennedict Mathurin": "4683634",     "Andrew Nembhard": "4395712",
+  "Dennis Schroder": "3032979",        "Nikola Vucevic": "6478",
+  "Derrick White": "3078576",          "Al Horford": "3213",
+  "Payton Pritchard": "4066354",       "Sam Hauser": "4065804",
+  "Jordan Poole": "4277956",           "Bilal Coulibaly": "5104155",
+  "Kyle Kuzma": "3134907",             "Deni Avdija": "4683021",
+  "Bobby Portis": "3064482",
+  // ── NHL (verified via ESPN site v2 team roster scan) ─────────────────────
+  "Connor McDavid": "3895074",         "Nathan MacKinnon": "3041969",
+  "David Pastrnak": "3114778",         "Auston Matthews": "4024123",
+  "Leon Draisaitl": "3114727",         "Nikita Kucherov": "2563060",
+  "Brady Tkachuk": "4319858",          "Kirill Kaprizov": "3942335",
+  "Matthew Tkachuk": "4024854",        "Sebastian Aho": "3904173",
+  "Mark Scheifele": "2562632",         "Jack Hughes": "4565222",
+  "Cole Caufield": "4565236",          "Aleksander Barkov": "3041970",
+  // ── MLB (verified via ESPN site v2 team roster scan) ─────────────────────
+  "Shohei Ohtani": "39832",            "Mike Trout": "30836",
+  "Mookie Betts": "33039",             "Juan Soto": "36969",
+  "Ronald Acuna Jr.": "36185",         "Freddie Freeman": "30193",
+  "Yordan Alvarez": "36018",           "Bryce Harper": "30951",
+  "Trea Turner": "33710",              "Paul Goldschmidt": "31027",
+  "Nolan Arenado": "31261",            "Fernando Tatis Jr.": "35983",
+  "Bo Bichette": "38904",              "Vladimir Guerrero Jr.": "35002",
+  "Jose Ramirez": "32801",             "Julio Rodriguez": "41044",
+  "Spencer Strider": "4307825",        "Gerrit Cole": "32081",
+  "Sandy Alcantara": "35241",
+  // ── NFL (verified via ESPN site v2 team roster scan) ─────────────────────
+  "Patrick Mahomes": "3139477",        "Josh Allen": "3915239",
+  "Lamar Jackson": "3916387",          "Joe Burrow": "3915511",
+  "Justin Herbert": "4038941",         "Jalen Hurts": "4040715",
+  "Tua Tagovailoa": "4241479",         "Dak Prescott": "2577417",
+  "Kyler Murray": "3917315",           "Trevor Lawrence": "4360310",
+  "Justin Jefferson": "4262921",       "Cooper Kupp": "2977187",
+  "Tyreek Hill": "3054192",            "Davante Adams": "16800",
+  "Travis Kelce": "15847",             "Mark Andrews": "3116365",
+  "CeeDee Lamb": "4241389",            "Ja'Marr Chase": "4362628",
+  "Christian McCaffrey": "3117251",    "Derrick Henry": "3043078",
+  "Nick Chubb": "3128720",             "Austin Ekeler": "3068267",
 };
 
 // ─── ESPN player ID lookup (slug-based, works for all sports) ────────────────
@@ -1592,6 +1587,182 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const settings = await storage.getSettings();
     await runScan(settings.oddsApiKey);
   }, 30 * 60 * 1000);
+
+  // ── CLV Line Value Tracker ───────────────────────────────────────────────
+
+  // Compute sharpness score from lineMovePct and speed (0-100)
+  function computeSharpness(openingLine: number | null, currentLine: number | null, openingOdds: number | null, currentOdds: number | null, createdAt: Date | null): number {
+    if (openingLine == null || currentLine == null || openingLine === 0) return 0;
+    const movePct = Math.abs((currentLine - openingLine) / Math.abs(openingLine)) * 100;
+    // Speed factor: hours since creation (faster = sharper)
+    const hoursElapsed = createdAt ? (Date.now() - createdAt.getTime()) / 3600000 : 24;
+    const speedFactor = Math.max(0, 1 - hoursElapsed / 48); // decays over 48h
+    // Odds movement factor
+    let oddsFactor = 0;
+    if (openingOdds != null && currentOdds != null) {
+      const oddsMove = Math.abs(currentOdds - openingOdds);
+      oddsFactor = Math.min(oddsMove / 30, 1); // 30 cent move = full factor
+    }
+    const raw = movePct * 4 + speedFactor * 20 + oddsFactor * 30;
+    return Math.min(100, Math.round(raw));
+  }
+
+  // Fire alert if threshold crossed
+  async function maybeFireClvAlert(line: any, prevLine: number | null, prevOdds: number | null): Promise<void> {
+    if (line.openingLine == null || line.currentLine == null) return;
+    if (line.openingLine === 0) return;
+    const movePct = ((line.currentLine - line.openingLine) / Math.abs(line.openingLine)) * 100;
+    const absPct = Math.abs(movePct);
+    const threshold = line.alertThreshold ?? 10;
+    if (absPct < threshold) return;
+    // Direction check
+    const direction = line.alertDirection ?? "both";
+    if (direction === "favor" && movePct <= 0) return;
+    if (direction === "against" && movePct >= 0) return;
+    // Check we haven't already fired for this move
+    const existing = await storage.getClvAlertsByLine(line.id);
+    const alreadyFired = existing.some((a: any) => Math.abs(a.movePct ?? 0) >= absPct - 0.5);
+    if (alreadyFired) return;
+    const alertType = absPct >= threshold * 2 ? "sharp_move" : (movePct > 0 ? "move_favor" : "move_against");
+    const dirLabel = movePct > 0 ? "in your favor" : "against you";
+    await storage.addClvAlert({
+      id: crypto.randomUUID(),
+      clvLineId: line.id,
+      alertType,
+      message: `${line.outcomeLabel} moved ${movePct > 0 ? "+" : ""}${movePct.toFixed(1)}% ${dirLabel} (threshold: ${threshold}%)`,
+      movePct,
+      fromLine: line.openingLine,
+      toLine: line.currentLine,
+      fromOdds: line.openingOdds ?? null,
+      toOdds: line.currentOdds ?? null,
+      dismissed: false,
+    });
+  }
+
+  app.get("/api/clv", async (req, res) => {
+    try {
+      const lines = await storage.getClvLines();
+      res.json(lines);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/clv", async (req, res) => {
+    try {
+      const body = req.body;
+      const line = await storage.addClvLine({
+        id: crypto.randomUUID(),
+        ...body,
+      });
+      // Auto-add opening snapshot
+      if (line.openingLine != null || line.openingOdds != null) {
+        await storage.addClvSnapshot({
+          id: crypto.randomUUID(),
+          clvLineId: line.id,
+          book: line.book,
+          line: line.openingLine,
+          odds: line.openingOdds,
+        });
+      }
+      res.status(201).json(line);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/clv/:id", async (req, res) => {
+    try {
+      const line = await storage.getClvLineById(req.params.id);
+      if (!line) return res.status(404).json({ error: "Not found" });
+      res.json(line);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/clv/:id", async (req, res) => {
+    try {
+      const existing = await storage.getClvLineById(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      const update = req.body;
+      // Compute derived fields on update
+      const newCurrentLine = update.currentLine ?? existing.currentLine;
+      const newCurrentOdds = update.currentOdds ?? existing.currentOdds;
+      const openingLine = existing.openingLine;
+      let lineMovePct: number | null = null;
+      if (openingLine != null && openingLine !== 0 && newCurrentLine != null) {
+        lineMovePct = ((newCurrentLine - openingLine) / Math.abs(openingLine)) * 100;
+      }
+      const sharpnessScore = computeSharpness(openingLine, newCurrentLine, existing.openingOdds, newCurrentOdds, existing.createdAt);
+      // If closing line provided, compute CLV
+      let clvBeat: boolean | null = existing.clvBeat;
+      let clvDelta: number | null = existing.clvDelta;
+      const closingLine = update.closingLine ?? existing.closingLine;
+      if (closingLine != null && openingLine != null) {
+        clvDelta = closingLine - openingLine;
+        clvBeat = clvDelta > 0;
+      }
+      const updated = await storage.updateClvLine(req.params.id, {
+        ...update,
+        lineMovePct,
+        sharpnessScore,
+        clvBeat,
+        clvDelta,
+      });
+      // Add snapshot for current line
+      if (update.currentLine != null || update.currentOdds != null) {
+        await storage.addClvSnapshot({
+          id: crypto.randomUUID(),
+          clvLineId: req.params.id,
+          book: existing.book,
+          line: newCurrentLine,
+          odds: newCurrentOdds,
+        });
+      }
+      // Maybe fire alert
+      if (updated) await maybeFireClvAlert(updated, existing.currentLine, existing.currentOdds);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/clv/:id", async (req, res) => {
+    try {
+      await storage.deleteClvLine(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/clv/:id/snapshots", async (req, res) => {
+    try {
+      const snaps = await storage.getClvSnapshots(req.params.id);
+      res.json(snaps);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/clv-alerts", async (req, res) => {
+    try {
+      const alerts = await storage.getClvAlerts();
+      res.json(alerts);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/clv-alerts/:id/dismiss", async (req, res) => {
+    try {
+      await storage.dismissClvAlert(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   return httpServer;
 }
