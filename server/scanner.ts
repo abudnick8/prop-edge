@@ -987,22 +987,33 @@ function applyApifyDFSBoosts(
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   try {
-    // Use mobile app User-Agent — Cloudflare blocks generic datacenter browser UAs
-    // but allows mobile app SDK requests through on Railway's IP range.
-    const { data } = await axios.get(
-      "https://api.underdogfantasy.com/beta/v5/over_under_lines",
-      {
+    // Underdog API is behind Cloudflare which blocks Railway's datacenter IP.
+    // Primary: try direct fetch. Fallback: route through allorigins.win proxy.
+    const UNDERDOG_URL = "https://api.underdogfantasy.com/beta/v5/over_under_lines";
+    let data: any;
+    try {
+      const directResp = await axios.get(UNDERDOG_URL, {
         headers: {
-          "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0; iPhone14,3)",
+          "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)",
           "Accept": "application/json",
-          "Accept-Language": "en-US,en;q=0.9",
           "X-Platform": "ios",
-          "X-App-Version": "2.0.0",
         },
-        timeout: 20000,
+        timeout: 15000,
         decompress: true,
-      }
-    );
+      });
+      data = directResp.data;
+    } catch (_directErr) {
+      // CF blocked direct fetch — use allorigins.win as proxy
+      console.log("[Underdog] Direct fetch blocked, trying proxy...");
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(UNDERDOG_URL)}`;
+      const proxyResp = await axios.get(proxyUrl, {
+        headers: { "Accept": "application/json" },
+        timeout: 25000,
+        decompress: true,
+      });
+      data = proxyResp.data;
+      console.log("[Underdog] Proxy fetch succeeded");
+    }
 
     const lines: any[] = data.over_under_lines ?? [];
     const appearances: any[] = data.appearances ?? [];

@@ -424,6 +424,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         { label: "v5_no_ua",     url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "Accept": "application/json" } },
         { label: "v3_mobile_ua", url: "https://api.underdogfantasy.com/beta/v3/over_under_lines", headers: { "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0)", "Accept": "application/json" } },
         { label: "v5_curl_ua",   url: "https://api.underdogfantasy.com/beta/v5/over_under_lines", headers: { "User-Agent": "curl/7.88.1", "Accept": "application/json" } },
+        { label: "allorigins",    url: `https://api.allorigins.win/raw?url=${encodeURIComponent("https://api.underdogfantasy.com/beta/v5/over_under_lines")}`, headers: { "Accept": "application/json" } },
       ];
 
       for (const attempt of attempts) {
