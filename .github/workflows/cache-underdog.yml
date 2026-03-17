@@ -1,0 +1,5 @@
+GitHub Actions runner (not CF-blocked)
+  → fetches api.underdogfantasy.com ✅
+  → commits JSON to abudnick8/prop-edge@cache branch
+  → Railway scanner reads raw.githubusercontent.com/abudnick8/prop-edge/cache/...
+  → Props appear in app ✅
