@@ -2594,6 +2594,39 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
 
+  // ── Guarantee NHL goal lotto bets are present (minimum 5, max 10) ────────
+  // Lotto stats (NHL goals, MLB HRs, NFL TDs, NBA pts) from Underdog must always
+  // appear as separate bet cards — never merged/absorbed. Re-inject them here.
+  const lottoStatResults = underdogProps.filter(b => {
+    if (b.sport !== "NHL" && b.sport !== "MLB" && b.sport !== "NFL" && b.sport !== "NBA") return false;
+    const ts = b.teamStats as { statType?: string } | null;
+    const st = (ts?.statType ?? "").toLowerCase();
+    const isGoals  = b.sport === "NHL" && st === "goals";
+    const isHR     = b.sport === "MLB" && (st === "home runs" || st.includes("home run"));
+    const isTD     = b.sport === "NFL" && st.includes("touchdown");
+    const isPts    = b.sport === "NBA" && st === "points";
+    return isGoals || isHR || isTD || isPts;
+  });
+  if (lottoStatResults.length > 0) {
+    const existingIds = new Set(results.map(b => b.id));
+    let injected = 0;
+    for (const b of lottoStatResults) {
+      if (!existingIds.has(b.id)) {
+        b.isLotto = true;
+        results.push(b);
+        existingIds.add(b.id);
+        injected++;
+      }
+    }
+    if (injected > 0) {
+      console.log(`[Lotto] Injected ${injected} lotto bets directly (bypassing merge filter)`);
+    }
+    // Per-sport breakdown
+    const byS: Record<string, number> = {};
+    for (const b of lottoStatResults) { byS[b.sport] = (byS[b.sport] ?? 0) + 1; }
+    console.log(`[Lotto] Underdog lotto stat breakdown: ${JSON.stringify(byS)}`);
+  }
+
   // Remove any markets whose game/close time has already passed
   const fresh = filterStale(results);
   console.log(`Staleness filter: ${results.length} raw → ${fresh.length} current markets`);
