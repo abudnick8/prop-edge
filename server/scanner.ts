@@ -2446,11 +2446,17 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   //
   // allSources shape: [{ source, overOdds, underOdds, line, impliedProb, pickSide }]
 
-  // Index all existing player props by playerName::sport
+  // Index all existing player props by playerName::sport::statType
+  // Use statType in key so e.g. Goals don't get swallowed into Assists/Shots cards
+  function getStatTypeKey(bet: InsertBet): string {
+    const ts = bet.teamStats as { statType?: string } | null;
+    const stat = (ts?.statType ?? "").toLowerCase().trim();
+    return stat || "prop";
+  }
   const propByPlayerSport = new Map<string, InsertBet>();
   for (const b of results) {
     if (b.betType === "player_prop" && b.playerName) {
-      const key = `${b.playerName}::${b.sport}`;
+      const key = `${b.playerName}::${b.sport}::${getStatTypeKey(b)}`;
       if (!propByPlayerSport.has(key)) propByPlayerSport.set(key, b);
     }
   }
@@ -2472,7 +2478,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   let underdogMerged = 0, underdogAdded = 0;
   for (const b of underdogProps) {
-    const key = `${b.playerName}::${b.sport}`;
+    const key = `${b.playerName}::${b.sport}::${getStatTypeKey(b)}`;
     const primary = propByPlayerSport.get(key);
     const ts = b.teamStats as { pickSide?: string; pickedOdds?: number } | null;
     const sourceEntry = {
@@ -2534,7 +2540,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   let dkMerged = 0, dkAdded = 0;
   for (const b of odds) {
     if (b.betType === "player_prop" && b.playerName) {
-      const key = `${b.playerName}::${b.sport}`;
+      const key = `${b.playerName}::${b.sport}::${getStatTypeKey(b)}`;
       const primary = propByPlayerSport.get(key);
       const ts = b.teamStats as { pickSide?: string } | null;
       const sourceEntry = {

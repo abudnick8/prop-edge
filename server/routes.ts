@@ -94,6 +94,16 @@ const ESPN_ID_CACHE: Record<string, string> = {
   "Matthew Tkachuk": "4024854",        "Sebastian Aho": "3904173",
   "Mark Scheifele": "2562632",         "Jack Hughes": "4565222",
   "Cole Caufield": "4565236",          "Aleksander Barkov": "3041970",
+  "Cole Sillinger": "4874725",         "Logan Stankoven": "4874899",
+  "Andrei Svechnikov": "4352683",       "Seth Jarvis": "4697396",
+  "Sam Reinhart": "3114722",           "Carter Verhaeghe": "3042088",
+  "Jason Robertson": "4565275",         "William Nylander": "3114736",
+  "Sidney Crosby": "3114",              "Evgeni Malkin": "3124",
+  "Erik Karlsson": "5164",              "Cale Makar": "4233563",
+  "Charlie McAvoy": "3988803",          "Sam Bennett": "3114732",
+  "David Pastrnak": "3114778",          "Roman Josi": "5180",
+  "John Tavares": "5160",               "Nathan MacKinnon": "3041969",
+  "Alex Ovechkin": "3101",              "Mitch Marner": "4063404",
   // ── MLB (verified via ESPN site v2 team roster scan) ─────────────────────
   "Shohei Ohtani": "39832",            "Mike Trout": "30836",
   "Mookie Betts": "33039",             "Juan Soto": "36969",
@@ -119,7 +129,7 @@ const ESPN_ID_CACHE: Record<string, string> = {
   "Nick Chubb": "3128720",             "Austin Ekeler": "3068267",
 };
 
-// ─── ESPN player ID lookup (slug-based, works for all sports) ────────────────
+// ─── ESPN player ID lookup ────────────────────────────────────────────────────
 async function resolveESPNId(playerName: string, sport: string): Promise<string | null> {
   // Check verified cache first
   if (ESPN_ID_CACHE[playerName]) return ESPN_ID_CACHE[playerName];
@@ -127,33 +137,56 @@ async function resolveESPNId(playerName: string, sport: string): Promise<string 
   const sportsName = sport === "NBA" ? "basketball" : sport === "NFL" ? "football" : sport === "MLB" ? "baseball" : sport === "NHL" ? "hockey" : "basketball";
   const league = sport === "NBA" ? "nba" : sport === "NFL" ? "nfl" : sport === "MLB" ? "mlb" : sport === "NHL" ? "nhl" : "nba";
 
-  // Method 1: slug lookup via core API
-  const slug = playerName.toLowerCase().replace(/['\.]/g, "").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  // Method 1: ESPN site search API (most reliable — returns current active roster players)
   try {
     const r = await axios.get(
-      `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes?slug=${encodeURIComponent(slug)}&limit=5&active=true`,
+      `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(playerName)}&limit=8&type=athlete&sport=${sportsName}%2F${league}`,
       { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
     );
     const items = r.data?.items ?? [];
-    if (items.length > 0) {
-      const ref = items[0]?.$ref ?? "";
-      const m = ref.match(/athletes\/([0-9]+)/);
-      if (m) { ESPN_ID_CACHE[playerName] = m[1]; return m[1]; }
+    const nameLower = playerName.toLowerCase();
+    // Find exact or close name match
+    for (const item of items) {
+      const itemName = (item.displayName ?? item.name ?? "").toLowerCase();
+      const id = String(item.id ?? "");
+      if (!id) continue;
+      if (itemName === nameLower || itemName.includes(nameLower.split(" ")[0]) && itemName.includes(nameLower.split(" ").slice(-1)[0])) {
+        ESPN_ID_CACHE[playerName] = id;
+        return id;
+      }
     }
-  } catch { /* slug lookup failed */ }
-
-  // Method 2: search API
-  try {
-    const r2 = await axios.get(
-      `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(playerName)}&sport=${sport.toLowerCase()}&limit=5`,
-      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-    const hits = r2.data?.athletes ?? r2.data?.results ?? [];
-    if (hits.length > 0) {
-      const id = String(hits[0]?.id ?? hits[0]?.athlete?.id ?? "");
-      if (id) { ESPN_ID_CACHE[playerName] = id; return id; }
+    // Fallback: take first result if only one came back
+    if (items.length === 1 && items[0]?.id) {
+      const id = String(items[0].id);
+      ESPN_ID_CACHE[playerName] = id;
+      return id;
     }
   } catch { /* search failed */ }
+
+  // Method 2: ESPN core active athlete search by full name (checks active roster)
+  try {
+    const nameParts = playerName.split(" ");
+    const lastName = nameParts.slice(-1)[0];
+    const r2 = await axios.get(
+      `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes?limit=20&active=true&lastName=${encodeURIComponent(lastName)}`,
+      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    const items2 = r2.data?.items ?? [];
+    for (const item of items2) {
+      const ref = item?.$ref ?? "";
+      const m = ref.match(/athletes\/([0-9]+)/);
+      if (!m) continue;
+      // Fetch athlete detail to verify full name
+      try {
+        const detail = await axios.get(ref, { timeout: 4000, headers: { "User-Agent": "Mozilla/5.0" } });
+        const fullName = (detail.data?.fullName ?? detail.data?.displayName ?? "").toLowerCase();
+        if (fullName === playerName.toLowerCase() || (fullName.includes(nameParts[0].toLowerCase()) && fullName.includes(lastName.toLowerCase()))) {
+          ESPN_ID_CACHE[playerName] = m[1];
+          return m[1];
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* lastName search failed */ }
 
   return null;
 }
