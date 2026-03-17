@@ -672,6 +672,36 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // Debug endpoint — check Underdog NHL cache + current bets breakdown
+  app.get("/api/debug/nhl", async (req, res) => {
+    try {
+      const axios = (await import("axios")).default;
+      const cacheResp = await axios.get("https://raw.githubusercontent.com/abudnick8/prop-edge/cache/data/underdog-cache/underdog_NHL.json", { timeout: 10000 });
+      const cacheData = cacheResp.data;
+      const lines: any[] = cacheData.over_under_lines ?? [];
+      const goalLines = lines.filter((l: any) => {
+        const ou = l.over_under ?? {};
+        const appStat = ou.appearance_stat ?? {};
+        return l.status === "active" && ou.category === "player_prop" && (appStat.stat ?? "").toLowerCase() === "goals";
+      });
+      const allBets = await storage.getBets();
+      const nhlBets = allBets.filter((b: any) => b.sport === "NHL");
+      const nhlGoalBets = nhlBets.filter((b: any) => b.title.toLowerCase().includes("goals"));
+      const nhlLotto = nhlBets.filter((b: any) => b.isLotto);
+      const nhlUnd = nhlBets.filter((b: any) => b.source === "underdog");
+      const statBreakdown: Record<string, number> = {};
+      for (const b of nhlUnd) { const s = (b.teamStats as any)?.statType ?? "?"; statBreakdown[s] = (statBreakdown[s] ?? 0) + 1; }
+      res.json({
+        cache: { totalLines: lines.length, goalLines: goalLines.length, cachedAt: cacheData.cached_at },
+        bets: { nhlTotal: nhlBets.length, nhlGoals: nhlGoalBets.length, nhlLotto: nhlLotto.length, nhlUnderdog: nhlUnd.length, nhlUnderdogStats: statBreakdown },
+        sampleGoalBets: nhlGoalBets.slice(0, 3).map((b: any) => b.title),
+        buildTime: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── API Quota Check ─────────────────────────────────────────────────────
   // TEMP DEBUG — remove after Underdog fix confirmed
 
