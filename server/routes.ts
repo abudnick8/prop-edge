@@ -1764,5 +1764,153 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ── Line Movement: auto-pull opening vs current lines from ActionNetwork ───────────
+  const LINE_MOVEMENT_CACHE = new Map<string, { data: any; ts: number }>();
+  const LM_TTL = 5 * 60 * 1000; // 5-min cache
+
+  app.get("/api/line-movement", async (req, res) => {
+    try {
+      const cacheKey = "lm";
+      const cached = LINE_MOVEMENT_CACHE.get(cacheKey);
+      if (cached && Date.now() - cached.ts < LM_TTL) {
+        return res.json(cached.data);
+      }
+
+      const ACTION_API_KEY = "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2";
+      const ACTION_BOOK_IDS = "15,68,30";
+      const today = new Date().toISOString().slice(0, 10);
+      const sports = [
+        { slug: "nba",   label: "NBA" },
+        { slug: "mlb",   label: "MLB" },
+        { slug: "nhl",   label: "NHL" },
+        { slug: "nfl",   label: "NFL" },
+      ];
+
+      const results: any[] = [];
+
+      await Promise.allSettled(sports.map(async ({ slug, label }) => {
+        try {
+          const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${today}`;
+          const headers: Record<string, string> = ACTION_API_KEY
+            ? { "Authorization": `Bearer ${ACTION_API_KEY}`, "Accept": "application/json", "User-Agent": "" }
+            : { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Accept": "application/json", "Referer": "https://www.actionnetwork.com/" };
+
+          const { data } = await axios.get(url, { timeout: 10000, headers });
+          const games: any[] = data?.games ?? data?.scoreboard ?? [];
+
+          for (const game of games) {
+            const status = game.status ?? "";
+            if (status === "complete" || status === "closed" || status === "final") continue;
+
+            const teams: any[] = game.teams ?? [];
+            const awayTeamObj = teams.find((t: any) => t.id === game.away_team_id) ?? teams[0] ?? {};
+            const homeTeamObj = teams.find((t: any) => t.id === game.home_team_id) ?? teams[1] ?? {};
+            const awayTeam = awayTeamObj.full_name ?? awayTeamObj.display_name ?? "Away";
+            const homeTeam = homeTeamObj.full_name ?? homeTeamObj.display_name ?? "Home";
+            const gameTime = game.start_time ?? null;
+
+            // Sort all odds entries by inserted time
+            const oddsArr: any[] = (game.odds ?? []).sort((a: any, b: any) =>
+              (a.inserted ?? "").localeCompare(b.inserted ?? "")
+            );
+            if (oddsArr.length < 1) continue;
+
+            const opening = oddsArr[0];
+            // Current = the entry with the most public/money data (auth key data), else latest
+            const current = oddsArr.find((o: any) => o.ml_away_money != null) ?? oddsArr[oddsArr.length - 1];
+
+            // Spread movement
+            const spreadOpen = opening.spread_away ?? null;
+            const spreadCurrent = current.spread_away ?? null;
+            const spreadMove = (spreadOpen != null && spreadCurrent != null) ? spreadCurrent - spreadOpen : null;
+
+            // Total movement
+            const totalOpen = opening.total ?? null;
+            const totalCurrent = current.total ?? null;
+            const totalMove = (totalOpen != null && totalCurrent != null) ? totalCurrent - totalOpen : null;
+
+            // ML movement
+            const mlAwayOpen = opening.ml_away ?? null;
+            const mlAwayCurrent = current.ml_away ?? null;
+            const mlHomeOpen = opening.ml_home ?? null;
+            const mlHomeCurrent = current.ml_home ?? null;
+
+            // Public/sharp betting %
+            const spreadAwayPublic = current.spread_away_public ?? null;
+            const spreadAwayMoney  = current.spread_away_money ?? null;
+            const spreadHomePublic = current.spread_home_public ?? null;
+            const spreadHomeMoney  = current.spread_home_money ?? null;
+            const totalOverPublic  = current.total_over_public ?? null;
+            const totalOverMoney   = current.total_over_money ?? null;
+            const totalUnderPublic = current.total_under_public ?? null;
+            const totalUnderMoney  = current.total_under_money ?? null;
+            const mlAwayPublic     = current.ml_away_public ?? null;
+            const mlAwayMoney      = current.ml_away_money ?? null;
+            const mlHomePublic     = current.ml_home_public ?? null;
+            const mlHomeMoney      = current.ml_home_money ?? null;
+            const numBets          = current.num_bets ?? null;
+
+            // Only include games that have at least one line to show
+            if (spreadOpen == null && totalOpen == null && mlAwayOpen == null) continue;
+
+            results.push({
+              id: `lm-${slug}-${game.id}`,
+              sport: label,
+              awayTeam,
+              homeTeam,
+              gameTime,
+              status: game.status ?? "scheduled",
+              openingInserted: opening.inserted ?? null,
+              currentInserted: current.inserted ?? null,
+              numBets,
+              spread: {
+                open: spreadOpen,
+                current: spreadCurrent,
+                move: spreadMove,
+                awayPublic: spreadAwayPublic,
+                awayMoney:  spreadAwayMoney,
+                homePublic: spreadHomePublic,
+                homeMoney:  spreadHomeMoney,
+              },
+              total: {
+                open: totalOpen,
+                current: totalCurrent,
+                move: totalMove,
+                overPublic:  totalOverPublic,
+                overMoney:   totalOverMoney,
+                underPublic: totalUnderPublic,
+                underMoney:  totalUnderMoney,
+              },
+              moneyline: {
+                awayOpen:    mlAwayOpen,
+                awayCurrent: mlAwayCurrent,
+                homeOpen:    mlHomeOpen,
+                homeCurrent: mlHomeCurrent,
+                awayPublic:  mlAwayPublic,
+                awayMoney:   mlAwayMoney,
+                homePublic:  mlHomePublic,
+                homeMoney:   mlHomeMoney,
+              },
+            });
+          }
+        } catch (e: any) {
+          console.warn(`[LineMovement] ${slug} error:`, e.message);
+        }
+      }));
+
+      // Sort: most movement first (by abs spread move + abs total move)
+      results.sort((a, b) => {
+        const aMove = Math.abs(a.spread?.move ?? 0) + Math.abs(a.total?.move ?? 0);
+        const bMove = Math.abs(b.spread?.move ?? 0) + Math.abs(b.total?.move ?? 0);
+        return bMove - aMove;
+      });
+
+      LINE_MOVEMENT_CACHE.set(cacheKey, { data: results, ts: Date.now() });
+      res.json(results);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return httpServer;
 }

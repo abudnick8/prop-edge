@@ -9,7 +9,7 @@ const navItems = [
   { href: "/ask", label: "Ask AI", icon: MessageCircleQuestion, emoji: "🤖" },
   { href: "/tracker", label: "Prop Tracker", icon: BarChart3, emoji: "📊" },
   { href: "/bracket", label: "Bracket", icon: Trophy, emoji: "🏆" },
-  { href: "/clv", label: "CLV Tracker", icon: TrendingUp, emoji: "📈" },
+  { href: "/clv", label: "Line Movement", icon: TrendingUp, emoji: "📈" },
   { href: "/settings", label: "Settings", icon: Settings, emoji: "⚙️" },
 ];
 
