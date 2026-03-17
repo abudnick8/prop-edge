@@ -13,7 +13,7 @@ function byConfThenSport(a: Bet, b: Bet): number {
 }
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Filter, SlidersHorizontal, Calendar, Trophy, Ticket } from "lucide-react";
+import { Search, Filter, SlidersHorizontal, Calendar, Trophy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 
@@ -21,7 +21,7 @@ const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NC
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
 const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog"];
 
-type MainTab = "daily" | "season" | "lotto";
+type MainTab = "daily" | "season";
 
 export default function AllBets() {
   const [search, setSearch] = useState("");
@@ -60,12 +60,6 @@ export default function AllBets() {
   // Split bets: season_prop/futures always go to Season tab; others by gameTime presence
   const dailyBets = bets.filter((b) => b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime);
   const seasonBets = bets.filter((b) => b.betType === "season_prop" || b.betType === "futures" || !b.gameTime);
-  // Lotto: top 10 high-payout / low-probability props sorted by confidence score
-  const lottoBets = bets
-    .filter((b) => b.isLotto === true)
-    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
-    .slice(0, 10);
-
   // Bet type keyword aliases — e.g. "HR" maps to home_run props, "TD" to touchdowns
   const BET_TYPE_KEYWORDS: Record<string, string[]> = {
     "HR": ["home run", "home_run", "batter_home_runs"],
@@ -135,8 +129,8 @@ export default function AllBets() {
     { key: "all",      label: "All Daily",  sub: "all upcoming",   count: dailyBets.length                  },
   ];
 
-  const activeCount = mainTab === "daily" ? filteredDaily.length : mainTab === "season" ? filteredSeason.length : lottoBets.length;
-  const totalCount  = mainTab === "daily" ? dailyBets.length   : mainTab === "season" ? seasonBets.length : lottoBets.length;
+  const activeCount = mainTab === "daily" ? filteredDaily.length : filteredSeason.length;
+  const totalCount  = mainTab === "daily" ? dailyBets.length   : seasonBets.length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -198,25 +192,6 @@ export default function AllBets() {
             </span>
           )}
         </button>
-        <button
-          onClick={() => setMainTab("lotto")}
-          data-testid="tab-main-lotto"
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            mainTab === "lotto"
-              ? "bg-amber-500/15 text-amber-400 shadow-sm border border-amber-500/30"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Ticket size={13} />
-          Lotto Picks
-          {lottoBets.length > 0 && (
-            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-              mainTab === "lotto" ? "bg-amber-500/20 text-amber-400" : "bg-muted text-muted-foreground"
-            }`}>
-              {lottoBets.length}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* Day Filter Sub-Tabs (Daily only) */}
@@ -249,20 +224,6 @@ export default function AllBets() {
               <span className="text-[10px] text-muted-foreground font-normal">{tab.sub}</span>
             </button>
           ))}
-        </div>
-      )}
-
-      {/* Lotto banner */}
-      {mainTab === "lotto" && (
-        <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-          <Ticket size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-semibold text-amber-400 mb-0.5">High-Reward / High-Risk Props</p>
-            <p className="text-xs text-muted-foreground">
-              Low-probability bets (≤+150 implied) on rare game events — home runs, touchdowns, goals, blocks, steals.
-              These pay more but hit less often. Top 10 ranked by confidence score.
-            </p>
-          </div>
         </div>
       )}
 
@@ -354,39 +315,6 @@ export default function AllBets() {
           <Trophy size={32} className="mx-auto text-muted-foreground mb-3" />
           <p className="text-sm font-medium text-foreground">No season futures match your filters</p>
           <p className="text-xs text-muted-foreground mt-1">Try clearing the search or adjusting filters</p>
-        </div>
-      ) : mainTab === "lotto" && lottoBets.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-amber-500/20 rounded-xl">
-          <Ticket size={32} className="mx-auto text-amber-400/40 mb-3" />
-          <p className="text-sm font-medium text-foreground">No lotto props available right now</p>
-          <p className="text-xs text-muted-foreground mt-1">Lotto picks appear when high-payout props (HR, TD, Goals, etc.) are in the market</p>
-        </div>
-      ) : mainTab === "lotto" ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-muted-foreground font-medium">Ranked by confidence · top {lottoBets.length}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">LOTTO MODE</span>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {lottoBets.map((bet, idx) => (
-              <div key={bet.id} className="relative">
-                {/* Rank badge */}
-                <div className="absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center shadow-md">
-                  {idx + 1}
-                </div>
-                {/* Amber glow ring on top lotto picks */}
-                <div className={`rounded-xl ${
-                  idx === 0
-                    ? "ring-2 ring-amber-400/50 shadow-[0_0_16px_rgba(245,158,11,0.15)]"
-                    : idx < 3
-                    ? "ring-1 ring-amber-500/30"
-                    : ""
-                }`}>
-                  <BetCard bet={bet} />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

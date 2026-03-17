@@ -11,6 +11,7 @@ import Settings from "@/pages/Settings";
 import TrackedProps from "@/pages/TrackedProps";
 import Ask from "@/pages/Ask";
 import Bracket from "@/pages/Bracket";
+import Lotto from "@/pages/Lotto";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -51,6 +52,7 @@ function App() {
                 <Route path="/" component={Dashboard} />
                 <Route path="/bets" component={AllBets} />
                 <Route path="/bets/:id" component={BetDetail} />
+                <Route path="/lotto" component={Lotto} />
                 <Route path="/settings" component={Settings} />
                 <Route path="/tracker" component={TrackedProps} />
                 <Route path="/ask" component={Ask} />
