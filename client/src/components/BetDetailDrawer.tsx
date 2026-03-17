@@ -138,15 +138,30 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
   if (!games.length) return null;
   const nbaCols = [
     { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
+    { key: "result", label: "Result" },
     { key: "pts", label: "PTS" }, { key: "trb", label: "REB" }, { key: "ast", label: "AST" },
     { key: "stl", label: "STL" }, { key: "blk", label: "BLK" }, { key: "tov", label: "TOV" }, { key: "mp", label: "MIN" },
   ];
   const nflCols = [
-    { key: "date_game", label: "Date" }, { key: "opp", label: "OPP" },
-    { key: "pass_yds", label: "P YDS" }, { key: "pass_td", label: "TD" }, { key: "int", label: "INT" },
-    { key: "rush_yds", label: "RU" }, { key: "rec_yds", label: "RE" },
+    { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
+    { key: "result", label: "Result" },
+    { key: "yds", label: "YDS" }, { key: "td", label: "TD" }, { key: "int", label: "INT" },
+    { key: "att", label: "ATT" }, { key: "rec", label: "REC" }, { key: "car", label: "CAR" },
   ];
-  const cols = sport === "NFL" ? nflCols : nbaCols;
+  const nhlCols = [
+    { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
+    { key: "result", label: "Result" },
+    { key: "goals", label: "G" }, { key: "ast", label: "A" }, { key: "pts", label: "PTS" },
+    { key: "shots", label: "SOG" }, { key: "plusMinus", label: "+/-" }, { key: "toi", label: "TOI" },
+  ];
+  const mlbCols = [
+    { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
+    { key: "result", label: "Result" },
+    { key: "ab", label: "AB" }, { key: "hits", label: "H" }, { key: "home_runs", label: "HR" },
+    { key: "rbi", label: "RBI" }, { key: "runs", label: "R" }, { key: "avg", label: "AVG" },
+  ];
+  const sportUp = sport?.toUpperCase();
+  const cols = sportUp === "NFL" ? nflCols : sportUp === "NHL" ? nhlCols : sportUp === "MLB" ? mlbCols : nbaCols;
 
   return (
     <div className="space-y-2">
@@ -186,19 +201,41 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
                     const numVal = parseFloat(rawVal) || 0;
                     const cellHit = isFocus && propLine != null && numVal >= propLine;
                     const cellMiss = isFocus && propLine != null && numVal < propLine && rawVal !== "—" && rawVal !== "";
-                    let displayVal = rawVal || "—";
+                    let displayVal: string | JSX.Element = rawVal || "—";
                     if (col.key === "date_game" && rawVal?.length >= 7) {
                       const parts = rawVal.split("-");
                       displayVal = parts.length >= 3 ? `${parts[1]}/${parts[2]}` : rawVal;
+                    }
+                    // OPP column: show eventNote badge below the opponent abbreviation
+                    if ((col.key === "opp_id" || col.key === "opp") && g.eventNote) {
+                      displayVal = (
+                        <span className="flex flex-col items-center gap-0.5">
+                          <span>{rawVal}</span>
+                          <span style={{ fontSize: "8px", color: "#a78bfa", fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis" }}
+                            title={g.eventNote}>
+                            {g.eventNote}
+                          </span>
+                        </span>
+                      );
+                    }
+                    // Result column: color-code W/L
+                    if (col.key === "result") {
+                      const isWin = rawVal?.startsWith("W");
+                      const isLoss = rawVal?.startsWith("L");
+                      displayVal = (
+                        <span style={{ color: isWin ? "#4ade80" : isLoss ? "#f87171" : "rgba(255,255,255,0.45)", fontWeight: isWin || isLoss ? 700 : 400, fontSize: "10px" }}>
+                          {rawVal || "—"}
+                        </span>
+                      );
                     }
                     return (
                       <td key={col.key} className="px-2 py-2 text-center font-mono"
                         style={{
                           background: isFocus ? (cellHit ? "rgba(74,222,128,0.1)" : cellMiss ? "rgba(248,113,113,0.08)" : "rgba(245,158,11,0.04)") : "transparent",
-                          color: isFocus ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b") : col.key === "date_game" || col.key === "opp_id" || col.key === "opp" ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.7)",
+                          color: isFocus ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b") : col.key === "date_game" || col.key === "opp_id" || col.key === "opp" ? "rgba(255,255,255,0.4)" : col.key === "result" ? "transparent" : "rgba(255,255,255,0.7)",
                           fontWeight: isFocus ? "900" : "500",
                           fontSize: isFocus ? "12px" : "11px",
-                          whiteSpace: "nowrap",
+                          whiteSpace: col.key === "result" ? "nowrap" : "nowrap",
                         }}>
                         {isFocus && cellHit && "✓ "}{isFocus && cellMiss && "✗ "}{displayVal}
                       </td>
