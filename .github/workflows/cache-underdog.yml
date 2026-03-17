@@ -20,85 +20,31 @@ jobs:
       - name: Ensure cache directory exists
         run: mkdir -p data/underdog-cache
 
-      - name: Fetch NBA
+      - name: Fetch all sports
         run: |
-          HTTP=$(curl -s -o data/underdog-cache/underdog_NBA.json -w "%{http_code}" \
-            -H "Accept: application/json" \
-            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" \
-            --compressed --max-time 30 \
-            "https://api.underdogfantasy.com/beta/v5/over_under_lines?sport_id=NBA")
-          echo "NBA HTTP: $HTTP"
-          if [ "$HTTP" = "200" ]; then
-            python3 -c "
-import json
-with open('data/underdog-cache/underdog_NBA.json') as f: d=json.load(f)
-d['cached_at']='$(date -u +%Y-%m-%dT%H:%M:%SZ)'; d['sport']='NBA'
-with open('data/underdog-cache/underdog_NBA.json','w') as f: json.dump(d,f)
-print('NBA lines:',len(d.get('over_under_lines',[])))
-"
-          else
-            echo '{"over_under_lines":[],"appearances":[],"players":[],"games":[],"solo_games":[],"cached_at":"error","sport":"NBA","error":"HTTP '$HTTP'"}' > data/underdog-cache/underdog_NBA.json
-          fi
+          UA="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+          BASE="https://api.underdogfantasy.com/beta/v5/over_under_lines"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-      - name: Fetch NHL
-        run: |
-          HTTP=$(curl -s -o data/underdog-cache/underdog_NHL.json -w "%{http_code}" \
-            -H "Accept: application/json" \
-            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" \
-            --compressed --max-time 30 \
-            "https://api.underdogfantasy.com/beta/v5/over_under_lines?sport_id=NHL")
-          echo "NHL HTTP: $HTTP"
-          if [ "$HTTP" = "200" ]; then
-            python3 -c "
-import json
-with open('data/underdog-cache/underdog_NHL.json') as f: d=json.load(f)
-d['cached_at']='$(date -u +%Y-%m-%dT%H:%M:%SZ)'; d['sport']='NHL'
-with open('data/underdog-cache/underdog_NHL.json','w') as f: json.dump(d,f)
-print('NHL lines:',len(d.get('over_under_lines',[])))
-"
-          else
-            echo '{"over_under_lines":[],"appearances":[],"players":[],"games":[],"solo_games":[],"cached_at":"error","sport":"NHL","error":"HTTP '$HTTP'"}' > data/underdog-cache/underdog_NHL.json
-          fi
-
-      - name: Fetch MLB
-        run: |
-          HTTP=$(curl -s -o data/underdog-cache/underdog_MLB.json -w "%{http_code}" \
-            -H "Accept: application/json" \
-            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" \
-            --compressed --max-time 30 \
-            "https://api.underdogfantasy.com/beta/v5/over_under_lines?sport_id=MLB")
-          echo "MLB HTTP: $HTTP"
-          if [ "$HTTP" = "200" ]; then
-            python3 -c "
-import json
-with open('data/underdog-cache/underdog_MLB.json') as f: d=json.load(f)
-d['cached_at']='$(date -u +%Y-%m-%dT%H:%M:%SZ)'; d['sport']='MLB'
-with open('data/underdog-cache/underdog_MLB.json','w') as f: json.dump(d,f)
-print('MLB lines:',len(d.get('over_under_lines',[])))
-"
-          else
-            echo '{"over_under_lines":[],"appearances":[],"players":[],"games":[],"solo_games":[],"cached_at":"error","sport":"MLB","error":"HTTP '$HTTP'"}' > data/underdog-cache/underdog_MLB.json
-          fi
-
-      - name: Fetch NFL
-        run: |
-          HTTP=$(curl -s -o data/underdog-cache/underdog_NFL.json -w "%{http_code}" \
-            -H "Accept: application/json" \
-            -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" \
-            --compressed --max-time 30 \
-            "https://api.underdogfantasy.com/beta/v5/over_under_lines?sport_id=NFL")
-          echo "NFL HTTP: $HTTP"
-          if [ "$HTTP" = "200" ]; then
-            python3 -c "
-import json
-with open('data/underdog-cache/underdog_NFL.json') as f: d=json.load(f)
-d['cached_at']='$(date -u +%Y-%m-%dT%H:%M:%SZ)'; d['sport']='NFL'
-with open('data/underdog-cache/underdog_NFL.json','w') as f: json.dump(d,f)
-print('NFL lines:',len(d.get('over_under_lines',[])))
-"
-          else
-            echo '{"over_under_lines":[],"appearances":[],"players":[],"games":[],"solo_games":[],"cached_at":"error","sport":"NFL","error":"HTTP '$HTTP'"}' > data/underdog-cache/underdog_NFL.json
-          fi
+          for SPORT in NBA NHL MLB NFL; do
+            FILE="data/underdog-cache/underdog_${SPORT}.json"
+            HTTP=$(curl -s -o "$FILE" -w "%{http_code}" \
+              -H "Accept: application/json" \
+              -H "User-Agent: $UA" \
+              -H "Accept-Language: en-US,en;q=0.9" \
+              --compressed --max-time 30 \
+              "${BASE}?sport_id=${SPORT}")
+            echo "$SPORT HTTP: $HTTP"
+            if [ "$HTTP" = "200" ]; then
+              jq --arg ts "$NOW" --arg sp "$SPORT" \
+                '. + {cached_at: $ts, sport: $sp}' \
+                "$FILE" > "${FILE}.tmp" && mv "${FILE}.tmp" "$FILE"
+              COUNT=$(jq '.over_under_lines | length' "$FILE")
+              echo "$SPORT: $COUNT lines cached"
+            else
+              echo "{\"over_under_lines\":[],\"appearances\":[],\"players\":[],\"games\":[],\"solo_games\":[],\"cached_at\":\"$NOW\",\"sport\":\"$SPORT\",\"error\":\"HTTP $HTTP\"}" > "$FILE"
+            fi
+          done
 
       - name: Commit and push cache
         run: |
