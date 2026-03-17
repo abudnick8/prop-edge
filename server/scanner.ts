@@ -1150,13 +1150,34 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
       const overProb = toProb(overOdds);
       const underProb = toProb(underOdds);
 
-      // Pick the stronger side
-      const pickSide = overProb >= underProb ? "OVER" : "UNDER";
-      const pickedOdds = pickSide === "OVER" ? overOdds : underOdds;
-      const pickProb = Math.max(overProb, underProb);
+      // Check if this is a lotto stat type for this sport
+      // Lotto stats: NHL goals, MLB home runs, NFL touchdowns, NBA points
+      const statRaw = (appearanceStat.stat ?? "").toLowerCase();
+      const statNameLower = statName.toLowerCase();
+      const isLottoStat =
+        (sport === "NHL" && (statRaw === "goals" || statNameLower === "goals")) ||
+        (sport === "MLB" && (statRaw === "home_runs" || statNameLower.includes("home run"))) ||
+        (sport === "NFL" && (statRaw === "touchdowns" || statNameLower.includes("touchdown"))) ||
+        (sport === "NBA" && statRaw === "points" && statNameLower === "points");
 
-      // Only surface picks with meaningful edge (one side ≥52%)
-      if (pickProb < 0.52) continue;
+      // For lotto stats: always take the OVER side (the long-shot event to happen)
+      // For all others: pick the stronger (higher implied probability) side
+      let pickSide: string;
+      let pickedOdds: number;
+      let pickProb: number;
+
+      if (isLottoStat) {
+        // Always surface OVER for lotto stat types — these are high-reward bets
+        pickSide = "OVER";
+        pickedOdds = overOdds;
+        pickProb = overProb;
+      } else {
+        pickSide = overProb >= underProb ? "OVER" : "UNDER";
+        pickedOdds = pickSide === "OVER" ? overOdds : underOdds;
+        pickProb = Math.max(overProb, underProb);
+        // Only surface non-lotto picks with meaningful edge (one side ≥52%)
+        if (pickProb < 0.52) continue;
+      }
 
       const title = `[TAKE ${pickSide} ${statValue} @ ${pickedOdds > 0 ? "+" : ""}${pickedOdds}] ${playerName} — ${statName}`;
       const description = `${playerName} is projected to go ${pickSide} ${statValue} ${statName}. ${sport} player prop from Underdog Fantasy. ${overOption?.selection_subheader ?? ""}`;
