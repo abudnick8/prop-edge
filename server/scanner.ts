@@ -1747,25 +1747,13 @@ function getSourceTier(source: string): { tier: 1 | 2 | 3; label: string } {
 // "Lotto" props are high-payout / low-implied-probability bets:
 //   • Stat categories that are rare/event-based (HR, TD, Goal, Block, Stolen Base, etc.)
 //   • AND implied probability < 40% (i.e. paying +150 or better)
-// The top-10 by confidence are surfaced in the dedicated Lotto tab.
-const LOTTO_STAT_KEYWORDS = [
-  // MLB
-  "home run", "home_run", "batter_home_runs", "stolen base", "stolen_base",
-  // NFL
-  "touchdown", "anytime td", "anytime_td", "td scorer",
-  // NHL
-  "goal", "goals",
-  // NBA
-  "block", "blocks", "steal", "steals",
-  // General
-  "hat trick", "hat-trick",
-];
-
-export function isLottoProp(title: string, impliedProb: number, betType?: string): boolean {
+// Lotto props: any player_prop the market prices at < 40% implied probability.
+// At that threshold the payout is +150 or better — these are high-reward,
+// lower-probability outcomes that form the "Lotto" bucket.
+// The frontend enforces 5-min / 10-max per sport per day.
+export function isLottoProp(_title: string, impliedProb: number, betType?: string): boolean {
   if (betType && betType !== "player_prop") return false;
-  if (impliedProb >= 0.40) return false; // must pay at least +150 (60% underdog)
-  const t = title.toLowerCase();
-  return LOTTO_STAT_KEYWORDS.some((kw) => t.includes(kw));
+  return impliedProb < 0.40; // +150 or better payout
 }
 
 function computeConfidence(input: ScoreInput): ScoreResult {
