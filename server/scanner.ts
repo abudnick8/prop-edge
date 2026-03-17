@@ -2313,14 +2313,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   ];
 
   // Fetch all live sources in parallel
-  // Kalshi player props run in parallel with other sources as a permanent backup
-  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet] = await Promise.all([
+  // Underdog and SportsGameOdds provide NHL/MLB/NFL player props (Kalshi only has NBA active)
+  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet, underdogProps] = await Promise.all([
     fetchKalshiSports(),
     fetchKalshiWBC(),
     fetchKalshiSeasonAwards(),
     fetchKalshiPlayerProps(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
+    fetchUnderdogProps(),
   ]);
 
   // Merge all Kalshi results, deduplicating by ID
@@ -2333,8 +2334,26 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
 
+  // Merge Underdog props — deduplicate against Kalshi by player+stat combo
+  // Kalshi props take priority (prediction market pricing) but Underdog fills gaps (NHL/MLB/NFL)
+  const existingPropKeys = new Set(
+    kalshiAll
+      .filter(b => b.betType === "player_prop" && b.playerName)
+      .map(b => `${b.playerName}::${b.sport}`)
+  );
+  let underdogAdded = 0;
+  for (const b of underdogProps) {
+    const key = `${b.playerName}::${b.sport}`;
+    if (!existingPropKeys.has(key)) {
+      results.push(b);
+      existingPropKeys.add(key);
+      underdogAdded++;
+    }
+  }
+
   results.push(...kalshiAll, ...poly, ...actionNet);
   console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards + ${kalshiProps.length} player props = ${kalshiAll.length} unique`);
+  console.log(`Underdog player props: ${underdogProps.length} fetched, ${underdogAdded} added (non-duplicate)`);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
