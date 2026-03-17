@@ -2,24 +2,53 @@ import { useQuery } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Ticket, Search, SlidersHorizontal, RefreshCw } from "lucide-react";
+import { Ticket, Search, SlidersHorizontal, RefreshCw, Home, Target, Crosshair, CircleDot } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 
-// MLB player props win tiebreakers on equal confidence scores
-const SPORT_PRIORITY: Record<string, number> = { MLB: 3, NBA: 2, NHL: 1, NFL: 1 };
+// ── Strict lotto stat types per sport ────────────────────────────────────────
+// MLB  → Home Runs only
+// NHL  → Goals only
+// NFL  → Touchdowns only (anytime td, 1st td)
+// NBA  → Points only
 
-// Sports shown in display order
-const SPORT_ORDER = ["NBA", "MLB", "NHL", "NFL", "NCAAB", "NCAAF"];
-
-const SPORT_EMOJI: Record<string, string> = {
-  NBA: "🏀", MLB: "⚾", NHL: "🏒", NFL: "🏈", NCAAB: "🏀", NCAAF: "🏈",
+const LOTTO_STAT_RULES: Record<string, { label: string; keywords: string[]; icon: string; description: string }> = {
+  MLB: {
+    label: "Home Runs",
+    keywords: ["home run", "home_run", "batter_home_runs", "home runs"],
+    icon: "⚾",
+    description: "Anytime Home Run props",
+  },
+  NHL: {
+    label: "Goals",
+    keywords: ["player_goals", "— goals", "goals o/u", "goals", "anytime goal"],
+    icon: "🏒",
+    description: "Anytime Goal / Goals O/U props",
+  },
+  NFL: {
+    label: "Touchdowns",
+    keywords: ["touchdown", "anytime_td", "anytime td", "1st_td", "1st td", "first td", "player_td"],
+    icon: "🏈",
+    description: "Anytime Touchdown props",
+  },
+  NBA: {
+    label: "Points",
+    keywords: ["player_points", "— points", "points o/u", " points "],
+    icon: "🏀",
+    description: "Points O/U props (not PRA, not pts+reb, not pts+ast)",
+  },
 };
+
+// These sports are supported for lotto — others (NCAAB, etc.) are excluded
+const LOTTO_SPORTS = ["NBA", "MLB", "NHL", "NFL"] as const;
+
+const LOTTO_MIN = 5;
+const LOTTO_MAX = 20;
 
 const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog"];
 
 function isTodayOrNoDate(gameTime: string | null | undefined): boolean {
-  if (!gameTime) return true; // props without gameTime are considered current
+  if (!gameTime) return true;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -28,21 +57,81 @@ function isTodayOrNoDate(gameTime: string | null | undefined): boolean {
   return gt >= today && gt < tomorrow;
 }
 
-// Bet type keyword aliases
-const BET_TYPE_KEYWORDS: Record<string, string[]> = {
-  "HR": ["home run", "home_run", "batter_home_runs"],
-  "TD": ["touchdown", "anytime_td", "anytime td"],
-  "RBI": ["rbi", "batter_rbis"],
-  "K": ["strikeout", "pitcher_strikeouts"],
-  "3PT": ["three", "threes", "player_threes"],
-  "AST": ["assist", "player_assists"],
-  "REB": ["rebound", "player_rebounds"],
-  "PTS": ["point", "player_points"],
-  "SOG": ["shot", "shots_on_goal"],
-  "GOAL": ["goal", "player_goals"],
-  "BLK": ["block", "blocks"],
-  "STL": ["steal", "steals"],
-};
+/**
+ * Returns true if this bet is the correct lotto stat type for its sport.
+ * Strict matching — e.g. NBA Points must NOT match PRA, pts+reb, etc.
+ */
+function matchesLottoStat(bet: Bet): boolean {
+  const rule = LOTTO_STAT_RULES[bet.sport];
+  if (!rule) return false;
+
+  const title = bet.title.toLowerCase();
+  const desc = (bet.description ?? "").toLowerCase();
+  const researchSummary = (bet.researchSummary ?? "").toLowerCase();
+
+  // NBA Points: must match "points" but NOT combo props
+  if (bet.sport === "NBA") {
+    const hasPoints =
+      title.includes("— points") ||
+      title.includes("points o/u") ||
+      title.includes("points @") ||
+      // Underdog / Kalshi style: "Over X Points" or "Points" standalone
+      /\bpoints\b/.test(title);
+    if (!hasPoints) return false;
+    // Exclude combo props
+    const isCombo =
+      title.includes("rebounds") ||
+      title.includes("assists") ||
+      title.includes("blocks") ||
+      title.includes("steals") ||
+      title.includes("threes") ||
+      title.includes("pra") ||
+      title.includes("pts+") ||
+      title.includes("pts &");
+    return !isCombo;
+  }
+
+  // MLB Home Runs: must match home run keywords
+  if (bet.sport === "MLB") {
+    return (
+      title.includes("home run") ||
+      title.includes("home_run") ||
+      title.includes("batter_home_runs") ||
+      title.includes("— home runs")
+    );
+  }
+
+  // NHL Goals: must match goal keywords but NOT assists or shots
+  if (bet.sport === "NHL") {
+    const hasGoal =
+      title.includes("— goals") ||
+      title.includes("goals o/u") ||
+      title.includes("anytime goal") ||
+      /\bgoals\b/.test(title);
+    if (!hasGoal) return false;
+    const isNotGoal =
+      title.includes("assists") ||
+      title.includes("shots") ||
+      title.includes("points") ||
+      title.includes("sog");
+    return !isNotGoal;
+  }
+
+  // NFL Touchdowns: anytime td, 1st td
+  if (bet.sport === "NFL") {
+    return (
+      title.includes("touchdown") ||
+      title.includes("anytime td") ||
+      title.includes("anytime_td") ||
+      title.includes("1st td") ||
+      title.includes("1st_td") ||
+      title.includes("first td") ||
+      title.includes("to score")
+    );
+  }
+
+  return false;
+}
 
 export default function Lotto() {
   const [search, setSearch] = useState("");
@@ -55,87 +144,101 @@ export default function Lotto() {
     refetchInterval: 30000,
   });
 
-  // ── Determine which sports have games today ──────────────────────────────────
-  // A sport is "active today" if any bet for that sport has a gameTime today,
-  // OR if it has player_props in the feed (Kalshi props often have null gameTime).
+  // ── Determine which sports have games today ───────────────────────────────
   const sportsWithGamesToday = new Set<string>();
   bets.forEach((b) => {
-    if (b.gameTime && isTodayOrNoDate(b.gameTime)) {
+    if (LOTTO_SPORTS.includes(b.sport as any) && isTodayOrNoDate(b.gameTime as any)) {
+      sportsWithGamesToday.add(b.sport);
+    }
+    if (LOTTO_SPORTS.includes(b.sport as any) && b.betType === "player_prop") {
       sportsWithGamesToday.add(b.sport);
     }
   });
-  // Also include sports that have player_props (Kalshi props have null gameTime
-  // but are always current/live). We trust the scanner to only store fresh data.
-  bets.forEach((b) => {
-    if (b.betType === "player_prop") sportsWithGamesToday.add(b.sport);
-  });
 
-  // ── Filter helper ─────────────────────────────────────────────────────────────
+  // ── Search helper ─────────────────────────────────────────────────────────
   function matchesSearch(b: Bet): boolean {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    const alias = BET_TYPE_KEYWORDS[search.trim().toUpperCase()];
-    const searchTerms = alias ? [q, ...alias] : [q];
-    return searchTerms.some((term) =>
-      b.title.toLowerCase().includes(term) ||
-      (b.playerName ?? "").toLowerCase().includes(term) ||
-      (b.homeTeam ?? "").toLowerCase().includes(term) ||
-      (b.awayTeam ?? "").toLowerCase().includes(term) ||
-      (b.description ?? "").toLowerCase().includes(term) ||
-      (b.researchSummary ?? "").toLowerCase().includes(term) ||
-      (b.keyFactors ?? []).some((kf) => kf.toLowerCase().includes(term))
+    return (
+      b.title.toLowerCase().includes(q) ||
+      (b.playerName ?? "").toLowerCase().includes(q) ||
+      (b.homeTeam ?? "").toLowerCase().includes(q) ||
+      (b.awayTeam ?? "").toLowerCase().includes(q) ||
+      (b.description ?? "").toLowerCase().includes(q) ||
+      (b.researchSummary ?? "").toLowerCase().includes(q) ||
+      (b.keyFactors ?? []).some((kf) => kf.toLowerCase().includes(q))
     );
   }
 
-  // ── Build per-sport lotto buckets ────────────────────────────────────────────
+  // ── Build per-sport lotto buckets ─────────────────────────────────────────
   // Rules:
-  //   • Only sports active today
-  //   • Only isLotto=true props
+  //   • Only NBA/MLB/NHL/NFL
+  //   • Only the specific stat for that sport (HR / Goals / TDs / Points)
+  //   • isLotto = true (high-risk/high-reward; +150 or better)
   //   • Apply search/source/minScore filters
-  //   • Sort by confidence desc (MLB tiebreaker)
-  //   • Min 5, max 10 per sport
-  const LOTTO_MIN = 5;
-  const LOTTO_MAX = 10;
-
+  //   • Sort confidence desc — MLB props auto-sort higher on ties
+  //   • Min 5 / max 20 per sport
   const lottoBySport: Record<string, Bet[]> = {};
 
-  for (const sport of sportsWithGamesToday) {
-    const candidates = bets
-      .filter((b) =>
+  for (const sport of LOTTO_SPORTS) {
+    if (!sportsWithGamesToday.has(sport)) continue;
+
+    // All bets for this sport that match the strict stat rule
+    const statMatched = bets.filter(
+      (b) =>
         b.sport === sport &&
-        b.isLotto === true &&
-        (source === "All" || b.source === source) &&
-        (b.confidenceScore ?? 0) >= minScore &&
-        matchesSearch(b)
+        b.betType === "player_prop" &&
+        matchesLottoStat(b)
+    );
+
+    // Apply isLotto, source, score, and search filters
+    const candidates = statMatched
+      .filter(
+        (b) =>
+          b.isLotto === true &&
+          (source === "All" || b.source === source) &&
+          (b.confidenceScore ?? 0) >= minScore &&
+          matchesSearch(b)
       )
-      .sort((a, b) => {
-        const d = (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+      .sort((a, z) => {
+        const d = (z.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
         if (d !== 0) return d;
-        const ap = SPORT_PRIORITY[a.sport] ?? 0;
-        const bp = SPORT_PRIORITY[b.sport] ?? 0;
+        // MLB tiebreaker: auto-pull MLB to top
+        const ap = a.sport === "MLB" ? 1 : 0;
+        const bp = z.sport === "MLB" ? 1 : 0;
         return bp - ap;
       });
 
-    // Only include this sport if there are at least LOTTO_MIN candidates
-    if (candidates.length >= LOTTO_MIN) {
-      lottoBySport[sport] = candidates.slice(0, LOTTO_MAX);
-    } else if (candidates.length > 0 && candidates.length < LOTTO_MIN) {
-      // Still show what we have (don't hide) — pad label will say "only X found"
-      lottoBySport[sport] = candidates;
+    // If fewer than LOTTO_MIN exist but we have ANY, generate additional picks
+    // by relaxing the isLotto flag (still must match stat type)
+    let finalPicks = candidates;
+    if (candidates.length < LOTTO_MIN) {
+      // Fill to LOTTO_MIN with non-lotto stat-matching props (sorted by confidence)
+      const extras = statMatched
+        .filter(
+          (b) =>
+            !candidates.find((c) => c.id === b.id) &&
+            (source === "All" || b.source === source) &&
+            (b.confidenceScore ?? 0) >= minScore &&
+            matchesSearch(b)
+        )
+        .sort((a, z) => (z.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
+
+      const needed = LOTTO_MIN - candidates.length;
+      finalPicks = [...candidates, ...extras.slice(0, needed)];
+    }
+
+    // Cap at LOTTO_MAX
+    if (finalPicks.length > 0) {
+      lottoBySport[sport] = finalPicks.slice(0, LOTTO_MAX);
     }
   }
 
-  // Active sports in display order
-  const activeSports = SPORT_ORDER.filter((s) => lottoBySport[s] !== undefined);
-  // Append any that aren't in SPORT_ORDER
-  Object.keys(lottoBySport).forEach((s) => {
-    if (!activeSports.includes(s)) activeSports.push(s);
-  });
-
+  // Only show sports that have at least 1 qualifying pick
+  const activeSports = LOTTO_SPORTS.filter((s) => lottoBySport[s]?.length > 0);
   const totalLotto = activeSports.reduce((sum, s) => sum + lottoBySport[s].length, 0);
   const hasActiveFilters = source !== "All" || minScore > 0 || search.trim().length > 0;
 
-  // Last updated string
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : null;
@@ -150,7 +253,7 @@ export default function Lotto() {
             <h1 className="text-xl font-bold text-foreground">Lotto Picks</h1>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {totalLotto} picks across {activeSports.length} sport{activeSports.length !== 1 ? "s" : ""} · 5–10 per sport
+            {totalLotto} picks across {activeSports.length} sport{activeSports.length !== 1 ? "s" : ""} · 5–20 per sport
             {lastUpdated && (
               <span className="ml-2 text-muted-foreground/60">· updated {lastUpdated}</span>
             )}
@@ -183,14 +286,41 @@ export default function Lotto() {
         </div>
       </div>
 
-      {/* Amber info banner */}
+      {/* Stat legend banner */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {(["MLB", "NHL", "NFL", "NBA"] as const).map((sport) => {
+          const rule = LOTTO_STAT_RULES[sport];
+          const isActive = sportsWithGamesToday.has(sport);
+          return (
+            <div
+              key={sport}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-opacity ${
+                isActive
+                  ? "bg-amber-500/5 border-amber-500/20"
+                  : "bg-muted/30 border-border opacity-40"
+              }`}
+            >
+              <span className="text-base">{rule.icon}</span>
+              <div>
+                <p className="text-[10px] font-bold text-foreground leading-tight">{sport}</p>
+                <p className="text-[10px] text-amber-400 leading-tight font-semibold">{rule.label}</p>
+              </div>
+              {isActive && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Info banner */}
       <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
         <Ticket size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-semibold text-amber-400 mb-0.5">High-Reward / High-Risk Props</p>
           <p className="text-xs text-muted-foreground">
-            Player props priced at +150 or better ({"<"}40% implied). Higher payout, lower hit rate.
-            5–10 best picks per active sport, ranked by confidence. Refreshes automatically as games finish.
+            MLB: Home Runs · NHL: Goals · NFL: Touchdowns · NBA: Points — props priced at +150 or better.
+            5 to 20 picks per active sport, ranked by confidence. Refreshes automatically.
           </p>
         </div>
       </div>
@@ -201,7 +331,7 @@ export default function Lotto() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search player, team, or keyword (HR, TD, BLK, STL, GOAL...)"
+          placeholder="Search player, team, or game..."
           className="pl-9 bg-card border-border"
           data-testid="input-lotto-search"
         />
@@ -261,7 +391,7 @@ export default function Lotto() {
           <Ticket size={32} className="mx-auto text-amber-400/40 mb-3" />
           <p className="text-sm font-medium text-foreground">No lotto picks available right now</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-            Lotto picks appear when player props priced at +150 or better are in the market.
+            Lotto shows: MLB Home Runs, NHL Goals, NFL Touchdowns, and NBA Points — priced +150 or better.
             {hasActiveFilters ? " Try clearing your filters." : " Check back as games approach."}
           </p>
           {hasActiveFilters && (
@@ -277,28 +407,26 @@ export default function Lotto() {
         <div className="space-y-8">
           {activeSports.map((sport) => {
             const sportBets = lottoBySport[sport];
-            const belowMin = sportBets.length < LOTTO_MIN;
+            const rule = LOTTO_STAT_RULES[sport];
+            const atMax = sportBets.length >= LOTTO_MAX;
+
             return (
               <div key={sport} className="space-y-3">
                 {/* Sport section header */}
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{SPORT_EMOJI[sport] ?? "🎰"}</span>
+                    <span className="text-lg">{rule.icon}</span>
                     <h2 className="text-base font-bold text-foreground">{sport}</h2>
+                    <span className="text-xs font-semibold text-amber-400">— {rule.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
-                      LOTTO MODE
+                      LOTTO
                     </span>
                     <span className="text-xs text-muted-foreground font-mono">
                       {sportBets.length} pick{sportBets.length !== 1 ? "s" : ""}
-                      {!belowMin ? ` · top ${LOTTO_MAX} max` : ""}
+                      {atMax ? " · max 20" : ""}
                     </span>
-                    {belowMin && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-                        limited props today
-                      </span>
-                    )}
                   </div>
                   <div className="flex-1 h-px bg-border" />
                 </div>

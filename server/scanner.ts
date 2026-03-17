@@ -1803,9 +1803,33 @@ function getSourceTier(source: string): { tier: 1 | 2 | 3; label: string } {
 // At that threshold the payout is +150 or better — these are high-reward,
 // lower-probability outcomes that form the "Lotto" bucket.
 // The frontend enforces 5-min / 10-max per sport per day.
-export function isLottoProp(_title: string, impliedProb: number, betType?: string): boolean {
+export function isLottoProp(title: string, impliedProb: number, betType?: string, sport?: string): boolean {
   if (betType && betType !== "player_prop") return false;
-  return impliedProb < 0.40; // +150 or better payout
+  if (impliedProb >= 0.40) return false; // must be +150 or better
+
+  // Strict per-sport stat rules — only tag the specific lotto stat for each sport
+  const t = title.toLowerCase();
+  if (sport === "MLB") {
+    return t.includes("home run") || t.includes("home_run") || t.includes("batter_home_runs");
+  }
+  if (sport === "NHL") {
+    const hasGoal = t.includes("— goals") || t.includes("goals o/u") || t.includes("anytime goal") || /\bgoals\b/.test(t);
+    const isCombo = t.includes("assists") || t.includes("shots") || t.includes("points") || t.includes("sog");
+    return hasGoal && !isCombo;
+  }
+  if (sport === "NFL") {
+    return t.includes("touchdown") || t.includes("anytime td") || t.includes("anytime_td") ||
+           t.includes("1st td") || t.includes("1st_td") || t.includes("first td") || t.includes("to score");
+  }
+  if (sport === "NBA") {
+    const hasPoints = t.includes("— points") || t.includes("points o/u") || /\bpoints\b/.test(t);
+    const isCombo = t.includes("rebounds") || t.includes("assists") || t.includes("blocks") ||
+                    t.includes("steals") || t.includes("threes") || t.includes("pra") ||
+                    t.includes("pts+") || t.includes("pts &");
+    return hasPoints && !isCombo;
+  }
+  // For any other sport, fall back to odds-only check
+  return true;
 }
 
 function computeConfidence(input: ScoreInput): ScoreResult {
@@ -2554,6 +2578,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
       bet.title,
       bet.impliedProbability ?? bet.yesPrice ?? 0.5,
       bet.betType ?? undefined,
+      bet.sport ?? undefined,
     );
   }
   const lottoCount = fresh.filter(b => b.isLotto).length;
