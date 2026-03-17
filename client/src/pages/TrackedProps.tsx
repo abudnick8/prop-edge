@@ -1,11 +1,11 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { TrackedProp } from "@shared/schema";
-import { useState } from "react";
+import { TrackedProp, Bet } from "@shared/schema";
+import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Trash2, RefreshCw, TrendingUp, TrendingDown,
-  Target, Trophy, CheckCircle2, XCircle, Clock, Pencil, X, ChevronDown, ChevronUp, BarChart3, Flame, Zap, Database
+  Target, Trophy, CheckCircle2, XCircle, Clock, Pencil, X, ChevronDown, ChevronUp, BarChart3, Flame, Zap, Database, Search
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
@@ -104,16 +104,236 @@ const EMPTY_FORM: PropFormData = {
   season: "2025-26", status: "active",
 };
 
+// ── Player roster seeds (top players per sport for instant autocomplete) ────────
+const PLAYER_SEEDS: Record<string, { name: string; team: string }[]> = {
+  NBA: [
+    { name: "LeBron James", team: "Lakers" },
+    { name: "Stephen Curry", team: "Warriors" },
+    { name: "Kevin Durant", team: "Suns" },
+    { name: "Giannis Antetokounmpo", team: "Bucks" },
+    { name: "Luka Doncic", team: "Lakers" },
+    { name: "Jayson Tatum", team: "Celtics" },
+    { name: "Joel Embiid", team: "76ers" },
+    { name: "Nikola Jokic", team: "Nuggets" },
+    { name: "Shai Gilgeous-Alexander", team: "Thunder" },
+    { name: "Anthony Edwards", team: "Timberwolves" },
+    { name: "Trae Young", team: "Hawks" },
+    { name: "Donovan Mitchell", team: "Cavaliers" },
+    { name: "Devin Booker", team: "Suns" },
+    { name: "Kawhi Leonard", team: "Clippers" },
+    { name: "Jimmy Butler", team: "Warriors" },
+    { name: "Ja Morant", team: "Grizzlies" },
+    { name: "Damian Lillard", team: "Bucks" },
+    { name: "Anthony Davis", team: "Lakers" },
+    { name: "Bam Adebayo", team: "Heat" },
+    { name: "Tyrese Haliburton", team: "Pacers" },
+    { name: "Karl-Anthony Towns", team: "Knicks" },
+    { name: "Jalen Brunson", team: "Knicks" },
+    { name: "Zion Williamson", team: "Pelicans" },
+    { name: "Victor Wembanyama", team: "Spurs" },
+    { name: "Paolo Banchero", team: "Magic" },
+    { name: "Evan Mobley", team: "Cavaliers" },
+    { name: "Chet Holmgren", team: "Thunder" },
+    { name: "OG Anunoby", team: "Knicks" },
+    { name: "Mikal Bridges", team: "Knicks" },
+    { name: "Darius Garland", team: "Cavaliers" },
+  ],
+  NFL: [
+    { name: "Patrick Mahomes", team: "Chiefs" },
+    { name: "Josh Allen", team: "Bills" },
+    { name: "Lamar Jackson", team: "Ravens" },
+    { name: "Joe Burrow", team: "Bengals" },
+    { name: "Jalen Hurts", team: "Eagles" },
+    { name: "Justin Jefferson", team: "Vikings" },
+    { name: "Tyreek Hill", team: "Dolphins" },
+    { name: "Davante Adams", team: "Raiders" },
+    { name: "Cooper Kupp", team: "Rams" },
+    { name: "Travis Kelce", team: "Chiefs" },
+    { name: "Stefon Diggs", team: "Bills" },
+    { name: "CeeDee Lamb", team: "Cowboys" },
+    { name: "Christian McCaffrey", team: "49ers" },
+    { name: "Derrick Henry", team: "Titans" },
+    { name: "Austin Ekeler", team: "Commanders" },
+    { name: "Tony Pollard", team: "Titans" },
+    { name: "Bijan Robinson", team: "Falcons" },
+    { name: "Puka Nacua", team: "Rams" },
+    { name: "Amon-Ra St. Brown", team: "Lions" },
+    { name: "Sam LaPorta", team: "Lions" },
+    { name: "C.J. Stroud", team: "Texans" },
+    { name: "Dak Prescott", team: "Cowboys" },
+    { name: "Tua Tagovailoa", team: "Dolphins" },
+    { name: "Jordan Love", team: "Packers" },
+    { name: "Jayden Daniels", team: "Commanders" },
+  ],
+  MLB: [
+    { name: "Shohei Ohtani", team: "Dodgers" },
+    { name: "Aaron Judge", team: "Yankees" },
+    { name: "Mookie Betts", team: "Dodgers" },
+    { name: "Freddie Freeman", team: "Dodgers" },
+    { name: "Yordan Alvarez", team: "Astros" },
+    { name: "Julio Rodriguez", team: "Mariners" },
+    { name: "Mike Trout", team: "Angels" },
+    { name: "Ronald Acuna Jr.", team: "Braves" },
+    { name: "Juan Soto", team: "Yankees" },
+    { name: "Kyle Tucker", team: "Cubs" },
+    { name: "Spencer Strider", team: "Braves" },
+    { name: "Gerrit Cole", team: "Yankees" },
+    { name: "Sandy Alcantara", team: "Marlins" },
+    { name: "Corbin Burnes", team: "Orioles" },
+    { name: "Zack Wheeler", team: "Phillies" },
+    { name: "Vladimir Guerrero Jr.", team: "Blue Jays" },
+    { name: "Bo Bichette", team: "Blue Jays" },
+    { name: "Jose Ramirez", team: "Guardians" },
+    { name: "Pete Alonso", team: "Mets" },
+    { name: "Bryce Harper", team: "Phillies" },
+    { name: "Trea Turner", team: "Phillies" },
+    { name: "Fernando Tatis Jr.", team: "Padres" },
+    { name: "Ha-Seong Kim", team: "Padres" },
+    { name: "Bobby Witt Jr.", team: "Royals" },
+    { name: "Gunnar Henderson", team: "Orioles" },
+  ],
+  NHL: [
+    { name: "Connor McDavid", team: "Oilers" },
+    { name: "Nathan MacKinnon", team: "Avalanche" },
+    { name: "David Pastrnak", team: "Bruins" },
+    { name: "Leon Draisaitl", team: "Oilers" },
+    { name: "Auston Matthews", team: "Maple Leafs" },
+    { name: "Cale Makar", team: "Avalanche" },
+    { name: "Mikko Rantanen", team: "Avalanche" },
+    { name: "Matthew Tkachuk", team: "Panthers" },
+    { name: "Brady Tkachuk", team: "Senators" },
+    { name: "Kirill Kaprizov", team: "Wild" },
+    { name: "Brayden Point", team: "Lightning" },
+    { name: "Nikita Kucherov", team: "Lightning" },
+    { name: "Mitchell Marner", team: "Maple Leafs" },
+    { name: "Jason Robertson", team: "Stars" },
+    { name: "Tage Thompson", team: "Sabres" },
+    { name: "Jake Guentzel", team: "Lightning" },
+    { name: "Sebastian Aho", team: "Hurricanes" },
+    { name: "Elias Lindholm", team: "Bruins" },
+    { name: "Sam Reinhart", team: "Panthers" },
+    { name: "Aleksander Barkov", team: "Panthers" },
+    { name: "Andrei Vasilevskiy", team: "Lightning" },
+    { name: "Igor Shesterkin", team: "Rangers" },
+    { name: "Linus Ullmark", team: "Senators" },
+    { name: "Quinn Hughes", team: "Canucks" },
+    { name: "Roman Josi", team: "Predators" },
+  ],
+};
+
+// ── PlayerAutocomplete component ─────────────────────────────────────────
+function PlayerAutocomplete({
+  value,
+  sport,
+  onChange,
+  onSelectPlayer,
+  livePlayers,
+}: {
+  value: string;
+  sport: string;
+  onChange: (v: string) => void;
+  onSelectPlayer: (name: string, team: string) => void;
+  livePlayers: { name: string; team: string; sport: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Merge seeds + live players, dedupe by name, filter by sport
+  const seeds = PLAYER_SEEDS[sport] ?? [];
+  const liveForSport = livePlayers
+    .filter((p) => p.sport === sport && p.name)
+    .map((p) => ({ name: p.name, team: p.team ?? "" }));
+  const allPlayers = [...liveForSport, ...seeds].reduce<{ name: string; team: string }[]>((acc, p) => {
+    if (!acc.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) acc.push(p);
+    return acc;
+  }, []);
+
+  // Filter by what user has typed
+  const q = value.trim().toLowerCase();
+  const suggestions = q.length < 1
+    ? []
+    : allPlayers
+        .filter((p) => p.name.toLowerCase().includes(q))
+        .slice(0, 8);
+
+  const handleSelect = (p: { name: string; team: string }) => {
+    onSelectPlayer(p.name, p.team);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="relative">
+        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(255,255,255,0.3)" }} />
+        <input
+          value={value}
+          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => value.length >= 1 && setOpen(true)}
+          placeholder="e.g. LeBron James"
+          autoComplete="off"
+          className="w-full pl-8 pr-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
+          style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }}
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div
+          className="absolute z-50 w-full mt-1 rounded-xl border overflow-hidden"
+          style={{ background: "hsl(265 30% 11%)", borderColor: "rgba(245,158,11,0.25)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
+        >
+          {suggestions.map((p, i) => (
+            <button
+              key={i}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(p); }}
+              className="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors hover:bg-yellow-500/10"
+              style={{ borderBottom: i < suggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+            >
+              <span className="font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>{p.name}</span>
+              {p.team && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full font-mono" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                  {p.team}
+                </span>
+              )}
+            </button>
+          ))}
+          {/* Live indicator if some suggestions came from live bets */}
+          {liveForSport.some((lp) => suggestions.some((s) => s.name === lp.name)) && (
+            <div className="px-3 py-1.5 flex items-center gap-1.5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>Includes players from live props</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PropModal({
-  open, onClose, initial, onSave,
+  open, onClose, initial, onSave, livePlayers,
 }: {
   open: boolean;
   onClose: () => void;
   initial: PropFormData;
   onSave: (data: PropFormData) => void;
+  livePlayers: { name: string; team: string; sport: string }[];
 }) {
   const [form, setForm] = useState<PropFormData>(initial);
   const set = (k: keyof PropFormData, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // Reset form whenever modal opens with new initial data
+  useEffect(() => { if (open) setForm(initial); }, [open]);
 
   if (!open) return null;
   const stats = SPORT_STATS[form.sport] ?? SPORT_STATS.NBA;
@@ -133,10 +353,13 @@ function PropModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-white/50 mb-1 block">Player Name *</label>
-              <input value={form.playerName} onChange={e => set("playerName", e.target.value)}
-                placeholder="e.g. LeBron James"
-                className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+              <PlayerAutocomplete
+                value={form.playerName}
+                sport={form.sport}
+                onChange={(v) => set("playerName", v)}
+                onSelectPlayer={(name, team) => setForm(f => ({ ...f, playerName: name, teamName: team || f.teamName }))}
+                livePlayers={livePlayers}
+              />
             </div>
             <div>
               <label className="text-xs font-semibold text-white/50 mb-1 block">Team (optional)</label>
@@ -538,6 +761,16 @@ export default function TrackedProps() {
     refetchInterval: 60000,
   });
 
+  // Pull live player names from the bets feed for autocomplete
+  const { data: liveBets = [] } = useQuery<Bet[]>({
+    queryKey: ["/api/bets"],
+    staleTime: 5 * 60 * 1000, // 5 min — only refresh occasionally
+  });
+  const livePlayers = liveBets
+    .filter((b) => b.playerName)
+    .map((b) => ({ name: b.playerName!, team: b.homeTeam ?? b.awayTeam ?? "", sport: b.sport }))
+    .filter((p, i, arr) => arr.findIndex((x) => x.name === p.name && x.sport === p.sport) === i);
+
   const refreshMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/refresh-tracked-props", {}),
     onSuccess: async (res) => {
@@ -803,6 +1036,7 @@ export default function TrackedProps() {
         onClose={() => { setModalOpen(false); setEditingProp(null); }}
         initial={modalInitial}
         onSave={handleSave}
+        livePlayers={livePlayers}
       />
     </div>
   );
