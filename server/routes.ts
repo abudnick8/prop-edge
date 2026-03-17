@@ -412,6 +412,80 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ─── API Quota Check ─────────────────────────────────────────────────────
+  // TEMP DEBUG — remove after Underdog fix confirmed
+  app.get("/api/debug/underdog", async (req, res) => {
+    try {
+      const axios = (await import("axios")).default;
+      const { data } = await axios.get(
+        "https://api.underdogfantasy.com/beta/v5/over_under_lines",
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://underdogfantasy.com/",
+            "Origin": "https://underdogfantasy.com",
+          },
+          timeout: 15000,
+        }
+      );
+      const lines = data.over_under_lines ?? [];
+      const appearances = data.appearances ?? [];
+      const players = data.players ?? [];
+      const games = data.games ?? [];
+      const soloGames = data.solo_games ?? [];
+
+      const playerMap = new Map(players.map((p: any) => [p.id, p]));
+      const gameMap = new Map([...games, ...soloGames].map((g: any) => [g.id, g]));
+      const appearanceMap = new Map(appearances.map((a: any) => [a.id, a]));
+      const included = new Set(["NBA","NFL","MLB","NHL","WBC","CBB","PGA","MMA"]);
+      const now = Date.now();
+
+      let passed = 0;
+      const dropReasons: Record<string, number> = {};
+      const sportCounts: Record<string, number> = {};
+
+      for (const line of lines) {
+        if (line.status !== "active") { dropReasons.status = (dropReasons.status||0)+1; continue; }
+        const ou = line.over_under;
+        if (!ou || ou.category !== "player_prop") { dropReasons.category = (dropReasons.category||0)+1; continue; }
+        const as_ = ou.appearance_stat;
+        if (!as_) { dropReasons.no_appearance_stat = (dropReasons.no_appearance_stat||0)+1; continue; }
+        const ap = appearanceMap.get(as_.appearance_id);
+        if (!ap) { dropReasons.no_appearance = (dropReasons.no_appearance||0)+1; continue; }
+        const pl = playerMap.get(ap.player_id);
+        if (!pl) { dropReasons.no_player = (dropReasons.no_player||0)+1; continue; }
+        if (!included.has(pl.sport_id)) { dropReasons.excluded_sport = (dropReasons.excluded_sport||0)+1; continue; }
+        const game = gameMap.get(ap.match_id);
+        if (!game) { dropReasons.no_game = (dropReasons.no_game||0)+1; continue; }
+        if (game.status === "complete" || game.status === "cancelled") { dropReasons.game_over = (dropReasons.game_over||0)+1; continue; }
+        if (game.scheduled_at && new Date(game.scheduled_at).getTime() < now - 4*60*60*1000) { dropReasons.too_old = (dropReasons.too_old||0)+1; continue; }
+        const opts = line.options ?? [];
+        const over = opts.find((o: any) => o.choice === "higher");
+        const under = opts.find((o: any) => o.choice === "lower");
+        const toProb = (o: number) => o < 0 ? (-o/(-o+100)) : (100/(o+100));
+        const op = parseInt(over?.american_price ?? "-110");
+        const up = parseInt(under?.american_price ?? "-110");
+        const pickProb = Math.max(toProb(op), toProb(up));
+        if (pickProb < 0.52) { dropReasons.low_edge = (dropReasons.low_edge||0)+1; continue; }
+        passed++;
+        sportCounts[pl.sport_id] = (sportCounts[pl.sport_id]||0)+1;
+      }
+
+      res.json({
+        totalLines: lines.length,
+        appearances: appearances.length,
+        players: players.length,
+        games: games.length,
+        soloGames: soloGames.length,
+        passed,
+        sportCounts,
+        dropReasons,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, stack: e.stack?.split('\n').slice(0,5) });
+    }
+  });
+
   app.get("/api/quota", async (req, res) => {
     try {
       const settings = await storage.getSettings();
