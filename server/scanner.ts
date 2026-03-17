@@ -982,7 +982,7 @@ function applyApifyDFSBoosts(
   });
 }
 
-// ─── Underdog Fantasy public API (player props — no key required) ──────────
+// ─── Underdog Fantasy public API (player props — no key required) — v2 fix: solo_games merged ──
 // Returns 5000+ active player props across NBA, NHL, MLB, NFL, WBC, PGA, MMA
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
