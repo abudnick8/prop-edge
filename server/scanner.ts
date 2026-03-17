@@ -987,26 +987,19 @@ function applyApifyDFSBoosts(
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   try {
-    // Underdog API sits behind Cloudflare which blocks Railway's datacenter IP range.
-    // Workaround: pass X-Forwarded-For with a trusted IP so CF allows the request through.
-    // Fetch per-sport in parallel to keep individual payloads manageable (~2-3MB each).
-    const UNDERDOG_BASE = "https://api.underdogfantasy.com/beta/v5/over_under_lines";
-    const CF_BYPASS_HEADERS = {
-      "Accept": "application/json",
-      "Accept-Encoding": "gzip, deflate",
-      "X-Forwarded-For": "8.8.8.8",          // bypass CF IP block
-      "CF-Connecting-IP": "8.8.8.8",
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    };
-
-    // Fetch all sports in parallel — one request per sport to keep payloads manageable
+    // Underdog API (api.underdogfantasy.com) blocks Railway's datacenter IP via Cloudflare.
+    // Workaround: a GitHub Actions workflow fetches data every 30 min from a GH runner
+    // (not CF-blocked) and commits it to the `cache` branch of this repo.
+    // Railway reads the cached JSON via raw.githubusercontent.com — no IP block.
+    const CACHE_BASE = "https://raw.githubusercontent.com/abudnick8/prop-edge/cache/data/underdog-cache";
     const UNDERDOG_SPORTS = ["NBA", "NHL", "MLB", "NFL"];
+
     const sportResponses = await Promise.allSettled(
       UNDERDOG_SPORTS.map(sport =>
-        axios.get(`${UNDERDOG_BASE}?sport_id=${sport}`, {
-          headers: CF_BYPASS_HEADERS,
-          timeout: 20000,
-          decompress: true,
+        axios.get(`${CACHE_BASE}/underdog_${sport}.json`, {
+          timeout: 15000,
+          // Add cache-bust query param so Railway doesn't get stale CDN responses
+          params: { _t: Math.floor(Date.now() / (5 * 60 * 1000)) }, // 5-min CDN window
         })
       )
     );
@@ -1021,18 +1014,30 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
     for (let i = 0; i < sportResponses.length; i++) {
       const resp = sportResponses[i];
       if (resp.status === "rejected") {
-        console.warn(`[Underdog] ${UNDERDOG_SPORTS[i]} fetch failed: ${resp.reason?.message}`);
+        console.warn(`[Underdog] ${UNDERDOG_SPORTS[i]} cache fetch failed: ${(resp as any).reason?.message}`);
         continue;
       }
+      const d = (resp as any).value.data;
+      // Skip sports that are still at "init" (never fetched) or have no lines
+      const cachedAt: string = d.cached_at ?? "init";
+      const lineCount = (d.over_under_lines ?? []).length;
+      if (cachedAt === "init" || lineCount === 0) {
+        console.log(`[Underdog] ${UNDERDOG_SPORTS[i]} cache is empty (cached_at=${cachedAt})`);
+        continue;
+      }
+      // Warn if cache is stale (>2 hours old)
+      const cacheAge = Date.now() - new Date(cachedAt).getTime();
+      if (cacheAge > 2 * 60 * 60 * 1000) {
+        console.warn(`[Underdog] ${UNDERDOG_SPORTS[i]} cache is stale (${Math.round(cacheAge/60000)}min old)`);
+      }
       fetchedSports.push(UNDERDOG_SPORTS[i]);
-      const d = resp.value.data;
       merged.over_under_lines.push(...(d.over_under_lines ?? []));
       for (const a of (d.appearances ?? [])) { if (!seenIds.appearances.has(a.id)) { merged.appearances.push(a); seenIds.appearances.add(a.id); } }
       for (const p of (d.players ?? []))      { if (!seenIds.players.has(p.id))     { merged.players.push(p);     seenIds.players.add(p.id);     } }
       for (const g of (d.games ?? []))        { if (!seenIds.games.has(g.id))       { merged.games.push(g);       seenIds.games.add(g.id);       } }
       for (const g of (d.solo_games ?? []))   { if (!seenIds.solo_games.has(g.id))  { merged.solo_games.push(g);  seenIds.solo_games.add(g.id);  } }
     }
-    console.log(`[Underdog] Fetched ${merged.over_under_lines.length} lines across sports: ${fetchedSports.join(", ")}`);
+    console.log(`[Underdog] Loaded ${merged.over_under_lines.length} lines from cache — sports: ${fetchedSports.join(", ")}`);
     const data = merged;
 
     const lines: any[] = data.over_under_lines ?? [];
