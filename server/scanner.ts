@@ -88,21 +88,44 @@ function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; 
 async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
   const results: InsertBet[] = [];
 
-  // Series map: seriesTicker → { sport, statCategory, betType }
-  const NBA_SERIES: Record<string, { stat: string }> = {
-    KXNBAPTS: { stat: "Points" },
-    KXNBAAST: { stat: "Assists" },
-    KXNBAREB: { stat: "Rebounds" },
-    KXNBASTL: { stat: "Steals" },
-    KXNBABLK: { stat: "Blocks" },
-    KXNBA3PT: { stat: "3-Pointers" },
+  // All known Kalshi player prop series across major sports.
+  // Series with 0 active events are skipped automatically — no error, just empty.
+  // NHL/MLB/NFL series will auto-populate when Kalshi launches them for that season.
+  const ALL_SERIES: Record<string, { stat: string; sport: string }> = {
+    // NBA (active all season)
+    KXNBAPTS: { stat: "Points",      sport: "NBA" },
+    KXNBAAST: { stat: "Assists",     sport: "NBA" },
+    KXNBAREB: { stat: "Rebounds",    sport: "NBA" },
+    KXNBASTL: { stat: "Steals",      sport: "NBA" },
+    KXNBABLK: { stat: "Blocks",      sport: "NBA" },
+    KXNBA3PT: { stat: "3-Pointers",  sport: "NBA" },
+    KXNBAPAR: { stat: "Pts+Ast+Reb", sport: "NBA" },
+    // MLB (active April–October)
+    KXMLBHR:    { stat: "Home Runs",    sport: "MLB" },
+    KXMLBHITS:  { stat: "Hits",         sport: "MLB" },
+    KXMLBSO:    { stat: "Strikeouts",   sport: "MLB" },
+    KXMLBRBI:   { stat: "RBIs",         sport: "MLB" },
+    KXMLBBB:    { stat: "Walks",        sport: "MLB" },
+    KXMLBSB:    { stat: "Stolen Bases", sport: "MLB" },
+    // NHL (active October–June)
+    KXNHLGLS: { stat: "Goals",         sport: "NHL" },
+    KXNHLAST: { stat: "Assists",       sport: "NHL" },
+    KXNHLPTS: { stat: "Points",        sport: "NHL" },
+    KXNHLSOG: { stat: "Shots on Goal", sport: "NHL" },
+    // NFL (active September–February)
+    KXNFLPAYDS:  { stat: "Passing Yards",   sport: "NFL" },
+    KXNFLRUYDS:  { stat: "Rushing Yards",   sport: "NFL" },
+    KXNFLRECYDS: { stat: "Receiving Yards", sport: "NFL" },
+    KXNFLTD:     { stat: "Touchdowns",      sport: "NFL" },
+    KXNFLREC:    { stat: "Receptions",      sport: "NFL" },
+    KXNFLCMP:    { stat: "Completions",     sport: "NFL" },
   };
 
   // Pick the best threshold line per player per stat (closest to 50% yes price = most interesting)
   // We want the line where yes_ask is nearest 0.5 — that's the true prop line
   const playerBestLine = new Map<string, { line: number; yesPrice: number; market: any; stat: string; sport: string; event: any }>();
 
-  for (const [seriesTicker, { stat }] of Object.entries(NBA_SERIES)) {
+  for (const [seriesTicker, { stat, sport }] of Object.entries(ALL_SERIES)) {
     try {
       // Get all open events for this series
       const eventsRes = await axios.get(`${KALSHI_BASE}/events`, {
@@ -160,7 +183,7 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
               yesPrice: parseFloat(priceStr),
               market: best,
               stat,
-              sport: "NBA",
+              sport,
               event,
             });
           }
@@ -237,7 +260,7 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
     });
   }
 
-  console.log(`Kalshi player props: ${results.length} props across NBA (Points/Assists/Rebounds/Steals/Blocks/3PT)`);
+  console.log(`Kalshi player props: ${results.length} props across NBA/MLB/NHL/NFL`);
   return results;
 }
 
