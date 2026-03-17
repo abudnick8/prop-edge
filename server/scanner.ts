@@ -1004,13 +1004,16 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
     const appearances: any[] = data.appearances ?? [];
     const players: any[] = data.players ?? [];
     const games: any[] = data.games ?? [];
+    const soloGames: any[] = data.solo_games ?? []; // individual matchups (tennis, golf, MMA, etc.)
 
     // Build lookup maps
     const playerMap = new Map<string, any>();
     for (const p of players) playerMap.set(p.id, p);
 
+    // Merge games + solo_games — solo_games covers 1v1 events (tennis, MMA, golf rounds)
     const gameMap = new Map<number, any>();
     for (const g of games) gameMap.set(g.id, g);
+    for (const g of soloGames) gameMap.set(g.id, g); // <-- FIX: was missing solo_games
 
     const appearanceMap = new Map<string, any>();
     for (const a of appearances) appearanceMap.set(a.id, a);
@@ -1129,6 +1132,12 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
 
       const gameTimeVal = gameTime ? new Date(gameTime) : null;
 
+      // Parse "Away Team @ Home Team" from game title
+      const gameTitle: string = game.full_team_names_title ?? game.full_title ?? game.abbreviated_title ?? "";
+      const atIdx = gameTitle.indexOf(" @ ");
+      const awayTeam = atIdx >= 0 ? gameTitle.substring(0, atIdx).trim() : undefined;
+      const homeTeam = atIdx >= 0 ? gameTitle.substring(atIdx + 3).trim() : undefined;
+
       bets.push({
         id: `underdog_${line.id}`,
         title,
@@ -1136,6 +1145,7 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         sport,
         betType: "player_prop",
         source: "underdog",
+        line: statValue,
         overOdds: overOdds,
         underOdds: underOdds,
         impliedProbability: pickProb,
@@ -1146,6 +1156,8 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         researchSummary: confidence.summary,
         gameTime: gameTimeVal,
         playerName,
+        homeTeam,
+        awayTeam,
         isHighConfidence: confidence.score >= 80,
         teamStats: {
           pickSide,
@@ -1155,7 +1167,7 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
           playerName,
           statType: statName,
           statValue,
-          gameTitle: game.full_team_names_title ?? game.title,
+          gameTitle,
         },
       });
       count++;
