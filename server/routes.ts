@@ -1776,9 +1776,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(cached.data);
       }
 
-      const ACTION_API_KEY = "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2";
       const ACTION_BOOK_IDS = "15,68,30";
-      const today = new Date().toISOString().slice(0, 10);
+      // ActionNetwork requires YYYYMMDD format (no dashes); bearer auth causes 400
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const sports = [
         { slug: "nba",   label: "NBA" },
         { slug: "mlb",   label: "MLB" },
@@ -1791,9 +1791,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       await Promise.allSettled(sports.map(async ({ slug, label }) => {
         try {
           const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${today}`;
-          const headers: Record<string, string> = ACTION_API_KEY
-            ? { "Authorization": `Bearer ${ACTION_API_KEY}`, "Accept": "application/json", "User-Agent": "" }
-            : { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Accept": "application/json", "Referer": "https://www.actionnetwork.com/" };
+          const headers: Record<string, string> = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.actionnetwork.com/",
+          };
 
           const { data } = await axios.get(url, { timeout: 10000, headers });
           const games: any[] = data?.games ?? data?.scoreboard ?? [];
