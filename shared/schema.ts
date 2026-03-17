@@ -29,6 +29,7 @@ export const bets = pgTable("bets", {
   playerName: text("player_name"),
   isHighConfidence: boolean("is_high_confidence").default(false),
   isLotto: boolean("is_lotto").default(false), // high-payout low-probability props (HR, TD, Goals, etc.)
+  allSources: jsonb("all_sources").$type<Array<{ source: string; overOdds?: number; underOdds?: number; line?: number; impliedProb?: number; pickSide?: string }>>(),
   notificationSent: boolean("notification_sent").default(false),
   status: text("status").default("open"), // open, closed, won, lost
   createdAt: timestamp("created_at").defaultNow(),

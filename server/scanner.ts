@@ -2334,26 +2334,79 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
 
-  // Merge Underdog props — deduplicate against Kalshi by player+stat combo
-  // Kalshi props take priority (prediction market pricing) but Underdog fills gaps (NHL/MLB/NFL)
-  const existingPropKeys = new Set(
-    kalshiAll
-      .filter(b => b.betType === "player_prop" && b.playerName)
-      .map(b => `${b.playerName}::${b.sport}`)
-  );
-  let underdogAdded = 0;
-  for (const b of underdogProps) {
-    const key = `${b.playerName}::${b.sport}`;
-    if (!existingPropKeys.has(key)) {
-      results.push(b);
-      existingPropKeys.add(key);
-      underdogAdded++;
+  results.push(...kalshiAll, ...poly, ...actionNet);
+  console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards + ${kalshiProps.length} player props = ${kalshiAll.length} unique`);
+  console.log(`Underdog player props fetched: ${underdogProps.length}`);
+
+  // ── Multi-source player prop aggregation ──────────────────────────────────
+  // Goal: one bet card per player+sport, showing all sources that price the same prop.
+  // Priority: Kalshi > Underdog > DraftKings (by pricing reliability)
+  // For each player prop from Underdog:
+  //   • If Kalshi already has a prop for this player+sport → attach Underdog odds to
+  //     the Kalshi bet's allSources array (don't add a separate card)
+  //   • Otherwise → add as primary card (Underdog line is the canonical line)
+  // Same logic applies to DraftKings props pulled later via Odds API.
+  //
+  // allSources shape: [{ source, overOdds, underOdds, line, impliedProb, pickSide }]
+
+  // Index all existing player props by playerName::sport
+  const propByPlayerSport = new Map<string, InsertBet>();
+  for (const b of results) {
+    if (b.betType === "player_prop" && b.playerName) {
+      const key = `${b.playerName}::${b.sport}`;
+      if (!propByPlayerSport.has(key)) propByPlayerSport.set(key, b);
     }
   }
 
-  results.push(...kalshiAll, ...poly, ...actionNet);
-  console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards + ${kalshiProps.length} player props = ${kalshiAll.length} unique`);
-  console.log(`Underdog player props: ${underdogProps.length} fetched, ${underdogAdded} added (non-duplicate)`);
+  // Seed allSources on existing primary bets from their own source
+  for (const b of propByPlayerSport.values()) {
+    if (!b.allSources) {
+      const ts = b.teamStats as { pickSide?: string } | null;
+      b.allSources = [{
+        source: b.source,
+        overOdds: b.overOdds ?? undefined,
+        underOdds: b.underOdds ?? undefined,
+        line: b.line ?? undefined,
+        impliedProb: b.impliedProbability ?? undefined,
+        pickSide: ts?.pickSide ?? undefined,
+      }];
+    }
+  }
+
+  let underdogMerged = 0, underdogAdded = 0;
+  for (const b of underdogProps) {
+    const key = `${b.playerName}::${b.sport}`;
+    const primary = propByPlayerSport.get(key);
+    const ts = b.teamStats as { pickSide?: string; pickedOdds?: number } | null;
+    const sourceEntry = {
+      source: b.source,
+      overOdds: b.overOdds ?? undefined,
+      underOdds: b.underOdds ?? undefined,
+      line: b.line ?? undefined,
+      impliedProb: b.impliedProbability ?? undefined,
+      pickSide: ts?.pickSide ?? undefined,
+    };
+    if (primary) {
+      // Attach Underdog odds to existing primary bet
+      if (!primary.allSources) primary.allSources = [];
+      const alreadyHasSource = primary.allSources.some(s => s.source === "underdog");
+      if (!alreadyHasSource) {
+        primary.allSources.push(sourceEntry);
+        // Boost confidence +3 when multiple independent sources agree on same player prop
+        if (primary.confidenceScore !== null && primary.confidenceScore !== undefined) {
+          primary.confidenceScore = Math.min(98, primary.confidenceScore + 3);
+        }
+      }
+      underdogMerged++;
+    } else {
+      // New player not in Kalshi — Underdog is primary
+      b.allSources = [sourceEntry];
+      results.push(b);
+      propByPlayerSport.set(key, b);
+      underdogAdded++;
+    }
+  }
+  console.log(`Underdog merge: ${underdogMerged} merged into existing props, ${underdogAdded} new props added`);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
@@ -2380,7 +2433,46 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     enabledSports: allEnabledSports,
     enableSeasonProps: settings.enableSeasonProps ?? true,
   });
-  results.push(...odds);
+  // Merge DraftKings/Odds API player props into allSources on existing cards
+  let dkMerged = 0, dkAdded = 0;
+  for (const b of odds) {
+    if (b.betType === "player_prop" && b.playerName) {
+      const key = `${b.playerName}::${b.sport}`;
+      const primary = propByPlayerSport.get(key);
+      const ts = b.teamStats as { pickSide?: string } | null;
+      const sourceEntry = {
+        source: b.source,
+        overOdds: b.overOdds ?? undefined,
+        underOdds: b.underOdds ?? undefined,
+        line: b.line ?? undefined,
+        impliedProb: b.impliedProbability ?? undefined,
+        pickSide: ts?.pickSide ?? undefined,
+      };
+      if (primary) {
+        if (!primary.allSources) primary.allSources = [];
+        const alreadyHasSource = primary.allSources.some(s => s.source === b.source);
+        if (!alreadyHasSource) {
+          primary.allSources.push(sourceEntry);
+          // Boost confidence +2 for each additional book confirming the line
+          if (primary.confidenceScore !== null && primary.confidenceScore !== undefined) {
+            primary.confidenceScore = Math.min(98, primary.confidenceScore + 2);
+          }
+        }
+        dkMerged++;
+      } else {
+        b.allSources = [sourceEntry];
+        results.push(b);
+        propByPlayerSport.set(key, b);
+        dkAdded++;
+      }
+    } else {
+      // Non-prop bets (spreads, totals, moneylines) go straight in
+      results.push(b);
+    }
+  }
+  if (dkMerged + dkAdded > 0) {
+    console.log(`Odds API props: ${dkMerged} merged into existing cards, ${dkAdded} new cards added`);
+  }
 
   // If no live data came back, seed with known futures so the app always has content
   if (results.length === 0) {

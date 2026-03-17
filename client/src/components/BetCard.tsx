@@ -315,6 +315,94 @@ function PlayerHeadshot({ playerName, sport }: { playerName: string | null | und
   );
 }
 
+// ── Multi-Source Odds Strip ──────────────────────────────────────────────────
+interface SourceEntry {
+  source: string;
+  overOdds?: number;
+  underOdds?: number;
+  line?: number;
+  impliedProb?: number;
+  pickSide?: string;
+}
+
+const SOURCE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  kalshi:        { label: "Kalshi",      color: "#a78bfa", bg: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.30)" },
+  underdog:      { label: "Underdog",    color: "#f97316", bg: "rgba(249,115,22,0.10)",  border: "rgba(249,115,22,0.30)" },
+  draftkings:    { label: "DraftKings",  color: "#22c55e", bg: "rgba(34,197,94,0.10)",   border: "rgba(34,197,94,0.30)" },
+  polymarket:    { label: "Polymarket",  color: "#60a5fa", bg: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.30)" },
+  sportsgameodds:{ label: "SGO",         color: "#facc15", bg: "rgba(250,204,21,0.10)",  border: "rgba(250,204,21,0.30)" },
+  actionnetwork: { label: "ActNet",      color: "#34d399", bg: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.30)" },
+};
+
+function fmtOdds(v: number | undefined): string {
+  if (v === undefined) return "";
+  return v > 0 ? `+${v}` : `${v}`;
+}
+
+function MultiSourceOddsStrip({ allSources, pickSide }: { allSources: SourceEntry[]; pickSide: string | null }) {
+  if (!allSources || allSources.length < 2) return null;
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 mb-3"
+      style={{
+        background: "rgba(255,255,255,0.02)",
+        borderRadius: "8px",
+        padding: "6px 8px",
+        border: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <span className="text-[9px] font-bold uppercase tracking-widest self-center mr-1" style={{ color: "rgba(255,255,255,0.35)" }}>
+        Lines
+      </span>
+      {allSources.map((s, i) => {
+        const cfg = SOURCE_CONFIG[s.source.toLowerCase()] ?? {
+          label: s.source,
+          color: "#e2e8f0",
+          bg: "rgba(255,255,255,0.08)",
+          border: "rgba(255,255,255,0.15)",
+        };
+        // pick over or under odds based on pick side
+        const relevantOdds = pickSide === "OVER" ? s.overOdds : pickSide === "UNDER" ? s.underOdds : (s.overOdds ?? s.underOdds);
+        const oddsStr = fmtOdds(relevantOdds);
+        const lineStr = s.line !== undefined ? `${s.line}` : "";
+        const implied = s.impliedProb !== undefined ? `${Math.round(s.impliedProb * 100)}%` : "";
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-1 px-2 py-1 rounded-md"
+            style={{
+              background: cfg.bg,
+              border: `1px solid ${cfg.border}`,
+            }}
+          >
+            <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: cfg.color }}>
+              {cfg.label}
+            </span>
+            {lineStr && (
+              <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.65)" }}>
+                {lineStr}
+              </span>
+            )}
+            {oddsStr && (
+              <span
+                className="text-[10px] font-black font-mono"
+                style={{ color: (relevantOdds ?? 0) > 0 ? "#4ade80" : "#f87171" }}
+              >
+                {oddsStr}
+              </span>
+            )}
+            {!oddsStr && implied && (
+              <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {implied}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Pick Side Banner ──────────────────────────────────────────────────────────
 function PickBanner({ pickSide, line, oddsDisplay }: { pickSide: string; line: number | null; oddsDisplay: string | null }) {
   const isOver = pickSide === "OVER";
@@ -502,6 +590,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
             <PickBanner pickSide={pickSide} line={bet.line} oddsDisplay={oddsDisplay} />
           )}
 
+          {/* Multi-Source Odds Strip — shown when 2+ sources agree on this player prop */}
+          {bet.allSources && bet.allSources.length >= 2 && (
+            <MultiSourceOddsStrip allSources={bet.allSources} pickSide={pickSide} />
+          )}
+
           {/* Top Row: Ring + Info + Team Logos / Player Headshot */}
           <div className="flex items-start gap-3">
             <ConfidenceRing score={score} />
@@ -526,6 +619,14 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               {/* Badges row */}
               <div className="flex flex-wrap items-center gap-1.5 mb-2">
                 <SourceBadge source={bet.source} />
+                {bet.allSources && bet.allSources.length >= 2 && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide"
+                    style={{ background: "rgba(167,139,250,0.12)", borderColor: "rgba(167,139,250,0.35)", color: "#c4b5fd" }}
+                  >
+                    🔗 {bet.allSources.length} sources
+                  </span>
+                )}
                 <SportBadge sport={bet.sport} />
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground capitalize">
                   {BET_TYPE_EMOJI[bet.betType] ?? "🎰"} {bet.betType.replace("_", " ")}
