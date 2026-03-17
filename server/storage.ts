@@ -88,6 +88,8 @@ export class MemStorage implements IStorage {
       awayTeam: bet.awayTeam ?? null,
       playerName: bet.playerName ?? null,
       isHighConfidence: bet.isHighConfidence ?? false,
+      isLotto: bet.isLotto ?? false,
+      allSources: bet.allSources ?? null,
       notificationSent: bet.notificationSent ?? false,
       status: bet.status ?? "open",
       createdAt: existing?.createdAt ?? new Date(),
