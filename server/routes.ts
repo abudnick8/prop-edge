@@ -553,8 +553,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const parlayMatch = q.match(/(?:build|give|make|create|suggest|find|pick).*?(\d+)[- ]?(?:leg|player|pick|team|bet)?.*?parlay/i)
         ?? q.match(/parlay.*?(\d+)[- ]?(?:leg|player|pick|team|bet)/i)
         ?? q.match(/(\d+)[- ]?(?:leg|player|pick|team|bet)[- ]?parlay/i);
-      const isParlayRequest = !!parlayMatch || q.includes("parlay");
-      const parlayLegs = parlayMatch ? parseInt(parlayMatch[1]) : (q.includes("parlay") ? 4 : 0);
+      const isParlayRequest = !!parlayMatch || (q.includes("parlay") && !q.includes("same game") && !q.includes("sgp"));
+      const parlayLegs = parlayMatch ? parseInt(parlayMatch[1]) : (isParlayRequest ? 4 : 0);
+
+      // SGP detection: "same game parlay", "sgp", "same-game"
+      const isSGPRequest = q.includes("same game parlay") || q.includes("same-game parlay")
+        || q.includes("sgp") || q.includes("same game props") || q.includes("same game picks");
 
       // Detect sport filter from question
       const sportFilter = q.includes("nba") || q.includes("basketball") ? "NBA"
@@ -563,7 +567,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         : q.includes("nhl") || q.includes("hockey") ? "NHL" : null;
 
       // Detect if asking about best/top picks generally
-      const isTopPicksRequest = !isParlayRequest && (
+      const isTopPicksRequest = !isParlayRequest && !isSGPRequest && (
         q.includes("best") || q.includes("top") || q.includes("recommend") ||
         q.includes("tonight") || q.includes("today") || q.includes("right now") ||
         q.includes("what should") || q.includes("which bet") || q.includes("good bet")
@@ -622,8 +626,121 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       let answer: string;
       let relatedBets: any[] = [];
 
+      // ─── SGP MODE (Same Game Parlay) ─────────────────────────────────────
+      if (isSGPRequest) {
+        // Extract leg count if specified, default 3
+        const sgpLegMatch = q.match(/(\d+)[- ]?(?:leg|pick|prop)?/);
+        const sgpLegs = sgpLegMatch ? Math.min(Math.max(parseInt(sgpLegMatch[1]), 2), 6) : 3;
+
+        // Extract a specific team or game if mentioned
+        const teamWords = q.replace(/same.?game|parlay|sgp|props?|picks?|legs?|build|give|make|create|suggest|find/gi, "").trim().split(/\s+/).filter(w => w.length > 2);
+
+        // Filter to player props only, score by team/game match
+        const propPool = bets
+          .filter(b => b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 60)
+          .map(b => {
+            let score = 0;
+            const fields = [b.playerName, b.homeTeam, b.awayTeam, b.title, b.sport].map(f => (f ?? "").toLowerCase());
+            for (const f of fields) for (const w of teamWords) if (f.includes(w)) score += 3;
+            if (sportFilter && b.sport === sportFilter) score += 5;
+            score += (b.confidenceScore ?? 0) / 20; // confidence tiebreaker
+            return { bet: b, score };
+          })
+          .sort((a, b) => b.score - a.score);
+
+        // Group by game (homeTeam|awayTeam key)
+        const gameGroups = new Map<string, any[]>();
+        for (const { bet } of propPool) {
+          const key = [bet.homeTeam, bet.awayTeam].filter(Boolean).sort().join("|");
+          if (!key) continue;
+          if (!gameGroups.has(key)) gameGroups.set(key, []);
+          gameGroups.get(key)!.push(bet);
+        }
+
+        // Pick the best game (most high-conf props available)
+        let bestGame: { key: string; bets: any[] } | null = null;
+        for (const [key, gameBets] of gameGroups) {
+          if (!bestGame || gameBets.length > bestGame.bets.length) {
+            bestGame = { key, bets: gameBets };
+          }
+        }
+
+        // If a specific game was mentioned by team name, prefer that one
+        if (teamWords.length > 0) {
+          for (const [key, gameBets] of gameGroups) {
+            if (teamWords.some(w => key.toLowerCase().includes(w))) {
+              bestGame = { key, bets: gameBets };
+              break;
+            }
+          }
+        }
+
+        if (!bestGame || bestGame.bets.length < 2) {
+          // Fallback: just use top props from any games, dedupe by player
+          const fallbackLegs: any[] = [];
+          const usedPlayers = new Set<string>();
+          for (const { bet } of propPool) {
+            if (fallbackLegs.length >= sgpLegs) break;
+            if (bet.playerName && usedPlayers.has(bet.playerName.toLowerCase())) continue;
+            fallbackLegs.push(bet);
+            if (bet.playerName) usedPlayers.add(bet.playerName.toLowerCase());
+          }
+          relatedBets = fallbackLegs.map(b => serializeBet(b, "sgp leg"));
+          const avgConf = fallbackLegs.length ? Math.round(fallbackLegs.reduce((s, b) => s + (b.confidenceScore ?? 0), 0) / fallbackLegs.length) : 0;
+          answer = `⚡ SAME GAME PARLAY — ${fallbackLegs.length} Props (avg confidence: ${avgConf}/100)\n\nNote: Not enough props found for a single game — showing top props across games.\n\n${fallbackLegs.map((b, i) => {
+            const conf = b.confidenceScore ?? 0;
+            const line = b.line != null ? ` | Line: ${b.line}` : "";
+            const odds = b.overOdds != null ? ` (${b.overOdds > 0 ? "+" : ""}${b.overOdds})` : "";
+            const why = b.keyFactors?.slice(0, 2).join("; ") ?? b.researchSummary?.slice(0, 100) ?? "";
+            return `**Leg ${i+1}: ${b.title}**${line}${odds}\n   Confidence: ${conf}/100 | Player: ${b.playerName ?? "—"}\n   Why: ${why}`;
+          }).join("\n\n")}\n\n⚠️ SGP odds are correlated — books may restrict parlay combinations on the same game.`;
+        } else {
+          // Pick top N legs from the best game, dedupe by player and stat type
+          const gameBets = bestGame.bets;
+          const gameName = bestGame.key.replace("|", " vs ");
+          const [home, away] = bestGame.key.split("|");
+          const legs: any[] = [];
+          const usedPlayers = new Set<string>();
+          const usedStats = new Set<string>();
+
+          for (const b of gameBets.sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))) {
+            if (legs.length >= sgpLegs) break;
+            if (b.playerName && usedPlayers.has(b.playerName.toLowerCase())) continue;
+            // Avoid duplicate stat categories (e.g. two "points" props)
+            const statKey = (b.title ?? "").toLowerCase().match(/over|under/i) ? b.title.toLowerCase().replace(/[\d.]/g, "").trim() : b.title.toLowerCase();
+            if (usedStats.has(statKey)) continue;
+            legs.push(b);
+            if (b.playerName) usedPlayers.add(b.playerName.toLowerCase());
+            usedStats.add(statKey);
+          }
+
+          // If still short, pad from other games
+          if (legs.length < sgpLegs) {
+            const extra = propPool
+              .map(p => p.bet)
+              .filter(b => !legs.find(l => l.id === b.id) && (b.confidenceScore ?? 0) >= 65)
+              .slice(0, sgpLegs - legs.length);
+            legs.push(...extra);
+          }
+
+          relatedBets = legs.map(b => serializeBet(b, "sgp leg"));
+          const avgConf = legs.length ? Math.round(legs.reduce((s, b) => s + (b.confidenceScore ?? 0), 0) / legs.length) : 0;
+          const verdict = avgConf >= 80 ? "🔥 HIGH CONFIDENCE SGP" : avgConf >= 70 ? "⚡ SOLID SGP" : "⚠️ MODERATE SGP";
+
+          const legsText = legs.map((b, i) => {
+            const conf = b.confidenceScore ?? 0;
+            const confVerdict = conf >= 82 ? "✅" : conf >= 70 ? "⚠️" : "❌";
+            const line = b.line != null ? ` | Line: ${b.line}` : "";
+            const odds = b.overOdds != null ? ` (${b.overOdds > 0 ? "+" : ""}${b.overOdds})` : "";
+            const why = b.keyFactors?.slice(0, 2).join("; ") ?? b.researchSummary?.slice(0, 120) ?? "";
+            return `**Leg ${i+1}: ${b.title}**${line}${odds}\n   ${confVerdict} Confidence: ${conf}/100 | Player: ${b.playerName ?? "—"}\n   Why: ${why}`;
+          }).join("\n\n");
+
+          answer = `${verdict} — ${legs.length}-Leg SGP\n📍 Game: ${gameName}\nAvg Confidence: ${avgConf}/100\n\n${legsText}\n\n⚠️ SGP reminder: all legs must hit. Books often limit SGP payouts on correlated props (e.g. a player scoring more often leads to more assists). Check your book's SGP rules before placing.`;
+        }
+
       // ─── PARLAY MODE ────────────────────────────────────────────────────────
-      if (isParlayRequest) {
+      } else if (isParlayRequest) {
         const n = Math.min(Math.max(parlayLegs, 2), 8); // clamp 2-8 legs
 
         // Pick the top N bets, filtered by sport if specified, prioritizing props

@@ -223,25 +223,36 @@ export default function Ask() {
                     {item.a}
                   </div>
 
-                  {/* Related bets */}
-                  {item.relatedBets?.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp size={12} className="text-primary" />
-                        <p className="text-xs font-semibold text-foreground">
-                          Similar bets — same player, team, or bet type
-                        </p>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">
-                          {item.relatedBets.length}
-                        </span>
-                      </div>
+                  {/* Related bets / SGP legs */}
+                  {item.relatedBets?.length > 0 && (() => {
+                    const isSGP = item.relatedBets.every(b => b.similarityReason === "sgp leg");
+                    return (
                       <div className="space-y-2">
-                        {item.relatedBets.map((bet) => (
-                          <RelatedBetCard key={bet.id} bet={bet} />
-                        ))}
+                        <div className="flex items-center gap-2">
+                          {isSGP ? (
+                            <>
+                              <Shuffle size={12} style={{ color: "hsl(265 80% 75%)" }} />
+                              <p className="text-xs font-semibold" style={{ color: "hsl(265 80% 80%)" }}>SGP Legs — tap each to view full details</p>
+                            </>
+                          ) : (
+                            <>
+                              <TrendingUp size={12} className="text-primary" />
+                              <p className="text-xs font-semibold text-foreground">Similar bets — same player, team, or bet type</p>
+                            </>
+                          )}
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">
+                            {item.relatedBets.length}
+                          </span>
+                        </div>
+                        <div className={`space-y-2 ${isSGP ? "rounded-xl p-2" : ""}`}
+                          style={isSGP ? { border: "1px solid hsl(265 80% 55% / 0.25)", background: "hsl(265 80% 55% / 0.05)" } : {}}>
+                          {item.relatedBets.map((bet) => (
+                            <RelatedBetCard key={bet.id} bet={bet} />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             </div>

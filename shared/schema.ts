@@ -105,3 +105,74 @@ export const insertTrackedPropSchema = createInsertSchema(trackedProps).omit({
 });
 export type InsertTrackedProp = z.infer<typeof insertTrackedPropSchema>;
 export type TrackedProp = typeof trackedProps.$inferSelect;
+
+// ── CLV Line Value Tracker ─────────────────────────────────────────────────
+
+// A tracked line: one event/market we are watching
+export const clvLines = pgTable("clv_lines", {
+  id: text("id").primaryKey(),
+  sport: text("sport").notNull(),           // NBA, NFL, MLB, NHL
+  betType: text("bet_type").notNull(),       // spread, total, moneyline, player_prop
+  eventId: text("event_id"),                // Odds API event_id
+  eventDescription: text("event_description").notNull(), // "Lakers vs Celtics"
+  marketKey: text("market_key").notNull(),  // h2h, spreads, totals, player_points
+  outcomeLabel: text("outcome_label").notNull(), // "Lakers -5.5", "Over 220.5", "LeBron James Over 27.5"
+  playerName: text("player_name"),
+  book: text("book").notNull(),             // draftkings, fanduel
+  openingLine: real("opening_line"),        // numeric line at time of tracking start
+  openingOdds: integer("opening_odds"),     // American odds at open
+  currentLine: real("current_line"),
+  currentOdds: integer("current_odds"),
+  closingLine: real("closing_line"),        // populated when game starts
+  closingOdds: integer("closing_odds"),
+  clvBeat: boolean("clv_beat"),             // did we beat closing line?
+  clvDelta: real("clv_delta"),              // closing - opening (positive = moved in our favor)
+  lineMovePct: real("line_move_pct"),       // % move from opening
+  sharpnessScore: real("sharpness_score"),  // 0-100 computed from line move direction + speed
+  alertThreshold: real("alert_threshold").default(10), // % move that triggers alert
+  alertDirection: text("alert_direction").default("both"), // "favor" | "against" | "both"
+  status: text("status").default("tracking"), // tracking | closed | expired
+  gameTime: timestamp("game_time"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertClvLineSchema = createInsertSchema(clvLines).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertClvLine = z.infer<typeof insertClvLineSchema>;
+export type ClvLine = typeof clvLines.$inferSelect;
+
+// Snapshots: line history over time for a tracked line
+export const clvSnapshots = pgTable("clv_snapshots", {
+  id: text("id").primaryKey(),
+  clvLineId: text("clv_line_id").notNull(),
+  book: text("book").notNull(),
+  line: real("line"),
+  odds: integer("odds"),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+});
+
+export const insertClvSnapshotSchema = createInsertSchema(clvSnapshots).omit({ recordedAt: true });
+export type InsertClvSnapshot = z.infer<typeof insertClvSnapshotSchema>;
+export type ClvSnapshot = typeof clvSnapshots.$inferSelect;
+
+// Alerts: fired when line moves past threshold
+export const clvAlerts = pgTable("clv_alerts", {
+  id: text("id").primaryKey(),
+  clvLineId: text("clv_line_id").notNull(),
+  alertType: text("alert_type").notNull(), // "move_favor" | "move_against" | "sharp_move"
+  message: text("message").notNull(),
+  movePct: real("move_pct"),
+  fromLine: real("from_line"),
+  toLine: real("to_line"),
+  fromOdds: integer("from_odds"),
+  toOdds: integer("to_odds"),
+  dismissed: boolean("dismissed").default(false),
+  firedAt: timestamp("fired_at").defaultNow(),
+});
+
+export const insertClvAlertSchema = createInsertSchema(clvAlerts).omit({ firedAt: true });
+export type InsertClvAlert = z.infer<typeof insertClvAlertSchema>;
+export type ClvAlert = typeof clvAlerts.$inferSelect;
