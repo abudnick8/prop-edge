@@ -637,7 +637,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                   impliedProbability: pickedProb, confidenceScore: score.score,
                   riskLevel: score.risk, recommendedAllocation: score.allocation,
                   keyFactors: [label, ...score.factors], researchSummary: score.summary,
-                  isHighConfidence: score.score >= 80, status: "open",
+                  isHighConfidence: score.score >= 80,
                   homeTeam, awayTeam, playerName: null, gameTime,
                   notificationSent: false, playerStats: null, teamStats: null,
                   yesPrice: null, noPrice: null,
@@ -688,7 +688,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 impliedProbability: pickSpreadProb, confidenceScore: score.score,
                 riskLevel: score.risk, recommendedAllocation: score.allocation,
                 keyFactors: [spreadLabel, ...score.factors], researchSummary: score.summary,
-                isHighConfidence: score.score >= 80, status: "open",
+                isHighConfidence: score.score >= 80,
                 homeTeam, awayTeam, playerName: null, gameTime,
                 notificationSent: false, playerStats: null, teamStats: null,
                 yesPrice: null, noPrice: null,
@@ -734,7 +734,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 impliedProbability: pickTotalProb, confidenceScore: score.score,
                 riskLevel: score.risk, recommendedAllocation: score.allocation,
                 keyFactors: [totalLabel, ...score.factors], researchSummary: score.summary,
-                isHighConfidence: score.score >= 80, status: "open",
+                isHighConfidence: score.score >= 80,
                 homeTeam, awayTeam, playerName: null, gameTime,
                 notificationSent: false, playerStats: null, teamStats: null,
                 yesPrice: null, noPrice: null,
@@ -1579,7 +1579,7 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
             recommendedAllocation: score.allocation,
             keyFactors: [`Pick: ${sideLabel}${line !== undefined ? ` ${line}` : ""} (${oddsDisplay_})`, ...(score.factors ?? [])],
             researchSummary: `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
-            isHighConfidence: score.score >= 80, status: "open",
+            isHighConfidence: score.score >= 80,
             homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
             playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
             notificationSent: false, playerStats: null,
@@ -1616,7 +1616,7 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
             recommendedAllocation: score.allocation,
             keyFactors: [`Pick: ${sideLabel} (${oddsDisplay_})`, ...(score.factors ?? [])],
             researchSummary: `[${sideLabel} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
-            isHighConfidence: score.score >= 80, status: "open",
+            isHighConfidence: score.score >= 80,
             homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
             playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
             notificationSent: false, playerStats: null,
@@ -1741,6 +1741,31 @@ function getSourceTier(source: string): { tier: 1 | 2 | 3; label: string } {
     case "underdog":      return { tier: 2, label: "Underdog Fantasy — real-money player prop lines" };
     default:              return { tier: 3, label: `${source} — supplemental data source` };
   }
+}
+
+// ─── Lotto prop detection ─────────────────────────────────────────────────────
+// "Lotto" props are high-payout / low-implied-probability bets:
+//   • Stat categories that are rare/event-based (HR, TD, Goal, Block, Stolen Base, etc.)
+//   • AND implied probability < 40% (i.e. paying +150 or better)
+// The top-10 by confidence are surfaced in the dedicated Lotto tab.
+const LOTTO_STAT_KEYWORDS = [
+  // MLB
+  "home run", "home_run", "batter_home_runs", "stolen base", "stolen_base",
+  // NFL
+  "touchdown", "anytime td", "anytime_td", "td scorer",
+  // NHL
+  "goal", "goals",
+  // NBA
+  "block", "blocks", "steal", "steals",
+  // General
+  "hat trick", "hat-trick",
+];
+
+export function isLottoProp(title: string, impliedProb: number, betType?: string): boolean {
+  if (betType && betType !== "player_prop") return false;
+  if (impliedProb >= 0.40) return false; // must pay at least +150 (60% underdog)
+  const t = title.toLowerCase();
+  return LOTTO_STAT_KEYWORDS.some((kw) => t.includes(kw));
 }
 
 function computeConfidence(input: ScoreInput): ScoreResult {
@@ -2370,6 +2395,18 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   // Remove any markets whose game/close time has already passed
   const fresh = filterStale(results);
   console.log(`Staleness filter: ${results.length} raw → ${fresh.length} current markets`);
+
+  // ── Tag lotto props ──────────────────────────────────────────────────────────
+  // Mark any player prop that matches a lotto stat category AND pays +150 or better
+  for (const bet of fresh) {
+    bet.isLotto = isLottoProp(
+      bet.title,
+      bet.impliedProbability ?? bet.yesPrice ?? 0.5,
+      bet.betType ?? undefined,
+    );
+  }
+  const lottoCount = fresh.filter(b => b.isLotto).length;
+  console.log(`Lotto props tagged: ${lottoCount}`);
 
   // Clear old bets and replace with fresh live data only
   await storage.clearBets();

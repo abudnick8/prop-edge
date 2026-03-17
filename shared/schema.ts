@@ -28,6 +28,7 @@ export const bets = pgTable("bets", {
   awayTeam: text("away_team"),
   playerName: text("player_name"),
   isHighConfidence: boolean("is_high_confidence").default(false),
+  isLotto: boolean("is_lotto").default(false), // high-payout low-probability props (HR, TD, Goals, etc.)
   notificationSent: boolean("notification_sent").default(false),
   status: text("status").default("open"), // open, closed, won, lost
   createdAt: timestamp("created_at").defaultNow(),
