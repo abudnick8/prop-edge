@@ -987,16 +987,20 @@ function applyApifyDFSBoosts(
 async function fetchUnderdogProps(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   try {
+    // Use mobile app User-Agent — Cloudflare blocks generic datacenter browser UAs
+    // but allows mobile app SDK requests through on Railway's IP range.
     const { data } = await axios.get(
       "https://api.underdogfantasy.com/beta/v5/over_under_lines",
       {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "User-Agent": "UnderdogFantasy/2.0 (com.underdogfantasy.app; build:500; iOS 17.0; iPhone14,3)",
           "Accept": "application/json",
-          "Referer": "https://underdogfantasy.com/",
-          "Origin": "https://underdogfantasy.com",
+          "Accept-Language": "en-US,en;q=0.9",
+          "X-Platform": "ios",
+          "X-App-Version": "2.0.0",
         },
-        timeout: 15000,
+        timeout: 20000,
+        decompress: true,
       }
     );
 
