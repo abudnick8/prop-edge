@@ -2002,5 +2002,253 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ── Line Movement Intelligence: auto-research significant moves ─────────────
+  const LM_RESEARCH_CACHE = new Map<string, { data: any; ts: number }>();
+  const LM_RESEARCH_TTL = 30 * 60 * 1000; // 30-min cache per game
+
+  // Thresholds for "significant" movement
+  const SIGNIFICANT_SPREAD = 1.5;  // spread moved >= 1.5 pts
+  const SIGNIFICANT_TOTAL  = 1.5;  // total moved >= 1.5 pts
+  const STEAM_SPREAD       = 3.0;
+  const STEAM_TOTAL        = 3.0;
+  const SIGNIFICANT_ML     = 30;   // ML moved >= 30 cents
+
+  async function fetchGoogleNewsRSS(query: string): Promise<{ title: string; link: string; pubDate: string }[]> {
+    try {
+      const encoded = encodeURIComponent(query);
+      const url = `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`;
+      const { data } = await axios.get(url, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+      const $ = cheerio.load(data, { xmlMode: true });
+      const items: { title: string; link: string; pubDate: string }[] = [];
+      $('item').slice(0, 5).each((_, el) => {
+        items.push({
+          title: $(el).find('title').text().trim(),
+          link:  $(el).find('link').text().trim() || $(el).find('guid').text().trim(),
+          pubDate: $(el).find('pubDate').text().trim(),
+        });
+      });
+      return items;
+    } catch { return []; }
+  }
+
+  async function fetchESPNInjuries(sport: string): Promise<{ player: string; status: string; team: string }[]> {
+    const sportMap: Record<string, { sn: string; lg: string }> = {
+      NBA: { sn: "basketball", lg: "nba" },
+      MLB: { sn: "baseball",   lg: "mlb" },
+      NHL: { sn: "hockey",     lg: "nhl" },
+      NFL: { sn: "football",   lg: "nfl" },
+    };
+    const s = sportMap[sport];
+    if (!s) return [];
+    try {
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${s.sn}/${s.lg}/injuries`;
+      const { data } = await axios.get(url, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+      const teams: any[] = data?.teams ?? [];
+      const injuries: { player: string; status: string; team: string }[] = [];
+      for (const team of teams) {
+        const name = team.team?.displayName ?? "";
+        for (const inj of (team.injuries ?? [])) {
+          const pName = inj.athlete?.displayName ?? "";
+          const status = inj.status ?? inj.type?.description ?? "Questionable";
+          if (pName) injuries.push({ player: pName, status, team: name });
+        }
+      }
+      return injuries;
+    } catch { return []; }
+  }
+
+  async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
+    // Only outdoor sports need weather: MLB, NFL
+    if (sport !== "MLB" && sport !== "NFL") return null;
+    try {
+      // Use wttr.in free weather API with the team city inferred from name
+      // Extract city from team name (last word usually isn't city — use whole name)
+      const encoded = encodeURIComponent(homeTeam.replace(/\s+(Bears|Lions|Packers|Vikings|Falcons|Panthers|Saints|Buccaneers|Cardinals|Rams|49ers|Seahawks|Cowboys|Giants|Eagles|Commanders|Bears|Browns|Steelers|Ravens|Bengals|Texans|Colts|Titans|Jaguars|Chiefs|Raiders|Chargers|Broncos|Bills|Dolphins|Patriots|Jets|Cubs|White Sox|Cardinals|Reds|Brewers|Pirates|Braves|Marlins|Mets|Phillies|Nationals|Dodgers|Giants|Padres|Rockies|Diamondbacks|Red Sox|Yankees|Blue Jays|Rays|Orioles|Royals|Indians|Tigers|Twins|White Sox|Angels|Athletics|Mariners|Rangers|Astros).*/, "").trim());
+      const url = `https://wttr.in/${encoded}?format=3&m`;
+      const { data } = await axios.get(url, { timeout: 5000, headers: { "User-Agent": "curl/7.64" } });
+      return typeof data === "string" ? data.trim().slice(0, 80) : null;
+    } catch { return null; }
+  }
+
+  function buildMovementSummary(game: any): string {
+    const parts: string[] = [];
+    const spreadMove = game.spread?.move;
+    const totalMove  = game.total?.move;
+    const mlAwayMove = (game.moneyline?.awayOpen != null && game.moneyline?.awayCurrent != null)
+      ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
+    const mlHomeMove = (game.moneyline?.homeOpen != null && game.moneyline?.homeCurrent != null)
+      ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+
+    if (spreadMove != null && spreadMove !== 0) {
+      const severity = Math.abs(spreadMove) >= STEAM_SPREAD ? "🔥 STEAM" : "⚡ Significant";
+      parts.push(`${severity}: Spread moved ${spreadMove > 0 ? "+" : ""}${spreadMove} (${game.awayTeam} @ ${game.homeTeam})`);
+    }
+    if (totalMove != null && totalMove !== 0) {
+      const severity = Math.abs(totalMove) >= STEAM_TOTAL ? "🔥 STEAM" : "⚡ Significant";
+      parts.push(`${severity}: Total moved ${totalMove > 0 ? "+" : ""}${totalMove} (O/U ${game.total?.open} → ${game.total?.current})`);
+    }
+    if (mlAwayMove != null && Math.abs(mlAwayMove) >= SIGNIFICANT_ML) {
+      parts.push(`ML shift: ${game.awayTeam} ML moved ${mlAwayMove > 0 ? "+" : ""}${mlAwayMove}`);
+    }
+    if (mlHomeMove != null && Math.abs(mlHomeMove) >= SIGNIFICANT_ML) {
+      parts.push(`ML shift: ${game.homeTeam} ML moved ${mlHomeMove > 0 ? "+" : ""}${mlHomeMove}`);
+    }
+
+    // Sharp signal
+    const spreadMoneyAway = game.spread?.awayMoney;
+    const spreadPublicAway = game.spread?.awayPublic;
+    if (spreadMoneyAway != null && spreadPublicAway != null) {
+      const div = spreadMoneyAway - spreadPublicAway;
+      if (spreadMoneyAway >= 65 && div >= 20)
+        parts.push(`💰 Sharp: ${game.awayTeam} getting ${spreadMoneyAway}% of spread money vs ${spreadPublicAway}% public bets`);
+      else if (spreadMoneyAway <= 35 && div <= -20)
+        parts.push(`💰 Fade signal: ${game.awayTeam} only ${spreadMoneyAway}% of money despite public support`);
+    }
+    const mlMoney = game.moneyline?.awayMoney;
+    const mlPublic = game.moneyline?.awayPublic;
+    if (mlMoney != null && mlPublic != null) {
+      const div = mlMoney - mlPublic;
+      if (mlMoney >= 65 && div >= 20)
+        parts.push(`💰 ML Sharp: ${game.awayTeam} drawing ${mlMoney}% of ML money`);
+    }
+
+    return parts.join(" | ");
+  }
+
+  app.get("/api/line-movement/research/:gameId", async (req, res) => {
+    try {
+      const { gameId } = req.params;
+
+      // Serve from cache if fresh
+      const cached = LM_RESEARCH_CACHE.get(gameId);
+      if (cached && Date.now() - cached.ts < LM_RESEARCH_TTL) {
+        return res.json(cached.data);
+      }
+
+      // Find the game from the line movement cache
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      const game = lmCache?.data?.find((g: any) => g.id === gameId);
+      if (!game) {
+        return res.status(404).json({ error: "Game not found in line movement cache. Refresh the page first." });
+      }
+
+      const { sport, awayTeam, homeTeam, gameTime } = game;
+      const gameName = `${awayTeam} @ ${homeTeam}`;
+      const moveSummary = buildMovementSummary(game);
+
+      // Run all research in parallel
+      const [injuryData, newsRaw, newsTeamA, newsTeamB, weather] = await Promise.allSettled([
+        fetchESPNInjuries(sport),
+        fetchGoogleNewsRSS(`${awayTeam} ${homeTeam} betting odds line movement`),
+        fetchGoogleNewsRSS(`${awayTeam} injury report ${sport}`),
+        fetchGoogleNewsRSS(`${homeTeam} injury report ${sport}`),
+        fetchWeather(homeTeam, sport),
+      ]);
+
+      const allInjuries: { player: string; status: string; team: string }[] =
+        injuryData.status === "fulfilled" ? injuryData.value : [];
+
+      // Filter injuries to teams in this game
+      const awayWords = awayTeam.split(" ");
+      const homeWords = homeTeam.split(" ");
+      const gameInjuries = allInjuries.filter(inj => {
+        const t = inj.team.toLowerCase();
+        return awayWords.some(w => w.length > 3 && t.includes(w.toLowerCase())) ||
+               homeWords.some(w => w.length > 3 && t.includes(w.toLowerCase()));
+      }).slice(0, 10);
+
+      // Combine news results
+      const allNews: { title: string; link: string; pubDate: string }[] = [
+        ...(newsRaw.status === "fulfilled" ? newsRaw.value : []),
+        ...(newsTeamA.status === "fulfilled" ? newsTeamA.value : []),
+        ...(newsTeamB.status === "fulfilled" ? newsTeamB.value : []),
+      ];
+      // Deduplicate by title similarity
+      const seen = new Set<string>();
+      const dedupedNews = allNews.filter(n => {
+        const key = n.title.toLowerCase().slice(0, 40);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 8);
+
+      const weatherInfo = weather.status === "fulfilled" ? weather.value : null;
+
+      // Build a concise AI-style summary
+      const summaryParts: string[] = [];
+
+      // Movement reason
+      if (moveSummary) {
+        summaryParts.push(`📊 **Movement**: ${moveSummary}`);
+      }
+
+      // Injury flags
+      if (gameInjuries.length > 0) {
+        const injList = gameInjuries.map(i => `${i.player} (${i.team}) — ${i.status}`).join("; ");
+        summaryParts.push(`🏥 **Injuries**: ${injList}`);
+      } else {
+        summaryParts.push(`🏥 **Injuries**: No major injuries found via ESPN`);
+      }
+
+      // Weather
+      if (weatherInfo) {
+        summaryParts.push(`🌤 **Weather**: ${weatherInfo}`);
+      }
+
+      // Sharp money signal
+      const spreadAwayMoney = game.spread?.awayMoney;
+      const spreadAwayPublic = game.spread?.awayPublic;
+      const totalOverMoney = game.total?.overMoney;
+      const totalOverPublic = game.total?.overPublic;
+      const sharpNotes: string[] = [];
+      if (spreadAwayMoney != null && spreadAwayPublic != null) {
+        const div = spreadAwayMoney - spreadAwayPublic;
+        if (Math.abs(div) >= 15) {
+          sharpNotes.push(`${awayTeam} spread: ${spreadAwayMoney}% money vs ${spreadAwayPublic}% tickets (${div > 0 ? "sharp lean" : "public fade"})`);
+        }
+      }
+      if (totalOverMoney != null && totalOverPublic != null) {
+        const div = totalOverMoney - totalOverPublic;
+        if (Math.abs(div) >= 15) {
+          sharpNotes.push(`Over: ${totalOverMoney}% money vs ${totalOverPublic}% tickets (${div > 0 ? "sharp over" : "sharp under"})`);
+        }
+      }
+      if (game.numBets != null) {
+        sharpNotes.push(`Total bets tracked: ${game.numBets.toLocaleString()}`);
+      }
+      if (sharpNotes.length > 0) {
+        summaryParts.push(`💰 **Sharp Money**: ${sharpNotes.join(" | ")}`);
+      }
+
+      // News headlines
+      if (dedupedNews.length > 0) {
+        const headlineStr = dedupedNews
+          .slice(0, 4)
+          .map(n => `• ${n.title}`)
+          .join("\n");
+        summaryParts.push(`📰 **Recent News**:\n${headlineStr}`);
+      }
+
+      const result = {
+        gameId,
+        gameName,
+        sport,
+        gameTime,
+        moveSummary,
+        injuries: gameInjuries,
+        weather: weatherInfo,
+        news: dedupedNews,
+        sharpSignals: sharpNotes,
+        summary: summaryParts.join("\n\n"),
+        researchedAt: new Date().toISOString(),
+      };
+
+      LM_RESEARCH_CACHE.set(gameId, { data: result, ts: Date.now() });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return httpServer;
 }

@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Activity,
   ChevronDown, ChevronUp, Users, DollarSign, Clock, Filter,
+  FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,25 @@ interface GameLine {
 
 const SPORT_EMOJI: Record<string, string> = { NBA: "🏀", MLB: "⚾", NHL: "🏒", NFL: "🏈" };
 const SPORTS = ["All", "NBA", "MLB", "NHL", "NFL"];
+
+// Thresholds for showing the Research button (must match server)
+const RESEARCH_SPREAD_THRESHOLD = 1.5;
+const RESEARCH_TOTAL_THRESHOLD  = 1.5;
+const RESEARCH_ML_THRESHOLD     = 30;
+
+interface ResearchResult {
+  gameId: string;
+  gameName: string;
+  sport: string;
+  gameTime: string | null;
+  moveSummary: string;
+  injuries: { player: string; status: string; team: string }[];
+  weather: string | null;
+  news: { title: string; link: string; pubDate: string }[];
+  sharpSignals: string[];
+  summary: string;
+  researchedAt: string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtOdds(o: number | null | undefined): string {
@@ -156,14 +176,150 @@ function PublicBar({ label, publicPct, moneyPct }: { label: string; publicPct: n
 }
 
 // ── GameCard ──────────────────────────────────────────────────────────────────
+function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => void }) {
+  const { data, isLoading, isError, error } = useQuery<ResearchResult>({
+    queryKey: ["/api/line-movement/research", gameId],
+    queryFn: () => apiRequest("GET", `/api/line-movement/research/${encodeURIComponent(gameId)}`).then(r => r.json()),
+    staleTime: 25 * 60 * 1000,
+    retry: 1,
+  });
+
+  const statusColor = (s: string) => {
+    const sl = s.toLowerCase();
+    if (sl.includes("out") || sl.includes("ir")) return "text-red-400";
+    if (sl.includes("doubtful")) return "text-orange-400";
+    if (sl.includes("questionable")) return "text-yellow-400";
+    return "text-muted-foreground";
+  };
+
+  return (
+    <div className="border-t border-primary/30 bg-primary/5 px-4 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FlaskConical size={14} className="text-primary" />
+          <span className="text-xs font-bold text-primary uppercase tracking-wider">Movement Intelligence</span>
+          {data?.researchedAt && (
+            <span className="text-[10px] text-muted-foreground/60">
+              &middot; {new Date(data.researchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
+        </div>
+        <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors" data-testid="close-research-panel">
+          <X size={14} />
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full rounded" />
+          <Skeleton className="h-4 w-4/5 rounded" />
+          <Skeleton className="h-4 w-3/5 rounded" />
+          <p className="text-[10px] text-muted-foreground/50 pt-1">Pulling injuries, news &amp; sharp signals&hellip;</p>
+        </div>
+      )}
+
+      {isError && (
+        <div className="flex items-center gap-2 text-xs text-red-400">
+          <AlertTriangle size={13} />
+          <span>{(error as any)?.message ?? "Research failed. Try refreshing the page first."}</span>
+        </div>
+      )}
+
+      {data && (
+        <div className="space-y-4">
+          {data.moveSummary && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Zap size={10} className="text-amber-400" /> Line Movement
+              </p>
+              <p className="text-xs text-foreground/90 leading-relaxed">{data.moveSummary}</p>
+            </div>
+          )}
+
+          {data.sharpSignals.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <DollarSign size={10} className="text-green-400" /> Sharp Money
+              </p>
+              <ul className="space-y-0.5">
+                {data.sharpSignals.map((sig, i) => (
+                  <li key={i} className="text-xs text-foreground/80">&bull; {sig}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <AlertTriangle size={10} className="text-orange-400" /> Injury Report
+            </p>
+            {data.injuries.length === 0 ? (
+              <p className="text-xs text-muted-foreground/70">No significant injuries found for these teams</p>
+            ) : (
+              <div className="space-y-1">
+                {data.injuries.map((inj, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-foreground/90">{inj.player}</span>
+                    <span className="text-muted-foreground/50">&mdash;</span>
+                    <span className="text-muted-foreground/70 text-[10px]">{inj.team}</span>
+                    <span className={`ml-auto font-semibold text-[10px] ${statusColor(inj.status)}`}>{inj.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {data.weather && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <CloudRain size={10} className="text-blue-400" /> Weather
+              </p>
+              <p className="text-xs text-foreground/80">{data.weather}</p>
+            </div>
+          )}
+
+          {data.news.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Newspaper size={10} className="text-indigo-400" /> Recent News
+              </p>
+              <ul className="space-y-1.5">
+                {data.news.slice(0, 5).map((item, i) => (
+                  <li key={i} className="text-[11px] leading-snug">
+                    <a href={item.link} target="_blank" rel="noopener noreferrer"
+                      className="text-foreground/80 hover:text-primary transition-colors hover:underline">
+                      {item.title}
+                    </a>
+                    {item.pubDate && (
+                      <span className="text-muted-foreground/40 ml-1 text-[9px]">
+                        &middot; {new Date(item.pubDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p className="text-[9px] text-muted-foreground/40 pt-1 border-t border-border/50">
+            Data via ESPN injuries &amp; Google News &middot; Cached 30 min &middot; Always verify with official sources
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
 
   const spreadMove = game.spread.move;
   const totalMove = game.total.move;
   const totalAbsMove = Math.abs(spreadMove ?? 0) + Math.abs(totalMove ?? 0);
   const hasSteam = Math.abs(spreadMove ?? 0) >= 3 || Math.abs(totalMove ?? 0) >= 3;
-  const hasSignificant = totalAbsMove >= 1.5;
+  const hasSignificant = totalAbsMove >= RESEARCH_SPREAD_THRESHOLD;
   const hasPublicData = game.spread.awayMoney != null || game.total.overMoney != null || game.moneyline.awayMoney != null;
 
   // ML movement
@@ -171,6 +327,12 @@ function GameCard({ game }: { game: GameLine }) {
     ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
   const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
     ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+
+  // Is this game research-worthy?
+  const mlAwayAbs = mlAwayMove != null ? Math.abs(mlAwayMove) : 0;
+  const mlHomeAbs = mlHomeMove != null ? Math.abs(mlHomeMove) : 0;
+  const hasResearchWorthy = hasSteam || hasSignificant ||
+    mlAwayAbs >= RESEARCH_ML_THRESHOLD || mlHomeAbs >= RESEARCH_ML_THRESHOLD;
 
   return (
     <div
@@ -214,6 +376,21 @@ function GameCard({ game }: { game: GameLine }) {
           {hasPublicData && (
             <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
           )}
+          {/* Research button — only for significant movement */}
+          {hasResearchWorthy && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowResearch(!showResearch); }}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors border ${
+                showResearch
+                  ? "bg-primary/20 text-primary border-primary/40"
+                  : "bg-primary/8 text-primary/70 border-primary/20 hover:bg-primary/15 hover:text-primary"
+              }`}
+              data-testid={`research-btn-${game.id}`}
+            >
+              <FlaskConical size={10} />
+              {showResearch ? "Hide" : "Why?"}
+            </button>
+          )}
           {/* Quick spread/total summary */}
           <div className="text-right hidden sm:block">
             {game.spread.current != null && (
@@ -240,6 +417,11 @@ function GameCard({ game }: { game: GameLine }) {
           {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
         </div>
       </div>
+
+      {/* Research panel — shown when user clicks Why? */}
+      {showResearch && (
+        <ResearchPanel gameId={game.id} onClose={() => setShowResearch(false)} />
+      )}
 
       {/* Expanded detail */}
       {expanded && (
