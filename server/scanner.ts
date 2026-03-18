@@ -2500,6 +2500,12 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
           primary.confidenceScore = Math.min(98, primary.confidenceScore + 3);
         }
       }
+      // ── KEY FIX: Copy gameTime/homeTeam/awayTeam from Underdog if primary (Kalshi) has none
+      if (!primary.gameTime && b.gameTime) {
+        primary.gameTime = b.gameTime;
+      }
+      if (!primary.homeTeam && b.homeTeam) primary.homeTeam = b.homeTeam;
+      if (!primary.awayTeam && b.awayTeam) primary.awayTeam = b.awayTeam;
       underdogMerged++;
     } else {
       // New player not in Kalshi — Underdog is primary
