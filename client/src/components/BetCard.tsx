@@ -6,38 +6,42 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 // ── Live countdown hook ───────────────────────────────────────────────────
+function computeCountdownDisplay(gameTime: string | null | undefined): { text: string; isLive: boolean; isStarted: boolean } {
+  if (!gameTime) return { text: "", isLive: false, isStarted: false };
+  const now = Date.now();
+  const gt = new Date(gameTime).getTime();
+  if (isNaN(gt)) return { text: "", isLive: false, isStarted: false };
+  const diffMs = gt - now;
+  const isStarted = diffMs <= 0;
+  const isLive = diffMs > -4 * 3600 * 1000 && diffMs < 15 * 60 * 1000;
+  if (isStarted && isLive) {
+    const elapsedMin = Math.floor(-diffMs / 60000);
+    return { text: elapsedMin < 1 ? "Starting now" : `Started ${elapsedMin}m ago`, isLive: true, isStarted: true };
+  } else if (isStarted) {
+    return { text: "Game over", isLive: false, isStarted: true };
+  } else {
+    const totalSec = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    let text = "";
+    if (hours > 0) text = `${hours}h ${mins}m`;
+    else if (mins > 0) text = `${mins}m ${secs}s`;
+    else text = `${secs}s`;
+    return { text: `in ${text}`, isLive: false, isStarted: false };
+  }
+}
+
 function useGameCountdown(gameTime: string | null | undefined) {
-  const [display, setDisplay] = useState<{ text: string; isLive: boolean; isStarted: boolean }>({
-    text: "", isLive: false, isStarted: false,
-  });
+  // Use lazy initializer so first render already has the correct countdown text
+  const [display, setDisplay] = useState<{ text: string; isLive: boolean; isStarted: boolean }>(
+    () => computeCountdownDisplay(gameTime)
+  );
 
   useEffect(() => {
     if (!gameTime) return;
     function compute() {
-      const now = Date.now();
-      const gt = new Date(gameTime!).getTime();
-      const diffMs = gt - now;
-      const isStarted = diffMs <= 0;
-      // "LIVE" window: within 15 min before to 4 hours after start
-      const isLive = diffMs > -4 * 3600 * 1000 && diffMs < 15 * 60 * 1000;
-      if (isStarted && isLive) {
-        // show elapsed: started X min ago
-        const elapsedMin = Math.floor(-diffMs / 60000);
-        setDisplay({ text: elapsedMin < 1 ? "Starting now" : `Started ${elapsedMin}m ago`, isLive: true, isStarted: true });
-      } else if (isStarted) {
-        setDisplay({ text: "Game over", isLive: false, isStarted: true });
-      } else {
-        // Countdown: Xh Ym or Xm
-        const totalSec = Math.floor(diffMs / 1000);
-        const hours = Math.floor(totalSec / 3600);
-        const mins = Math.floor((totalSec % 3600) / 60);
-        const secs = totalSec % 60;
-        let text = "";
-        if (hours > 0) text = `${hours}h ${mins}m`;
-        else if (mins > 0) text = `${mins}m ${secs}s`;
-        else text = `${secs}s`;
-        setDisplay({ text: `in ${text}`, isLive: false, isStarted: false });
-      }
+      setDisplay(computeCountdownDisplay(gameTime));
     }
     compute();
     const id = setInterval(compute, 1000);
@@ -697,14 +701,14 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       {sportEmoji} {bet.awayTeam} @ {bet.homeTeam}
                     </span>
                   )}
-                  {bet.gameTime && countdown.text && (
+                  {bet.gameTime && countdown.text && !countdown.isStarted && (
                     countdown.isLive ? (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-400 border border-green-500/30 uppercase tracking-wide animate-pulse">
                         ● LIVE &mdash; {countdown.text}
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1">
-                        <Clock size={10} />
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase tracking-wide">
+                        <Clock size={9} />
                         {countdown.text}
                       </span>
                     )
