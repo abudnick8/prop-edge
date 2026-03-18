@@ -640,7 +640,59 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         .filter(b => b.betType !== 'player_prop' && b.gameTime)
         .slice(0, TEAM_LIMIT);
 
-      res.json([...limitedProps, ...teamBets, ...seasonBets]);
+      // ── Game-time enrichment: fill null gameTime on bets using ActionNetwork data ──
+      // Kalshi returns null expected_expiration_time, so player props often lack gameTime.
+      // refreshGameTimeLookup() runs at startup and every 15 min, populating GAME_TIME_LOOKUP
+      // and TEAM_WORD_LOOKUP with today's game times from ActionNetwork.
+      await refreshGameTimeLookup(); // no-op if called recently (cached 15 min)
+      const allBetsOut = [...limitedProps, ...teamBets, ...seasonBets];
+
+      if (GAME_TIME_LOOKUP.size > 0 || TEAM_WORD_LOOKUP.size > 0) {
+        for (const b of allBetsOut) {
+          if (b.gameTime) continue; // already has a time
+          if (b.betType === "futures" || b.betType === "season_prop") continue;
+
+          let matched: string | undefined;
+
+          // 1. Exact full-name matchup: "golden state warriors::boston celtics"
+          if (b.awayTeam && b.homeTeam) {
+            const key = `${b.awayTeam.toLowerCase()}::${b.homeTeam.toLowerCase()}`;
+            matched = GAME_TIME_LOOKUP.get(key);
+          }
+
+          // 2. Partial matchup: check each lookup entry for both team words
+          if (!matched && b.awayTeam && b.homeTeam) {
+            const awayLast = (b.awayTeam.split(" ").pop() ?? "").toLowerCase();
+            const homeLast = (b.homeTeam.split(" ").pop() ?? "").toLowerCase();
+            if (awayLast.length > 3 && homeLast.length > 3) {
+              for (const [k, v] of GAME_TIME_LOOKUP) {
+                if (k.includes(awayLast) && k.includes(homeLast)) {
+                  matched = v;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 3. Fallback: match any individual team word
+          if (!matched) {
+            const words = [
+              ...(b.awayTeam ?? "").split(" "),
+              ...(b.homeTeam ?? "").split(" "),
+            ].map(w => w.toLowerCase().trim()).filter(w => w.length > 4);
+            for (const w of words) {
+              const t = TEAM_WORD_LOOKUP.get(w);
+              if (t) { matched = t; break; }
+            }
+          }
+
+          if (matched) {
+            b.gameTime = new Date(matched);
+          }
+        }
+      }
+
+      res.json(allBetsOut);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -1855,6 +1907,52 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── Line Movement: auto-pull opening vs current lines from ActionNetwork ───────────
   const LINE_MOVEMENT_CACHE = new Map<string, { data: any; ts: number }>();
   const LM_TTL = 5 * 60 * 1000; // 5-min cache
+
+  // ── Proactive game-time lookup: populated at startup + every 15 min ──────
+  // Maps "awayTeamLower::homeTeamLower" → ISO gameTime string, for all 4 sports today.
+  // Used by /api/bets to fill null gameTime on Kalshi player props.
+  const GAME_TIME_LOOKUP = new Map<string, string>(); // "away::home" → ISO string
+  const TEAM_WORD_LOOKUP = new Map<string, string>(); // teamWord → ISO string
+  let gameTimeLookupLastFetch = 0;
+  const GAME_TIME_TTL = 15 * 60 * 1000;
+
+  async function refreshGameTimeLookup() {
+    if (Date.now() - gameTimeLookupLastFetch < GAME_TIME_TTL) return;
+    try {
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const sports = ["nba", "mlb", "nhl", "nfl"];
+      const ACTION_BOOK_IDS = "15,68,30";
+      await Promise.allSettled(sports.map(async (slug) => {
+        try {
+          const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${today}`;
+          const { data } = await axios.get(url, {
+            timeout: 8000,
+            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.actionnetwork.com/" },
+          });
+          const games: any[] = data?.games ?? data?.scoreboard ?? [];
+          for (const game of games) {
+            const st = game.start_time ?? null;
+            if (!st) continue;
+            const teams: any[] = game.teams ?? [];
+            const awayTeam = (teams.find((t: any) => t.id === game.away_team_id)?.full_name ?? "").toLowerCase();
+            const homeTeam = (teams.find((t: any) => t.id === game.home_team_id)?.full_name ?? "").toLowerCase();
+            if (awayTeam && homeTeam) {
+              GAME_TIME_LOOKUP.set(`${awayTeam}::${homeTeam}`, st);
+              // Also index individual words (>3 chars) from each team name
+              for (const w of [...awayTeam.split(" "), ...homeTeam.split(" ")]) {
+                const wl = w.trim();
+                if (wl.length > 3) TEAM_WORD_LOOKUP.set(wl, st);
+              }
+            }
+          }
+        } catch { /* ignore per-sport errors */ }
+      }));
+      gameTimeLookupLastFetch = Date.now();
+    } catch { /* ignore */ }
+  }
+
+  // Kick off initial fetch immediately (don't await — non-blocking)
+  refreshGameTimeLookup().catch(() => {});
 
   app.get("/api/line-movement", async (req, res) => {
     try {
