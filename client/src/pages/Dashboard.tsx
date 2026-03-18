@@ -89,9 +89,15 @@ export default function Dashboard() {
   const SPORTS_LIST  = ["All", "NBA", "NFL", "MLB", "NHL"];
   const SOURCES_LIST = ["All", "kalshi", "polymarket", "actionnetwork", "underdog"];
 
+  // Helper: has this game already started?
+  function gameHasStarted(b: Bet): boolean {
+    if (!b.gameTime) return false;
+    return new Date(b.gameTime).getTime() <= Date.now();
+  }
+
   function applyDashFilters(list: Bet[]): Bet[] {
+    const q = filterSearch.trim().toLowerCase();
     return list.filter((b) => {
-      const q = filterSearch.trim().toLowerCase();
       const matchSearch = !q ||
         b.title.toLowerCase().includes(q) ||
         (b.playerName ?? "").toLowerCase().includes(q) ||
@@ -101,7 +107,9 @@ export default function Dashboard() {
       const matchSport  = filterSport  === "All" || b.sport   === filterSport;
       const matchSource = filterSource === "All" || b.source  === filterSource;
       const matchScore  = (b.confidenceScore ?? 0) >= filterMinScore;
-      return matchSearch && matchSport && matchSource && matchScore;
+      // Hide started games from default view — only show them if user is actively searching
+      const hideStarted = !q && gameHasStarted(b);
+      return matchSearch && matchSport && matchSource && matchScore && !hideStarted;
     });
   }
 

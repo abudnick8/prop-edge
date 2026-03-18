@@ -74,6 +74,12 @@ export default function AllBets() {
     "GOAL": ["goal", "player_goals"],
   };
 
+  // Helper: has this game already started?
+  function gameHasStarted(b: Bet): boolean {
+    if (!b.gameTime) return false;
+    return new Date(b.gameTime).getTime() <= Date.now();
+  }
+
   // Apply search/sport/type/source/score filters to a list
   function applyFilters(list: Bet[]): Bet[] {
     return list.filter((b) => {
@@ -98,7 +104,9 @@ export default function AllBets() {
       const matchType = betType === "All" || b.betType === betType;
       const matchSource = source === "All" || b.source === source;
       const matchScore = (b.confidenceScore ?? 0) >= minScore;
-      return matchSearch && matchSport && matchType && matchSource && matchScore;
+      // Hide started games from default view — reveal when searching
+      const hideStarted = !q && gameHasStarted(b);
+      return matchSearch && matchSport && matchType && matchSource && matchScore && !hideStarted;
     });
   }
 

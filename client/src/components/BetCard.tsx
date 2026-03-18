@@ -1,10 +1,51 @@
 import { Bet } from "@shared/schema";
 import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2 } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
-import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+
+// ── Live countdown hook ───────────────────────────────────────────────────
+function useGameCountdown(gameTime: string | null | undefined) {
+  const [display, setDisplay] = useState<{ text: string; isLive: boolean; isStarted: boolean }>({
+    text: "", isLive: false, isStarted: false,
+  });
+
+  useEffect(() => {
+    if (!gameTime) return;
+    function compute() {
+      const now = Date.now();
+      const gt = new Date(gameTime!).getTime();
+      const diffMs = gt - now;
+      const isStarted = diffMs <= 0;
+      // "LIVE" window: within 15 min before to 4 hours after start
+      const isLive = diffMs > -4 * 3600 * 1000 && diffMs < 15 * 60 * 1000;
+      if (isStarted && isLive) {
+        // show elapsed: started X min ago
+        const elapsedMin = Math.floor(-diffMs / 60000);
+        setDisplay({ text: elapsedMin < 1 ? "Starting now" : `Started ${elapsedMin}m ago`, isLive: true, isStarted: true });
+      } else if (isStarted) {
+        setDisplay({ text: "Game over", isLive: false, isStarted: true });
+      } else {
+        // Countdown: Xh Ym or Xm
+        const totalSec = Math.floor(diffMs / 1000);
+        const hours = Math.floor(totalSec / 3600);
+        const mins = Math.floor((totalSec % 3600) / 60);
+        const secs = totalSec % 60;
+        let text = "";
+        if (hours > 0) text = `${hours}h ${mins}m`;
+        else if (mins > 0) text = `${mins}m ${secs}s`;
+        else text = `${secs}s`;
+        setDisplay({ text: `in ${text}`, isLive: false, isStarted: false });
+      }
+    }
+    compute();
+    const id = setInterval(compute, 1000);
+    return () => clearInterval(id);
+  }, [gameTime]);
+
+  return display;
+}
 
 interface BetCardProps {
   bet: Bet;
@@ -536,6 +577,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const [statsOpen, setStatsOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
+  const countdown = useGameCountdown(bet.gameTime as string | null | undefined);
 
   const openDrawer = (b = bet) => { setDrawerBet(b); setDrawerOpen(true); };
   const score = bet.confidenceScore ?? 0;
@@ -655,11 +697,17 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       {sportEmoji} {bet.awayTeam} @ {bet.homeTeam}
                     </span>
                   )}
-                  {bet.gameTime && (
-                    <span className="flex items-center gap-1">
-                      <Clock size={10} />
-                      {formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}
-                    </span>
+                  {bet.gameTime && countdown.text && (
+                    countdown.isLive ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-400 border border-green-500/30 uppercase tracking-wide animate-pulse">
+                        ● LIVE &mdash; {countdown.text}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <Clock size={10} />
+                        {countdown.text}
+                      </span>
+                    )
                   )}
                 </div>
               )}
