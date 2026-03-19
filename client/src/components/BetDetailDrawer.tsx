@@ -96,19 +96,28 @@ function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability 
 }) {
   const [expandedBar, setExpandedBar] = useState<string | null>(null);
 
-  const impliedEdge = impliedProbability ? Math.min(30, Math.round(impliedProbability * 30)) : 15;
-  const factorBoost = keyFactors ? Math.min(25, keyFactors.length * 5) : 10;
-  const riskPenalty = riskLevel === "low" ? 0 : riskLevel === "medium" ? 5 : 12;
-  const baseScore = Math.max(0, score - factorBoost + riskPenalty - impliedEdge);
-  const marketScore = Math.min(30, impliedEdge);
-  const analyticsScore = Math.min(25, factorBoost);
-  const sourceScore = Math.max(0, score - baseScore - marketScore - analyticsScore - riskPenalty);
+  // Proportional allocation: weights → raw alloc → scale to sum exactly to `score` → cap at maxPoints
+  const keyFactorsLen = keyFactors?.length ?? 0;
+  const marketWeight   = impliedProbability ?? 0.5;
+  const analyticsWeight = Math.min(1, keyFactorsLen / 5) || 0.4;
+  const riskMult       = riskLevel === "low" ? 1.0 : riskLevel === "medium" ? 0.75 : 0.5;
+  const baseWeight     = 0.6 * riskMult;
+  const sourceWeight   = keyFactorsLen >= 3 ? 0.8 : 0.4;
+  const maxPoints      = [30, 25, 30, 15];
+  const weights        = [marketWeight, analyticsWeight, baseWeight, sourceWeight];
+  const rawAlloc       = weights.map((w, i) => w * maxPoints[i]);
+  const rawTotal       = rawAlloc.reduce((a, b) => a + b, 0);
+  let scaled = rawAlloc.map((r, i) => Math.min(maxPoints[i], Math.round((r / rawTotal) * score)));
+  // Fix rounding drift so total === score exactly
+  const diff = score - scaled.reduce((a, b) => a + b, 0);
+  const adjustIdx = scaled.findIndex((v, i) => diff > 0 ? v < maxPoints[i] : v > 0);
+  if (adjustIdx >= 0) scaled[adjustIdx] = Math.max(0, Math.min(maxPoints[adjustIdx], scaled[adjustIdx] + diff));
 
   const bars = [
-    { label: "Market Edge",   value: Math.min(30, Math.max(0, marketScore)),              max: 30, color: "#22d3ee" },
-    { label: "Analytics",     value: Math.min(25, Math.max(0, analyticsScore)),            max: 25, color: "#a78bfa" },
-    { label: "Base Model",    value: Math.min(30, Math.max(0, baseScore)),                 max: 30, color: "#f59e0b" },
-    { label: "Source Quality",value: Math.min(15, Math.max(0, sourceScore)),               max: 15, color: "#4ade80" },
+    { label: "Market Edge",   value: scaled[0], max: 30, color: "#22d3ee" },
+    { label: "Analytics",     value: scaled[1], max: 25, color: "#a78bfa" },
+    { label: "Base Model",    value: scaled[2], max: 30, color: "#f59e0b" },
+    { label: "Source Quality",value: scaled[3], max: 15, color: "#4ade80" },
   ];
 
   return (
