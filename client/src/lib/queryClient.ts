@@ -13,12 +13,19 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  authToken?: string,
 ): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (data) headers["Content-Type"] = "application/json";
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
   });
+
+  // For auth endpoints, don't throw — let the caller inspect the response
+  if (url.startsWith("/api/auth/")) return res;
 
   await throwIfResNotOk(res);
   return res;

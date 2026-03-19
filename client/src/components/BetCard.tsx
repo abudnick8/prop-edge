@@ -4,6 +4,7 @@ import BetDetailDrawer from "@/components/BetDetailDrawer";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 
 // ── Live countdown hook ───────────────────────────────────────────────────
 function computeCountdownDisplay(gameTime: string | null | undefined): { text: string; isLive: boolean; isStarted: boolean } {
@@ -624,10 +625,17 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
         style={{ background: theme.gradient, opacity: isHigh ? 1 : 0.6 }}
       />
 
-      {/* Main content — clicking opens drawer */}
-      {/* Safari fix: button instead of div for correct tap handling; no href so no blank page */}
+      {/* Main content — clicking navigates to slug URL (or opens drawer if no slug) */}
       <button
-        onClick={(e) => { e.preventDefault(); openDrawer(); }}
+        onClick={(e) => {
+          e.preventDefault();
+          if (bet.slug) {
+            const section = bet.isLotto ? "lotto" : "picks";
+            window.location.hash = `#/${section}/${bet.slug}`;
+          } else {
+            openDrawer();
+          }
+        }}
         className="block w-full text-left relative p-4 cursor-pointer"
         style={{ WebkitTapHighlightColor: "transparent", background: "transparent", border: "none" }}
       >

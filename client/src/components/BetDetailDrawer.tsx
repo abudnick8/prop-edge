@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   TrendingUp, CheckCircle, AlertTriangle, BarChart2, ExternalLink,
-  Loader2, Target, Activity, ChevronRight, Info, X, BookOpen
+  Loader2, Target, Activity, ChevronRight, Info, X, BookOpen, Bookmark, LogIn
 } from "lucide-react";
 import { Drawer, DrawerContent, DrawerClose } from "@/components/ui/drawer";
 import { formatDistanceToNow } from "date-fns";
@@ -296,12 +297,13 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
                 <tr key={rowIdx} style={{ background: hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map(col => {
                     const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
-                    const rawVal = g[col.key] ?? "—";
+                    const rawRaw = g[col.key];
+                    const rawVal: string = rawRaw != null ? String(rawRaw) : "—";
                     const numVal = parseFloat(rawVal) || 0;
                     const cellHit = isFocus && propLine != null && numVal >= propLine;
                     const cellMiss = isFocus && propLine != null && numVal < propLine && rawVal !== "—" && rawVal !== "";
                     let displayVal: string | JSX.Element = rawVal || "—";
-                    if (col.key === "date_game" && rawVal?.length >= 7) {
+                    if (col.key === "date_game" && rawVal.length >= 7) {
                       const parts = rawVal.split("-");
                       displayVal = parts.length >= 3 ? `${parts[1]}/${parts[2]}` : rawVal;
                     }
@@ -623,6 +625,63 @@ function SimilarBets({ bet, onSelectBet }: { bet: Bet; onSelectBet: (b: Bet) => 
   );
 }
 
+// ── Track My Pick (auth-gated) ─────────────────────────────────────
+function TrackMyPick({ bet }: { bet: Bet }) {
+  const { isLoggedIn, token } = useAuth();
+  const { toast } = useToast();
+  const [tracked, setTracked] = useState(false);
+
+  const trackMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/user/bets", {
+        betId: bet.id,
+        betSlug: bet.slug ?? null,
+        result: "open",
+      }, token!).then(r => r.json()),
+    onSuccess: () => {
+      setTracked(true);
+      toast({ title: "Pick tracked!", description: "View it on your Account page.", duration: 2500 });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/bets"] });
+    },
+    onError: (e: any) => {
+      toast({ title: "Failed to track", description: e.message, variant: "destructive" });
+    },
+  });
+
+  if (!isLoggedIn) {
+    return (
+      <div className="rounded-xl p-4 flex items-center justify-between gap-3"
+        style={{ background: "rgba(124,58,237,0.07)", border: "1px solid rgba(124,58,237,0.2)" }}>
+        <div className="flex-1">
+          <p className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Track This Pick</p>
+          <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Sign in to save picks and monitor your bets.</p>
+        </div>
+        <a href="#/auth"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+          style={{ background: "rgba(124,58,237,0.25)", border: "1px solid rgba(124,58,237,0.4)", color: "#a78bfa" }}>
+          <LogIn size={11} /> Sign In
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      data-testid="button-track-pick"
+      onClick={() => trackMutation.mutate()}
+      disabled={trackMutation.isPending || tracked}
+      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+      style={{
+        background: tracked ? "rgba(74,222,128,0.12)" : "rgba(124,58,237,0.18)",
+        border: `1px solid ${tracked ? "rgba(74,222,128,0.3)" : "rgba(124,58,237,0.4)"}`,
+        color: tracked ? "#4ade80" : "#a78bfa",
+      }}>
+      {trackMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Bookmark size={14} />}
+      {tracked ? "Pick Tracked ✓" : "Track This Pick"}
+    </button>
+  );
+}
+
 // ── Track Result ──────────────────────────────────────────────────────────
 function TrackResult({ bet }: { bet: Bet }) {
   const { toast } = useToast();
@@ -791,6 +850,9 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
 
             {/* Similar bets */}
             <SimilarBets bet={bet} onSelectBet={onSelectBet} />
+
+            {/* Track my pick (auth) */}
+            <TrackMyPick bet={bet} />
 
             {/* Track result */}
             <TrackResult bet={bet} />

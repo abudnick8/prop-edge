@@ -13,10 +13,14 @@ import Ask from "@/pages/Ask";
 import Bracket from "@/pages/Bracket";
 import Lotto from "@/pages/Lotto";
 import LineMovement from "@/pages/LineMovement";
+import PickDetail from "@/pages/PickDetail";
+import Auth from "@/pages/Auth";
+import Account from "@/pages/Account";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 function AppInner() {
   const { isConnected } = useWebSocket();
@@ -72,6 +76,10 @@ function AppInner() {
               <Route path="/bets" component={AllBets} />
               <Route path="/bets/:id" component={BetDetail} />
               <Route path="/lotto" component={Lotto} />
+              <Route path="/picks/:slug" component={PickDetail} />
+              <Route path="/lotto/:slug" component={PickDetail} />
+              <Route path="/auth" component={Auth} />
+              <Route path="/account" component={Account} />
               <Route path="/settings" component={Settings} />
               <Route path="/tracker" component={TrackedProps} />
               <Route path="/ask" component={Ask} />
@@ -98,7 +106,9 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner />
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

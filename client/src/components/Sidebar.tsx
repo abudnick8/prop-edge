@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, BarChart3, MessageCircleQuestion, Trophy, Ticket, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Target, Settings, BarChart3, MessageCircleQuestion, Trophy, Ticket, TrendingUp, UserCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
@@ -31,6 +32,7 @@ const Logo = () => (
 // ── Desktop sidebar (hidden on mobile) ──────────────────────────────────────
 export function DesktopSidebar() {
   const [location] = useHashLocation();
+  const { user, isLoggedIn } = useAuth();
 
   return (
     <aside className="hidden md:flex w-56 flex-shrink-0 bg-card border-r border-border flex-col">
@@ -75,6 +77,18 @@ export function DesktopSidebar() {
           Scanner Active
         </div>
         <p className="text-xs text-muted-foreground mt-1">Auto-scans every 30 min</p>
+      </div>
+
+      {/* Auth / Account */}
+      <div className="px-3 pb-2">
+        <Link
+          href={isLoggedIn ? "/account" : "/auth"}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-muted-foreground hover:text-foreground hover:bg-accent w-full"
+          data-testid="nav-account"
+        >
+          <UserCircle size={16} style={{ color: isLoggedIn ? "#a78bfa" : undefined }} />
+          <span className="truncate">{isLoggedIn ? (user?.displayName ?? user?.username ?? "Account") : "Sign In"}</span>
+        </Link>
       </div>
 
       {/* Attribution */}

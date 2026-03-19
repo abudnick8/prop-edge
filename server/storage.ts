@@ -1,4 +1,4 @@
-import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp, ClvLine, InsertClvLine, ClvSnapshot, InsertClvSnapshot, ClvAlert, InsertClvAlert } from "@shared/schema";
+import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp, ClvLine, InsertClvLine, ClvSnapshot, InsertClvSnapshot, ClvAlert, InsertClvAlert, User, InsertUser, UserBet, InsertUserBet, Session, InsertSession } from "@shared/schema";
 
 export interface IStorage {
   // Bets
@@ -27,6 +27,21 @@ export interface IStorage {
   addTrackedProp(prop: InsertTrackedProp): Promise<TrackedProp>;
   updateTrackedProp(id: string, update: Partial<InsertTrackedProp>): Promise<TrackedProp | undefined>;
   deleteTrackedProp(id: string): Promise<void>;
+
+  // Auth
+  createUser(u: InsertUser): Promise<User>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
+  updateUser(id: string, update: Partial<InsertUser>): Promise<User | undefined>;
+  // Sessions
+  createSession(s: InsertSession): Promise<Session>;
+  getSession(token: string): Promise<Session | undefined>;
+  deleteSession(token: string): Promise<void>;
+  // User Bets
+  getUserBets(userId: string): Promise<UserBet[]>;
+  addUserBet(ub: InsertUserBet): Promise<UserBet>;
+  updateUserBet(id: string, update: Partial<InsertUserBet>): Promise<UserBet | undefined>;
+  deleteUserBet(id: string): Promise<void>;
 
   // CLV Line Value Tracker
   getClvLines(): Promise<ClvLine[]>;
@@ -307,6 +322,62 @@ export class MemStorage implements IStorage {
   async dismissClvAlert(id: string): Promise<void> {
     const alert = this.clvAlertsMap.get(id);
     if (alert) this.clvAlertsMap.set(id, { ...alert, dismissed: true });
+  }
+
+  // ── Auth ───────────────────────────────────────────────────────────────
+  private usersMap: Map<string, User> = new Map();
+  private sessionsMap: Map<string, Session> = new Map();
+  private userBetsMap: Map<string, UserBet> = new Map();
+
+  async createUser(u: InsertUser): Promise<User> {
+    const record: User = { ...u, displayName: u.displayName ?? null, bankroll: u.bankroll ?? 1000, createdAt: new Date(), updatedAt: new Date() };
+    this.usersMap.set(u.id, record);
+    return record;
+  }
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.usersMap.values()).find(u => u.email.toLowerCase() === email.toLowerCase());
+  }
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.usersMap.get(id);
+  }
+  async updateUser(id: string, update: Partial<InsertUser>): Promise<User | undefined> {
+    const u = this.usersMap.get(id);
+    if (!u) return undefined;
+    const updated = { ...u, ...update, updatedAt: new Date() };
+    this.usersMap.set(id, updated);
+    return updated;
+  }
+  async createSession(s: InsertSession): Promise<Session> {
+    const record: Session = { ...s, createdAt: new Date() };
+    this.sessionsMap.set(s.token, record);
+    return record;
+  }
+  async getSession(token: string): Promise<Session | undefined> {
+    const s = this.sessionsMap.get(token);
+    if (!s) return undefined;
+    if (s.expiresAt < new Date()) { this.sessionsMap.delete(token); return undefined; }
+    return s;
+  }
+  async deleteSession(token: string): Promise<void> {
+    this.sessionsMap.delete(token);
+  }
+  async getUserBets(userId: string): Promise<UserBet[]> {
+    return Array.from(this.userBetsMap.values()).filter(ub => ub.userId === userId).sort((a, b) => (b.addedAt?.getTime() ?? 0) - (a.addedAt?.getTime() ?? 0));
+  }
+  async addUserBet(ub: InsertUserBet): Promise<UserBet> {
+    const record: UserBet = { ...ub, notes: ub.notes ?? null, stake: ub.stake ?? null, result: ub.result ?? "open", betSlug: ub.betSlug ?? null, addedAt: new Date() };
+    this.userBetsMap.set(ub.id, record);
+    return record;
+  }
+  async updateUserBet(id: string, update: Partial<InsertUserBet>): Promise<UserBet | undefined> {
+    const ub = this.userBetsMap.get(id);
+    if (!ub) return undefined;
+    const updated = { ...ub, ...update };
+    this.userBetsMap.set(id, updated);
+    return updated;
+  }
+  async deleteUserBet(id: string): Promise<void> {
+    this.userBetsMap.delete(id);
   }
 }
 

@@ -463,7 +463,8 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
                 <tr key={rowIdx} style={{ background: rowBg, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map(col => {
                     const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
-                    const rawVal = g[col.key] ?? "—";
+                    const rawRaw = g[col.key];
+                    const rawVal: string = rawRaw != null ? String(rawRaw) : "—";
                     const numVal = parseFloat(rawVal) || 0;
                     const cellHit = isFocus && propLine != null && numVal >= propLine;
                     const cellMiss = isFocus && propLine != null && numVal < propLine && rawVal !== "—" && rawVal !== "";

@@ -730,6 +730,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // Lookup by slug (for /picks/:slug and /lotto/:slug URLs)
+  app.get("/api/bets/by-slug/:slug", async (req, res) => {
+    try {
+      const bets = await storage.getBets();
+      const bet = bets.find((b) => b.slug === req.params.slug);
+      if (!bet) return res.status(404).json({ error: "Bet not found" });
+      res.json(bet);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/bets/:id", async (req, res) => {
     try {
       const bet = await storage.getBetById(req.params.id);
@@ -2381,6 +2393,132 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ─── Auth Routes ──────────────────────────────────────────────────────────────────────
+  const bcrypt = await import("bcryptjs");
+  const { nanoid } = await import("nanoid");
+
+  // Helper: get user from Authorization: Bearer <token> header
+  async function getAuthUser(req: any): Promise<any | null> {
+    const auth = req.headers.authorization ?? "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
+    if (!token) return null;
+    const session = await storage.getSession(token);
+    if (!session) return null;
+    return storage.getUserById(session.userId);
+  }
+
+  // POST /api/auth/register
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, username, password, displayName } = req.body as any;
+      if (!email || !username || !password) return res.status(400).json({ error: "email, username and password are required" });
+      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+      const existing = await storage.getUserByEmail(email);
+      if (existing) return res.status(409).json({ error: "An account with this email already exists" });
+      const passwordHash = await bcrypt.hash(password, 10);
+      const user = await storage.createUser({ id: nanoid(), email, username, passwordHash, displayName: displayName ?? username, bankroll: 1000 });
+      // Create session
+      const token = nanoid(32);
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      await storage.createSession({ token, userId: user.id, expiresAt });
+      const { passwordHash: _, ...safeUser } = user;
+      res.json({ token, user: safeUser });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/auth/login
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body as any;
+      if (!email || !password) return res.status(400).json({ error: "email and password are required" });
+      const user = await storage.getUserByEmail(email);
+      if (!user) return res.status(401).json({ error: "Invalid email or password" });
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) return res.status(401).json({ error: "Invalid email or password" });
+      const token = nanoid(32);
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await storage.createSession({ token, userId: user.id, expiresAt });
+      const { passwordHash: _, ...safeUser } = user;
+      res.json({ token, user: safeUser });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/auth/logout
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const auth = req.headers.authorization ?? "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
+      if (token) await storage.deleteSession(token);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/auth/me
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { passwordHash: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PATCH /api/auth/me  (update display name, bankroll)
+  app.patch("/api/auth/me", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { displayName, bankroll } = req.body as any;
+      const updated = await storage.updateUser(user.id, { displayName, bankroll });
+      if (!updated) return res.status(404).json({ error: "User not found" });
+      const { passwordHash: _, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/user/bets  — user's tracked picks
+  app.get("/api/user/bets", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const userBets = await storage.getUserBets(user.id);
+      res.json(userBets);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/user/bets  — add a pick to user's tracker
+  app.post("/api/user/bets", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { betId, betSlug, notes, stake } = req.body as any;
+      if (!betId) return res.status(400).json({ error: "betId is required" });
+      const ub = await storage.addUserBet({ id: nanoid(), userId: user.id, betId, betSlug: betSlug ?? null, notes: notes ?? null, stake: stake ?? null, result: "open" });
+      res.json(ub);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PATCH /api/user/bets/:id  — update result / notes / stake
+  app.patch("/api/user/bets/:id", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const updated = await storage.updateUserBet(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE /api/user/bets/:id
+  app.delete("/api/user/bets/:id", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      await storage.deleteUserBet(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   return httpServer;

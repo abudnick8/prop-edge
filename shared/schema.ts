@@ -5,6 +5,7 @@ import { z } from "zod";
 // Sports Bets / Prediction Markets
 export const bets = pgTable("bets", {
   id: text("id").primaryKey(),
+  slug: text("slug").unique(), // url-friendly slug with 6-char random suffix
   source: text("source").notNull(), // kalshi, polymarket, draftkings, underdog
   sport: text("sport").notNull(), // NFL, NBA, MLB, NHL
   betType: text("bet_type").notNull(), // player_prop, spread, total, moneyline
@@ -178,3 +179,48 @@ export const clvAlerts = pgTable("clv_alerts", {
 export const insertClvAlertSchema = createInsertSchema(clvAlerts).omit({ firedAt: true });
 export type InsertClvAlert = z.infer<typeof insertClvAlertSchema>;
 export type ClvAlert = typeof clvAlerts.$inferSelect;
+
+// ── Users + Auth ───────────────────────────────────────────────────────────
+export const users = pgTable("users", {
+  id: text("id").primaryKey(), // nanoid
+  email: text("email").notNull().unique(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name"),
+  bankroll: real("bankroll").default(1000),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+// Per-user bet tracking (which picks a user is following)
+export const userBets = pgTable("user_bets", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  betId: text("bet_id").notNull(),
+  betSlug: text("bet_slug"),
+  notes: text("notes"),
+  stake: real("stake"),       // amount wagered
+  result: text("result"),     // open | won | lost
+  addedAt: timestamp("added_at").defaultNow(),
+});
+
+export const insertUserBetSchema = createInsertSchema(userBets).omit({ addedAt: true });
+export type InsertUserBet = z.infer<typeof insertUserBetSchema>;
+export type UserBet = typeof userBets.$inferSelect;
+
+// Sessions (simple token-based)
+export const sessions = pgTable("sessions", {
+  token: text("token").primaryKey(),
+  userId: text("user_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSessionSchema = createInsertSchema(sessions).omit({ createdAt: true });
+export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type Session = typeof sessions.$inferSelect;
+

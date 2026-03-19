@@ -141,8 +141,10 @@
 
 /* ── Pick banners (shimmer sweep) ────────────────────────────────────────── */
 @keyframes shimmer-sweep {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
+  0%   { transform: translateX(-100%); opacity: 0; }
+  2%   { opacity: 1; }
+  18%  { transform: translateX(200%); opacity: 0; }
+  100% { transform: translateX(200%); opacity: 0; }
 }
 
 .pick-over {
@@ -160,7 +162,7 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%);
-  animation: shimmer-sweep 2.2s ease-in-out infinite;
+  animation: shimmer-sweep 5s ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -173,14 +175,39 @@
 
 /* ── Card hover ──────────────────────────────────────────────────────────── */
 .bet-card {
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, outline-color 0.18s ease;
+  outline: 1.5px solid transparent;
 }
 .bet-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.25), 0 2px 8px rgba(0,0,0,0.4);
+  outline: 1.5px solid rgba(139,92,246,0.55);
+  box-shadow: 0 8px 32px rgba(139,92,246,0.3), 0 2px 8px rgba(0,0,0,0.4);
+}
+.bet-card:active {
+  transform: translateY(0px) scale(0.99);
 }
 .bet-card-hot:hover {
-  box-shadow: 0 8px 40px rgba(245,158,11,0.2), 0 2px 8px rgba(0,0,0,0.4);
+  outline: 1.5px solid rgba(245,158,11,0.5);
+  box-shadow: 0 8px 40px rgba(245,158,11,0.25), 0 2px 8px rgba(0,0,0,0.4);
+}
+
+/* ── Clickable link cards (picks, lotto) ─────────────────────────────────── */
+.pick-card-link {
+  display: block;
+  cursor: pointer;
+  border-radius: 0.75rem;
+  outline: 1.5px solid transparent;
+  transition: outline-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  text-decoration: none;
+}
+.pick-card-link:hover {
+  outline: 1.5px solid rgba(139,92,246,0.5);
+  box-shadow: 0 6px 24px rgba(139,92,246,0.2);
+  transform: translateY(-1px);
+}
+.pick-card-link:active {
+  transform: scale(0.99);
 }
 
 /* ── Confidence bar ──────────────────────────────────────────────────────── */

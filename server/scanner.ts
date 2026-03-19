@@ -8,6 +8,26 @@ import axios from "axios";
 import { InsertBet } from "@shared/schema";
 import { storage } from "./storage";
 
+// ─── Slug utility ──────────────────────────────────────────────────────────────────────
+// Generates a stable, URL-friendly slug from a bet title + a 6-char suffix
+// derived from the bet ID so duplicates are always unique.
+// e.g. "Matas Buzelis Over 1.5 Assists" + "kalshi-prop-XYZ" → "matas-buzelis-over-1-5-assists-ab3f7c"
+export function generateBetSlug(title: string, id: string): string {
+  const base = title
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // strip accents
+    .replace(/[^a-z0-9\s-]/g, "")                         // keep alphanumeric + spaces
+    .replace(/\s+/g, "-")                                  // spaces → dashes
+    .replace(/-+/g, "-")                                   // collapse multiple dashes
+    .replace(/^-+|-+$/g, "")                               // trim edge dashes
+    .slice(0, 60);                                         // max 60 chars
+  // 6-char suffix: hash the id deterministically
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (Math.imul(31, hash) + id.charCodeAt(i)) | 0;
+  const suffix = Math.abs(hash).toString(36).padStart(6, "0").slice(0, 6);
+  return `${base}-${suffix}`;
+}
+
 // ─── Kalshi public API ────────────────────────────────────────────────────────
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
@@ -2653,9 +2673,9 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   // Clear old bets and replace with fresh live data only
   await storage.clearBets();
 
-  // Upsert all fresh bets
+  // Upsert all fresh bets — ensure each has a stable slug
   for (const bet of fresh) {
-    await storage.upsertBet(bet);
+    await storage.upsertBet({ ...bet, slug: bet.slug ?? generateBetSlug(bet.title, bet.id) });
   }
 
   // Generate notifications for new high-confidence bets (live data only)
