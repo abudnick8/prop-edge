@@ -138,56 +138,71 @@ async function resolveESPNId(playerName: string, sport: string): Promise<string 
   const sportsName = sport === "NBA" ? "basketball" : sport === "NFL" ? "football" : sport === "MLB" ? "baseball" : sport === "NHL" ? "hockey" : "basketball";
   const league = sport === "NBA" ? "nba" : sport === "NFL" ? "nfl" : sport === "MLB" ? "mlb" : sport === "NHL" ? "nhl" : "nba";
 
-  // Method 1: ESPN site search API (most reliable — returns current active roster players)
+  // Method 1: ESPN site search API — type=player (NOT type=athlete which returns errors)
+  // The response has results[].contents[] where each item has uid = "s:40~l:46~a:{espnId}"
   try {
+    // Strip accents so "Schröder" → "Schroder", "Diabaté" → "Diabate"
+    const asciiName = playerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const r = await axios.get(
-      `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(playerName)}&limit=8&type=athlete&sport=${sportsName}%2F${league}`,
+      `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(asciiName)}&limit=8&type=player&sport=${sportsName}%2F${league}`,
       { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
     );
-    const items = r.data?.items ?? [];
-    const nameLower = playerName.toLowerCase();
-    // Find exact or close name match
-    for (const item of items) {
-      const itemName = (item.displayName ?? item.name ?? "").toLowerCase();
-      const id = String(item.id ?? "");
+    // Results are nested: results[] → contents[]
+    const allContents: any[] = [];
+    for (const resultGroup of (r.data?.results ?? [])) {
+      for (const c of (resultGroup.contents ?? [])) allContents.push(c);
+    }
+    const nameLower = asciiName.toLowerCase();
+    const nameParts = nameLower.split(" ");
+    for (const item of allContents) {
+      const itemName = (item.displayName ?? item.name ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      // Extract numeric ID from uid field ("s:40~l:46~a:4873138" → "4873138")
+      const uidMatch = (item.uid ?? "").match(/~a:(\d+)/);
+      const id = uidMatch ? uidMatch[1] : String(item.id ?? "");
       if (!id) continue;
-      if (itemName === nameLower || itemName.includes(nameLower.split(" ")[0]) && itemName.includes(nameLower.split(" ").slice(-1)[0])) {
+      if (itemName === nameLower ||
+          (nameParts.length >= 2 && itemName.includes(nameParts[0]) && itemName.includes(nameParts[nameParts.length - 1]))) {
         ESPN_ID_CACHE[playerName] = id;
         return id;
       }
     }
-    // Fallback: take first result if only one came back
-    if (items.length === 1 && items[0]?.id) {
-      const id = String(items[0].id);
-      ESPN_ID_CACHE[playerName] = id;
-      return id;
+    // Fallback: take first player result
+    if (allContents.length === 1) {
+      const uidMatch = (allContents[0].uid ?? "").match(/~a:(\d+)/);
+      const id = uidMatch ? uidMatch[1] : String(allContents[0].id ?? "");
+      if (id) { ESPN_ID_CACHE[playerName] = id; return id; }
     }
   } catch { /* search failed */ }
 
-  // Method 2: ESPN core active athlete search by full name (checks active roster)
+  // Method 2: ESPN search without sport filter (broader — catches rookies, international players)
   try {
-    const nameParts = playerName.split(" ");
-    const lastName = nameParts.slice(-1)[0];
+    const asciiName2 = playerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const r2 = await axios.get(
-      `http://sports.core.api.espn.com/v2/sports/${sportsName}/leagues/${league}/athletes?limit=20&active=true&lastName=${encodeURIComponent(lastName)}`,
+      `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(asciiName2)}&limit=5&type=player`,
       { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
     );
-    const items2 = r2.data?.items ?? [];
-    for (const item of items2) {
-      const ref = item?.$ref ?? "";
-      const m = ref.match(/athletes\/([0-9]+)/);
-      if (!m) continue;
-      // Fetch athlete detail to verify full name
-      try {
-        const detail = await axios.get(ref, { timeout: 4000, headers: { "User-Agent": "Mozilla/5.0" } });
-        const fullName = (detail.data?.fullName ?? detail.data?.displayName ?? "").toLowerCase();
-        if (fullName === playerName.toLowerCase() || (fullName.includes(nameParts[0].toLowerCase()) && fullName.includes(lastName.toLowerCase()))) {
-          ESPN_ID_CACHE[playerName] = m[1];
-          return m[1];
-        }
-      } catch { /* skip */ }
+    const allContents2: any[] = [];
+    for (const rg of (r2.data?.results ?? [])) for (const c of (rg.contents ?? [])) allContents2.push(c);
+    const nameLower2 = asciiName2.toLowerCase();
+    const parts2 = nameLower2.split(" ");
+    for (const item of allContents2) {
+      const itemName = (item.displayName ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const uidMatch = (item.uid ?? "").match(/~a:(\d+)/);
+      const id = uidMatch ? uidMatch[1] : String(item.id ?? "");
+      if (!id) continue;
+      if (itemName === nameLower2 ||
+          (parts2.length >= 2 && itemName.includes(parts2[0]) && itemName.includes(parts2[parts2.length - 1]))) {
+        ESPN_ID_CACHE[playerName] = id;
+        return id;
+      }
     }
-  } catch { /* lastName search failed */ }
+    // Take first result as last-resort
+    if (allContents2.length >= 1) {
+      const uidMatch = (allContents2[0].uid ?? "").match(/~a:(\d+)/);
+      const id = uidMatch ? uidMatch[1] : String(allContents2[0].id ?? "");
+      if (id) { ESPN_ID_CACHE[playerName] = id; return id; }
+    }
+  } catch { /* fallback search failed */ }
 
   return null;
 }
