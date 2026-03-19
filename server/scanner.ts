@@ -1537,6 +1537,7 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
           underProb: Math.round(underProb * 100),
           playerName,
           statType: statName,
+          statRaw: statRawKey,   // raw Underdog key e.g. "pts_rebs_asts"
           statValue,
           gameTitle,
         },
@@ -2759,6 +2760,7 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
                 underProb: Math.round(underProb * 100),
                 playerName,
                 statType: statName,
+                statRaw: statIDLower,   // raw SGO stat key e.g. "pts_rebs_asts"
                 statValue: lineNum,
                 gameTitle,
               },

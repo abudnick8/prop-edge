@@ -454,62 +454,102 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
     retryDelay: 1500,
   });
 
-  // Returns either a single-key stat or a combo definition
-  // combo = { keys: string[], label: string, isCombo: true }
-  const getStatKey = (): { key: string; label: string; isCombo?: boolean; comboKeys?: string[] } => {
+  // Maps raw stat keys (from teamStats.statRaw or title parsing) to display config.
+  // comboKeys: game-log keys to SUM (e.g. ["pts","trb","ast"])
+  // seasonKeys: season object keys to SUM (season uses "reb" not "trb")
+  type StatKeyResult = { key: string; label: string; isCombo?: boolean; comboKeys?: string[]; seasonKeys?: string[] };
+
+  const STAT_RAW_MAP: Record<string, StatKeyResult> = {
+    // NBA combos
+    pts_rebs_asts:         { key: "pra",  label: "Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
+    "pts + rebs + asts":   { key: "pra",  label: "Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
+    pts_rebs:              { key: "pr",   label: "Pts+Reb",     isCombo: true, comboKeys: ["pts","trb"],       seasonKeys: ["pts","reb"] },
+    "pts + rebs":          { key: "pr",   label: "Pts+Reb",     isCombo: true, comboKeys: ["pts","trb"],       seasonKeys: ["pts","reb"] },
+    pts_asts:              { key: "pa",   label: "Pts+Ast",     isCombo: true, comboKeys: ["pts","ast"],       seasonKeys: ["pts","ast"] },
+    "pts + asts":          { key: "pa",   label: "Pts+Ast",     isCombo: true, comboKeys: ["pts","ast"],       seasonKeys: ["pts","ast"] },
+    rebs_asts:             { key: "ra",   label: "Reb+Ast",     isCombo: true, comboKeys: ["trb","ast"],       seasonKeys: ["reb","ast"] },
+    "rebs + asts":         { key: "ra",   label: "Reb+Ast",     isCombo: true, comboKeys: ["trb","ast"],       seasonKeys: ["reb","ast"] },
+    // period combo variants
+    period_1_pts_rebs_asts:   { key: "pra", label: "1Q Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
+    period_1_2_pts_rebs_asts: { key: "pra", label: "1H Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
+    // NHL combo
+    "goals + assists":     { key: "ga",  label: "Goals+Ast", isCombo: true, comboKeys: ["goals","ast"], seasonKeys: ["goals","ast"] },
+    // NBA single
+    points:    { key: "pts",      label: "Points" },
+    assists:   { key: "ast",      label: "Assists" },
+    rebounds:  { key: "trb",      label: "Rebounds" },
+    steals:    { key: "stl",      label: "Steals" },
+    blocks:    { key: "blk",      label: "Blocks" },
+    threes:    { key: "fg3_made", label: "3PM" },
+    // NHL single
+    goals:     { key: "goals",    label: "Goals" },
+    shots:     { key: "shots",    label: "Shots" },
+    // MLB
+    hits:       { key: "hits",      label: "Hits" },
+    home_runs:  { key: "home_runs", label: "Home Runs" },
+    rbi:        { key: "rbi",       label: "RBIs" },
+    strikeouts: { key: "strikeouts",label: "Strikeouts" },
+    // NFL
+    passing_yards:   { key: "yds", label: "Pass Yds" },
+    rushing_yards:   { key: "yds", label: "Rush Yds" },
+    receiving_yards: { key: "yds", label: "Rec Yds" },
+    receptions:      { key: "rec", label: "Receptions" },
+    touchdowns:      { key: "td",  label: "Touchdowns" },
+  };
+
+  const getStatKey = (): StatKeyResult => {
+    // 1. Use raw stat key from teamStats (most reliable — set directly by scanner)
+    const ts = bet.teamStats as any;
+    const rawStatKey = (ts?.statRaw ?? "").toLowerCase().trim();
+    if (rawStatKey && STAT_RAW_MAP[rawStatKey]) return STAT_RAW_MAP[rawStatKey];
+
+    // 2. Use display statType from teamStats (e.g. "Pts + Rebs + Asts")
+    const statType = (ts?.statType ?? "").toLowerCase().trim();
+    if (statType && STAT_RAW_MAP[statType]) return STAT_RAW_MAP[statType];
+
+    // 3. Fallback: parse title/description (covers Kalshi and other sources)
     const title = (bet.title + " " + (bet.description ?? "")).toLowerCase();
     if (sport === "NBA") {
-      // ── Combo props — check BEFORE single-stat checks ──
-      const hasPts = title.includes("point") || title.includes("pts") || title.includes("pts+") || title.includes("+pts");
-      const hasReb = title.includes("rebound") || title.includes("reb+") || title.includes("+reb");
-      const hasAst = title.includes("assist") || title.includes("ast+") || title.includes("+ast");
-      const isPRA  = title.includes("pts+reb+ast") || title.includes("pra") || title.includes("pts_rebs_asts") || title.includes("pts+rebs+asts");
-      const isPR   = !isPRA && hasPts && hasReb && !hasAst;
-      const isPA   = !isPRA && hasPts && !hasReb && hasAst;
-      const isRA   = !isPRA && !hasPts && hasReb && hasAst;
-      if (isPRA || (hasPts && hasReb && hasAst))
-        return { key: "pra", label: "Pts+Reb+Ast", isCombo: true, comboKeys: ["pts", "trb", "ast"] };
-      if (isPR)
-        return { key: "pr", label: "Pts+Reb", isCombo: true, comboKeys: ["pts", "trb"] };
-      if (isPA)
-        return { key: "pa", label: "Pts+Ast", isCombo: true, comboKeys: ["pts", "ast"] };
-      if (isRA)
-        return { key: "ra", label: "Reb+Ast", isCombo: true, comboKeys: ["trb", "ast"] };
-      // ── Single stats ──
-      if (hasPts) return { key: "pts", label: "Points" };
-      if (hasAst) return { key: "ast", label: "Assists" };
-      if (hasReb) return { key: "trb", label: "Rebounds" };
-      if (title.includes("steal") || title.includes("stl")) return { key: "stl", label: "Steals" };
-      if (title.includes("block") || title.includes("blk")) return { key: "blk", label: "Blocks" };
-      if (title.includes("three") || title.includes("3-pointer") || title.includes("3pt")) return { key: "fg3_made", label: "3PM" };
-      return { key: "pts", label: "Points" };
+      // Combo patterns — must match BEFORE single-stat patterns
+      const hasPoints  = title.includes("pts + rebs + asts") || title.includes("pts+rebs+asts") || title.includes("pts_rebs_asts") || title.includes("pra");
+      const hasPR      = !hasPoints && (title.includes("pts + rebs") || title.includes("pts+rebs") || title.includes("pts_rebs") || title.includes("points + rebounds"));
+      const hasPA      = !hasPoints && !hasPR && (title.includes("pts + asts") || title.includes("pts+asts") || title.includes("pts_asts") || title.includes("points + assists"));
+      const hasRA      = !hasPoints && !hasPR && !hasPA && (title.includes("rebs + asts") || title.includes("rebs+asts") || title.includes("rebs_asts") || title.includes("rebounds + assists"));
+      if (hasPoints) return STAT_RAW_MAP["pts_rebs_asts"]!;
+      if (hasPR)     return STAT_RAW_MAP["pts_rebs"]!;
+      if (hasPA)     return STAT_RAW_MAP["pts_asts"]!;
+      if (hasRA)     return STAT_RAW_MAP["rebs_asts"]!;
+      // Single stats
+      if (title.includes("rebound")) return STAT_RAW_MAP["rebounds"]!;
+      if (title.includes("assist"))  return STAT_RAW_MAP["assists"]!;
+      if (title.includes("point") || title.includes("pts")) return STAT_RAW_MAP["points"]!;
+      if (title.includes("steal"))   return STAT_RAW_MAP["steals"]!;
+      if (title.includes("block"))   return STAT_RAW_MAP["blocks"]!;
+      if (title.includes("three") || title.includes("3pt") || title.includes("3-point")) return STAT_RAW_MAP["threes"]!;
+      return STAT_RAW_MAP["points"]!;
     }
     if (sport === "NHL") {
-      const hasGoals  = title.includes("goal");
-      const hasAssist = title.includes("assist");
-      const hasShots  = title.includes("shot");
-      if (hasGoals && hasAssist) return { key: "ga", label: "Goals+Ast", isCombo: true, comboKeys: ["goals", "ast"] };
-      if (hasGoals)  return { key: "goals", label: "Goals" };
-      if (hasAssist) return { key: "ast", label: "Assists" };
-      if (hasShots)  return { key: "shots", label: "Shots" };
-      return { key: "goals", label: "Goals" };
+      if (title.includes("goal") && title.includes("assist")) return STAT_RAW_MAP["goals + assists"]!;
+      if (title.includes("goal"))   return STAT_RAW_MAP["goals"]!;
+      if (title.includes("assist")) return { key: "ast", label: "Assists" };
+      if (title.includes("shot"))   return STAT_RAW_MAP["shots"]!;
+      return STAT_RAW_MAP["goals"]!;
     }
     if (sport === "MLB") {
-      if (title.includes("home run")) return { key: "home_runs", label: "Home Runs" };
-      if (title.includes("strikeout")) return { key: "strikeouts", label: "Strikeouts" };
-      if (title.includes("rbi"))       return { key: "rbi", label: "RBIs" };
-      if (title.includes("hit"))       return { key: "hits", label: "Hits" };
-      return { key: "hits", label: "Hits" };
+      if (title.includes("home run")) return STAT_RAW_MAP["home_runs"]!;
+      if (title.includes("strikeout")) return STAT_RAW_MAP["strikeouts"]!;
+      if (title.includes("rbi"))       return STAT_RAW_MAP["rbi"]!;
+      return STAT_RAW_MAP["hits"]!;
     }
     if (sport === "NFL") {
-      if (title.includes("passing yard")) return { key: "pass_yds", label: "Pass Yds" };
-      if (title.includes("rushing"))      return { key: "rush_yds", label: "Rush Yds" };
-      if (title.includes("receiving"))    return { key: "rec_yds", label: "Rec Yds" };
-      if (title.includes("reception"))    return { key: "rec", label: "Receptions" };
-      if (title.includes("touchdown"))    return { key: "td", label: "Touchdowns" };
-      return { key: "pass_yds", label: "Pass Yds" };
+      if (title.includes("passing"))   return STAT_RAW_MAP["passing_yards"]!;
+      if (title.includes("rushing"))   return STAT_RAW_MAP["rushing_yards"]!;
+      if (title.includes("receiving")) return STAT_RAW_MAP["receiving_yards"]!;
+      if (title.includes("reception")) return STAT_RAW_MAP["receptions"]!;
+      if (title.includes("touchdown")) return STAT_RAW_MAP["touchdowns"]!;
+      return STAT_RAW_MAP["passing_yards"]!;
     }
-    return { key: "pts", label: "Points" };
+    return STAT_RAW_MAP["points"]!;
   };
   const statKey = getStatKey();
   // Helper: compute stat value from a game log row, handles combo props
@@ -522,13 +562,14 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
   };
   // Helper: compute season avg for this stat (handles combo)
   const getSeasonStatValue = (season: any): number => {
-    if (statKey.isCombo && statKey.comboKeys) {
-      return statKey.comboKeys.reduce((sum, k) => {
-        // season obj uses "reb" not "trb"
-        const seasonKey = k === "trb" ? "reb" : k;
-        return sum + (parseFloat(season[seasonKey] ?? season[k]) || 0);
+    if (statKey.isCombo) {
+      // Use seasonKeys (uses "reb") if defined, else fall back to comboKeys with trb→reb
+      const keys = (statKey as any).seasonKeys ?? statKey.comboKeys ?? [];
+      return keys.reduce((sum: number, k: string) => {
+        return sum + (parseFloat(season[k]) || 0);
       }, 0);
     }
+    // Single stat: season uses "reb" not "trb"
     const k = statKey.key === "trb" ? "reb" : statKey.key;
     return parseFloat(season[k] ?? season[statKey.key]) || 0;
   };
