@@ -416,13 +416,13 @@ function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statK
 }
 
 // ── Stat vs Line ──────────────────────────────────────────────────────────
-function StatVsLine({ statLabel, statValue, propLine }: { statLabel: string; statValue: number; propLine: number }) {
+function StatVsLine({ statLabel, statValue, propLine, isL5 }: { statLabel: string; statValue: number; propLine: number; isL5?: boolean }) {
   const pct = Math.min((statValue / propLine) * 100, 150);
   const hitLine = statValue >= propLine;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[10px]">
-        <span style={{ color: "rgba(255,255,255,0.5)" }}>{statLabel} season avg</span>
+        <span style={{ color: "rgba(255,255,255,0.5)" }}>{statLabel} {isL5 ? "L5 avg" : "season avg"}</span>
         <span className="font-mono font-bold" style={{ color: hitLine ? "#4ade80" : "#f59e0b" }}>{statValue} vs {propLine} line</span>
       </div>
       <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -681,7 +681,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
                         Last 5 Games Avg vs Prop Line
                       </p>
-                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} />
+                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} isL5 />
                     </div>
                   )}
                   {seasonAvg !== null && (
