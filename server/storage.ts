@@ -1,4 +1,4 @@
-import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp, ClvLine, InsertClvLine, ClvSnapshot, InsertClvSnapshot, ClvAlert, InsertClvAlert, User, InsertUser, UserBet, InsertUserBet, Session, InsertSession } from "@shared/schema";
+import { Bet, InsertBet, Settings, InsertSettings, Notification, InsertNotification, TrackedProp, InsertTrackedProp, ClvLine, InsertClvLine, ClvSnapshot, InsertClvSnapshot, ClvAlert, InsertClvAlert, User, InsertUser, UserBet, InsertUserBet, Session, InsertSession, Parlay, InsertParlay, ParlayLeg, InsertParlayLeg } from "@shared/schema";
 
 export interface IStorage {
   // Bets
@@ -39,9 +39,22 @@ export interface IStorage {
   deleteSession(token: string): Promise<void>;
   // User Bets
   getUserBets(userId: string): Promise<UserBet[]>;
+  getAllUserBets(): Promise<UserBet[]>;
   addUserBet(ub: InsertUserBet): Promise<UserBet>;
   updateUserBet(id: string, update: Partial<InsertUserBet>): Promise<UserBet | undefined>;
   deleteUserBet(id: string): Promise<void>;
+  // Parlays
+  getParlays(userId: string): Promise<Parlay[]>;
+  getParlayById(id: string): Promise<Parlay | undefined>;
+  getAllParlays(): Promise<Parlay[]>;
+  createParlay(p: InsertParlay): Promise<Parlay>;
+  updateParlay(id: string, update: Partial<InsertParlay>): Promise<Parlay | undefined>;
+  deleteParlay(id: string): Promise<void>;
+  // Parlay Legs
+  getParlayLegs(parlayId: string): Promise<ParlayLeg[]>;
+  addParlayLeg(leg: InsertParlayLeg): Promise<ParlayLeg>;
+  updateParlayLeg(id: string, update: Partial<InsertParlayLeg>): Promise<ParlayLeg | undefined>;
+  deleteParlayLeg(id: string): Promise<void>;
 
   // CLV Line Value Tracker
   getClvLines(): Promise<ClvLine[]>;
@@ -364,8 +377,24 @@ export class MemStorage implements IStorage {
   async getUserBets(userId: string): Promise<UserBet[]> {
     return Array.from(this.userBetsMap.values()).filter(ub => ub.userId === userId).sort((a, b) => (b.addedAt?.getTime() ?? 0) - (a.addedAt?.getTime() ?? 0));
   }
+  async getAllUserBets(): Promise<UserBet[]> {
+    return Array.from(this.userBetsMap.values());
+  }
   async addUserBet(ub: InsertUserBet): Promise<UserBet> {
-    const record: UserBet = { ...ub, notes: ub.notes ?? null, stake: ub.stake ?? null, result: ub.result ?? "open", betSlug: ub.betSlug ?? null, addedAt: new Date() };
+    const record: UserBet = {
+      ...ub,
+      notes: ub.notes ?? null,
+      stake: ub.stake ?? null,
+      odds: ub.odds ?? null,
+      result: ub.result ?? "open",
+      betSlug: ub.betSlug ?? null,
+      betTitle: ub.betTitle ?? null,
+      betSport: ub.betSport ?? null,
+      betLine: ub.betLine ?? null,
+      betPickSide: ub.betPickSide ?? null,
+      gradedAt: null,
+      addedAt: new Date(),
+    };
     this.userBetsMap.set(ub.id, record);
     return record;
   }
@@ -378,6 +407,57 @@ export class MemStorage implements IStorage {
   }
   async deleteUserBet(id: string): Promise<void> {
     this.userBetsMap.delete(id);
+  }
+
+  // ── Parlays ────────────────────────────────────────────────────────────
+  private parlaysMap: Map<string, Parlay> = new Map();
+  private parlayLegsMap: Map<string, ParlayLeg> = new Map();
+
+  async getParlays(userId: string): Promise<Parlay[]> {
+    return Array.from(this.parlaysMap.values()).filter(p => p.userId === userId).sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+  }
+  async getParlayById(id: string): Promise<Parlay | undefined> {
+    return this.parlaysMap.get(id);
+  }
+  async getAllParlays(): Promise<Parlay[]> {
+    return Array.from(this.parlaysMap.values());
+  }
+  async createParlay(p: InsertParlay): Promise<Parlay> {
+    const record: Parlay = { ...p, result: p.result ?? "open", stake: p.stake ?? null, combinedOdds: p.combinedOdds ?? null, potentialPayout: p.potentialPayout ?? null, notes: p.notes ?? null, gradedAt: null, createdAt: new Date() };
+    this.parlaysMap.set(p.id, record);
+    return record;
+  }
+  async updateParlay(id: string, update: Partial<InsertParlay>): Promise<Parlay | undefined> {
+    const p = this.parlaysMap.get(id);
+    if (!p) return undefined;
+    const updated = { ...p, ...update };
+    this.parlaysMap.set(id, updated);
+    return updated;
+  }
+  async deleteParlay(id: string): Promise<void> {
+    this.parlaysMap.delete(id);
+    // Also delete all legs
+    for (const [legId, leg] of this.parlayLegsMap) {
+      if (leg.parlayId === id) this.parlayLegsMap.delete(legId);
+    }
+  }
+  async getParlayLegs(parlayId: string): Promise<ParlayLeg[]> {
+    return Array.from(this.parlayLegsMap.values()).filter(l => l.parlayId === parlayId).sort((a, b) => (a.addedAt?.getTime() ?? 0) - (b.addedAt?.getTime() ?? 0));
+  }
+  async addParlayLeg(leg: InsertParlayLeg): Promise<ParlayLeg> {
+    const record: ParlayLeg = { ...leg, result: leg.result ?? "open", betSlug: leg.betSlug ?? null, betTitle: leg.betTitle ?? null, betSport: leg.betSport ?? null, betLine: leg.betLine ?? null, betPickSide: leg.betPickSide ?? null, odds: leg.odds ?? null, addedAt: new Date() };
+    this.parlayLegsMap.set(leg.id, record);
+    return record;
+  }
+  async updateParlayLeg(id: string, update: Partial<InsertParlayLeg>): Promise<ParlayLeg | undefined> {
+    const leg = this.parlayLegsMap.get(id);
+    if (!leg) return undefined;
+    const updated = { ...leg, ...update };
+    this.parlayLegsMap.set(id, updated);
+    return updated;
+  }
+  async deleteParlayLeg(id: string): Promise<void> {
+    this.parlayLegsMap.delete(id);
   }
 }
 

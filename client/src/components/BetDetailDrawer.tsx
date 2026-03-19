@@ -3,9 +3,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useParlaySlip } from "@/contexts/ParlaySlipContext";
 import {
   TrendingUp, CheckCircle, AlertTriangle, BarChart2, ExternalLink,
-  Loader2, Target, Activity, ChevronRight, Info, X, BookOpen, Bookmark, LogIn
+  Loader2, Target, Activity, ChevronRight, Info, X, BookOpen, Bookmark, LogIn, ShoppingCart
 } from "lucide-react";
 import { Drawer, DrawerContent, DrawerClose } from "@/components/ui/drawer";
 import { formatDistanceToNow } from "date-fns";
@@ -625,6 +626,45 @@ function SimilarBets({ bet, onSelectBet }: { bet: Bet; onSelectBet: (b: Bet) => 
   );
 }
 
+// ── Add to Parlay Slip ─────────────────────────────────────────────
+function AddToParlayButton({ bet }: { bet: Bet }) {
+  const { addLeg, removeLeg, hasLeg, openSlip } = useParlaySlip();
+  const inSlip = hasLeg(bet.id);
+
+  function toggle() {
+    if (inSlip) {
+      removeLeg(bet.id);
+    } else {
+      addLeg({
+        betId: bet.id,
+        betSlug: bet.slug ?? undefined,
+        betTitle: bet.title ?? bet.playerName ?? bet.id,
+        betSport: bet.sport ?? undefined,
+        betLine: bet.line ?? null,
+        betPickSide: bet.pickSide ?? undefined,
+        odds: bet.overOdds ?? bet.underOdds ?? null,
+      });
+      openSlip();
+    }
+  }
+
+  return (
+    <button
+      data-testid="button-add-parlay"
+      onClick={toggle}
+      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all"
+      style={{
+        background: inSlip ? "rgba(245,158,11,0.15)" : "rgba(245,158,11,0.08)",
+        border: `1px solid ${inSlip ? "rgba(245,158,11,0.5)" : "rgba(245,158,11,0.25)"}`,
+        color: inSlip ? "#f59e0b" : "rgba(245,158,11,0.7)",
+      }}
+    >
+      <ShoppingCart size={14} />
+      {inSlip ? "Remove from Parlay ✓" : "Add to Parlay Slip"}
+    </button>
+  );
+}
+
 // ── Track My Pick (auth-gated) ─────────────────────────────────────
 function TrackMyPick({ bet }: { bet: Bet }) {
   const { isLoggedIn, token } = useAuth();
@@ -636,12 +676,18 @@ function TrackMyPick({ bet }: { bet: Bet }) {
       apiRequest("POST", "/api/user/bets", {
         betId: bet.id,
         betSlug: bet.slug ?? null,
+        betTitle: bet.title ?? bet.playerName ?? null,
+        betSport: bet.sport ?? null,
+        betLine: bet.line ?? null,
+        betPickSide: (bet.teamStats as any)?.pickSide ?? bet.pickSide ?? null,
+        odds: (bet.teamStats as any)?.pickedOdds ?? bet.overOdds ?? null,
         result: "open",
       }, token!).then(r => r.json()),
     onSuccess: () => {
       setTracked(true);
-      toast({ title: "Pick tracked!", description: "View it on your Account page.", duration: 2500 });
+      toast({ title: "Pick tracked!", description: "View it in your Portfolio.", duration: 2500 });
       queryClient.invalidateQueries({ queryKey: ["/api/user/bets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
     },
     onError: (e: any) => {
       toast({ title: "Failed to track", description: e.message, variant: "destructive" });
@@ -850,6 +896,9 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
 
             {/* Similar bets */}
             <SimilarBets bet={bet} onSelectBet={onSelectBet} />
+
+            {/* Add to Parlay Slip */}
+            <AddToParlayButton bet={bet} />
 
             {/* Track my pick (auth) */}
             <TrackMyPick bet={bet} />

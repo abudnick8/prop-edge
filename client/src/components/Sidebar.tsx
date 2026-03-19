@@ -1,12 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, BarChart3, MessageCircleQuestion, Trophy, Ticket, TrendingUp, UserCircle } from "lucide-react";
+import { LayoutDashboard, Target, Settings, BarChart3, MessageCircleQuestion, Trophy, Ticket, TrendingUp, UserCircle, Briefcase } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
   { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
   { href: "/lotto", label: "Lotto", icon: Ticket, emoji: "🎰" },
+  { href: "/portfolio", label: "Portfolio", icon: Briefcase, emoji: "💼" },
   { href: "/ask", label: "Ask AI", icon: MessageCircleQuestion, emoji: "🤖" },
   { href: "/tracker", label: "Prop Tracker", icon: BarChart3, emoji: "📊" },
   { href: "/bracket", label: "Bracket", icon: Trophy, emoji: "🏆" },

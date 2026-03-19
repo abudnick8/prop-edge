@@ -2521,5 +2521,354 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ──────────────────────────────────────────────────────────────────
+  // Portfolio + Parlay routes
+  // ──────────────────────────────────────────────────────────────────
+
+  // Helper: American odds → decimal multiplier
+  function americanToDecimal(odds: number | null | undefined): number {
+    if (!odds) return 1.909; // default ~-110
+    return odds > 0 ? (odds / 100) + 1 : (100 / Math.abs(odds)) + 1;
+  }
+
+  // Helper: grade a single player prop bet using recent game log
+  async function gradeUserBet(ub: any): Promise<"won" | "lost" | "push" | null> {
+    try {
+      const bet = await storage.getBetById(ub.betId);
+      if (!bet) return null;
+      if (!bet.playerName || !bet.sport || bet.line == null) return null;
+      const ts = bet.teamStats as any;
+      const pickSide = ub.betPickSide ?? ts?.pickSide?.toUpperCase();
+      if (!pickSide) return null;
+
+      // Fetch live game log
+      const statsUrl = `/api/player-stats/${bet.sport}/${encodeURIComponent(bet.playerName)}`;
+      const cacheKey = `grade:${bet.sport}:${bet.playerName}`;
+      let statsData: any = null;
+
+      try {
+        // Direct call to our own stats function to avoid HTTP overhead
+        statsData = await fetchESPNGameLog(bet.playerName, bet.sport);
+      } catch { return null; }
+
+      if (!statsData?.recentGames?.length) return null;
+
+      // Use the most recent game
+      const lastGame = statsData.recentGames[statsData.recentGames.length - 1];
+      const sport = bet.sport.toUpperCase();
+      let statValue: number | null = null;
+
+      const title = (bet.title + " " + (bet.description ?? "")).toLowerCase();
+      if (sport === "NBA") {
+        if (title.includes("point") || title.includes("pts")) statValue = parseFloat(lastGame.pts ?? "0") || null;
+        else if (title.includes("assist")) statValue = parseFloat(lastGame.ast ?? "0") || null;
+        else if (title.includes("rebound")) statValue = parseFloat(lastGame.trb ?? "0") || null;
+        else statValue = parseFloat(lastGame.pts ?? "0") || null;
+      } else if (sport === "NHL") {
+        statValue = parseFloat(lastGame.goals ?? "0") || null;
+      } else if (sport === "MLB") {
+        if (title.includes("home run") || title.includes("hr")) statValue = parseFloat(lastGame.home_runs ?? "0") || 0;
+        else statValue = parseFloat(lastGame.hits ?? "0") || null;
+      } else if (sport === "NFL") {
+        if (title.includes("passing")) statValue = parseFloat(lastGame.pass_yds ?? lastGame.yds ?? "0") || null;
+        else if (title.includes("rushing")) statValue = parseFloat(lastGame.rush_yds ?? "0") || null;
+        else if (title.includes("receiving")) statValue = parseFloat(lastGame.rec_yds ?? "0") || null;
+        else if (title.includes("touchdown")) statValue = parseFloat(lastGame.td ?? "0") || null;
+        else statValue = parseFloat(lastGame.pass_yds ?? lastGame.yds ?? "0") || null;
+      }
+
+      if (statValue === null) return null;
+      if (statValue === bet.line) return "push";
+      if (pickSide === "OVER") return statValue > bet.line ? "won" : "lost";
+      if (pickSide === "UNDER") return statValue < bet.line ? "won" : "lost";
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // GET /api/portfolio  — portfolio summary for authenticated user
+  app.get("/api/portfolio", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const [userBets, parlays] = await Promise.all([
+        storage.getUserBets(user.id),
+        storage.getParlays(user.id),
+      ]);
+
+      // Enrich parlays with legs
+      const parlaysWithLegs = await Promise.all(
+        parlays.map(async p => ({
+          ...p,
+          legs: await storage.getParlayLegs(p.id),
+        }))
+      );
+
+      // P&L calculations
+      const wonBets = userBets.filter(b => b.result === "won");
+      const lostBets = userBets.filter(b => b.result === "lost");
+      const openBets = userBets.filter(b => b.result === "open" || b.result === "push");
+
+      const totalStaked = userBets.reduce((s, b) => s + (b.stake ?? 0), 0);
+      const stakeWon = wonBets.reduce((s, b) => s + (b.stake ?? 0), 0);
+      const stakeLost = lostBets.reduce((s, b) => s + (b.stake ?? 0), 0);
+      const wonReturns = wonBets.reduce((s, b) => s + (b.stake ?? 0) * americanToDecimal(b.odds), 0);
+      const netPnl = wonReturns - totalStaked;
+      const roi = totalStaked > 0 ? (netPnl / totalStaked) * 100 : 0;
+      const winRate = (wonBets.length + lostBets.length) > 0
+        ? (wonBets.length / (wonBets.length + lostBets.length)) * 100 : 0;
+
+      // Parlay P&L
+      const wonParlays = parlaysWithLegs.filter(p => p.result === "won");
+      const lostParlays = parlaysWithLegs.filter(p => p.result === "lost");
+      const parlayStaked = parlays.reduce((s, p) => s + (p.stake ?? 0), 0);
+      const parlayReturns = wonParlays.reduce((s, p) => s + (p.potentialPayout ?? 0), 0);
+      const parlayNetPnl = parlayReturns - parlayStaked;
+
+      res.json({
+        userBets,
+        parlays: parlaysWithLegs,
+        summary: {
+          totalBets: userBets.length,
+          wonBets: wonBets.length,
+          lostBets: lostBets.length,
+          openBets: openBets.length,
+          winRate: Math.round(winRate * 10) / 10,
+          totalStaked,
+          wonReturns: Math.round(wonReturns * 100) / 100,
+          netPnl: Math.round(netPnl * 100) / 100,
+          roi: Math.round(roi * 10) / 10,
+          totalParlays: parlays.length,
+          wonParlays: wonParlays.length,
+          lostParlays: lostParlays.length,
+          openParlays: parlays.filter(p => p.result === "open").length,
+          parlayStaked,
+          parlayReturns: Math.round(parlayReturns * 100) / 100,
+          parlayNetPnl: Math.round(parlayNetPnl * 100) / 100,
+          bankroll: user.bankroll ?? 1000,
+        },
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Parlay CRUD ────────────────────────────────────────────────────────────────
+
+  // GET /api/parlays  — list user's parlays (with legs)
+  app.get("/api/parlays", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const parlays = await storage.getParlays(user.id);
+      const parlaysWithLegs = await Promise.all(
+        parlays.map(async p => ({ ...p, legs: await storage.getParlayLegs(p.id) }))
+      );
+      res.json(parlaysWithLegs);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/parlays  — create a new parlay with legs
+  app.post("/api/parlays", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { name, stake, notes, legs } = req.body as {
+        name: string;
+        stake?: number;
+        notes?: string;
+        legs: Array<{
+          betId: string;
+          betSlug?: string;
+          betTitle?: string;
+          betSport?: string;
+          betLine?: number;
+          betPickSide?: string;
+          odds?: number;
+        }>;
+      };
+      if (!name?.trim()) return res.status(400).json({ error: "name is required" });
+      if (!legs?.length) return res.status(400).json({ error: "at least one leg is required" });
+
+      // Compute combined decimal odds
+      const combinedDecimal = legs.reduce((acc, leg) => acc * americanToDecimal(leg.odds), 1);
+      const combinedAmerican = combinedDecimal >= 2
+        ? Math.round((combinedDecimal - 1) * 100)
+        : Math.round(-100 / (combinedDecimal - 1));
+      const potentialPayout = stake ? Math.round(stake * combinedDecimal * 100) / 100 : null;
+
+      const parlay = await storage.createParlay({
+        id: nanoid(),
+        userId: user.id,
+        name: name.trim(),
+        stake: stake ?? null,
+        notes: notes ?? null,
+        combinedOdds: combinedAmerican,
+        potentialPayout,
+        result: "open",
+      });
+
+      // Add legs
+      const createdLegs = await Promise.all(legs.map(leg =>
+        storage.addParlayLeg({
+          id: nanoid(),
+          parlayId: parlay.id,
+          userId: user.id,
+          betId: leg.betId,
+          betSlug: leg.betSlug ?? null,
+          betTitle: leg.betTitle ?? null,
+          betSport: leg.betSport ?? null,
+          betLine: leg.betLine ?? null,
+          betPickSide: leg.betPickSide ?? null,
+          odds: leg.odds ?? null,
+          result: "open",
+        })
+      ));
+
+      res.json({ ...parlay, legs: createdLegs });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PATCH /api/parlays/:id  — update stake / name / notes
+  app.patch("/api/parlays/:id", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const parlay = await storage.getParlayById(req.params.id);
+      if (!parlay || parlay.userId !== user.id) return res.status(404).json({ error: "Not found" });
+
+      const updates: any = {};
+      if (req.body.name != null) updates.name = req.body.name;
+      if (req.body.stake != null) {
+        updates.stake = req.body.stake;
+        // Recompute payout with new stake
+        const legs = await storage.getParlayLegs(parlay.id);
+        const combinedDecimal = legs.reduce((acc, l) => acc * americanToDecimal(l.odds), 1);
+        updates.potentialPayout = Math.round(req.body.stake * combinedDecimal * 100) / 100;
+      }
+      if (req.body.notes != null) updates.notes = req.body.notes;
+      if (req.body.result != null) updates.result = req.body.result;
+
+      const updated = await storage.updateParlay(req.params.id, updates);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE /api/parlays/:id
+  app.delete("/api/parlays/:id", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const parlay = await storage.getParlayById(req.params.id);
+      if (!parlay || parlay.userId !== user.id) return res.status(404).json({ error: "Not found" });
+      await storage.deleteParlay(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PATCH /api/parlay-legs/:id  — update a single leg's result manually
+  app.patch("/api/parlay-legs/:id", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const updated = await storage.updateParlayLeg(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/portfolio/grade  — manually trigger grading for all open bets + parlays
+  // Also called by the midnight cron job
+  app.post("/api/portfolio/grade", async (req, res) => {
+    try {
+      const user = await getAuthUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const userBets = await storage.getUserBets(user.id);
+      const openBets = userBets.filter(b => b.result === "open");
+      const results: Array<{ id: string; result: string }> = [];
+
+      for (const ub of openBets) {
+        const grade = await gradeUserBet(ub);
+        if (grade) {
+          await storage.updateUserBet(ub.id, { result: grade, gradedAt: new Date() } as any);
+          results.push({ id: ub.id, result: grade });
+        }
+      }
+
+      // Grade parlay legs + check if parlay is complete
+      const parlays = await storage.getParlays(user.id);
+      for (const parlay of parlays) {
+        if (parlay.result !== "open") continue;
+        const legs = await storage.getParlayLegs(parlay.id);
+        const openLegs = legs.filter(l => l.result === "open");
+        for (const leg of openLegs) {
+          const fakeUb = { betId: leg.betId, betPickSide: leg.betPickSide };
+          const grade = await gradeUserBet(fakeUb);
+          if (grade) await storage.updateParlayLeg(leg.id, { result: grade });
+        }
+        // Re-fetch legs after grading
+        const freshLegs = await storage.getParlayLegs(parlay.id);
+        const anyLost = freshLegs.some(l => l.result === "lost");
+        const allDone = freshLegs.every(l => l.result !== "open");
+        if (anyLost) {
+          await storage.updateParlay(parlay.id, { result: "lost", gradedAt: new Date() } as any);
+        } else if (allDone) {
+          const allWon = freshLegs.every(l => l.result === "won");
+          await storage.updateParlay(parlay.id, { result: allWon ? "won" : "push", gradedAt: new Date() } as any);
+        }
+      }
+
+      res.json({ graded: results.length, results });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/portfolio/grade-all  — admin endpoint for midnight cron (no auth required — internal)
+  // Grades ALL users' open bets
+  app.post("/api/portfolio/grade-all", async (req, res) => {
+    try {
+      const secret = req.headers["x-cron-secret"] as string;
+      if (secret !== (process.env.CRON_SECRET ?? "propedge-midnight-grade")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const allUserBets = await storage.getAllUserBets();
+      const openBets = allUserBets.filter(b => b.result === "open");
+      let gradedCount = 0;
+
+      for (const ub of openBets) {
+        const grade = await gradeUserBet(ub);
+        if (grade) {
+          await storage.updateUserBet(ub.id, { result: grade, gradedAt: new Date() } as any);
+          gradedCount++;
+        }
+      }
+
+      // Grade all open parlay legs
+      const allParlays = await storage.getAllParlays();
+      for (const parlay of allParlays) {
+        if (parlay.result !== "open") continue;
+        const legs = await storage.getParlayLegs(parlay.id);
+        const openLegs = legs.filter(l => l.result === "open");
+        for (const leg of openLegs) {
+          const fakeUb = { betId: leg.betId, betPickSide: leg.betPickSide };
+          const grade = await gradeUserBet(fakeUb);
+          if (grade) await storage.updateParlayLeg(leg.id, { result: grade });
+        }
+        const freshLegs = await storage.getParlayLegs(parlay.id);
+        const anyLost = freshLegs.some(l => l.result === "lost");
+        const allDone = freshLegs.every(l => l.result !== "open");
+        if (anyLost) await storage.updateParlay(parlay.id, { result: "lost", gradedAt: new Date() } as any);
+        else if (allDone) {
+          const allWon = freshLegs.every(l => l.result === "won");
+          await storage.updateParlay(parlay.id, { result: allWon ? "won" : "push", gradedAt: new Date() } as any);
+        }
+      }
+
+      console.log(`[grade-all] Graded ${gradedCount} bets across all users`);
+      res.json({ graded: gradedCount });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }

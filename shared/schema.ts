@@ -196,19 +196,64 @@ export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+// ── Parlays ─────────────────────────────────────────────────────────────────
+// A parlay slip groups multiple legs into one combined wager.
+export const parlays = pgTable("parlays", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),          // user-defined name e.g. "Thursday Night Parlay"
+  stake: real("stake"),                  // total amount wagered on this parlay
+  result: text("result").default("open"), // open | won | lost | push
+  combinedOdds: real("combined_odds"),   // American odds of the combined parlay
+  potentialPayout: real("potential_payout"), // stake * decimal odds
+  notes: text("notes"),
+  gradedAt: timestamp("graded_at"),       // when auto-grader ran
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertParlaySchema = createInsertSchema(parlays).omit({ createdAt: true, gradedAt: true });
+export type InsertParlay = z.infer<typeof insertParlaySchema>;
+export type Parlay = typeof parlays.$inferSelect;
+
+// Legs of a parlay — each leg references one bet from the bets table
+export const parlayLegs = pgTable("parlay_legs", {
+  id: text("id").primaryKey(),
+  parlayId: text("parlay_id").notNull(),
+  userId: text("user_id").notNull(),
+  betId: text("bet_id").notNull(),
+  betSlug: text("bet_slug"),
+  betTitle: text("bet_title"),            // snapshot of title at time of adding
+  betSport: text("bet_sport"),
+  betLine: real("bet_line"),
+  betPickSide: text("bet_pick_side"),     // OVER | UNDER | HOME | AWAY
+  result: text("result").default("open"), // open | won | lost | push
+  odds: real("odds"),                    // American odds for this leg
+  addedAt: timestamp("added_at").defaultNow(),
+});
+
+export const insertParlayLegSchema = createInsertSchema(parlayLegs).omit({ addedAt: true });
+export type InsertParlayLeg = z.infer<typeof insertParlayLegSchema>;
+export type ParlayLeg = typeof parlayLegs.$inferSelect;
+
 // Per-user bet tracking (which picks a user is following)
 export const userBets = pgTable("user_bets", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   betId: text("bet_id").notNull(),
   betSlug: text("bet_slug"),
+  betTitle: text("bet_title"),           // snapshot of title at time of tracking
+  betSport: text("bet_sport"),
+  betLine: real("bet_line"),
+  betPickSide: text("bet_pick_side"),    // OVER | UNDER etc.
   notes: text("notes"),
-  stake: real("stake"),       // amount wagered
-  result: text("result"),     // open | won | lost
+  stake: real("stake"),                  // amount wagered
+  odds: real("odds"),                    // American odds at time of adding
+  result: text("result"),               // open | won | lost | push
+  gradedAt: timestamp("graded_at"),      // when result was set by auto-grader
   addedAt: timestamp("added_at").defaultNow(),
 });
 
-export const insertUserBetSchema = createInsertSchema(userBets).omit({ addedAt: true });
+export const insertUserBetSchema = createInsertSchema(userBets).omit({ addedAt: true, gradedAt: true });
 export type InsertUserBet = z.infer<typeof insertUserBetSchema>;
 export type UserBet = typeof userBets.$inferSelect;
 
