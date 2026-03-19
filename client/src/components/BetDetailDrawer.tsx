@@ -634,18 +634,39 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                 </div>
               </div>
             )}
-            {/* Stat vs prop line */}
-            {bet.line != null && data.season && (() => {
-              const statVal = getSeasonStatValue(data.season);
-              if (!isNaN(statVal) && statVal > 0) {
-                return (
-                  <div className="pt-1">
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>Season Avg vs Prop Line</p>
-                    <StatVsLine statLabel={statKey.label} statValue={parseFloat(statVal.toFixed(1))} propLine={bet.line} />
-                  </div>
-                );
-              }
-              return null;
+            {/* Stat vs prop line — show BOTH L5 avg (primary) and season avg */}
+            {bet.line != null && (() => {
+              // L5 avg from recentGames (most relevant — what the line is set against)
+              const l5Avg = data.recentGames && data.recentGames.length > 0
+                ? (() => {
+                    const vals = data.recentGames.map((g: any) => getGameStatValue(g));
+                    const sum = vals.reduce((a: number, b: number) => a + b, 0);
+                    return parseFloat((sum / vals.length).toFixed(1));
+                  })()
+                : null;
+              // Season avg (secondary context)
+              const seasonVal = data.season ? getSeasonStatValue(data.season) : null;
+              const seasonAvg = seasonVal && seasonVal > 0 ? parseFloat(seasonVal.toFixed(1)) : null;
+              return (
+                <div className="pt-1 space-y-3">
+                  {l5Avg !== null && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
+                        Last 5 Games Avg vs Prop Line
+                      </p>
+                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} />
+                    </div>
+                  )}
+                  {seasonAvg !== null && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
+                        Season Avg vs Prop Line
+                      </p>
+                      <StatVsLine statLabel={statKey.label} statValue={seasonAvg} propLine={bet.line} />
+                    </div>
+                  )}
+                </div>
+              );
             })()}
             {/* Bar chart + game log */}
             {data.recentGames && data.recentGames.length > 0 && (
