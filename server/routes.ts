@@ -211,7 +211,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
                          IP: "ip", ER: "er", K: "strikeouts_p" },
              // WBC is a separate ESPN baseball league
              altLeagues: ["world-baseball-classic"] },
-      NFL: { sn: "football",   lg: "nfl",    seasons: [currentYear, currentYear - 1],
+      NFL: { sn: "football",   lg: "nfl",    seasons: [currentYear - 1, currentYear - 2], // NFL season uses prior calendar year (2025)
              statMap: { YDS: "yds", TD: "td", INT: "int", ATT: "att", REC: "rec", CAR: "car", "LONG": "long" } },
     };
     const cfg = sportCfg[sport.toUpperCase()] ?? sportCfg.NBA;
@@ -390,82 +390,88 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
     primaryGames.sort((a, b) => (a.date_game || "").localeCompare(b.date_game || ""));
 
     // ── Season averages via ESPN v3 stats endpoint ──────────────────────────
+    // The v3 stats endpoint returns categories[].statistics[] where each row is
+    // a season year. Stats are a positional array matched against categories[].labels[].
+    // We pick the most-recent season row, build a label→value map, then extract
+    // the stats we care about by their actual ESPN label names.
     let season: Record<string, string> = {};
-    const primarySeason = cfg.seasons[0]; // current season year
-    let seasonLabel = `${primarySeason - 1}-${String(primarySeason).slice(2)} Season Averages (ESPN)`;
+    // NFL: use prior calendar year (season started in 2025). NBA/NHL: spring year (2026).
+    const primarySeason = sport.toUpperCase() === "NFL" ? currentYear - 1 : cfg.seasons[0];
+    let seasonLabel = sport.toUpperCase() === "NFL"
+      ? `${primarySeason} Season Stats (ESPN)`
+      : `${primarySeason - 1}-${String(primarySeason).slice(2)} Season Averages (ESPN)`;
     try {
       const statsUrl = `https://site.web.api.espn.com/apis/common/v3/sports/${cfg.sn}/${cfg.lg}/athletes/${espnId}/stats?season=${primarySeason}&seasontype=2`;
       const statsResp = await axios.get(statsUrl, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
-      const cats = statsResp.data?.statistics?.splits?.categories ?? [];
-      const allStats: Record<string, string> = {};
-      for (const cat of cats) for (const s of (cat.stats ?? [])) allStats[s.name] = s.displayValue ?? String(s.value ?? "");
 
-      if (sport.toUpperCase() === "NBA") {
+      // Build label→value from categories[0] (per-game/averages) which has the most
+      // human-readable stats. ESPN returns stats as positional array + labels array.
+      const v3cats: any[] = statsResp.data?.categories ?? [];
+      const allStats: Record<string, string> = {};
+      for (const cat of v3cats) {
+        const labels: string[] = cat.labels ?? [];
+        const statsRows: any[] = cat.statistics ?? [];
+        // Find the row for the target season year; fall back to last row
+        const targetRow = statsRows.find((r: any) => r?.season?.year === primarySeason)
+          ?? statsRows[statsRows.length - 1];
+        if (!targetRow) continue;
+        const vals: string[] = targetRow.stats ?? [];
+        labels.forEach((lbl, i) => {
+          if (vals[i] != null && allStats[lbl] == null) allStats[lbl] = String(vals[i]);
+        });
+      }
+
+      const sportUp = sport.toUpperCase();
+      if (sportUp === "NBA") {
         season = {
-          pts: allStats.avgPoints ?? allStats.points ?? "—",
-          reb: allStats.avgRebounds ?? allStats.rebounds ?? "—",
-          ast: allStats.avgAssists ?? allStats.assists ?? "—",
-          stl: allStats.avgSteals ?? allStats.steals ?? "—",
-          blk: allStats.avgBlocks ?? allStats.blocks ?? "—",
-          fg_pct: allStats.fieldGoalPct ?? allStats.FGPct ?? "—",
-          fg3_pct: allStats.threePointFieldGoalPct ?? allStats["3FGPct"] ?? "—",
-          mpg: allStats.avgMinutes ?? allStats.minutesPerGame ?? "—",
-          gp: allStats.gamesPlayed ?? "—",
-          to: allStats.avgTurnovers ?? allStats.turnovers ?? "—",
+          pts:    allStats["PTS"] ?? "—",
+          reb:    allStats["REB"] ?? "—",
+          ast:    allStats["AST"] ?? "—",
+          stl:    allStats["STL"] ?? "—",
+          blk:    allStats["BLK"] ?? "—",
+          fg_pct: allStats["FG%"] ? allStats["FG%"] + "%" : "—",
+          fg3_pct:allStats["3P%"] ? allStats["3P%"] + "%" : "—",
+          mpg:    allStats["MIN"] ?? "—",
+          gp:     allStats["GP"]  ?? "—",
+          to:     allStats["TO"]  ?? "—",
         };
-      } else if (sport.toUpperCase() === "NHL") {
+      } else if (sportUp === "NHL") {
         season = {
-          goals: allStats.goals ?? "—",
-          ast: allStats.assists ?? "—",
-          pts: allStats.points ?? "—",
-          shots: allStats.shots ?? "—",
-          gp: allStats.gamesPlayed ?? "—",
-          ppg: allStats.powerPlayGoals ?? "—",
-          plusMinus: allStats.plusMinus ?? "—",
+          goals:     allStats["G"]     ?? "—",
+          ast:       allStats["A"]     ?? "—",
+          pts:       allStats["PTS"]   ?? "—",
+          shots:     allStats["SOG"]   ?? "—",
+          gp:        allStats["GP"]    ?? "—",
+          ppg:       allStats["PPG"]   ?? "—",
+          plusMinus: allStats["+/-"]   ?? "—",
+          toi:       allStats["TOI/G"] ?? "—",
         };
-      } else if (sport.toUpperCase() === "MLB") {
+      } else if (sportUp === "MLB") {
         season = {
-          avg: allStats.avg ?? allStats.battingAverage ?? "—",
-          hr: allStats.homeRuns ?? "—",
-          rbi: allStats.RBIs ?? allStats.rbi ?? "—",
-          obp: allStats.OBP ?? allStats.onBasePct ?? "—",
-          gp: allStats.gamesPlayed ?? "—",
-          hits: allStats.hits ?? "—",
-          era: allStats.ERA ?? allStats.earnedRunAvg ?? "—",
-          k: allStats.strikeouts ?? "—",
+          avg:  allStats["AVG"] ?? "—",
+          hr:   allStats["HR"]  ?? "—",
+          rbi:  allStats["RBI"] ?? "—",
+          obp:  allStats["OBP"] ?? "—",
+          gp:   allStats["GP"]  ?? "—",
+          hits: allStats["H"]   ?? "—",
+          // pitcher stats
+          era:  allStats["ERA"] ?? "—",
+          k:    allStats["K"]   ?? allStats["SO"] ?? "—",
         };
-      } else if (sport.toUpperCase() === "NFL") {
+      } else if (sportUp === "NFL") {
+        // First category is passing; second is rushing — grab the richest one
         season = {
-          yds: allStats.passingYards ?? allStats.rushingYards ?? allStats.receivingYards ?? "—",
-          td: allStats.passingTouchdowns ?? allStats.rushingTouchdowns ?? allStats.receivingTouchdowns ?? "—",
-          gp: allStats.gamesPlayed ?? "—",
+          gp:       allStats["GP"]  ?? "—",
+          yds:      allStats["YDS"] ?? "—",
+          td:       allStats["TD"]  ?? "—",
+          int:      allStats["INT"] ?? "—",
+          cmp_pct:  allStats["CMP%"] ? allStats["CMP%"] + "%" : "—",
+          rec:      allStats["REC"] ?? "—",
+          car:      allStats["CAR"] ?? "—",
         };
       }
     } catch (seasonErr: any) {
       console.warn(`[Stats] Season stats failed for ${playerName}: ${seasonErr.message}`);
-      // Fallback: ESPN core API season stats
-      try {
-        const coreStatsResp = await axios.get(
-          `http://sports.core.api.espn.com/v2/sports/${cfg.sn}/leagues/${cfg.lg}/athletes/${espnId}/statistics/0`,
-          { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
-        );
-        const cats: any[] = coreStatsResp.data?.splits?.categories ?? [];
-        const allStats: Record<string, number> = {};
-        for (const cat of cats) for (const s of (cat.stats ?? [])) allStats[s.name] = s.value;
-        season = {
-          pts: String(+(allStats.avgPoints ?? 0).toFixed(1)),
-          reb: String(+(allStats.avgRebounds ?? 0).toFixed(1)),
-          ast: String(+(allStats.avgAssists ?? 0).toFixed(1)),
-          stl: String(+(allStats.avgSteals ?? 0).toFixed(1)),
-          blk: String(+(allStats.avgBlocks ?? 0).toFixed(1)),
-          fg_pct: allStats.fieldGoalPct ? String(+(allStats.fieldGoalPct * 100).toFixed(1)) + "%" : "—",
-          fg3_pct: allStats.threePointFieldGoalPct ? String(+(allStats.threePointFieldGoalPct * 100).toFixed(1)) + "%" : "—",
-          mpg: String(+(allStats.avgMinutes ?? 0).toFixed(1)),
-          gp: String(Math.round(allStats.gamesPlayed ?? 0)),
-          to: String(+(allStats.avgTurnovers ?? 0).toFixed(1)),
-        };
-        seasonLabel += " (core fallback)";
-      } catch { /* both failed */ }
     }
 
     const sportKey = sport.toLowerCase();
@@ -892,13 +898,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
       let data: any = null;
       const sportUp = sport.toUpperCase();
-      if (sportUp === "NBA") {
-        data = await fetchBBRStats(playerName); // ESPN-first with BBR fallback
-      } else if (sportUp === "NFL") {
-        data = await fetchPFRStats(playerName);
-      } else if (sportUp === "MLB" || sportUp === "NHL") {
-        data = await fetchESPNGameLog(playerName, sportUp);
-      }
+      // All sports now use ESPN v3 gamelog (reliable, no slug maps needed)
+      data = await fetchESPNGameLog(playerName, sportUp);
       if (!data) return res.status(404).json({ error: "Player not found or stats unavailable" });
       STAT_CACHE.set(cacheKey, { data, ts: Date.now() });
       res.json(data);
