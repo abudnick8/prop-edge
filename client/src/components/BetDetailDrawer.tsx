@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -63,9 +64,38 @@ function OddsBar({ overOdds, underOdds, pickSide }: { overOdds: number | null; u
 }
 
 // ── Confidence Breakdown ──────────────────────────────────────────────────
+const SCORE_DESCRIPTIONS: Record<string, { max: number; color: string; what: string; high: string; low: string }> = {
+  "Market Edge": {
+    max: 30, color: "#22d3ee",
+    what: "How much the betting market price favors this outcome. Derived from implied probability — the higher the edge, the more the market believes this will hit.",
+    high: "Market strongly prices this outcome as likely. The implied probability is high and the line has been set in your favor.",
+    low: "Market is uncertain or slightly against this outcome. The line may be tighter or pricing has moved unfavorably.",
+  },
+  "Analytics": {
+    max: 25, color: "#a78bfa",
+    what: "Depth of statistical factors supporting this pick. Each key factor (recent form, pace, matchup, injury report, etc.) contributes points up to the 25-point max.",
+    high: "Multiple strong statistical signals align with this pick — recent performance, matchup data, and situational factors all point the same direction.",
+    low: "Fewer supporting statistics found. The pick may still be valid but with less statistical backing.",
+  },
+  "Base Model": {
+    max: 30, color: "#f59e0b",
+    what: "PropEdge's core probability model score. Based on historical hit rates for this bet type, sport, and line relative to the player's average output.",
+    high: "The base model strongly favors this line — historically, similar setups have hit at a high rate for this player and bet type.",
+    low: "The base model is neutral or cautious. Consider this a softer edge — the historical pattern is less decisive.",
+  },
+  "Source Quality": {
+    max: 15, color: "#4ade80",
+    what: "Reliability bonus from the data source(s) backing this pick. Kalshi (prediction markets) and multi-source agreement earn the most points; single-source picks earn less.",
+    high: "This bet is backed by multiple independent sources (e.g. Kalshi + Underdog + DraftKings all agreeing) — strong signal convergence.",
+    low: "Based on a single source. The pick may still be excellent, but there is less cross-market validation.",
+  },
+};
+
 function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability }: {
   score: number; keyFactors: string[] | null; riskLevel: string | null; impliedProbability: number | null;
 }) {
+  const [expandedBar, setExpandedBar] = useState<string | null>(null);
+
   const impliedEdge = impliedProbability ? Math.min(30, Math.round(impliedProbability * 30)) : 15;
   const factorBoost = keyFactors ? Math.min(25, keyFactors.length * 5) : 10;
   const riskPenalty = riskLevel === "low" ? 0 : riskLevel === "medium" ? 5 : 12;
@@ -73,36 +103,96 @@ function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability 
   const marketScore = Math.min(30, impliedEdge);
   const analyticsScore = Math.min(25, factorBoost);
   const sourceScore = Math.max(0, score - baseScore - marketScore - analyticsScore - riskPenalty);
+
   const bars = [
-    { label: "Market Edge", value: marketScore, max: 30, color: "#22d3ee" },
-    { label: "Analytics", value: analyticsScore, max: 25, color: "#a78bfa" },
-    { label: "Base Model", value: Math.max(0, baseScore), max: 30, color: "#f59e0b" },
-    { label: "Source Quality", value: Math.max(0, sourceScore), max: 15, color: "#4ade80" },
+    { label: "Market Edge",   value: Math.min(30, Math.max(0, marketScore)),              max: 30, color: "#22d3ee" },
+    { label: "Analytics",     value: Math.min(25, Math.max(0, analyticsScore)),            max: 25, color: "#a78bfa" },
+    { label: "Base Model",    value: Math.min(30, Math.max(0, baseScore)),                 max: 30, color: "#f59e0b" },
+    { label: "Source Quality",value: Math.min(15, Math.max(0, sourceScore)),               max: 15, color: "#4ade80" },
   ];
+
   return (
     <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      {/* Header */}
       <div className="flex items-center gap-2">
         <Activity size={13} style={{ color: "#f59e0b" }} />
         <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Score Breakdown</span>
         <span className="ml-auto text-xs font-black font-mono" style={{ color: "#f59e0b" }}>{score}/100</span>
       </div>
+
+      {/* Bars */}
       <div className="space-y-2.5">
-        {bars.map((bar) => (
-          <div key={bar.label}>
-            <div className="flex justify-between mb-1">
-              <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.45)" }}>{bar.label}</span>
-              <span className="text-[10px] font-mono font-bold" style={{ color: bar.color }}>{bar.value}/{bar.max}</span>
+        {bars.map((bar) => {
+          const desc = SCORE_DESCRIPTIONS[bar.label];
+          const isOpen = expandedBar === bar.label;
+          const pct = (bar.value / bar.max) * 100;
+          const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : pct >= 40 ? "Fair" : "Low";
+          const gradeColor = pct >= 80 ? "#4ade80" : pct >= 60 ? "#f59e0b" : pct >= 40 ? "#fb923c" : "rgba(255,255,255,0.35)";
+
+          return (
+            <div key={bar.label}>
+              {/* Row */}
+              <button
+                className="w-full text-left"
+                onClick={() => setExpandedBar(isOpen ? null : bar.label)}
+                data-testid={`score-bar-${bar.label.toLowerCase().replace(/ /g, "-")}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>{bar.label}</span>
+                    <Info size={9} style={{ color: "rgba(255,255,255,0.25)" }} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-semibold" style={{ color: gradeColor }}>{grade}</span>
+                    <span className="text-[10px] font-mono font-bold" style={{ color: bar.color }}>{bar.value}/{bar.max}</span>
+                  </div>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${pct}%`, background: bar.color, boxShadow: `0 0 6px ${bar.color}66` }}
+                  />
+                </div>
+              </button>
+
+              {/* Expanded explanation */}
+              {isOpen && desc && (
+                <div className="mt-2 p-3 rounded-lg space-y-2" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${bar.color}30` }}>
+                  <div className="flex items-start gap-2">
+                    <BookOpen size={10} className="flex-shrink-0 mt-0.5" style={{ color: bar.color }} />
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>
+                        <span className="font-bold" style={{ color: bar.color }}>What it measures: </span>
+                        {desc.what}
+                      </p>
+                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
+                        <span className="font-semibold" style={{ color: "#4ade80" }}>High score: </span>
+                        {desc.high}
+                      </p>
+                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
+                        <span className="font-semibold" style={{ color: "#fb923c" }}>Low score: </span>
+                        {desc.low}
+                      </p>
+                      <p className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.3)" }}>
+                        Max: {bar.max} pts &nbsp;·&nbsp; This bet: {bar.value} pts ({Math.round(pct)}%)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <div className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${(bar.value / bar.max) * 100}%`, background: bar.color, boxShadow: `0 0 6px ${bar.color}66` }} />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Footer hint */}
+      <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+        Tap any category to learn what it means &nbsp;·&nbsp; Total max: 100 pts
+      </p>
     </div>
   );
 }
+
 
 // ── Key Factors ───────────────────────────────────────────────────────────
 function KeyFactorsPanel({ factors }: { factors: string[] }) {
