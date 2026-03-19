@@ -612,8 +612,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Sort all bets by confidenceScore descending (fix: was using 'confidence' which is always undefined)
       const sorted = [...bets].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
 
-      // Player props: top 100 per sport, but ALWAYS include lotto bets (up to 20 per sport)
-      const PROPS_PER_SPORT = 100;
+      // Player props: top 50 per sport, but ALWAYS include lotto bets (up to 20 per sport)
+      const PROPS_PER_SPORT = 50;
       const LOTTO_PER_SPORT = 20;
       const propsBySport: Record<string, any[]> = {};
       const lottoBySport: Record<string, any[]> = {};
