@@ -19,15 +19,33 @@ const ESPN_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 // For combo props, maps raw stat key → array of ESPN keys to sum
 const COMBO_STAT_MAP: Record<string, Record<string, string[]>> = {
   NBA: {
-    pts_rebs_asts:   ["pts", "trb", "ast"],
-    "pts+rebs+asts": ["pts", "trb", "ast"],
-    "points+rebounds+assists": ["pts", "trb", "ast"],
-    pts_rebs:        ["pts", "trb"],
-    "pts+rebs":      ["pts", "trb"],
-    pts_asts:        ["pts", "ast"],
-    "pts+asts":      ["pts", "ast"],
-    rebs_asts:       ["trb", "ast"],
-    "rebs+asts":     ["trb", "ast"],
+    pts_rebs_asts:            ["pts", "trb", "ast"],
+    "pts+rebs+asts":          ["pts", "trb", "ast"],
+    "points+rebounds+assists":["pts", "trb", "ast"],
+    pts_rebs:                 ["pts", "trb"],
+    "pts+rebs":               ["pts", "trb"],
+    pts_asts:                 ["pts", "ast"],
+    "pts+asts":               ["pts", "ast"],
+    rebs_asts:                ["trb", "ast"],
+    "rebs+asts":              ["trb", "ast"],
+    // blocks + steals combo
+    blks_stls:                ["blk", "stl"],
+    "blks+stls":              ["blk", "stl"],
+    "blocks+steals":          ["blk", "stl"],
+    "blocks + steals":        ["blk", "stl"],
+  },
+  MLB: {
+    hits_runs_rbis:           ["hits", "runs", "rbi"],
+    "hits+runs+rbis":         ["hits", "runs", "rbi"],
+    "hits + runs + rbis":     ["hits", "runs", "rbi"],
+    "hits runs rbis":         ["hits", "runs", "rbi"],
+    // total_bases: use hits as ESPN proxy (TB not exposed in game log)
+    total_bases:              ["hits"],
+  },
+  NHL: {
+    "goals+assists":          ["goals", "ast"],
+    "goals + assists":        ["goals", "ast"],
+    // "points" in NHL = goals+assists already in ESPN pts field — handled as single key
   },
 };
 
@@ -1378,9 +1396,12 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
           for (let wi = 0; wi < warmKeys.length; wi += CONCURRENCY) {
             if (Date.now() - warmStart > MAX_WARM_MS) break; // bail early if slow
             await Promise.allSettled(
-              warmKeys.slice(wi, wi + CONCURRENCY).map(wk =>
-                fetchRecentStatAvg(wk.playerName, wk.sport, wk.statKey)
-              )
+              warmKeys.slice(wi, wi + CONCURRENCY).map(wk => {
+                const comboKs = COMBO_STAT_MAP[wk.sport]?.[wk.statKey];
+                return comboKs
+                  ? fetchComboStatAvg(wk.playerName, wk.sport, comboKs)
+                  : fetchRecentStatAvg(wk.playerName, wk.sport, wk.statKey);
+              })
             );
           }
         })(),

@@ -248,18 +248,21 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
   const nflCols = [
     { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
     { key: "result", label: "Result" },
+    ...(isCombo ? [{ key: "_combo", label: comboColLabel }] : []),
     { key: "yds", label: "YDS" }, { key: "td", label: "TD" }, { key: "int", label: "INT" },
     { key: "att", label: "ATT" }, { key: "rec", label: "REC" }, { key: "car", label: "CAR" },
   ];
   const nhlCols = [
     { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
     { key: "result", label: "Result" },
+    ...(isCombo ? [{ key: "_combo", label: comboColLabel }] : []),
     { key: "goals", label: "G" }, { key: "ast", label: "A" }, { key: "pts", label: "PTS" },
     { key: "shots", label: "SOG" }, { key: "plusMinus", label: "+/-" }, { key: "toi", label: "TOI" },
   ];
   const mlbCols = [
     { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
     { key: "result", label: "Result" },
+    ...(isCombo ? [{ key: "_combo", label: comboColLabel }] : []),
     { key: "ab", label: "AB" }, { key: "hits", label: "H" }, { key: "home_runs", label: "HR" },
     { key: "rbi", label: "RBI" }, { key: "runs", label: "R" }, { key: "avg", label: "AVG" },
   ];
@@ -472,8 +475,20 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
     // period combo variants
     period_1_pts_rebs_asts:   { key: "pra", label: "1Q Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
     period_1_2_pts_rebs_asts: { key: "pra", label: "1H Pts+Reb+Ast", isCombo: true, comboKeys: ["pts","trb","ast"], seasonKeys: ["pts","reb","ast"] },
+    // NBA blks+stls combo
+    blks_stls:             { key: "bs",  label: "Blk+Stl",     isCombo: true, comboKeys: ["blk","stl"],       seasonKeys: ["blk","stl"] },
+    "blks + stls":         { key: "bs",  label: "Blk+Stl",     isCombo: true, comboKeys: ["blk","stl"],       seasonKeys: ["blk","stl"] },
+    "blocks + steals":     { key: "bs",  label: "Blk+Stl",     isCombo: true, comboKeys: ["blk","stl"],       seasonKeys: ["blk","stl"] },
+    "blocks+steals":       { key: "bs",  label: "Blk+Stl",     isCombo: true, comboKeys: ["blk","stl"],       seasonKeys: ["blk","stl"] },
+    // MLB hits+runs+rbis combo
+    hits_runs_rbis:        { key: "hrr", label: "H+R+RBI",      isCombo: true, comboKeys: ["hits","runs","rbi"], seasonKeys: ["hits","runs","rbi"] },
+    "hits + runs + rbis":  { key: "hrr", label: "H+R+RBI",      isCombo: true, comboKeys: ["hits","runs","rbi"], seasonKeys: ["hits","runs","rbi"] },
+    "hits+runs+rbis":      { key: "hrr", label: "H+R+RBI",      isCombo: true, comboKeys: ["hits","runs","rbi"], seasonKeys: ["hits","runs","rbi"] },
+    // MLB total bases (ESPN doesn't expose TB directly — use hits as proxy)
+    total_bases:           { key: "total_bases", label: "Total Bases" },
     // NHL combo
     "goals + assists":     { key: "ga",  label: "Goals+Ast", isCombo: true, comboKeys: ["goals","ast"], seasonKeys: ["goals","ast"] },
+    "goals+assists":       { key: "ga",  label: "Goals+Ast", isCombo: true, comboKeys: ["goals","ast"], seasonKeys: ["goals","ast"] },
     // NBA single
     points:    { key: "pts",      label: "Points" },
     assists:   { key: "ast",      label: "Assists" },
@@ -511,14 +526,19 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
     const title = (bet.title + " " + (bet.description ?? "")).toLowerCase();
     if (sport === "NBA") {
       // Combo patterns — must match BEFORE single-stat patterns
-      const hasPoints  = title.includes("pts + rebs + asts") || title.includes("pts+rebs+asts") || title.includes("pts_rebs_asts") || title.includes("pra");
-      const hasPR      = !hasPoints && (title.includes("pts + rebs") || title.includes("pts+rebs") || title.includes("pts_rebs") || title.includes("points + rebounds"));
-      const hasPA      = !hasPoints && !hasPR && (title.includes("pts + asts") || title.includes("pts+asts") || title.includes("pts_asts") || title.includes("points + assists"));
-      const hasRA      = !hasPoints && !hasPR && !hasPA && (title.includes("rebs + asts") || title.includes("rebs+asts") || title.includes("rebs_asts") || title.includes("rebounds + assists"));
-      if (hasPoints) return STAT_RAW_MAP["pts_rebs_asts"]!;
-      if (hasPR)     return STAT_RAW_MAP["pts_rebs"]!;
-      if (hasPA)     return STAT_RAW_MAP["pts_asts"]!;
-      if (hasRA)     return STAT_RAW_MAP["rebs_asts"]!;
+      const hasPRA     = title.includes("pts + rebs + asts") || title.includes("pts+rebs+asts") || title.includes("pts_rebs_asts") || title.includes("pra");
+      const hasPR      = !hasPRA && (title.includes("pts + rebs") || title.includes("pts+rebs") || title.includes("pts_rebs") || title.includes("points + rebounds"));
+      const hasPA      = !hasPRA && !hasPR && (title.includes("pts + asts") || title.includes("pts+asts") || title.includes("pts_asts") || title.includes("points + assists"));
+      const hasRA      = !hasPRA && !hasPR && !hasPA && (title.includes("rebs + asts") || title.includes("rebs+asts") || title.includes("rebs_asts") || title.includes("rebounds + assists"));
+      // blocks+steals must check for BOTH to avoid matching single-stat titles
+      const hasBS      = !hasPRA && !hasPR && !hasPA && !hasRA &&
+                         (title.includes("blks_stls") || title.includes("blks + stls") || title.includes("blks+stls") ||
+                          (title.includes("block") && title.includes("steal")));
+      if (hasPRA) return STAT_RAW_MAP["pts_rebs_asts"]!;
+      if (hasPR)  return STAT_RAW_MAP["pts_rebs"]!;
+      if (hasPA)  return STAT_RAW_MAP["pts_asts"]!;
+      if (hasRA)  return STAT_RAW_MAP["rebs_asts"]!;
+      if (hasBS)  return STAT_RAW_MAP["blks_stls"]!;
       // Single stats
       if (title.includes("rebound")) return STAT_RAW_MAP["rebounds"]!;
       if (title.includes("assist"))  return STAT_RAW_MAP["assists"]!;
@@ -530,12 +550,19 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
     }
     if (sport === "NHL") {
       if (title.includes("goal") && title.includes("assist")) return STAT_RAW_MAP["goals + assists"]!;
+      if (title.includes("goals+assists") || title.includes("goals + assists")) return STAT_RAW_MAP["goals + assists"]!;
       if (title.includes("goal"))   return STAT_RAW_MAP["goals"]!;
       if (title.includes("assist")) return { key: "ast", label: "Assists" };
       if (title.includes("shot"))   return STAT_RAW_MAP["shots"]!;
       return STAT_RAW_MAP["goals"]!;
     }
     if (sport === "MLB") {
+      // Combo patterns first
+      const hasHRR = title.includes("hits_runs_rbis") || title.includes("hits + runs + rbis") || title.includes("hits+runs+rbis") ||
+                     (title.includes("hit") && title.includes("run") && title.includes("rbi"));
+      const hasTB  = !hasHRR && (title.includes("total_bases") || title.includes("total bases"));
+      if (hasHRR)                     return STAT_RAW_MAP["hits_runs_rbis"]!;
+      if (hasTB)                      return STAT_RAW_MAP["total_bases"]!;
       if (title.includes("home run")) return STAT_RAW_MAP["home_runs"]!;
       if (title.includes("strikeout")) return STAT_RAW_MAP["strikeouts"]!;
       if (title.includes("rbi"))       return STAT_RAW_MAP["rbi"]!;
