@@ -45,7 +45,19 @@ const COMBO_STAT_MAP: Record<string, Record<string, string[]>> = {
   NHL: {
     "goals+assists":          ["goals", "ast"],
     "goals + assists":        ["goals", "ast"],
-    // "points" in NHL = goals+assists already in ESPN pts field — handled as single key
+    // NHL "points" prop = goals + assists (ESPN game log: goals col + ast col)
+    // ESPN's pts col = G+A, but explicit combo gives correct per-game breakdown in drawer
+    points:                   ["goals", "ast"],
+    power_play_points:        ["goals", "ast"], // best proxy available in ESPN game log
+    // power_play_points not in ESPN game log — skip
+  },
+  MLB: {
+    hits_runs_rbis:           ["hits", "runs", "rbi"],
+    "hits+runs+rbis":         ["hits", "runs", "rbi"],
+    "hits + runs + rbis":     ["hits", "runs", "rbi"],
+    // total_bases: ESPN game log doesn't expose TB directly.
+    // Use hits as single-key proxy (handled by STAT_KEY_MAP fallback).
+    // Not added here — no reliable combo formula via simple summation.
   },
 };
 
@@ -55,10 +67,22 @@ const STAT_KEY_MAP: Record<string, Record<string, string>> = {
     blocks: "blk", steals: "stl", threes: "fg3_made",
     // NOTE: combo props (pts_rebs_asts etc.) are handled via COMBO_STAT_MAP above
   },
-  NHL: { goals: "goals", assists_hockey: "ast", shots: "shots", assists: "ast" },
+  NHL: {
+    goals: "goals", assists_hockey: "ast", shots: "shots", assists: "ast",
+    saves: "saves", blocked_shots: "blocked_shots", faceoffs_won: "faceoffs_won",
+    plus_minus: "plusMinus",
+    // "points" in NHL = goals+assists — handled via COMBO_STAT_MAP
+    // "power_play_points" not in ESPN game log — skip
+  },
   MLB: {
-    hits: "hits", home_runs: "home_runs", rbi: "rbi",
-    strikeouts: "strikeouts", total_bases: "hits",
+    hits: "hits", home_runs: "home_runs",
+    rbi: "rbi",   rbis: "rbi",  // Underdog uses "rbis", ESPN key is "rbi"
+    strikeouts: "strikeouts",
+    runs: "runs", stolen_bases: "stolen_bases",
+    walks_allowed: "bb",
+    total_bases: "hits",          // ESPN doesn't expose TB — hits is the closest proxy
+    pitch_outs: "strikeouts",     // Underdog pitching outs — proxy via SO
+    // hits_runs_rbis handled via COMBO_STAT_MAP
   },
   NFL: {
     passing_yards: "yds", rushing_yards: "yds", receiving_yards: "yds",
@@ -1329,23 +1353,43 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
 
     // Stat type → display name mapping
     const statDisplayMap: Record<string, string> = {
+      // NBA
       points: "Points",
       rebounds: "Rebounds",
       assists: "Assists",
-      pts_rebs_asts: "Pts+Rebs+Asts",
+      pts_rebs_asts: "Pts + Rebs + Asts",
+      pts_rebs: "Points + Rebounds",
+      pts_asts: "Points + Assists",
+      rebs_asts: "Rebounds + Assists",
+      blks_stls: "Blocks + Steals",
+      period_1_pts_rebs_asts: "1Q Pts + Rebs + Asts",
+      period_1_2_pts_rebs_asts: "1H Pts + Rebs + Asts",
       threes: "3-Pointers Made",
+      three_points_made: "3-Pointers Made",
       steals: "Steals",
       blocks: "Blocks",
       turnovers: "Turnovers",
+      // NHL
       goals: "Goals",
       assists_hockey: "Assists",
       shots: "Shots on Goal",
       saves: "Saves",
+      blocked_shots: "Blocked Shots",
+      faceoffs_won: "Faceoffs Won",
+      plus_minus: "Plus/Minus",
+      power_play_points: "Power Play Points",
+      // MLB
       hits: "Hits",
       total_bases: "Total Bases",
       strikeouts: "Strikeouts",
       home_runs: "Home Runs",
       rbi: "RBIs",
+      rbis: "RBIs",
+      runs: "Runs",
+      stolen_bases: "Stolen Bases",
+      hits_runs_rbis: "Hits + Runs + RBIs",
+      pitch_outs: "Pitching Outs",
+      // NFL
       passing_yards: "Passing Yards",
       rushing_yards: "Rushing Yards",
       receiving_yards: "Receiving Yards",
