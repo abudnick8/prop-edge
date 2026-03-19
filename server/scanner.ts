@@ -239,36 +239,192 @@ function computeFormEdge(recentAvg: number | null, line: number): number | null 
   return (recentAvg - line) / line;  // fractional edge, e.g. 0.15 = 15% above line
 }
 
+// ── Fetch per-game values for a single ESPN stat key (last 5 games) ─────────
+// Returns the raw numeric values in game order (most recent last).
+async function fetchPerGameStatValues(
+  playerName: string,
+  sport: string,
+  espnStatKey: string  // ESPN game-log column key, e.g. "pts", "trb", "ast"
+): Promise<number[]> {
+  const sportCfg: Record<string, { sn: string; lg: string; seasons: number[]; statMap: Record<string, string> }> = {
+    NBA: { sn: "basketball", lg: "nba",  seasons: [new Date().getFullYear(), new Date().getFullYear() - 1],
+           statMap: { MIN: "mp", PTS: "pts", REB: "trb", AST: "ast", BLK: "blk", STL: "stl", TO: "tov", FG: "fg_made", "3PT": "fg3_made" } },
+    NHL: { sn: "hockey",    lg: "nhl",  seasons: [new Date().getFullYear(), new Date().getFullYear() - 1],
+           statMap: { G: "goals", A: "ast", PTS: "pts", S: "shots" } },
+    MLB: { sn: "baseball",  lg: "mlb",  seasons: [new Date().getFullYear(), new Date().getFullYear() - 1],
+           statMap: { H: "hits", HR: "home_runs", RBI: "rbi", SO: "strikeouts", R: "runs" } },
+    NFL: { sn: "football",  lg: "nfl",  seasons: [new Date().getFullYear() - 1, new Date().getFullYear() - 2],
+           statMap: { YDS: "yds", TD: "td", REC: "rec", CAR: "car" } },
+  };
+  try {
+    const cfg = sportCfg[sport.toUpperCase()];
+    if (!cfg) return [];
+    const espnId = await resolveESPNPlayerIdForScanner(playerName, sport);
+    if (!espnId) return [];
+
+    const seenIds = new Set<string>();
+    const allEntries: Array<{ stats: any[]; labels: string[] }> = [];
+    const results = await Promise.allSettled(
+      cfg.seasons.map(yr =>
+        axios.get(
+          `https://site.web.api.espn.com/apis/common/v3/sports/${cfg.sn}/${cfg.lg}/athletes/${espnId}/gamelog?season=${yr}`,
+          { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }
+        )
+      )
+    );
+    for (const res of results) {
+      if (res.status !== "fulfilled") continue;
+      const v3 = res.value.data;
+      const labels: string[] = v3.labels ?? [];
+      for (const stype of (v3.seasonTypes ?? [])) {
+        for (const cat of (stype.categories ?? [])) {
+          for (const ev of (cat.events ?? [])) {
+            const eid = String(ev.eventId ?? "");
+            if (seenIds.has(eid)) continue;
+            seenIds.add(eid);
+            allEntries.push({ stats: ev.stats ?? [], labels });
+          }
+        }
+      }
+    }
+    const last5 = allEntries.slice(-5);
+    const espnLabel = Object.entries(cfg.statMap).find(([, v]) => v === espnStatKey)?.[0];
+    if (!espnLabel) return [];
+    const values: number[] = [];
+    for (const { stats, labels } of last5) {
+      const idx = labels.indexOf(espnLabel);
+      if (idx < 0) continue;
+      const raw = String(stats[idx] ?? "");
+      const val = raw.includes("-") ? parseFloat(raw.split("-")[0]) : parseFloat(raw);
+      if (!isNaN(val)) values.push(val);
+    }
+    return values;
+  } catch { return []; }
+}
+
+// ── Cross-validate recentAvg against per-game data ─────────────────────────
+// For combo stats: re-fetch each component per-game, sum them, and compute the true avg.
+// For single stats: re-fetch per-game values directly.
+// If the cached recentAvg diverges from the per-game truth by >20%,
+// the cross-validated (correct) value is returned and a warning is logged.
+async function crossValidateRecentAvg(
+  playerName: string,
+  sport: string,
+  comboKeys: string[] | null,   // ESPN keys to sum (combo), or null for single stat
+  singleStatRaw: string | null, // Underdog raw key for single stats
+  line: number,
+  cachedAvg: number | null
+): Promise<{ validatedAvg: number | null; perGameValues: number[]; hitRate: number | null; diverged: boolean }> {
+  try {
+    let perGameValues: number[] = [];
+
+    if (comboKeys && comboKeys.length > 0) {
+      // Fetch per-game values for each component then sum per game
+      const perGameComponents = await Promise.all(
+        comboKeys.map(k => fetchPerGameStatValues(playerName, sport, k))
+      );
+      // Align by game index (use shortest non-empty array length)
+      const maxLen = Math.max(...perGameComponents.map(c => c.length));
+      if (maxLen > 0) {
+        for (let i = 0; i < maxLen; i++) {
+          const gameSum = perGameComponents.reduce((sum, comp) => sum + (comp[i] ?? 0), 0);
+          perGameValues.push(gameSum);
+        }
+      }
+    } else if (singleStatRaw) {
+      const espnKey = STAT_KEY_MAP[sport.toUpperCase()]?.[singleStatRaw];
+      if (espnKey) {
+        perGameValues = await fetchPerGameStatValues(playerName, sport, espnKey);
+      }
+    }
+
+    if (perGameValues.length === 0) {
+      return { validatedAvg: cachedAvg, perGameValues: [], hitRate: null, diverged: false };
+    }
+
+    // Compute true avg from per-game data
+    const trueAvg = perGameValues.reduce((a, b) => a + b, 0) / perGameValues.length;
+
+    // Hit rate: how many games actually beat the line for each direction
+    const overHits = perGameValues.filter(v => v >= line).length;
+    const hitRate = overHits / perGameValues.length; // fraction going OVER (0–1)
+
+    // Check divergence
+    let diverged = false;
+    if (cachedAvg !== null && Math.abs(trueAvg - cachedAvg) / Math.max(line, 1) > 0.20) {
+      console.warn(
+        `[CrossValidate] ${playerName} ${sport}: cached L5 avg ${cachedAvg?.toFixed(1)} diverges from ` +
+        `per-game truth ${trueAvg.toFixed(1)} (line ${line}). Using corrected value.`
+      );
+      diverged = true;
+    }
+
+    return {
+      validatedAvg: diverged ? parseFloat(trueAvg.toFixed(2)) : cachedAvg,
+      perGameValues,
+      hitRate,
+      diverged,
+    };
+  } catch {
+    return { validatedAvg: cachedAvg, perGameValues: [], hitRate: null, diverged: false };
+  }
+}
+
 // Determine analytically best pick side by combining market signal + form signal
 // formEdge: positive = player exceeds line recently, negative = player falls short
+// hitRate: fraction of L5 games where stat >= line (OVER hits) — used as safety cross-check
 function analyticalPickSide(
   marketPickSide: string,
   formEdge: number | null,
-  isLottoStat: boolean
-): { pickSide: string; formFlipped: boolean } {
+  isLottoStat: boolean,
+  hitRate: number | null = null  // 0–1: fraction of L5 games that went OVER the line
+): { pickSide: string; formFlipped: boolean; safetyOverride: boolean; safetyNote: string | null } {
   if (formEdge === null) {
     // No form data — for lotto stats always OVER; otherwise follow market
-    return { pickSide: isLottoStat ? "OVER" : marketPickSide, formFlipped: false };
+    return { pickSide: isLottoStat ? "OVER" : marketPickSide, formFlipped: false, safetyOverride: false, safetyNote: null };
   }
 
   if (isLottoStat) {
-    // Lotto stats: still OVER by default (high-reward long shots)
-    // But if player's recent avg FAR exceeds line (edge > +30%), boost conviction
-    // If player is MASSIVELY cold (edge < -30%), we could flip but for lotto keep OVER
-    return { pickSide: "OVER", formFlipped: false };
+    return { pickSide: "OVER", formFlipped: false, safetyOverride: false, safetyNote: null };
   }
 
-  // For regular props: apply form intelligence
+  // ── Determine initial pick from form edge ──────────────────────────────────
+  let candidateSide: string;
   if (formEdge >= 0.15) {
-    // Player averaging 15%+ above line in last 5 — analytically favor OVER
-    return { pickSide: "OVER", formFlipped: marketPickSide !== "OVER" };
+    candidateSide = "OVER";
   } else if (formEdge <= -0.15) {
-    // Player averaging 15%+ below line in last 5 — analytically favor UNDER
-    return { pickSide: "UNDER", formFlipped: marketPickSide !== "UNDER" };
+    candidateSide = "UNDER";
   } else {
-    // Within 15% band — defer to market
-    return { pickSide: marketPickSide, formFlipped: false };
+    candidateSide = marketPickSide;  // within 15% band — defer to market
   }
+  const formFlipped = candidateSide !== marketPickSide;
+
+  // ── Safety cross-check: hit-rate must agree with candidate side ───────────────
+  // hitRate = fraction of L5 games where stat >= line (OVER hits).
+  // If the candidate side says UNDER but the player hit OVER in ≥3/5 games,
+  // OR the candidate says OVER but the player only hit OVER in ≤2/5 games,
+  // the hit-rate directly contradicts the avg-based signal.
+  // In that case we revert to market and flag the conflict.
+  if (hitRate !== null) {
+    const underHitRate = 1 - hitRate;  // fraction of games where stat < line (UNDER hits)
+
+    if (candidateSide === "UNDER" && hitRate >= 0.60) {
+      // Avg is below line BUT player beats the line 3+/5 games — volatile player, avg is misleading
+      // Revert to market direction, mark safety override
+      const note = `Safety override: avg-based signal said UNDER but player hit OVER in ${Math.round(hitRate * 100)}% of L5 games — reverting to market (${marketPickSide})`;
+      console.warn(`[SafetyCheck] ${note}`);
+      return { pickSide: marketPickSide, formFlipped: false, safetyOverride: true, safetyNote: note };
+    }
+
+    if (candidateSide === "OVER" && underHitRate >= 0.60) {
+      // Avg is above line BUT player hits UNDER in 3+/5 games — volatile player, avg is misleading
+      const note = `Safety override: avg-based signal said OVER but player hit UNDER in ${Math.round(underHitRate * 100)}% of L5 games — reverting to market (${marketPickSide})`;
+      console.warn(`[SafetyCheck] ${note}`);
+      return { pickSide: marketPickSide, formFlipped: false, safetyOverride: true, safetyNote: note };
+    }
+  }
+
+  return { pickSide: candidateSide, formFlipped, safetyOverride: false, safetyNote: null };
 }
 
 // ─── Slug utility ──────────────────────────────────────────────────────────────────────
@@ -1516,20 +1672,34 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         (sport === "NFL" && (statRaw === "touchdowns" || statNameLower.includes("touchdown"))) ||
         (sport === "NBA" && statRaw === "points" && statNameLower === "points");
 
-      // ── Fetch recent form data from ESPN ──
+      // ── Fetch recent form data from ESPN + cross-validate ──
       // statRaw is the Underdog key (e.g. "points", "goals", "pts_rebs_asts")
       const statRawKey = (appearanceStat.stat ?? "").toLowerCase();
       const comboKeys = COMBO_STAT_MAP[sport]?.[statRawKey];
-      const recentAvg = comboKeys
+
+      // Step 1: Fetch cached avg (fast, may be stale for combos)
+      const cachedAvg = comboKeys
         ? await fetchComboStatAvg(playerName, sport, comboKeys)
         : await fetchRecentStatAvg(playerName, sport, statRawKey);
+
+      // Step 2: Cross-validate — re-compute per-game and detect divergence
+      const { validatedAvg, perGameValues, hitRate, diverged } = await crossValidateRecentAvg(
+        playerName, sport,
+        comboKeys ?? null,
+        comboKeys ? null : statRawKey,
+        statValue,
+        cachedAvg
+      );
+      const recentAvg = validatedAvg;
       const formEdgeVal = computeFormEdge(recentAvg, statValue);
 
       // Market-implied pick side
       const marketPickSide = overProb >= underProb ? "OVER" : "UNDER";
 
-      // Analytically-chosen pick side (uses form if available)
-      const { pickSide, formFlipped } = analyticalPickSide(marketPickSide, formEdgeVal, isLottoStat);
+      // Step 3: Analytically-chosen pick side with hit-rate safety cross-check
+      const { pickSide, formFlipped, safetyOverride, safetyNote } = analyticalPickSide(
+        marketPickSide, formEdgeVal, isLottoStat, hitRate
+      );
 
       let pickedOdds: number;
       let pickProb: number;
@@ -1542,16 +1712,32 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         pickedOdds = pickSide === "OVER" ? overOdds : underOdds;
         pickProb = pickSide === "OVER" ? overProb : underProb;
         // Only surface non-lotto picks with meaningful edge (one side ≥52%)
-        // If form flipped us, we use the analytic edge so apply a slightly lower threshold
-        const edgeThreshold = formFlipped ? 0.50 : 0.52;
+        // Safety overrides revert to market so use market's picked side prob as threshold base
+        const edgeThreshold = (formFlipped && !safetyOverride) ? 0.50 : 0.52;
         if (Math.max(overProb, underProb) < edgeThreshold) continue;
       }
 
       const formLabel = recentAvg != null
-        ? ` (L5 avg: ${recentAvg.toFixed(1)})`
+        ? ` (L5 avg: ${recentAvg.toFixed(1)}${diverged ? " ⚠️ corrected" : ""})`
         : "";
       const title = `[TAKE ${pickSide} ${statValue} @ ${pickedOdds > 0 ? "+" : ""}${pickedOdds}] ${playerName} — ${statName}`;
       const description = `${playerName} is projected to go ${pickSide} ${statValue} ${statName}${formLabel}. ${sport} player prop from Underdog Fantasy. ${overOption?.selection_subheader ?? ""}`;
+
+      // Build extra key factors from safety/divergence flags
+      const extraFactors: string[] = [];
+      if (diverged) {
+        extraFactors.push(`⚠️ Stat data corrected: cached avg was mismatched — using per-game cross-validated value (${recentAvg?.toFixed(1)})`);
+      }
+      if (safetyNote) {
+        extraFactors.push(`⚠️ ${safetyNote}`);
+      }
+      if (hitRate !== null && perGameValues.length >= 3) {
+        const overHits = Math.round(hitRate * perGameValues.length);
+        const underHits = perGameValues.length - overHits;
+        const dir = pickSide === "OVER" ? "OVER" : "UNDER";
+        const hits = pickSide === "OVER" ? overHits : underHits;
+        extraFactors.push(`Hit rate check: ${hits}/${perGameValues.length} recent games went ${dir} ${statValue}`);
+      }
 
       const confidence = computeConfidence({
         impliedProb: pickProb,
@@ -1563,7 +1749,7 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         line: statValue,
         recentAvg,
         formEdge: formEdgeVal,
-        formFlipped,
+        formFlipped: formFlipped && !safetyOverride,
       });
 
       const gameTimeVal = gameTime ? new Date(gameTime) : null;
@@ -1588,7 +1774,7 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         confidenceScore: confidence.score,
         riskLevel: confidence.risk,
         recommendedAllocation: confidence.allocation,
-        keyFactors: [`${pickSide} ${statValue} ${statName}`, ...confidence.factors],
+        keyFactors: [`${pickSide} ${statValue} ${statName}`, ...extraFactors, ...confidence.factors],
         researchSummary: confidence.summary,
         gameTime: gameTimeVal,
         playerName,
@@ -2753,37 +2939,59 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
             const statName = statDisplayMap[statID] ?? statID;
             const sport = SGO_SPORT_MAP[leagueID] ?? leagueID;
 
-            // ── Fetch recent form data from ESPN ──
-            // statID is the SGO stat key (e.g. "points", "goals", "pts_rebs_asts")
+            // ── Fetch recent form data from ESPN + cross-validate ──
             const statIDLower = statID.toLowerCase();
             const comboKeysSGO = COMBO_STAT_MAP[sport]?.[statIDLower];
-            const recentAvgSGO = comboKeysSGO
+
+            // Step 1: Fetch cached avg
+            const cachedAvgSGO = comboKeysSGO
               ? await fetchComboStatAvg(playerName, sport, comboKeysSGO)
               : await fetchRecentStatAvg(playerName, sport, statIDLower);
+
+            // Step 2: Cross-validate per-game and detect divergence
+            const { validatedAvg: validatedAvgSGO, perGameValues: pgvSGO, hitRate: hitRateSGO, diverged: divergedSGO } =
+              await crossValidateRecentAvg(
+                playerName, sport,
+                comboKeysSGO ?? null,
+                comboKeysSGO ? null : statIDLower,
+                lineNum, cachedAvgSGO
+              );
+            const recentAvgSGO = validatedAvgSGO;
             const formEdgeSGO = computeFormEdge(recentAvgSGO, lineNum);
 
-            // Analytically-chosen pick side
+            // Step 3: Analytically-chosen pick side with hit-rate safety check
             const isLottoStatSGO =
               (sport === "NHL" && statIDLower === "goals") ||
               (sport === "MLB" && statIDLower === "home_runs") ||
               (sport === "NFL" && statIDLower === "touchdowns") ||
               (sport === "NBA" && statIDLower === "points");
 
-            const { pickSide, formFlipped: formFlippedSGO } = analyticalPickSide(marketPickSideSGO, formEdgeSGO, isLottoStatSGO);
+            const { pickSide, formFlipped: formFlippedSGO, safetyOverride: safetyOverrideSGO, safetyNote: safetyNoteSGO } =
+              analyticalPickSide(marketPickSideSGO, formEdgeSGO, isLottoStatSGO, hitRateSGO);
             const pickedOdds = pickSide === "OVER" ? overOddsNum : underOddsNum;
             const pickProb = pickSide === "OVER" ? overProb : underProb;
 
             // Only include picks with meaningful edge (≥52%)
-            // If form flipped us, apply a slightly lower threshold
-            const sgoEdgeThreshold = formFlippedSGO ? 0.50 : 0.52;
+            const sgoEdgeThreshold = (formFlippedSGO && !safetyOverrideSGO) ? 0.50 : 0.52;
             if (Math.max(overProb, underProb) < sgoEdgeThreshold) continue;
 
             const formLabelSGO = recentAvgSGO != null
-              ? ` (L5 avg: ${recentAvgSGO.toFixed(1)})`
+              ? ` (L5 avg: ${recentAvgSGO.toFixed(1)}${divergedSGO ? " ⚠️ corrected" : ""})`
               : "";
             const oddsStr = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
             const title = `[TAKE ${pickSide} ${lineNum} @ ${oddsStr}] ${playerName} — ${statName}`;
             const description = `${playerName} is projected to go ${pickSide} ${lineNum} ${statName}${formLabelSGO}. ${sport} player prop from SportsGameOdds (multi-book consensus).`;
+
+            const extraFactorsSGO: string[] = [];
+            if (divergedSGO) extraFactorsSGO.push(`⚠️ Stat data corrected: cached avg was mismatched — using per-game cross-validated value (${recentAvgSGO?.toFixed(1)})`);
+            if (safetyNoteSGO) extraFactorsSGO.push(`⚠️ ${safetyNoteSGO}`);
+            if (hitRateSGO !== null && pgvSGO.length >= 3) {
+              const overHitsSGO = Math.round(hitRateSGO * pgvSGO.length);
+              const underHitsSGO = pgvSGO.length - overHitsSGO;
+              const dirSGO = pickSide === "OVER" ? "OVER" : "UNDER";
+              const hitsSGO = pickSide === "OVER" ? overHitsSGO : underHitsSGO;
+              extraFactorsSGO.push(`Hit rate check: ${hitsSGO}/${pgvSGO.length} recent games went ${dirSGO} ${lineNum}`);
+            }
 
             const confidence = computeConfidence({
               impliedProb: pickProb,
@@ -2795,7 +3003,7 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
               line: lineNum,
               recentAvg: recentAvgSGO,
               formEdge: formEdgeSGO,
-              formFlipped: formFlippedSGO,
+              formFlipped: formFlippedSGO && !safetyOverrideSGO,
             });
 
             const id = `sgo_${ev.eventID}_${playerID}_${statID}`;
@@ -2813,7 +3021,7 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
               confidenceScore: confidence.score,
               riskLevel: confidence.risk,
               recommendedAllocation: confidence.allocation,
-              keyFactors: [`${pickSide} ${lineNum} ${statName} (SGO multi-book)`, ...confidence.factors],
+              keyFactors: [`${pickSide} ${lineNum} ${statName} (SGO multi-book)`, ...extraFactorsSGO, ...confidence.factors],
               researchSummary: confidence.summary,
               gameTime: startTime,
               playerName,
