@@ -33,8 +33,13 @@ const STAT_KEY_MAP: Record<string, Record<string, string>> = {
   },
 };
 
+// In-memory ESPN player ID cache (never expires — IDs don't change)
+const ESPN_ID_CACHE = new Map<string, string | null>();
+
 // Resolve ESPN athlete ID by name (simplified search)
 async function resolveESPNPlayerIdForScanner(playerName: string, sport: string): Promise<string | null> {
+  const idKey = `${playerName}::${sport}`;
+  if (ESPN_ID_CACHE.has(idKey)) return ESPN_ID_CACHE.get(idKey)!;
   try {
     const sportCfg: Record<string, { sn: string; lg: string }> = {
       NBA: { sn: "basketball", lg: "nba" },
@@ -43,19 +48,22 @@ async function resolveESPNPlayerIdForScanner(playerName: string, sport: string):
       NFL: { sn: "football",   lg: "nfl" },
     };
     const cfg = sportCfg[sport.toUpperCase()];
-    if (!cfg) return null;
+    if (!cfg) { ESPN_ID_CACHE.set(idKey, null); return null; }
     const query = encodeURIComponent(playerName);
+    // Try the athlete search endpoint — ESPN's suggest API is more reliable
     const { data } = await axios.get(
-      `https://site.web.api.espn.com/apis/common/v3/sports/${cfg.sn}/${cfg.lg}/athletes?search=${query}&limit=5`,
-      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+      `https://site.api.espn.com/apis/common/v3/search?query=${query}&sport=${cfg.sn}&league=${cfg.lg}&limit=3&type=player`,
+      { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
     );
-    const athletes = data?.athletes ?? data?.items ?? [];
-    if (athletes.length > 0) {
-      const first = athletes[0];
-      return String(first.id ?? first.uid ?? first.athlete?.id ?? "") || null;
+    const items = data?.results?.[0]?.contents ?? data?.athletes ?? data?.items ?? [];
+    if (items.length > 0) {
+      const first = items[0];
+      const id = String(first.id ?? first.uid ?? first.athlete?.id ?? first.dataSourceIdentifier ?? "").replace(/^.*athlete\//, "").replace(/\?.*/, "");
+      if (id && id.length > 0) { ESPN_ID_CACHE.set(idKey, id); return id; }
     }
+    ESPN_ID_CACHE.set(idKey, null);
     return null;
-  } catch { return null; }
+  } catch { ESPN_ID_CACHE.set(idKey, null); return null; }
 }
 
 // Fetch L5 average for a player's specific stat from ESPN game log
@@ -1290,6 +1298,55 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
 
     const now = Date.now();
     let count = 0;
+
+    // ── Pre-warm ESPN stat cache for all unique player+sport+stat combos ──
+    // We collect all combos upfront, fetch them in parallel (cap=12), then
+    // the inner loop hits the cache instantly instead of blocking on HTTP.
+    type WarmKey = { playerName: string; sport: string; statKey: string };
+    const warmSet = new Map<string, WarmKey>();
+    for (const line of lines) {
+      if (line.status !== "active") continue;
+      const ou2 = line.over_under;
+      if (!ou2 || ou2.category !== "player_prop") continue;
+      const as2 = ou2.appearance_stat;
+      if (!as2) continue;
+      const app2 = appearanceMap.get(as2.appearance_id);
+      if (!app2) continue;
+      const pl2 = playerMap.get(app2.player_id);
+      if (!pl2) continue;
+      const sid2 = pl2.sport_id ?? "";
+      if (!includedSports.has(sid2)) continue;
+      const sp2 = sportMap[sid2] ?? "Other";
+      const pName2 = `${pl2.first_name} ${pl2.last_name}`;
+      const statRaw2 = (as2.stat ?? "").toLowerCase();
+      if (!STAT_KEY_MAP[sp2]?.[statRaw2]) continue; // no mapping = skip ESPN
+      const wk = `${pName2}::${sp2}::${statRaw2}`;
+      if (!warmSet.has(wk)) warmSet.set(wk, { playerName: pName2, sport: sp2, statKey: statRaw2 });
+    }
+    // Parallel fetch with concurrency=12 and a hard 20s total timeout.
+    // If ESPN is slow/down the scan proceeds without form data (cache misses
+    // return null and analyticalPickSide falls back to market-only behavior).
+    const warmKeys = [...warmSet.values()];
+    const CONCURRENCY = 12;
+    const warmStart = Date.now();
+    const MAX_WARM_MS = 20000; // never block scan more than 20s for ESPN
+    try {
+      await Promise.race([
+        (async () => {
+          for (let wi = 0; wi < warmKeys.length; wi += CONCURRENCY) {
+            if (Date.now() - warmStart > MAX_WARM_MS) break; // bail early if slow
+            await Promise.allSettled(
+              warmKeys.slice(wi, wi + CONCURRENCY).map(wk =>
+                fetchRecentStatAvg(wk.playerName, wk.sport, wk.statKey)
+              )
+            );
+          }
+        })(),
+        new Promise(resolve => setTimeout(resolve, MAX_WARM_MS)),
+      ]);
+    } catch { /* swallow — cache may be partially warm, that's fine */ }
+    const warmedCount = warmKeys.filter(wk => ESPN_STAT_CACHE.has(`${wk.playerName}::${wk.sport}::${STAT_KEY_MAP[wk.sport]?.[wk.statKey] ?? wk.statKey}`)).length;
+    console.log(`[Underdog] ESPN cache pre-warm: ${warmedCount}/${warmKeys.length} resolved in ${Date.now()-warmStart}ms`);
 
     for (const line of lines) {
       if (line.status !== "active") continue;
