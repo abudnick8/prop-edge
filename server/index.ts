@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { initWebSocketServer } from "./ws";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +61,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Attach WebSocket server to the same http.Server before routes start
+  initWebSocketServer(httpServer);
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

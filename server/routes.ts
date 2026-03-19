@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { Server } from "http";
 import { storage } from "./storage";
 import { runScan } from "./scanner";
+import { broadcast } from "./ws";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -749,6 +750,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     try {
       const settings = await storage.getSettings();
       const result = await runScan(settings.oddsApiKey);
+      // Push real-time update to all connected clients
+      const allBets = await storage.getBets();
+      broadcast("bets:updated", { scanned: result.scanned, total: allBets.length });
+      // Fire high-confidence alerts for any bet ≥ 80
+      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 80);
+      if (highConf.length > 0) {
+        broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
+      }
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -1723,10 +1732,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   };
   setTimeout(() => startupScan(), 3000); // 3s delay for Railway to fully initialize
 
-  // Auto-scan every 30 min
+  // Auto-scan every 30 min — broadcast result to all WS clients
   scanInterval = setInterval(async () => {
-    const settings = await storage.getSettings();
-    await runScan(settings.oddsApiKey);
+    try {
+      const settings = await storage.getSettings();
+      const result = await runScan(settings.oddsApiKey);
+      const allBets = await storage.getBets();
+      broadcast("bets:updated", { scanned: result.scanned, total: allBets.length, auto: true });
+      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 80);
+      if (highConf.length > 0) {
+        broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
+      }
+    } catch (e: any) {
+      console.warn("[auto-scan] error:", e.message);
+    }
   }, 30 * 60 * 1000);
 
   // ── CLV Line Value Tracker ───────────────────────────────────────────────
