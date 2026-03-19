@@ -1,7 +1,6 @@
 import { Bet } from "@shared/schema";
-import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2, ShoppingCart } from "lucide-react";
+import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2 } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
-import { useParlaySlip } from "@/contexts/ParlaySlipContext";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -584,8 +583,6 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
   const countdown = useGameCountdown(bet.gameTime as string | null | undefined);
-  const { addLeg, removeLeg, hasLeg } = useParlaySlip();
-  const inParlay = hasLeg(bet.id);
 
   const openDrawer = (b = bet) => { setDrawerBet(b); setDrawerOpen(true); };
   const score = bet.confidenceScore ?? 0;
@@ -752,12 +749,6 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   <RiskBadge risk={bet.riskLevel} />
                 </div>
                 <div className="flex items-center gap-3 text-xs">
-                  {bet.recommendedAllocation !== null && (
-                    <div className="text-right">
-                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Allocation</p>
-                      <p className="font-mono font-bold" style={{ color: "#f59e0b" }}>{bet.recommendedAllocation}%</p>
-                    </div>
-                  )}
                   {bet.impliedProbability !== null && (
                     <div className="text-right">
                       <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Implied</p>
@@ -776,52 +767,23 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           )}
       </button>
 
-      {/* Stats Expand Button + Add to Parlay — outside the link to avoid nav */}
-      {!compact && (
+      {/* Stats Expand Button — outside the link to avoid nav */}
+      {canShowStats && !compact && (
         <div
-          className="relative border-t flex"
+          className="relative border-t"
           style={{ borderColor: "rgba(255,255,255,0.07)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {canShowStats && (
-            <button
-              onClick={() => setStatsOpen((o) => !o)}
-              data-testid={`btn-stats-${bet.id}`}
-              className="flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-semibold transition-colors hover:bg-white/5"
-              style={{ color: statsOpen ? "#f59e0b" : "rgba(255,255,255,0.45)" }}
-            >
-              <BarChart2 size={12} />
-              {statsOpen ? "Hide Stats" : "📊 Player Stats"}
-              {statsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-            </button>
-          )}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (inParlay) {
-                removeLeg(bet.id);
-              } else {
-                const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
-                addLeg({
-                  betId: bet.id,
-                  betSlug: bet.slug ?? undefined,
-                  betTitle: bet.title ?? bet.playerName ?? bet.id,
-                  betSport: bet.sport ?? undefined,
-                  betLine: bet.line ?? null,
-                  betPickSide: ts?.pickSide ?? bet.pickSide ?? undefined,
-                  odds: ts?.pickedOdds ?? bet.overOdds ?? null,
-                });
-              }
-            }}
-            data-testid={`btn-parlay-${bet.id}`}
-            className="flex items-center justify-center gap-1 px-3 py-2 text-[11px] font-semibold transition-colors hover:bg-white/5"
-            style={{ color: inParlay ? "#f59e0b" : "rgba(255,255,255,0.35)", borderLeft: canShowStats ? "1px solid rgba(255,255,255,0.07)" : undefined }}
-            title={inParlay ? "Remove from parlay" : "Add to parlay"}
+            onClick={() => setStatsOpen((o) => !o)}
+            data-testid={`btn-stats-${bet.id}`}
+            className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold transition-colors hover:bg-white/5"
+            style={{ color: statsOpen ? "#f59e0b" : "rgba(255,255,255,0.45)" }}
           >
-            <ShoppingCart size={12} />
-            {inParlay ? "+Parlay ✓" : "+Parlay"}
+            <BarChart2 size={12} />
+            {statsOpen ? "Hide Stats" : "📊 Player Stats"}
+            {statsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
           </button>
-
         </div>
       )}
 

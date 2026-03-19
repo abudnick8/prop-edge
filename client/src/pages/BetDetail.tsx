@@ -965,7 +965,6 @@ export default function BetDetail() {
         <Tile label="Confidence" value={`${score}/100`} color={score >= 80 ? "#4ade80" : score >= 65 ? "#fbbf24" : "#f87171"} accent={score >= 80} />
         <Tile label="Implied Prob" value={impliedPct !== null ? `${impliedPct}%` : "—"} color="#22d3ee" />
         <Tile label="Risk Level" value={bet.riskLevel ?? "—"} color={bet.riskLevel === "low" ? "#4ade80" : bet.riskLevel === "medium" ? "#fbbf24" : "#f87171"} />
-        <Tile label="Allocation" value={bet.recommendedAllocation ? `${bet.recommendedAllocation}%` : "—"} color="#a78bfa" />
         {bet.line !== null && <Tile label="Line" value={String(bet.line)} />}
         {bet.overOdds !== null && <Tile label="Over / Yes" value={formatOdds(bet.overOdds)} color="#4ade80" />}
         {bet.underOdds !== null && <Tile label="Under / No" value={formatOdds(bet.underOdds)} color="#60a5fa" />}

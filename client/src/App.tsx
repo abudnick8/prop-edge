@@ -14,16 +14,10 @@ import Bracket from "@/pages/Bracket";
 import Lotto from "@/pages/Lotto";
 import LineMovement from "@/pages/LineMovement";
 import PickDetail from "@/pages/PickDetail";
-import Auth from "@/pages/Auth";
-import Account from "@/pages/Account";
-import Portfolio from "@/pages/Portfolio";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { ParlaySlipProvider } from "@/contexts/ParlaySlipContext";
-import ParlaySlip from "@/components/ParlaySlip";
 
 function AppInner() {
   const { isConnected } = useWebSocket();
@@ -81,9 +75,6 @@ function AppInner() {
               <Route path="/lotto" component={Lotto} />
               <Route path="/picks/:slug" component={PickDetail} />
               <Route path="/lotto/:slug" component={PickDetail} />
-              <Route path="/auth" component={Auth} />
-              <Route path="/account" component={Account} />
-              <Route path="/portfolio" component={Portfolio} />
               <Route path="/settings" component={Settings} />
               <Route path="/tracker" component={TrackedProps} />
               <Route path="/ask" component={Ask} />
@@ -98,9 +89,6 @@ function AppInner() {
       {/* Mobile: bottom tab bar — inside Router so Links have context */}
       <MobileTabBar />
 
-      {/* Floating parlay slip */}
-      <ParlaySlip />
-
       <Toaster />
     </WouterRouter>
   );
@@ -113,11 +101,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ParlaySlipProvider>
-          <AppInner />
-        </ParlaySlipProvider>
-      </AuthProvider>
+      <AppInner />
     </QueryClientProvider>
   );
 }

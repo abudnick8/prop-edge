@@ -3,7 +3,7 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, BarChart2, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -158,45 +158,6 @@ export default function Settings() {
             <p>• <span className="text-green-400">Player season totals</span> — MLB HR/K season O/U, NBA PTS/REB/AST season O/U, NFL passing/rushing yds season O/U</p>
             <p>• <span className="text-yellow-400">Championship outrights</span> — MLB World Series, NBA title, NHL Cup, NCAA tournament, Golf majors</p>
             <p>• <span className="text-blue-400">Pre-season value</span> — These markets open months before the season, often with better lines</p>
-          </div>
-        </div>
-      </SettingsSection>
-
-      {/* Bankroll */}
-      <SettingsSection icon={<BarChart2 size={16} />} title="Portfolio Settings" description="Configure bankroll size for allocation calculations">
-        <div className="space-y-4">
-          <div>
-            <Label className="mb-1.5 block">Bankroll Size ($)</Label>
-            <Input
-              type="number"
-              value={form.bankrollSize ?? 1000}
-              onChange={(e) => setForm({ ...form, bankrollSize: Number(e.target.value) })}
-              className="bg-muted border-border font-mono"
-              placeholder="1000"
-              data-testid="input-bankroll"
-            />
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Used to calculate dollar amounts for recommended allocations
-            </p>
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <Label>Max Allocation per Bet (%)</Label>
-              <span className="font-mono text-sm text-foreground">{form.maxAllocationPercent ?? 5}%</span>
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={20}
-              step={0.5}
-              value={form.maxAllocationPercent ?? 5}
-              onChange={(e) => setForm({ ...form, maxAllocationPercent: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>1%</span>
-              <span>20%</span>
-            </div>
           </div>
         </div>
       </SettingsSection>
