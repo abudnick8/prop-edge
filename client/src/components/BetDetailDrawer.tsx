@@ -231,13 +231,17 @@ function KeyFactorsPanel({ factors }: { factors: string[] }) {
 }
 
 // ── Game Log Table ────────────────────────────────────────────────────────
-function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: {
-  games: any[]; sport: string; focusStatKey: string; focusStatLabel: string; propLine?: number | null;
+function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, comboKeys }: {
+  games: any[]; sport: string; focusStatKey: string; focusStatLabel: string; propLine?: number | null; comboKeys?: string[];
 }) {
   if (!games.length) return null;
+  // For combo props, inject a synthetic "_combo" column showing the summed value
+  const isCombo = focusStatKey === "_combo" && !!comboKeys?.length;
+  const comboColLabel = focusStatLabel; // e.g. "Pts+Reb+Ast"
   const nbaCols = [
     { key: "date_game", label: "Date" }, { key: "opp_id", label: "OPP" },
     { key: "result", label: "Result" },
+    ...(isCombo ? [{ key: "_combo", label: comboColLabel }] : []),
     { key: "pts", label: "PTS" }, { key: "trb", label: "REB" }, { key: "ast", label: "AST" },
     { key: "stl", label: "STL" }, { key: "blk", label: "BLK" }, { key: "tov", label: "TOV" }, { key: "mp", label: "MIN" },
   ];
@@ -278,7 +282,11 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               {cols.map(col => {
-                const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
+                const isFocus = col.key === focusStatKey ||
+                  (focusStatKey === "trb" && col.key === "trb") ||
+                  (focusStatKey === "reb" && col.key === "trb") ||
+                  (isCombo && comboKeys?.includes(col.key)) ||
+                  (isCombo && col.key === "trb" && comboKeys?.includes("trb"));
                 return (
                   <th key={col.key} className="px-2 py-2 text-center font-bold uppercase"
                     style={{ color: isFocus ? "#f59e0b" : "rgba(255,255,255,0.35)", background: isFocus ? "rgba(245,158,11,0.06)" : "transparent", fontSize: "9px", whiteSpace: "nowrap" }}>
@@ -290,12 +298,19 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine }: 
           </thead>
           <tbody>
             {games.map((g, rowIdx) => {
-              const focusVal = parseFloat(g[focusStatKey] ?? g["trb"] ?? "0") || 0;
+              const focusVal = focusStatKey === "_combo"
+                ? (parseFloat(g["_combo"]) || 0)
+                : (parseFloat(g[focusStatKey] ?? g["trb"] ?? "0") || 0);
               const hitLine = propLine != null && focusVal >= propLine;
               return (
                 <tr key={rowIdx} style={{ background: hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map(col => {
-                    const isFocus = col.key === focusStatKey || (focusStatKey === "trb" && col.key === "trb") || (focusStatKey === "reb" && col.key === "trb");
+                    const isFocus = col.key === focusStatKey ||
+                      (focusStatKey === "trb" && col.key === "trb") ||
+                      (focusStatKey === "reb" && col.key === "trb") ||
+                      (isCombo && comboKeys?.includes(col.key)) ||
+                      (isCombo && col.key === "trb" && comboKeys?.includes("trb"));
+                    const isComboSummary = col.key === "_combo";
                     const rawRaw = g[col.key];
                     const rawVal: string = rawRaw != null ? String(rawRaw) : "—";
                     const numVal = parseFloat(rawVal) || 0;
@@ -439,25 +454,84 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
     retryDelay: 1500,
   });
 
-  const getStatKey = () => {
+  // Returns either a single-key stat or a combo definition
+  // combo = { keys: string[], label: string, isCombo: true }
+  const getStatKey = (): { key: string; label: string; isCombo?: boolean; comboKeys?: string[] } => {
     const title = (bet.title + " " + (bet.description ?? "")).toLowerCase();
     if (sport === "NBA") {
-      if (title.includes("point") || title.includes("pts")) return { key: "pts", label: "Points" };
-      if (title.includes("assist") || title.includes("ast")) return { key: "ast", label: "Assists" };
-      if (title.includes("rebound") || title.includes("reb")) return { key: "trb", label: "Rebounds" };
+      // ── Combo props — check BEFORE single-stat checks ──
+      const hasPts = title.includes("point") || title.includes("pts") || title.includes("pts+") || title.includes("+pts");
+      const hasReb = title.includes("rebound") || title.includes("reb+") || title.includes("+reb");
+      const hasAst = title.includes("assist") || title.includes("ast+") || title.includes("+ast");
+      const isPRA  = title.includes("pts+reb+ast") || title.includes("pra") || title.includes("pts_rebs_asts") || title.includes("pts+rebs+asts");
+      const isPR   = !isPRA && hasPts && hasReb && !hasAst;
+      const isPA   = !isPRA && hasPts && !hasReb && hasAst;
+      const isRA   = !isPRA && !hasPts && hasReb && hasAst;
+      if (isPRA || (hasPts && hasReb && hasAst))
+        return { key: "pra", label: "Pts+Reb+Ast", isCombo: true, comboKeys: ["pts", "trb", "ast"] };
+      if (isPR)
+        return { key: "pr", label: "Pts+Reb", isCombo: true, comboKeys: ["pts", "trb"] };
+      if (isPA)
+        return { key: "pa", label: "Pts+Ast", isCombo: true, comboKeys: ["pts", "ast"] };
+      if (isRA)
+        return { key: "ra", label: "Reb+Ast", isCombo: true, comboKeys: ["trb", "ast"] };
+      // ── Single stats ──
+      if (hasPts) return { key: "pts", label: "Points" };
+      if (hasAst) return { key: "ast", label: "Assists" };
+      if (hasReb) return { key: "trb", label: "Rebounds" };
       if (title.includes("steal") || title.includes("stl")) return { key: "stl", label: "Steals" };
       if (title.includes("block") || title.includes("blk")) return { key: "blk", label: "Blocks" };
+      if (title.includes("three") || title.includes("3-pointer") || title.includes("3pt")) return { key: "fg3_made", label: "3PM" };
       return { key: "pts", label: "Points" };
+    }
+    if (sport === "NHL") {
+      const hasGoals  = title.includes("goal");
+      const hasAssist = title.includes("assist");
+      const hasShots  = title.includes("shot");
+      if (hasGoals && hasAssist) return { key: "ga", label: "Goals+Ast", isCombo: true, comboKeys: ["goals", "ast"] };
+      if (hasGoals)  return { key: "goals", label: "Goals" };
+      if (hasAssist) return { key: "ast", label: "Assists" };
+      if (hasShots)  return { key: "shots", label: "Shots" };
+      return { key: "goals", label: "Goals" };
+    }
+    if (sport === "MLB") {
+      if (title.includes("home run")) return { key: "home_runs", label: "Home Runs" };
+      if (title.includes("strikeout")) return { key: "strikeouts", label: "Strikeouts" };
+      if (title.includes("rbi"))       return { key: "rbi", label: "RBIs" };
+      if (title.includes("hit"))       return { key: "hits", label: "Hits" };
+      return { key: "hits", label: "Hits" };
     }
     if (sport === "NFL") {
       if (title.includes("passing yard")) return { key: "pass_yds", label: "Pass Yds" };
-      if (title.includes("rushing")) return { key: "rush_yds", label: "Rush Yds" };
-      if (title.includes("receiving")) return { key: "rec_yds", label: "Rec Yds" };
+      if (title.includes("rushing"))      return { key: "rush_yds", label: "Rush Yds" };
+      if (title.includes("receiving"))    return { key: "rec_yds", label: "Rec Yds" };
+      if (title.includes("reception"))    return { key: "rec", label: "Receptions" };
+      if (title.includes("touchdown"))    return { key: "td", label: "Touchdowns" };
       return { key: "pass_yds", label: "Pass Yds" };
     }
     return { key: "pts", label: "Points" };
   };
   const statKey = getStatKey();
+  // Helper: compute stat value from a game log row, handles combo props
+  const getGameStatValue = (game: any): number => {
+    if (statKey.isCombo && statKey.comboKeys) {
+      return statKey.comboKeys.reduce((sum, k) => sum + (parseFloat(game[k]) || 0), 0);
+    }
+    const k = statKey.key === "reb" ? "trb" : statKey.key;
+    return parseFloat(game[k]) || 0;
+  };
+  // Helper: compute season avg for this stat (handles combo)
+  const getSeasonStatValue = (season: any): number => {
+    if (statKey.isCombo && statKey.comboKeys) {
+      return statKey.comboKeys.reduce((sum, k) => {
+        // season obj uses "reb" not "trb"
+        const seasonKey = k === "trb" ? "reb" : k;
+        return sum + (parseFloat(season[seasonKey] ?? season[k]) || 0);
+      }, 0);
+    }
+    const k = statKey.key === "trb" ? "reb" : statKey.key;
+    return parseFloat(season[k] ?? season[statKey.key]) || 0;
+  };
 
   if (!canFetch) return null;
 
@@ -499,7 +573,9 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                     { k: "fg3_pct", l: "3P%" }, { k: "mpg", l: "MPG" },
                   ].map(({ k, l }) => {
                     const val = data.season[k] ?? "—";
-                    const isRelevant = statKey.key === k || (statKey.key === "trb" && k === "reb");
+                    const isRelevant = statKey.isCombo
+                      ? (statKey.comboKeys ?? []).some(ck => ck === k || (ck === "trb" && k === "reb") || (ck === "ast" && k === "ast") || (ck === "pts" && k === "pts"))
+                      : (statKey.key === k || (statKey.key === "trb" && k === "reb"));
                     return (
                       <div key={k} className="text-center py-2 px-1 rounded-lg"
                         style={{ background: isRelevant ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${isRelevant ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}` }}>
@@ -519,12 +595,12 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
             )}
             {/* Stat vs prop line */}
             {bet.line != null && data.season && (() => {
-              const statVal = parseFloat(data.season[statKey.key] ?? "0");
+              const statVal = getSeasonStatValue(data.season);
               if (!isNaN(statVal) && statVal > 0) {
                 return (
                   <div className="pt-1">
                     <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>Season Avg vs Prop Line</p>
-                    <StatVsLine statLabel={statKey.label} statValue={statVal} propLine={bet.line} />
+                    <StatVsLine statLabel={statKey.label} statValue={parseFloat(statVal.toFixed(1))} propLine={bet.line} />
                   </div>
                 );
               }
@@ -534,24 +610,31 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
             {data.recentGames && data.recentGames.length > 0 && (
               <div className="pt-1 space-y-4">
                 <MiniBarChart
-                  games={data.recentGames}
-                  statKey={statKey.key === "reb" ? "trb" : statKey.key}
+                  games={data.recentGames.map((g: any) => ({
+                    ...g,
+                    // Inject a "_combo" key with the summed value for combo props
+                    _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
+                  }))}
+                  statKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
                   propLine={bet.line}
                   label={statKey.label}
                 />
                 <GameLogTable
-                  games={data.recentGames}
+                  games={data.recentGames.map((g: any) => ({
+                    ...g,
+                    _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
+                  }))}
                   sport={sport}
-                  focusStatKey={statKey.key === "reb" ? "trb" : statKey.key}
+                  focusStatKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
                   focusStatLabel={statKey.label}
                   propLine={bet.line}
+                  comboKeys={statKey.comboKeys}
                 />
               </div>
             )}
             {/* Recent hit rate */}
             {data.recentGames && data.recentGames.length > 0 && bet.line != null && (() => {
-              const sk = statKey.key === "reb" ? "trb" : statKey.key;
-              const hits = data.recentGames.filter((g: any) => (parseFloat(g[sk]) || 0) >= bet.line!).length;
+              const hits = data.recentGames.filter((g: any) => getGameStatValue(g) >= bet.line!).length;
               const total = data.recentGames.length;
               const hitRate = Math.round((hits / total) * 100);
               return (

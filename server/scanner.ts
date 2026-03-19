@@ -16,11 +16,26 @@ const ESPN_STAT_CACHE = new Map<string, StatCacheEntry>();
 const ESPN_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 
 // Stat key mappings: Underdog/SGO stat name → ESPN game-log key
+// For combo props, maps raw stat key → array of ESPN keys to sum
+const COMBO_STAT_MAP: Record<string, Record<string, string[]>> = {
+  NBA: {
+    pts_rebs_asts:   ["pts", "trb", "ast"],
+    "pts+rebs+asts": ["pts", "trb", "ast"],
+    "points+rebounds+assists": ["pts", "trb", "ast"],
+    pts_rebs:        ["pts", "trb"],
+    "pts+rebs":      ["pts", "trb"],
+    pts_asts:        ["pts", "ast"],
+    "pts+asts":      ["pts", "ast"],
+    rebs_asts:       ["trb", "ast"],
+    "rebs+asts":     ["trb", "ast"],
+  },
+};
+
 const STAT_KEY_MAP: Record<string, Record<string, string>> = {
   NBA: {
     points: "pts", assists: "ast", rebounds: "trb",
     blocks: "blk", steals: "stl", threes: "fg3_made",
-    pts_rebs_asts: "pts",  // combo — use pts as proxy
+    // NOTE: combo props (pts_rebs_asts etc.) are handled via COMBO_STAT_MAP above
   },
   NHL: { goals: "goals", assists_hockey: "ast", shots: "shots", assists: "ast" },
   MLB: {
@@ -147,6 +162,32 @@ async function fetchRecentStatAvg(
     ESPN_STAT_CACHE.set(cacheKey, { avg: null, fetchedAt: Date.now() });
     return null;
   }
+}
+
+// Fetch L5 average for a COMBO stat (sum of multiple ESPN keys, e.g. pts+trb+ast)
+async function fetchComboStatAvg(
+  playerName: string,
+  sport: string,
+  comboKeys: string[]  // ESPN stat keys to sum, e.g. ["pts", "trb", "ast"]
+): Promise<number | null> {
+  const avgs = await Promise.all(
+    comboKeys.map(k => fetchRecentStatAvgByKey(playerName, sport, k))
+  );
+  if (avgs.every(a => a === null)) return null;
+  return avgs.reduce((sum, a) => sum + (a ?? 0), 0);
+}
+
+// Low-level: fetch L5 avg by ESPN key directly (used by both single and combo fetchers)
+async function fetchRecentStatAvgByKey(
+  playerName: string,
+  sport: string,
+  espnStatKey: string  // the ESPN game-log key (e.g. "pts", "trb", "ast")
+): Promise<number | null> {
+  // Reverse-lookup: find a raw Underdog stat key that maps to this ESPN key
+  // so we can use the existing cache infrastructure
+  const sportMap = STAT_KEY_MAP[sport.toUpperCase()] ?? {};
+  const rawStatKey = Object.entries(sportMap).find(([, v]) => v === espnStatKey)?.[0] ?? espnStatKey;
+  return fetchRecentStatAvg(playerName, sport, rawStatKey);
 }
 
 // Compute form edge: recentAvg vs line → positive = beating line, negative = falling short
@@ -1319,7 +1360,8 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
       const sp2 = sportMap[sid2] ?? "Other";
       const pName2 = `${pl2.first_name} ${pl2.last_name}`;
       const statRaw2 = (as2.stat ?? "").toLowerCase();
-      if (!STAT_KEY_MAP[sp2]?.[statRaw2]) continue; // no mapping = skip ESPN
+      // Skip if no single-key mapping AND not a combo (combos handled at fetch time)
+      if (!STAT_KEY_MAP[sp2]?.[statRaw2] && !COMBO_STAT_MAP[sp2]?.[statRaw2]) continue;
       const wk = `${pName2}::${sp2}::${statRaw2}`;
       if (!warmSet.has(wk)) warmSet.set(wk, { playerName: pName2, sport: sp2, statKey: statRaw2 });
     }
@@ -1410,9 +1452,12 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
         (sport === "NBA" && statRaw === "points" && statNameLower === "points");
 
       // ── Fetch recent form data from ESPN ──
-      // statRaw is the Underdog key (e.g. "points", "goals", "passing_yards")
+      // statRaw is the Underdog key (e.g. "points", "goals", "pts_rebs_asts")
       const statRawKey = (appearanceStat.stat ?? "").toLowerCase();
-      const recentAvg = await fetchRecentStatAvg(playerName, sport, statRawKey);
+      const comboKeys = COMBO_STAT_MAP[sport]?.[statRawKey];
+      const recentAvg = comboKeys
+        ? await fetchComboStatAvg(playerName, sport, comboKeys)
+        : await fetchRecentStatAvg(playerName, sport, statRawKey);
       const formEdgeVal = computeFormEdge(recentAvg, statValue);
 
       // Market-implied pick side
@@ -2643,16 +2688,20 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
             const sport = SGO_SPORT_MAP[leagueID] ?? leagueID;
 
             // ── Fetch recent form data from ESPN ──
-            // statID is the SGO stat key (e.g. "points", "goals", "passing_yards")
-            const recentAvgSGO = await fetchRecentStatAvg(playerName, sport, statID.toLowerCase());
+            // statID is the SGO stat key (e.g. "points", "goals", "pts_rebs_asts")
+            const statIDLower = statID.toLowerCase();
+            const comboKeysSGO = COMBO_STAT_MAP[sport]?.[statIDLower];
+            const recentAvgSGO = comboKeysSGO
+              ? await fetchComboStatAvg(playerName, sport, comboKeysSGO)
+              : await fetchRecentStatAvg(playerName, sport, statIDLower);
             const formEdgeSGO = computeFormEdge(recentAvgSGO, lineNum);
 
             // Analytically-chosen pick side
             const isLottoStatSGO =
-              (sport === "NHL" && statID.toLowerCase() === "goals") ||
-              (sport === "MLB" && statID.toLowerCase() === "home_runs") ||
-              (sport === "NFL" && statID.toLowerCase() === "touchdowns") ||
-              (sport === "NBA" && statID.toLowerCase() === "points");
+              (sport === "NHL" && statIDLower === "goals") ||
+              (sport === "MLB" && statIDLower === "home_runs") ||
+              (sport === "NFL" && statIDLower === "touchdowns") ||
+              (sport === "NBA" && statIDLower === "points");
 
             const { pickSide, formFlipped: formFlippedSGO } = analyticalPickSide(marketPickSideSGO, formEdgeSGO, isLottoStatSGO);
             const pickedOdds = pickSide === "OVER" ? overOddsNum : underOddsNum;
