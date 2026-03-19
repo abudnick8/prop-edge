@@ -231,9 +231,10 @@ function KeyFactorsPanel({ factors }: { factors: string[] }) {
 }
 
 // ── Game Log Table ────────────────────────────────────────────────────────
-function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, comboKeys }: {
-  games: any[]; sport: string; focusStatKey: string; focusStatLabel: string; propLine?: number | null; comboKeys?: string[];
+function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, comboKeys, pickSide }: {
+  games: any[]; sport: string; focusStatKey: string; focusStatLabel: string; propLine?: number | null; comboKeys?: string[]; pickSide?: string;
 }) {
+  const isUnder = pickSide?.toUpperCase() === "UNDER";
   if (!games.length) return null;
   // For combo props, inject a synthetic "_combo" column showing the summed value
   const isCombo = focusStatKey === "_combo" && !!comboKeys?.length;
@@ -304,7 +305,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
               const focusVal = focusStatKey === "_combo"
                 ? (parseFloat(g["_combo"]) || 0)
                 : (parseFloat(g[focusStatKey] ?? g["trb"] ?? "0") || 0);
-              const hitLine = propLine != null && focusVal >= propLine;
+              const hitLine = propLine != null && (isUnder ? focusVal < propLine : focusVal >= propLine);
               return (
                 <tr key={rowIdx} style={{ background: hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map(col => {
@@ -317,8 +318,8 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                     const rawRaw = g[col.key];
                     const rawVal: string = rawRaw != null ? String(rawRaw) : "—";
                     const numVal = parseFloat(rawVal) || 0;
-                    const cellHit = isFocus && propLine != null && numVal >= propLine;
-                    const cellMiss = isFocus && propLine != null && numVal < propLine && rawVal !== "—" && rawVal !== "";
+                    const cellHit = isFocus && propLine != null && (isUnder ? numVal < propLine : numVal >= propLine);
+                    const cellMiss = isFocus && propLine != null && (isUnder ? numVal >= propLine : numVal < propLine) && rawVal !== "—" && rawVal !== "";
                     let displayVal: string | JSX.Element = rawVal || "—";
                     if (col.key === "date_game" && rawVal.length >= 7) {
                       const parts = rawVal.split("-");
@@ -382,8 +383,9 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
 }
 
 // ── Mini Bar Chart ────────────────────────────────────────────────────────
-function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statKey: string; propLine?: number | null; label: string }) {
+function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: any[]; statKey: string; propLine?: number | null; label: string; pickSide?: string }) {
   if (!games.length) return null;
+  const isUnder = pickSide?.toUpperCase() === "UNDER";
   const values = games.map((g) => parseFloat(g[statKey]) || 0);
   const max = Math.max(...values, propLine ?? 0, 1);
   return (
@@ -395,7 +397,7 @@ function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statK
       <div className="flex items-end gap-1.5" style={{ height: 52 }}>
         {values.map((v, i) => {
           const pct = (v / max) * 100;
-          const hitLine = propLine != null && v >= propLine;
+          const hitLine = propLine != null && (isUnder ? v < propLine : v >= propLine);
           return (
             <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
               <span className="text-[9px] font-mono font-bold leading-none" style={{ color: hitLine ? "#4ade80" : "rgba(255,255,255,0.5)" }}>{v || "—"}</span>
@@ -416,9 +418,10 @@ function MiniBarChart({ games, statKey, propLine, label }: { games: any[]; statK
 }
 
 // ── Stat vs Line ──────────────────────────────────────────────────────────
-function StatVsLine({ statLabel, statValue, propLine, isL5 }: { statLabel: string; statValue: number; propLine: number; isL5?: boolean }) {
+function StatVsLine({ statLabel, statValue, propLine, isL5, pickSide }: { statLabel: string; statValue: number; propLine: number; isL5?: boolean; pickSide?: string }) {
+  const isUnder = pickSide?.toUpperCase() === "UNDER";
   const pct = Math.min((statValue / propLine) * 100, 150);
-  const hitLine = statValue >= propLine;
+  const hitLine = isUnder ? statValue < propLine : statValue >= propLine;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[10px]">
@@ -431,7 +434,9 @@ function StatVsLine({ statLabel, statValue, propLine, isL5 }: { statLabel: strin
         <div className="absolute top-0 bottom-0 w-0.5" style={{ left: "66.7%", background: "rgba(255,255,255,0.5)" }} />
       </div>
       <p className="text-[9px] text-right" style={{ color: hitLine ? "#4ade80" : "rgba(255,255,255,0.3)" }}>
-        {hitLine ? `✓ Avg ${(statValue - propLine).toFixed(1)} above line` : `${(propLine - statValue).toFixed(1)} below line — under lean`}
+        {isUnder
+          ? (hitLine ? `✓ Avg is ${(propLine - statValue).toFixed(1)} below line` : `${(statValue - propLine).toFixed(1)} above line — over lean`)
+          : (hitLine ? `✓ Avg ${(statValue - propLine).toFixed(1)} above line` : `${(propLine - statValue).toFixed(1)} below line — under lean`)}
       </p>
     </div>
   );
@@ -710,7 +715,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
                         Last 5 Games Avg vs Prop Line
                       </p>
-                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} isL5 />
+                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} isL5 pickSide={pickSide} />
                     </div>
                   )}
                   {seasonAvg !== null && (
@@ -718,7 +723,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
                         Season Avg vs Prop Line
                       </p>
-                      <StatVsLine statLabel={statKey.label} statValue={seasonAvg} propLine={bet.line} />
+                      <StatVsLine statLabel={statKey.label} statValue={seasonAvg} propLine={bet.line} pickSide={pickSide} />
                     </div>
                   )}
                 </div>
@@ -736,6 +741,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                   statKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
                   propLine={bet.line}
                   label={statKey.label}
+                  pickSide={pickSide}
                 />
                 <GameLogTable
                   games={data.recentGames.map((g: any) => ({
@@ -747,12 +753,13 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                   focusStatLabel={statKey.label}
                   propLine={bet.line}
                   comboKeys={statKey.comboKeys}
+                  pickSide={pickSide}
                 />
               </div>
             )}
             {/* Recent hit rate */}
             {data.recentGames && data.recentGames.length > 0 && bet.line != null && (() => {
-              const hits = data.recentGames.filter((g: any) => getGameStatValue(g) >= bet.line!).length;
+              const hits = data.recentGames.filter((g: any) => pickSide === "UNDER" ? getGameStatValue(g) < bet.line! : getGameStatValue(g) >= bet.line!).length;
               const total = data.recentGames.length;
               const hitRate = Math.round((hits / total) * 100);
               return (
