@@ -592,10 +592,21 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const sportEmoji = SPORT_EMOJI[sport] ?? "🏅";
 
   const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
-  const pickSideRaw = bet.betType === "player_prop" ? teamStats?.pickSide : null;
+  // Primary: teamStats.pickSide (set by Underdog/SGO scanner)
+  // Fallback: parse from title "[TAKE OVER 25.5 @ -110] Player — Stat"
+  const pickSideRaw = bet.betType === "player_prop" ? (
+    teamStats?.pickSide ??
+    bet.title?.match(/^\[TAKE (OVER|UNDER)/i)?.[1]
+  ) : null;
   const pickSide = pickSideRaw?.toUpperCase() ?? null;
   const pickedOdds = teamStats?.pickedOdds;
-  const oddsDisplay = pickedOdds !== undefined ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : null;
+  // Fallback odds from title e.g. "@ -218" or "@ +115"
+  const titleOdds = bet.title?.match(/@ ([+-]?\d+)\]/)?.[1];
+  const oddsDisplay = pickedOdds !== undefined
+    ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`)
+    : titleOdds
+      ? (parseInt(titleOdds) > 0 ? `+${titleOdds}` : titleOdds)
+      : null;
 
   const homeLogoUrl = getTeamLogoUrl(bet.homeTeam, bet.sport);
   const awayLogoUrl = getTeamLogoUrl(bet.awayTeam, bet.sport);
