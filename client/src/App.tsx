@@ -8,7 +8,6 @@ import Dashboard from "@/pages/Dashboard";
 import AllBets from "@/pages/AllBets";
 import BetDetail from "@/pages/BetDetail";
 import Settings from "@/pages/Settings";
-import TrackedProps from "@/pages/TrackedProps";
 import Ask from "@/pages/Ask";
 import Bracket from "@/pages/Bracket";
 import Lotto from "@/pages/Lotto";
@@ -76,7 +75,6 @@ function AppInner() {
               <Route path="/picks/:slug" component={PickDetail} />
               <Route path="/lotto/:slug" component={PickDetail} />
               <Route path="/settings" component={Settings} />
-              <Route path="/tracker" component={TrackedProps} />
               <Route path="/ask" component={Ask} />
               <Route path="/bracket" component={Bracket} />
               <Route path="/clv" component={LineMovement} />
