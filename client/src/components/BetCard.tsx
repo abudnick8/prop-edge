@@ -1,9 +1,8 @@
 import { Bet } from "@shared/schema";
-import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ChevronDown, ChevronUp, BarChart2, ExternalLink, Loader2 } from "lucide-react";
+import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+
 import { useLocation } from "wouter";
 
 // ── Live countdown hook ───────────────────────────────────────────────────
@@ -470,116 +469,9 @@ function PickBanner({ pickSide, line, oddsDisplay }: { pickSide: string; line: n
   );
 }
 
-// ── Player Stats Drawer ───────────────────────────────────────────────────────
-interface PlayerStat {
-  label: string;
-  value: string | number;
-  highlight?: boolean;
-}
-
-interface PlayerStatsData {
-  name: string;
-  team?: string;
-  position?: string;
-  season?: string;
-  stats: PlayerStat[];
-  referenceUrl?: string;
-  source?: string;
-}
-
-function PlayerStatsDrawer({ playerName, sport }: { playerName: string; sport: string }) {
-  const sportUp = sport.toUpperCase();
-  const enabled = sportUp === "NBA" || sportUp === "NFL";
-
-  const { data, isLoading, isError } = useQuery<PlayerStatsData>({
-    queryKey: ["/api/player-stats", sportUp, playerName],
-    // .then(r => r.json()) is required — apiRequest returns a Response, not parsed JSON
-    queryFn: () =>
-      apiRequest("GET", `/api/player-stats/${sportUp}/${encodeURIComponent(playerName)}`)
-        .then(r => r.json()),
-    enabled,
-    staleTime: 30 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: 1,
-    retryDelay: 1500,
-  });
-
-  if (!enabled) return (
-    <div className="text-xs text-center py-3" style={{ color: "rgba(255,255,255,0.35)" }}>
-      📊 Stats available for NBA &amp; NFL players
-    </div>
-  );
-
-  if (isLoading) return (
-    <div className="flex items-center justify-center gap-2 py-4 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-      <Loader2 size={13} className="animate-spin" />
-      Loading {playerName}'s stats...
-    </div>
-  );
-
-  if (isError || !data) return (
-    <div className="text-xs text-center py-3" style={{ color: "rgba(255,255,255,0.35)" }}>
-      📊 Stats not available right now
-    </div>
-  );
-
-  return (
-    <div className="stats-drawer pt-3 pb-1">
-      {/* Player info header */}
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p className="text-xs font-bold" style={{ color: "#f59e0b" }}>{data.name}</p>
-          {(data.team || data.position) && (
-            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {[data.position, data.team, data.season].filter(Boolean).join(" · ")}
-            </p>
-          )}
-        </div>
-        {data.referenceUrl && (
-          <a
-            href={data.referenceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border transition-colors hover:bg-white/5"
-            style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }}
-          >
-            <ExternalLink size={9} />
-            {data.source ?? "Reference"}
-          </a>
-        )}
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-2">
-        {data.stats.slice(0, 9).map((stat, i) => (
-          <div
-            key={i}
-            className="rounded-lg px-2 py-2 text-center"
-            style={{
-              background: stat.highlight ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${stat.highlight ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.07)"}`,
-            }}
-          >
-            <p
-              className="text-base font-black font-mono leading-none"
-              style={{ color: stat.highlight ? "#f59e0b" : "hsl(45 100% 90%)" }}
-            >
-              {stat.value}
-            </p>
-            <p className="text-[9px] mt-1 font-medium uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {stat.label}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Main BetCard ──────────────────────────────────────────────────────────────
 export default function BetCard({ bet, compact = false }: BetCardProps) {
-  const [statsOpen, setStatsOpen] = useState(false);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
   const countdown = useGameCountdown(bet.gameTime as string | null | undefined);
@@ -612,8 +504,6 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const awayLogoUrl = getTeamLogoUrl(bet.awayTeam, bet.sport);
   const hasHeadshot = !!getPlayerHeadshotUrl(bet.playerName, bet.sport);
 
-  // Only player props with a player name can show stats
-  const canShowStats = bet.betType === "player_prop" && !!bet.playerName;
 
   return (
     <div
@@ -778,35 +668,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           )}
       </button>
 
-      {/* Stats Expand Button — outside the link to avoid nav */}
-      {canShowStats && !compact && (
-        <div
-          className="relative border-t"
-          style={{ borderColor: "rgba(255,255,255,0.07)" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => setStatsOpen((o) => !o)}
-            data-testid={`btn-stats-${bet.id}`}
-            className="w-full flex items-center justify-center gap-2 py-2 text-[11px] font-semibold transition-colors hover:bg-white/5"
-            style={{ color: statsOpen ? "#f59e0b" : "rgba(255,255,255,0.45)" }}
-          >
-            <BarChart2 size={12} />
-            {statsOpen ? "Hide Stats" : "📊 Player Stats"}
-            {statsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-          </button>
-        </div>
-      )}
 
-      {/* Stats panel — full width below the action row */}
-      {canShowStats && statsOpen && !compact && (
-        <div
-          className="stats-slide-down px-4 pb-4"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <PlayerStatsDrawer playerName={bet.playerName!} sport={bet.sport} />
-        </div>
-      )}
       {/* Bet Detail Drawer */}
       <BetDetailDrawer
         bet={drawerBet}
