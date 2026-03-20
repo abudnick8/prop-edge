@@ -483,24 +483,47 @@ function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; 
   const noPrice = 1 - yesPrice;
   const sport = overrides?.sport ?? detectSport(m.title + " " + (m.event_ticker ?? ""));
   const betType = overrides?.betType ?? detectBetType(m.title);
+
+  // Determine pick direction: yes = event happens (OVER threshold) / no = UNDER
+  // For player props: yesPrice > 0.5 means "over" is favored
+  const pickSide = yesPrice >= 0.5 ? "OVER" : "UNDER";
+  const pickedOdds = yesPrice >= 0.5
+    ? (yesPrice >= 1 ? -10000 : Math.round(-(yesPrice / (1 - yesPrice)) * 100))
+    : (noPrice >= 1 ? -10000 : Math.round(((1 - noPrice) / noPrice) * 100));
+  const pickedProb = yesPrice >= 0.5 ? yesPrice : noPrice;
+
+  // Convert prices to American odds
+  const overOdds = yesPrice >= 0.5
+    ? Math.round(-(yesPrice / (1 - yesPrice)) * 100)
+    : Math.round(((1 - yesPrice) / yesPrice) * 100);
+  const underOdds = noPrice >= 0.5
+    ? Math.round(-(noPrice / (1 - noPrice)) * 100)
+    : Math.round(((1 - noPrice) / noPrice) * 100);
+
   const score = computeConfidence({
-    impliedProb: yesPrice,
+    impliedProb: pickedProb,
     source: "kalshi",
     betType,
     sport,
     title: m.title,
   });
 
+  // Build a title with [TAKE OVER/UNDER] prefix so BetCard can always parse direction
+  const oddsStr = pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`;
+  const rawTitle: string = m.title ?? m.ticker ?? "";
+  const titleWithPrefix = rawTitle.startsWith("[TAKE") ? rawTitle
+    : `[TAKE ${pickSide} @ ${oddsStr}] ${rawTitle}`;
+
   return {
     id: `kalshi-${m.ticker}`,
     source: "kalshi",
     sport,
     betType,
-    title: m.title ?? m.ticker,
+    title: titleWithPrefix,
     description: m.subtitle ?? m.rules_primary ?? "",
     yesPrice,
     noPrice,
-    impliedProbability: yesPrice,
+    impliedProbability: pickedProb,
     confidenceScore: score.score,
     riskLevel: score.risk,
     recommendedAllocation: score.allocation,
@@ -514,10 +537,10 @@ function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; 
     gameTime: overrides?.gameTime !== undefined ? overrides.gameTime : (m.close_time ? new Date(m.close_time) : null),
     notificationSent: false,
     playerStats: null,
-    teamStats: null,
+    teamStats: { pickSide, pickedOdds, overProb: Math.round(yesPrice * 100), underProb: Math.round(noPrice * 100), playerName: overrides?.playerName ?? null, statType: null, statValue: null, gameTitle: rawTitle },
     line: null,
-    overOdds: null,
-    underOdds: null,
+    overOdds,
+    underOdds,
   };
 }
 
@@ -661,12 +684,19 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
       ? Math.round(-(noPrice / (1 - noPrice)) * 100)
       : Math.round(((1 - noPrice) / noPrice) * 100);
 
+    // Pick direction: yesPrice >= 0.5 = "YES" (OVER) is favored, otherwise UNDER
+    const propPickSide = yesPrice >= 0.5 ? "OVER" : "UNDER";
+    const propPickedOdds = propPickSide === "OVER" ? overOdds : underOdds;
+    const propPickedProb = propPickSide === "OVER" ? yesPrice : noPrice;
+    const propOddsStr = propPickedOdds > 0 ? `+${propPickedOdds}` : `${propPickedOdds}`;
+    const titledTitle = `[TAKE ${propPickSide} ${line} @ ${propOddsStr}] ${playerName} — ${stat}`;
+
     const score = computeConfidence({
-      impliedProb: yesPrice,
+      impliedProb: propPickedProb,
       source: "kalshi",
       betType: "player_prop",
       sport,
-      title,
+      title: titledTitle,
     });
 
     results.push({
@@ -674,18 +704,18 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
       source: "kalshi",
       sport,
       betType: "player_prop",
-      title,
+      title: titledTitle,
       description: `${playerName} to score ${threshold} ${stat} — Kalshi prediction market`,
       line,
       overOdds,
       underOdds,
       yesPrice,
       noPrice,
-      impliedProbability: impliedProb,
+      impliedProbability: propPickedProb,
       confidenceScore: score.score,
       riskLevel: score.risk,
       recommendedAllocation: score.allocation,
-      keyFactors: score.factors,
+      keyFactors: [`${propPickSide} ${line} ${stat} (Kalshi)`, ...score.factors],
       researchSummary: score.summary,
       isHighConfidence: score.score >= 80,
       status: "open",
@@ -695,7 +725,16 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
       gameTime,
       notificationSent: false,
       playerStats: null,
-      teamStats: null,
+      teamStats: {
+        pickSide: propPickSide,
+        pickedOdds: propPickedOdds,
+        overProb: Math.round(yesPrice * 100),
+        underProb: Math.round(noPrice * 100),
+        playerName,
+        statType: stat,
+        statValue: line,
+        gameTitle: homeTeam && awayTeam ? `${awayTeam} @ ${homeTeam}` : (homeTeam ?? awayTeam ?? ""),
+      },
     });
   }
 
@@ -2233,7 +2272,9 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
           const pickedOdds_ = side === "yes" ? overOddsVal : underOddsVal!;
           const pickedProb_ = side === "yes" ? yesProb : noProb;
           if (pickedOdds_ == null || isNaN(pickedOdds_)) continue; // skip if no valid odds
-          sideLabel = side === "yes" ? "YES" : "NO";
+          // Yes/No markets: "yes" = OVER (event happens), "no" = UNDER
+          const yesNoPickSide = side === "yes" ? "OVER" : "UNDER";
+          sideLabel = side === "yes" ? "TAKE OVER" : "TAKE UNDER";
           const marketLabel_ = market.key.replace(/^(player_|batter_|pitcher_)/, "").replace(/_/g, " ");
           const oddsDisplay_ = pickedOdds_ > 0 ? `+${pickedOdds_}` : `${pickedOdds_}`;
           const seasonTag_ = isSeasonProp ? "\uD83D\uDCC5 SEASON \u2014 " : "";
@@ -2255,7 +2296,7 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
             homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
             playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
             notificationSent: false, playerStats: null,
-            teamStats: { pickSide: side, pickedOdds: pickedOdds_, overProb: Math.round(pickedProb_ * 100), underProb: Math.round((1-pickedProb_) * 100), playerName, statType: marketLabel_, statValue: null, gameTitle: `${event.away_team} @ ${event.home_team}` },
+            teamStats: { pickSide: yesNoPickSide, pickedOdds: pickedOdds_, overProb: Math.round(pickedProb_ * 100), underProb: Math.round((1-pickedProb_) * 100), playerName, statType: marketLabel_, statValue: null, gameTitle: `${event.away_team} @ ${event.home_team}` },
             yesPrice: null, noPrice: null,
           });
           continue;
