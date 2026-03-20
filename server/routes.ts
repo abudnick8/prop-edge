@@ -967,11 +967,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const isSGPRequest = q.includes("same game parlay") || q.includes("same-game parlay")
         || q.includes("sgp") || q.includes("same game props") || q.includes("same game picks");
 
-      // Detect sport filter from question
+      // Detect sport filter from question (includes optional sports)
       const sportFilter = q.includes("nba") || q.includes("basketball") ? "NBA"
         : q.includes("nfl") || q.includes("football") ? "NFL"
         : q.includes("mlb") || q.includes("baseball") ? "MLB"
-        : q.includes("nhl") || q.includes("hockey") ? "NHL" : null;
+        : q.includes("nhl") || q.includes("hockey") ? "NHL"
+        : q.includes("mma") || q.includes("ufc") || q.includes("bellator") ? "MMA"
+        : q.includes("boxing") || q.includes("fighter") ? "Boxing"
+        : q.includes("ncaab") || q.includes("college basketball") || q.includes("march madness") ? "NCAAB"
+        : q.includes("ncaaf") || q.includes("college football") ? "NCAAF"
+        : q.includes("golf") || q.includes("pga") || q.includes("masters") ? "Golf" : null;
 
       // Detect if asking about best/top picks generally
       const isTopPicksRequest = !isParlayRequest && !isSGPRequest && (

@@ -1462,7 +1462,8 @@ function applyApifyDFSBoosts(
 
 // ─── Underdog Fantasy public API (player props — no key required) — v2 fix: solo_games merged ──
 // Returns 5000+ active player props across NBA, NHL, MLB, NFL, WBC, PGA, MMA
-async function fetchUnderdogProps(): Promise<InsertBet[]> {
+// enabledSports: when provided, only process lines for those sports (respects optional sport toggles)
+async function fetchUnderdogProps(enabledSports?: string[]): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   try {
     // Underdog API (api.underdogfantasy.com) blocks Railway's datacenter IP via Cloudflare.
@@ -1544,7 +1545,17 @@ async function fetchUnderdogProps(): Promise<InsertBet[]> {
     };
 
     // Core sports to include (skip FIFA, esports, etc.)
-    const includedSports = new Set(["NBA", "NFL", "MLB", "NHL", "WBC", "CBB", "PGA", "MMA"]);
+    // If enabledSports is provided, filter to only those sports;
+    // otherwise fall back to the default core set.
+    // Underdog sport IDs → canonical sport names (via sportMap above):
+    //   MMA → "MMA", BOXING → "Boxing", CBB → "NCAAB", PGA → "Golf", NCAAF → "NCAAF"
+    const allCoreSports = ["NBA", "NFL", "MLB", "NHL", "WBC", "CBB", "PGA", "MMA", "BOXING", "NCAAF"];
+    const includedSports = enabledSports
+      ? new Set(allCoreSports.filter(sid => {
+          const canonicalName = sportMap[sid] ?? sid;
+          return enabledSports.includes(canonicalName);
+        }))
+      : new Set(["NBA", "NFL", "MLB", "NHL", "WBC", "CBB", "PGA", "MMA"]);
 
     // Stat type → display name mapping
     const statDisplayMap: Record<string, string> = {
@@ -2895,7 +2906,7 @@ const SGO_SPORT_MAP: Record<string, string> = {
   NCAAB: "NCAAB",
 };
 
-async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
+async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<InsertBet[]> {
   if (!SGO_KEY) return [];
 
   const bets: InsertBet[] = [];
@@ -2916,7 +2927,14 @@ async function fetchSportsGameOddsProps(): Promise<InsertBet[]> {
   const toProb = (odds: number) =>
     odds < 0 ? -odds / (-odds + 100) : 100 / (odds + 100);
 
-  for (const [leagueID, stats] of Object.entries(SGO_LEAGUE_STATS)) {
+  // Filter leagues by enabled sports (respects optional sport toggles)
+  const activeLeagues = Object.entries(SGO_LEAGUE_STATS).filter(([leagueID]) => {
+    if (!enabledSports) return true; // no filter = all leagues
+    const sport = SGO_SPORT_MAP[leagueID] ?? leagueID;
+    return enabledSports.includes(sport);
+  });
+
+  for (const [leagueID, stats] of activeLeagues) {
     for (const statID of stats) {
       const oddID = `${statID}-PLAYER_ID-game-ou-over`;
       try {
@@ -3116,14 +3134,15 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   // Fetch all live sources in parallel
   // Underdog and SportsGameOdds provide NHL/MLB/NFL player props (Kalshi only has NBA active)
-  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet, underdogProps] = await Promise.all([
+  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet, underdogProps, sgoProps] = await Promise.all([
     fetchKalshiSports(),
     fetchKalshiWBC(),
     fetchKalshiSeasonAwards(),
     fetchKalshiPlayerProps(),
     fetchPolymarketSports(),
     fetchActionNetwork(),
-    fetchUnderdogProps(),
+    fetchUnderdogProps(allEnabledSports),
+    fetchSportsGameOddsProps(allEnabledSports),
   ]);
 
   // Merge all Kalshi results, deduplicating by ID
@@ -3221,6 +3240,42 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
   console.log(`Underdog merge: ${underdogMerged} merged into existing props, ${underdogAdded} new props added`);
+
+  // ── SGO player prop merge (same priority as Underdog — attaches to existing card or adds new) ──
+  let sgoMerged = 0, sgoAdded = 0;
+  for (const b of sgoProps) {
+    const key = `${b.playerName}::${b.sport}::${getStatTypeKey(b)}`;
+    const primary = propByPlayerSport.get(key);
+    const ts = b.teamStats as { pickSide?: string } | null;
+    const sourceEntry = {
+      source: b.source,
+      overOdds: b.overOdds ?? undefined,
+      underOdds: b.underOdds ?? undefined,
+      line: b.line ?? undefined,
+      impliedProb: b.impliedProbability ?? undefined,
+      pickSide: ts?.pickSide ?? undefined,
+    };
+    if (primary) {
+      if (!primary.allSources) primary.allSources = [];
+      const alreadyHas = primary.allSources.some(s => s.source === b.source);
+      if (!alreadyHas) {
+        primary.allSources.push(sourceEntry);
+        if (primary.confidenceScore !== null && primary.confidenceScore !== undefined) {
+          primary.confidenceScore = Math.min(98, primary.confidenceScore + 3);
+        }
+      }
+      if (!primary.gameTime && b.gameTime) primary.gameTime = b.gameTime;
+      if (!primary.homeTeam && b.homeTeam) primary.homeTeam = b.homeTeam;
+      if (!primary.awayTeam && b.awayTeam) primary.awayTeam = b.awayTeam;
+      sgoMerged++;
+    } else {
+      b.allSources = [sourceEntry];
+      results.push(b);
+      propByPlayerSport.set(key, b);
+      sgoAdded++;
+    }
+  }
+  console.log(`SGO merge: ${sgoMerged} merged into existing props, ${sgoAdded} new props added`);
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;

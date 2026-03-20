@@ -86,7 +86,20 @@ export default function Dashboard() {
   const [filterMinScore, setFilterMinScore] = useState(0);
   const [filterSearch, setFilterSearch] = useState("");
 
-  const SPORTS_LIST  = ["All", "NBA", "NFL", "MLB", "NHL"];
+  // Fetch settings to know which optional sports are enabled
+  const { data: settings } = useQuery<any>({
+    queryKey: ["/api/settings"],
+    staleTime: 60_000,
+  });
+  const enabledOptionalSports: string[] = settings?.enabledOptionalSports ?? [];
+  // Optional sports that have a tab-friendly label
+  const OPTIONAL_SPORT_LABELS: Record<string, string> = {
+    MMA: "MMA", Boxing: "Boxing", NCAAB: "NCAAB", NCAAF: "NCAAF", Golf: "Golf",
+  };
+  const SPORTS_LIST = [
+    "All", "NBA", "NFL", "MLB", "NHL",
+    ...enabledOptionalSports.filter(s => OPTIONAL_SPORT_LABELS[s]),
+  ];
   const SOURCES_LIST = ["All", "kalshi", "polymarket", "actionnetwork", "underdog"];
 
   // Helper: has this game already started?
