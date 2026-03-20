@@ -55,7 +55,7 @@ function RelatedBetCard({ bet }: { bet: RelatedBet }) {
   const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? `+${n}` : `${n}`);
   const matchup = bet.awayTeam && bet.homeTeam ? `${bet.awayTeam} @ ${bet.homeTeam}` : null;
   const conf = bet.confidenceScore ?? 0;
-  const verdict = conf >= 80 ? "✅ Strong" : conf >= 65 ? "⚠️ Moderate" : "❌ Low";
+  const verdict = conf >= 85 ? "✅ Strong" : conf >= 70 ? "⚠️ Moderate" : "❌ Low";
   const riskColor = bet.riskLevel === "low" ? "text-green-400" : bet.riskLevel === "high" ? "text-red-400" : "text-yellow-400";
 
   return (

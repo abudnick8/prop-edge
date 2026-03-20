@@ -529,7 +529,7 @@ function buildKalshiBet(m: any, overrides?: { sport?: string; betType?: string; 
     recommendedAllocation: score.allocation,
     keyFactors: score.factors,
     researchSummary: score.summary,
-    isHighConfidence: score.score >= 80,
+    isHighConfidence: score.score >= 85,
     status: "open",
     homeTeam: null,
     awayTeam: null,
@@ -717,7 +717,7 @@ async function fetchKalshiPlayerProps(): Promise<InsertBet[]> {
       recommendedAllocation: score.allocation,
       keyFactors: [`${propPickSide} ${line} ${stat} (Kalshi)`, ...score.factors],
       researchSummary: score.summary,
-      isHighConfidence: score.score >= 80,
+      isHighConfidence: score.score >= 85,
       status: "open",
       homeTeam,
       awayTeam,
@@ -894,7 +894,7 @@ async function fetchKalshiSeasonAwards(): Promise<InsertBet[]> {
           recommendedAllocation: score.allocation,
           keyFactors: [`Kalshi market implied prob: ${Math.round(price * 100)}%`, `Award: ${label}`, ...score.factors],
           researchSummary: score.summary,
-          isHighConfidence: score.score >= 80,
+          isHighConfidence: score.score >= 85,
           status: "open",
           homeTeam: null,
           awayTeam: null,
@@ -1006,7 +1006,7 @@ function applyApiSportsBoosts(bets: InsertBet[], statsMap: Map<string, any>): In
     return {
       ...bet,
       confidenceScore: newScore,
-      isHighConfidence: newScore >= 80,
+      isHighConfidence: newScore >= 85,
       keyFactors: [...(bet.keyFactors ?? []), factor].slice(0, 8),
     };
   });
@@ -1115,7 +1115,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                   impliedProbability: pickedProb, confidenceScore: score.score,
                   riskLevel: score.risk, recommendedAllocation: score.allocation,
                   keyFactors: [label, ...score.factors], researchSummary: score.summary,
-                  isHighConfidence: score.score >= 80,
+                  isHighConfidence: score.score >= 85,
                   homeTeam, awayTeam, playerName: null, gameTime,
                   notificationSent: false, playerStats: null, teamStats: null,
                   yesPrice: null, noPrice: null,
@@ -1166,7 +1166,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 impliedProbability: pickSpreadProb, confidenceScore: score.score,
                 riskLevel: score.risk, recommendedAllocation: score.allocation,
                 keyFactors: [spreadLabel, ...score.factors], researchSummary: score.summary,
-                isHighConfidence: score.score >= 80,
+                isHighConfidence: score.score >= 85,
                 homeTeam, awayTeam, playerName: null, gameTime,
                 notificationSent: false, playerStats: null, teamStats: null,
                 yesPrice: null, noPrice: null,
@@ -1212,7 +1212,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 impliedProbability: pickTotalProb, confidenceScore: score.score,
                 riskLevel: score.risk, recommendedAllocation: score.allocation,
                 keyFactors: [totalLabel, ...score.factors], researchSummary: score.summary,
-                isHighConfidence: score.score >= 80,
+                isHighConfidence: score.score >= 85,
                 homeTeam, awayTeam, playerName: null, gameTime,
                 notificationSent: false, playerStats: null, teamStats: null,
                 yesPrice: null, noPrice: null,
@@ -1281,7 +1281,7 @@ function buildPolyBet(ev: any, m: any): InsertBet {
     recommendedAllocation: score.allocation,
     keyFactors: score.factors,
     researchSummary: score.summary,
-    isHighConfidence: score.score >= 80,
+    isHighConfidence: score.score >= 85,
     status: "open",
     homeTeam: null,
     awayTeam: null,
@@ -1454,7 +1454,7 @@ function applyApifyDFSBoosts(
     return {
       ...bet,
       confidenceScore: newScore,
-      isHighConfidence: newScore >= 80,
+      isHighConfidence: newScore >= 85,
       keyFactors: newFactors,
     };
   });
@@ -1830,7 +1830,7 @@ async function fetchUnderdogProps(enabledSports?: string[]): Promise<InsertBet[]
         playerName,
         homeTeam,
         awayTeam,
-        isHighConfidence: confidence.score >= 80,
+        isHighConfidence: confidence.score >= 85,
         teamStats: {
           pickSide,
           pickedOdds,
@@ -1940,7 +1940,7 @@ function buildSeedFutures(): InsertBet[] {
       recommendedAllocation: score.allocation,
       keyFactors: [`Season futures: ${oddsDisplay}`, ...score.factors],
       researchSummary: `[SEASON FUTURES ${oddsDisplay}] — ${score.summary}`,
-      isHighConfidence: score.score >= 80,
+      isHighConfidence: score.score >= 85,
       status: "open",
       homeTeam: null,
       awayTeam: null,
@@ -2127,7 +2127,7 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
                   recommendedAllocation: score.allocation,
                   keyFactors: [`Season futures pick: ${oddsDisplay}`, ...score.factors],
                   researchSummary: `[SEASON FUTURES ${oddsDisplay}] — ${score.summary}`,
-                  isHighConfidence: score.score >= 80,
+                  isHighConfidence: score.score >= 85,
                   status: "open",
                   homeTeam: null,
                   awayTeam: null,
@@ -2189,7 +2189,7 @@ function parseGameLines(game: any, sportKey: string): InsertBet[] {
           recommendedAllocation: score.allocation,
           keyFactors: score.factors,
           researchSummary: score.summary,
-          isHighConfidence: score.score >= 80,
+          isHighConfidence: score.score >= 85,
           status: "open",
           homeTeam: game.home_team ?? null,
           awayTeam: game.away_team ?? null,
@@ -2264,7 +2264,7 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
             recommendedAllocation: score.allocation,
             keyFactors: [`Pick: ${sideLabel}${line !== undefined ? ` ${line}` : ""} (${oddsDisplay_})`, ...(score.factors ?? [])],
             researchSummary: `[${sideLabel}${line !== undefined ? ` ${line}` : ""} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
-            isHighConfidence: score.score >= 80,
+            isHighConfidence: score.score >= 85,
             homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
             playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
             notificationSent: false, playerStats: null,
@@ -2303,7 +2303,7 @@ function parsePlayerProps(game: any, event: any, sportKey: string, isSeasonProp 
             recommendedAllocation: score.allocation,
             keyFactors: [`Pick: ${sideLabel} (${oddsDisplay_})`, ...(score.factors ?? [])],
             researchSummary: `[${sideLabel} @ ${oddsDisplay_}] \u2014 ${score.summary}`,
-            isHighConfidence: score.score >= 80,
+            isHighConfidence: score.score >= 85,
             homeTeam: event.home_team ?? null, awayTeam: event.away_team ?? null,
             playerName, gameTime: event.commence_time ? new Date(event.commence_time) : null,
             notificationSent: false, playerStats: null,
@@ -2509,197 +2509,202 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   // PLAYER PROP PATH — full 5-component model
   // =========================================================================
   if (isPlayerProp) {
-    // ── C1: Market consensus strength (25% weight) ──
-    // How far the implied prob is from 50/50 = how much the market "agrees"
-    // Hard calibration: 53%=+5, 57%=+10, 62%=+15, 68%=+20, 75%=+25
+    // ── C1: Market consensus strength (20% weight — tightened scale) ──
+    // Harder calibration: prob thresholds raised, max reduced from 25→20
+    // 53%=+3, 58%=+7, 63%=+11, 69%=+15, 75%=+20
     let c1 = 0;
-    if (prob >= 0.75) {
-      c1 = 25;
-      factors.push(`Strong market consensus — ${Math.round(prob * 100)}% implied probability`);
-    } else if (prob >= 0.68) {
+    if (prob >= 0.78) {
       c1 = 20;
+      factors.push(`Strong market consensus — ${Math.round(prob * 100)}% implied probability`);
+    } else if (prob >= 0.72) {
+      c1 = 16;
       factors.push(`High market confidence — ${Math.round(prob * 100)}% implied`);
-    } else if (prob >= 0.62) {
-      c1 = 15;
+    } else if (prob >= 0.65) {
+      c1 = 12;
       factors.push(`Solid market edge — ${Math.round(prob * 100)}% implied probability`);
-    } else if (prob >= 0.57) {
-      c1 = 10;
+    } else if (prob >= 0.59) {
+      c1 = 8;
       factors.push(`Moderate edge — ${Math.round(prob * 100)}% implied probability`);
-    } else if (prob >= 0.53) {
-      c1 = 5;
+    } else if (prob >= 0.54) {
+      c1 = 4;
       factors.push(`Slight market lean — ${Math.round(prob * 100)}% implied (needs supporting signals)`);
-    } else if (prob <= 0.35) {
+    } else if (prob <= 0.32) {
       // Contrarian value: market under-pricing
-      c1 = 10;
+      c1 = 8;
       factors.push(`Contrarian value — market at ${Math.round(prob * 100)}%, potential inefficiency`);
-    } else if (prob <= 0.42) {
-      c1 = 5;
+    } else if (prob <= 0.40) {
+      c1 = 4;
       factors.push(`Mild contrarian angle — ${Math.round(prob * 100)}% market price`);
     }
 
-    // ── C2: Source quality + cross-book agreement (20% weight) ──
+    // ── C2: Source quality + cross-book agreement (16% weight — tightened, max 16→28 w/ sharp) ──
     let c2 = 0;
     const { tier, label: sourceLabel } = getSourceTier(input.source);
-    if (tier === 1) { c2 = 20; factors.push(sourceLabel); }
-    else if (tier === 2) { c2 = 12; factors.push(sourceLabel); }
-    else { c2 = 4; factors.push(sourceLabel); }
+    if (tier === 1) { c2 = 16; factors.push(sourceLabel); }
+    else if (tier === 2) { c2 = 10; factors.push(sourceLabel); }
+    else { c2 = 3; factors.push(sourceLabel); }
 
     // Sharp money bonus (ActionNetwork signal — most powerful available)
+    // Thresholds raised: need stronger divergence to earn the bonus
     if (input.sharpMoneyPct != null && input.publicTicketPct != null) {
       const sharpPct = input.sharpMoneyPct;
       const publicPct = input.publicTicketPct;
       const divergence = sharpPct - publicPct;
-      if (sharpPct >= 70 && divergence >= 20) {
-        c2 = Math.min(c2 + 14, 34);
+      if (sharpPct >= 75 && divergence >= 25) {
+        c2 = Math.min(c2 + 12, 28);
         factors.push(`Sharp money signal: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% of tickets — professional consensus`);
-      } else if (sharpPct >= 60 && divergence >= 15) {
-        c2 = Math.min(c2 + 9, 29);
+      } else if (sharpPct >= 65 && divergence >= 18) {
+        c2 = Math.min(c2 + 8, 24);
         factors.push(`Sharp money edge: ${Math.round(sharpPct)}% $ vs ${Math.round(publicPct)}% tickets — pros loading this side`);
-      } else if (sharpPct >= 55 && divergence >= 10) {
-        c2 = Math.min(c2 + 5, 25);
+      } else if (sharpPct >= 58 && divergence >= 12) {
+        c2 = Math.min(c2 + 4, 20);
         factors.push(`Moderate sharp lean: ${Math.round(sharpPct)}% of $ vs ${Math.round(publicPct)}% public`);
       } else if (divergence < -15) {
-        c2 = Math.max(c2 - 8, 0);
+        c2 = Math.max(c2 - 10, 0);
         factors.push(`Public-heavy action: ${Math.round(publicPct)}% tickets, only ${Math.round(sharpPct)}% money — square side`);
       }
     } else if (input.sharpMoneyPct != null) {
-      if (input.sharpMoneyPct >= 65) { c2 = Math.min(c2 + 6, 26); factors.push(`${Math.round(input.sharpMoneyPct)}% of betting $ on this side`); }
-      else if (input.sharpMoneyPct >= 55) { c2 = Math.min(c2 + 3, 23); factors.push(`${Math.round(input.sharpMoneyPct)}% money lean`); }
+      if (input.sharpMoneyPct >= 68) { c2 = Math.min(c2 + 5, 21); factors.push(`${Math.round(input.sharpMoneyPct)}% of betting $ on this side`); }
+      else if (input.sharpMoneyPct >= 58) { c2 = Math.min(c2 + 2, 18); factors.push(`${Math.round(input.sharpMoneyPct)}% money lean`); }
     }
 
-    // ── C3: Stat predictability class (25% weight) ──
+    // ── C3: Stat predictability class (22% weight — B/C tightened) ──
     const { cls, label: statLabel } = getStatClass(input.title, input.sport);
     let c3 = 0;
     switch (cls) {
-      case "A": c3 = 25; factors.push(statLabel); break;  // Elite predictability
-      case "B": c3 = 18; factors.push(statLabel); break;  // Good
-      case "C": c3 = 10; factors.push(statLabel); break;  // Moderate
-      case "D": c3 = 3;  factors.push(statLabel + " — high variance, use caution"); break;
+      case "A": c3 = 22; factors.push(statLabel); break;  // Elite predictability
+      case "B": c3 = 14; factors.push(statLabel); break;  // Good (was 18)
+      case "C": c3 = 7;  factors.push(statLabel); break;  // Moderate (was 10)
+      case "D": c3 = 2;  factors.push(statLabel + " — high variance, use caution"); break;
     }
 
-    // ── C4: Sport sample-size & variance penalty (15% weight) ──
+    // ── C4: Sport sample-size & variance penalty (13% weight — trimmed from 15) ──
     let c4 = 0;
     if (input.sport === "NBA") {
-      c4 = 15;
+      c4 = 13;
       factors.push("NBA — 82-game sample, high predictability, stable role assignments");
     } else if (input.sport === "MLB") {
-      c4 = 14;
+      c4 = 12;
       factors.push("MLB — 162-game sample, strongest regression to mean of all major sports");
     } else if (input.sport === "NFL") {
-      c4 = 9;
+      c4 = 7;
       factors.push("NFL — 17-game season, game-script variance, weather/injury risk");
     } else if (input.sport === "NHL") {
-      c4 = 10;
+      c4 = 8;
       factors.push("NHL — goalie variance + ice time fluctuation factored");
     } else if (input.sport === "NCAAB") {
-      c4 = 8;
+      c4 = 6;
       factors.push("NCAAB — smaller sample + opponent quality variance");
     } else {
-      c4 = 6;
+      c4 = 4;
     }
 
-    // ── C5: Vig & value edge (15% weight) ──
+    // ── C5: Vig & value edge (12% weight — reduced from 15) ──
     let c5 = 0;
     if (input.odds !== undefined) {
-      if (input.odds >= -115 && input.odds <= -105) {
-        c5 = 15;
-        factors.push(`Clean juice (${input.odds}) — minimal book overround, best value`);
-      } else if (input.odds >= -130 && input.odds < -115) {
+      if (input.odds >= -112 && input.odds <= -105) {
         c5 = 12;
+        factors.push(`Clean juice (${input.odds}) — minimal book overround, best value`);
+      } else if (input.odds >= -128 && input.odds < -112) {
+        c5 = 9;
         factors.push(`Reasonable juice (${input.odds}) — standard sportsbook pricing`);
-      } else if (input.odds >= -160 && input.odds < -130) {
-        c5 = 8;
+      } else if (input.odds >= -160 && input.odds < -128) {
+        c5 = 6;
         factors.push(`Moderate juice (${input.odds}) — slight book edge, still playable`);
       } else if (input.odds < -160 && input.odds >= -220) {
-        c5 = 4;
+        c5 = 2;
         factors.push(`Heavy juice (${input.odds}) — book overround cuts into expected value`);
       } else if (input.odds < -220) {
         c5 = 0;
         factors.push(`Extreme juice (${input.odds}) — very limited upside relative to probability`);
       } else if (input.odds > 0) {
         // Underdog play
-        c5 = input.odds <= 150 ? 13 : input.odds <= 250 ? 10 : 6;
+        c5 = input.odds <= 150 ? 10 : input.odds <= 250 ? 7 : 4;
         factors.push(`Plus-money prop (${input.odds > 0 ? "+" : ""}${input.odds}) — positive expected value if correct`);
       }
     } else {
       // No odds info — neutral
-      c5 = 8;
+      c5 = 6;
     }
 
-    // ── C6: Recent form vs line (up to ±15 pts bonus/penalty) ──
-    // This is the key player-specific signal: L5 game average vs the posted line.
-    // If form strongly agrees with picked side: boost. If it conflicts: penalize.
+    // ── C6: Recent form vs line (up to ±12 pts bonus / -15 penalty — tightened) ──
+    // Key player-specific signal: L5 average vs the posted line.
+    // Max bonus reduced 15→12; conflict penalty deepened -12→-15.
     let c6 = 0;
     if (input.formEdge != null) {
       const edge6 = input.formEdge;
       const formPct = Math.round(Math.abs(edge6) * 100);
       if (input.formFlipped) {
-        // Analytic side conflicts with market — always penalize regardless of direction
+        // Analytic side conflicts with market — penalize more aggressively
         if (Math.abs(edge6) >= 0.25) {
-          c6 = -12;
+          c6 = -15;
           factors.push(`Form warning: L5 avg ${edge6 > 0 ? "exceeds" : "trails"} line by ${formPct}% — analytic side differs from market (heavy conflict)`);
         } else if (Math.abs(edge6) >= 0.15) {
-          c6 = -6;
+          c6 = -8;
           factors.push(`Form caution: L5 avg ${edge6 > 0 ? "exceeds" : "trails"} line by ${formPct}% — mild conflict with market direction`);
+        } else {
+          c6 = -3;
+          factors.push(`Slight form divergence — L5 trend weakly disagrees with picked direction`);
         }
       } else {
         // Form agrees with (or defers to) picked side
-        if (edge6 >= 0.30) {
-          c6 = 15;
+        if (edge6 >= 0.35) {
+          c6 = 12;
           factors.push(`Strong recent form: L5 avg is ${formPct}% above line — player has been crushing this number`);
-        } else if (edge6 >= 0.20) {
-          c6 = 12;
+        } else if (edge6 >= 0.25) {
+          c6 = 9;
           factors.push(`Good recent form: L5 avg is ${formPct}% above line — consistent performer vs this number`);
-        } else if (edge6 >= 0.10) {
-          c6 = 8;
+        } else if (edge6 >= 0.12) {
+          c6 = 6;
           factors.push(`Positive recent trend: L5 avg is ${formPct}% above line`);
-        } else if (edge6 <= -0.30) {
-          c6 = 15;
-          factors.push(`Cold streak confirmed: L5 avg is ${formPct}% below line — UNDER well-supported by recent form`);
-        } else if (edge6 <= -0.20) {
+        } else if (edge6 <= -0.35) {
           c6 = 12;
+          factors.push(`Cold streak confirmed: L5 avg is ${formPct}% below line — UNDER well-supported by recent form`);
+        } else if (edge6 <= -0.25) {
+          c6 = 9;
           factors.push(`Form supports UNDER: L5 avg trails line by ${formPct}%`);
-        } else if (edge6 <= -0.10) {
-          c6 = 8;
+        } else if (edge6 <= -0.12) {
+          c6 = 6;
           factors.push(`Mild downtrend: L5 avg trails line by ${formPct}%`);
         } else {
-          c6 = 5;
+          c6 = 3;
           if (input.recentAvg != null && input.line != null) {
-            factors.push(`Recent form neutral: L5 avg ${input.recentAvg.toFixed(1)} vs line ${input.line} — within 10% band, market signal used`);
+            factors.push(`Recent form neutral: L5 avg ${input.recentAvg.toFixed(1)} vs line ${input.line} — within 12% band, market signal used`);
           }
         }
       }
     }
-    // c6 range: -12 to +15
+    // c6 range: -15 to +12
 
     // ── Raw composite score ──
-    // C1(25) + C2(20) + C3(25) + C4(15) + C5(15) + C6(-12 to +15) = max ~115
-    // We cap at 99 (or 72 if hard gate) so the bonus makes a meaningful difference
-    // without inflating scores above 100.
+    // C1(20) + C2(16→28) + C3(22) + C4(13) + C5(12) + C6(-15 to +12) = theoretical max ~107
+    // Harder scale: must fire on nearly every component to reach 85+ threshold.
     const rawScore = c1 + c2 + c3 + c4 + c5 + c6;
 
     // ── Hard gate cap ──
-    // Even with a perfect component score, failed gates cap at 72
-    const gateCap = hardGateFailed ? 72 : 99;
+    // Gate cap tightened: 72 → 66 so gated bets stay in the low-confidence tier
+    const gateCap = hardGateFailed ? 66 : 97;
     if (hardGateFailed) {
       factors.push(...hardGateReasons);
     }
 
-    // ── Noise: ±2 pts (reduced from old ±3 to tighten distribution) ──
+    // ── Noise: ±2 pts ──
     const noiseAdj = Math.random() * 4 - 2;
     const finalScore = Math.max(10, Math.min(gateCap, Math.round(rawScore + noiseAdj)));
 
+    // Harder risk thresholds — "low" now requires 83+ (was 78)
     const risk: "low" | "medium" | "high" =
-      finalScore >= 78 && prob > 0.55 ? "low" :
-      finalScore >= 63 ? "medium" : "high";
+      finalScore >= 83 && prob > 0.57 ? "low" :
+      finalScore >= 67 ? "medium" : "high";
 
-    // Half-Kelly allocation — more conservative than old model
+    // Half-Kelly allocation — conservative
     const edge = prob - 0.5;
     const kelly = Math.max(0, edge / 0.5);
-    const fractionalKelly = kelly * 0.20; // 20% Kelly (tighter than old 25%)
+    const fractionalKelly = kelly * 0.20;
     const allocation = Math.min(4, parseFloat((fractionalKelly * 100).toFixed(1)));
 
-    const confidenceLevel = finalScore >= 80 ? "HIGH CONFIDENCE" : finalScore >= 65 ? "Moderate confidence" : "Low confidence";
+    // Harder label thresholds — HIGH CONFIDENCE now requires 85 (was 80), Moderate 70 (was 65)
+    const confidenceLevel = finalScore >= 85 ? "HIGH CONFIDENCE" : finalScore >= 70 ? "Moderate confidence" : "Low confidence";
     const formNote = input.recentAvg != null ? ` | L5 avg: ${input.recentAvg.toFixed(1)}` : "";
     const summary = `${confidenceLevel} — ${Math.round(prob * 100)}% implied | ${cls}-class stat | ${input.source.toUpperCase()}${formNote} | Score: ${finalScore}/100`;
 
@@ -2739,10 +2744,10 @@ function computeConfidence(input: ScoreInput): ScoreResult {
     }
 
     if (hardGateFailed) factors.push(...hardGateReasons);
-    const cap = hardGateFailed ? 70 : 95;
+    const cap = hardGateFailed ? 63 : 88; // tightened: 70→63 gate cap, 95→88 max
     const finalScore = Math.max(10, Math.min(cap, Math.round(score + (Math.random() * 4 - 2))));
 
-    const risk: "low" | "medium" | "high" = finalScore >= 75 ? "low" : finalScore >= 58 ? "medium" : "high";
+    const risk: "low" | "medium" | "high" = finalScore >= 80 ? "low" : finalScore >= 63 ? "medium" : "high";
     const edge = Math.max(0, prob - 0.5);
     const allocation = Math.min(3, parseFloat(((edge * 0.15) * 100).toFixed(1)));
     const summary = `Futures — ${Math.round(prob * 100)}% implied | ${input.source.toUpperCase()} | Score: ${finalScore}/100`;
@@ -2794,14 +2799,15 @@ function computeConfidence(input: ScoreInput): ScoreResult {
   }
 
   if (hardGateFailed) factors.push(...hardGateReasons);
-  const cap = hardGateFailed ? 68 : 88; // team bets capped at 88 (harder to reach 80+ vs props)
+  const cap = hardGateFailed ? 62 : 82; // tightened: gate 68→62, max 88→82
   const finalScore = Math.max(10, Math.min(cap, Math.round(score + (Math.random() * 6 - 3))));
 
-  const risk: "low" | "medium" | "high" = finalScore >= 75 && prob > 0.55 ? "low" : finalScore >= 60 ? "medium" : "high";
+  // Harder risk/label thresholds for team bets
+  const risk: "low" | "medium" | "high" = finalScore >= 79 && prob > 0.57 ? "low" : finalScore >= 64 ? "medium" : "high";
   const edge2 = prob - (1 - prob) * 0.05;
   const kelly2 = Math.max(0, edge2 / 0.95);
-  const allocation = Math.min(3, parseFloat((kelly2 * 0.20 * 100).toFixed(1))); // tighter cap for team bets
-  const confidenceLevel = finalScore >= 80 ? "HIGH CONFIDENCE" : finalScore >= 65 ? "Moderate" : "Low confidence";
+  const allocation = Math.min(3, parseFloat((kelly2 * 0.20 * 100).toFixed(1)));
+  const confidenceLevel = finalScore >= 85 ? "HIGH CONFIDENCE" : finalScore >= 70 ? "Moderate" : "Low confidence";
   const summary = `${confidenceLevel} — ${Math.round(prob * 100)}% implied | ${input.betType} | ${input.source.toUpperCase()} | Score: ${finalScore}/100`;
   return { score: finalScore, risk, allocation, factors, summary };
 }
@@ -3084,7 +3090,7 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
               researchSummary: confidence.summary,
               gameTime: startTime,
               playerName,
-              isHighConfidence: confidence.score >= 80,
+              isHighConfidence: confidence.score >= 85,
               teamStats: {
                 pickSide,
                 pickedOdds,

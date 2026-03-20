@@ -154,7 +154,7 @@ export default function Dashboard() {
 
   const propBets = applyDashFilters(filterPropsByDay(allPlayerProps, dayFilter));
   const teamBets = applyDashFilters(filterByDay(allTeamBets, dayFilter)).sort(byConfThenSport);
-  const threshold = stats?.threshold ?? 80;
+  const threshold = stats?.threshold ?? 85;
 
   // Counts for tabs
   const todayCount = filterPropsByDay(allPlayerProps, "today").length + countByDay(allTeamBets, "today");
@@ -574,7 +574,7 @@ function SkeletonGrid() {
 // ── How to Read ────────────────────────────────────────────────────────────
 
 const TERMS = [
-  { term: "Confidence Score", badge: "e.g. 84/100", color: "text-primary", def: "Our algorithm's rating of how likely a bet is to win. 80+ is high confidence and triggers an alert. Factors in market consensus, source reliability, sport, and bet type." },
+  { term: "Confidence Score", badge: "e.g. 84/100", color: "text-primary", def: "Our algorithm's rating of how likely a bet is to win. 85+ is high confidence and triggers an alert. Factors in market consensus, source reliability, sport, and bet type." },
   { term: "Moneyline", badge: "Bet Type", color: "text-blue-400", def: "A straight-up bet on who wins the game. A -200 favorite means risk $200 to win $100. A +170 underdog means a $100 bet wins $170." },
   { term: "Spread", badge: "Bet Type", color: "text-blue-400", def: "A handicap given to the underdog. If the Chiefs are -6.5, they must win by 7+ for the bet to win. The underdog +6.5 wins if they lose by 6 or fewer, or win outright." },
   { term: "Total (Over/Under)", badge: "Bet Type", color: "text-blue-400", def: "A bet on the combined score of both teams. If the total is 47.5, bet Over (48+) or Under (47 or less). Doesn't matter who wins." },
@@ -783,8 +783,8 @@ function AskSection() {
                         )}
                         {item.relatedBets.map((bet: any, legIdx: number) => {
                           const conf = bet.confidenceScore ?? 0;
-                          const confColor = conf >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 65 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
-                          const verdict = conf >= 80 ? "✅ Strong" : conf >= 65 ? "⚠️ Moderate" : "❌ Risky";
+                          const confColor = conf >= 85 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 70 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
+                          const verdict = conf >= 85 ? "✅ Strong" : conf >= 70 ? "⚠️ Moderate" : "❌ Risky";
                           const isParlay = bet.similarityReason === "parlay leg";
                           const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? "+" + n : "" + n);
                           const matchup = bet.homeTeam && bet.awayTeam ? `${bet.awayTeam} @ ${bet.homeTeam}` : null;

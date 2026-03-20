@@ -57,8 +57,8 @@ function ConfidenceRingLarge({ score }: { score: number }) {
   const r = 40;
   const circ = 2 * Math.PI * r;
   const fill = (score / 100) * circ;
-  const color = score >= 80 ? "#f59e0b" : score >= 65 ? "#22d3ee" : "#f87171";
-  const label = score >= 80 ? "Strong" : score >= 65 ? "Moderate" : "Risky";
+  const color = score >= 85 ? "#f59e0b" : score >= 70 ? "#22d3ee" : "#f87171";
+  const label = score >= 85 ? "Strong" : score >= 70 ? "Moderate" : "Risky";
   return (
     <div className="relative flex-shrink-0 flex flex-col items-center gap-1" style={{ width: size, height: size + 20 }}>
       <div className="relative" style={{ width: size, height: size }}>
@@ -216,8 +216,8 @@ function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability 
           const desc = SCORE_DESCRIPTIONS[bar.label];
           const isOpen = expandedBar === bar.label;
           const pct = (bar.value / bar.max) * 100;
-          const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : pct >= 40 ? "Fair" : "Low";
-          const gradeColor = pct >= 80 ? "#4ade80" : pct >= 60 ? "#f59e0b" : pct >= 40 ? "#fb923c" : "rgba(255,255,255,0.35)";
+          const grade = pct >= 85 ? "Excellent" : pct >= 65 ? "Good" : pct >= 45 ? "Fair" : "Low";
+          const gradeColor = pct >= 85 ? "#4ade80" : pct >= 65 ? "#f59e0b" : pct >= 45 ? "#fb923c" : "rgba(255,255,255,0.35)";
 
           return (
             <div key={bar.label}>
@@ -948,7 +948,7 @@ function SimilarBets({ bet }: { bet: Bet }) {
       <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
         {similar.map((b) => {
           const conf = b.confidenceScore ?? 0;
-          const confColor = conf >= 80 ? "#4ade80" : conf >= 65 ? "#fbbf24" : "#f87171";
+          const confColor = conf >= 85 ? "#4ade80" : conf >= 70 ? "#fbbf24" : "#f87171";
           return (
             <Link key={b.id} href={`/bets/${b.id}`}>
               <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer">
@@ -1046,7 +1046,7 @@ export default function BetDetail() {
   const impliedPct = bet.impliedProbability ? Math.round(bet.impliedProbability * 100) : null;
   const sport = bet.sport?.toUpperCase() ?? "NBA";
   const accent = SPORT_ACCENT[sport] ?? "#f59e0b";
-  const isHigh = score >= 80;
+  const isHigh = score >= 85;
 
   // Pick side
   const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number; statType?: string } | null;
@@ -1121,7 +1121,7 @@ export default function BetDetail() {
 
       {/* ── Key Metrics Grid ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <Tile label="Confidence" value={`${score}/100`} color={score >= 80 ? "#4ade80" : score >= 65 ? "#fbbf24" : "#f87171"} accent={score >= 80} />
+        <Tile label="Confidence" value={`${score}/100`} color={score >= 85 ? "#4ade80" : score >= 70 ? "#fbbf24" : "#f87171"} accent={score >= 85} />
         <Tile label="Implied Prob" value={impliedPct !== null ? `${impliedPct}%` : "—"} color="#22d3ee" />
         <Tile label="Risk Level" value={bet.riskLevel ?? "—"} color={bet.riskLevel === "low" ? "#4ade80" : bet.riskLevel === "medium" ? "#fbbf24" : "#f87171"} />
         {bet.line !== null && <Tile label="Line" value={String(bet.line)} />}

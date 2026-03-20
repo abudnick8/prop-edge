@@ -234,13 +234,13 @@ function ConfidenceRing({ score }: { score: number }) {
   const circumference = 2 * Math.PI * r;
   const fill = (score / 100) * circumference;
   const color =
-    score >= 80 ? "#f59e0b" : score >= 65 ? "#22d3ee" : "#f87171";
+    score >= 85 ? "#f59e0b" : score >= 70 ? "#22d3ee" : "#f87171";
   const glowColor =
-    score >= 80 ? "rgba(245,158,11,0.7)" : score >= 65 ? "rgba(34,211,238,0.6)" : "rgba(248,113,113,0.6)";
+    score >= 85 ? "rgba(245,158,11,0.7)" : score >= 70 ? "rgba(34,211,238,0.6)" : "rgba(248,113,113,0.6)";
 
   return (
     <div
-      className={`relative flex-shrink-0 ${score >= 80 ? "high-conf-pulse" : ""}`}
+      className={`relative flex-shrink-0 ${score >= 85 ? "high-conf-pulse" : ""}`}
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -586,7 +586,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
 
   const openDrawer = (b = bet) => { setDrawerBet(b); setDrawerOpen(true); };
   const score = bet.confidenceScore ?? 0;
-  const isHigh = score >= 80;
+  const isHigh = score >= 85;
   const sport = bet.sport?.toUpperCase() ?? "NBA";
   const theme = SPORT_THEME[sport] ?? SPORT_THEME.NBA;
   const sportEmoji = SPORT_EMOJI[sport] ?? "🏅";
@@ -744,7 +744,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 <div className="flex items-center justify-between text-xs mb-1.5">
                   <span className="text-muted-foreground">Confidence</span>
                   <span className="font-mono font-bold" style={{
-                    color: score >= 80 ? "#22c55e" : score >= 65 ? "#eab308" : "#f97316"
+                    color: score >= 85 ? "#22c55e" : score >= 70 ? "#eab308" : "#f97316"
                   }}>{score}/100</span>
                 </div>
                 <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">

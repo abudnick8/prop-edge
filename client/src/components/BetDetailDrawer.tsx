@@ -135,8 +135,8 @@ function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability 
           const desc = SCORE_DESCRIPTIONS[bar.label];
           const isOpen = expandedBar === bar.label;
           const pct = (bar.value / bar.max) * 100;
-          const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : pct >= 40 ? "Fair" : "Low";
-          const gradeColor = pct >= 80 ? "#4ade80" : pct >= 60 ? "#f59e0b" : pct >= 40 ? "#fb923c" : "rgba(255,255,255,0.35)";
+          const grade = pct >= 85 ? "Excellent" : pct >= 65 ? "Good" : pct >= 45 ? "Fair" : "Low";
+          const gradeColor = pct >= 85 ? "#4ade80" : pct >= 65 ? "#f59e0b" : pct >= 45 ? "#fb923c" : "rgba(255,255,255,0.35)";
 
           return (
             <div key={bar.label}>
@@ -810,7 +810,7 @@ function SimilarBets({ bet, onSelectBet }: { bet: Bet; onSelectBet: (b: Bet) => 
       <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
         {similar.map((b) => {
           const conf = b.confidenceScore ?? 0;
-          const confColor = conf >= 80 ? "#4ade80" : conf >= 65 ? "#fbbf24" : "#f87171";
+          const confColor = conf >= 85 ? "#4ade80" : conf >= 70 ? "#fbbf24" : "#f87171";
           return (
             <button key={b.id} onClick={() => onSelectBet(b)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left">
               <div className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center font-black font-mono text-sm"
@@ -880,7 +880,7 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
   if (!bet) return null;
 
   const score = bet.confidenceScore ?? 0;
-  const scoreColor = score >= 80 ? "#f59e0b" : score >= 65 ? "#22d3ee" : "#f87171";
+  const scoreColor = score >= 85 ? "#f59e0b" : score >= 70 ? "#22d3ee" : "#f87171";
   const ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
   const pickSide = bet.betType === "player_prop" ? ts?.pickSide?.toUpperCase() : undefined;
 

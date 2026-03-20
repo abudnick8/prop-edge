@@ -722,7 +722,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   app.get("/api/bets/high-confidence", async (req, res) => {
     try {
-      const threshold = parseInt(req.query.threshold as string) || 80;
+      const threshold = parseInt(req.query.threshold as string) || 85;
       const bets = await storage.getHighConfidenceBets(threshold);
       res.json(bets);
     } catch (e: any) {
@@ -781,7 +781,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const allBets = await storage.getBets();
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length });
       // Fire high-confidence alerts for any bet ≥ 80
-      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 80);
+      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
         broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
       }
@@ -999,7 +999,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         if ((b.homeTeam && words.some((w) => b.homeTeam!.toLowerCase().includes(w))) ||
             (b.awayTeam && words.some((w) => b.awayTeam!.toLowerCase().includes(w)))) score += 4;
         if (b.betType === "player_prop") score += 0.5;
-        if ((b.confidenceScore ?? 0) >= 80) score += 1;
+        if ((b.confidenceScore ?? 0) >= 85) score += 1;
         // Sport filter bonus
         if (sportFilter && b.sport === sportFilter) score += 3;
         return { bet: b, score };
@@ -1007,7 +1007,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       const totalBets = bets.length;
       const propCount = bets.filter((b) => b.betType === "player_prop").length;
-      const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 80).length;
+      const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 85).length;
 
       // Helper: format a single bet for display/text
       function betSummary(b: any, idx: number): string {
@@ -1137,7 +1137,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
           relatedBets = legs.map(b => serializeBet(b, "sgp leg"));
           const avgConf = legs.length ? Math.round(legs.reduce((s, b) => s + (b.confidenceScore ?? 0), 0) / legs.length) : 0;
-          const verdict = avgConf >= 80 ? "🔥 HIGH CONFIDENCE SGP" : avgConf >= 70 ? "⚡ SOLID SGP" : "⚠️ MODERATE SGP";
+          const verdict = avgConf >= 85 ? "🔥 HIGH CONFIDENCE SGP" : avgConf >= 70 ? "⚡ SOLID SGP" : "⚠️ MODERATE SGP";
 
           const legsText = legs.map((b, i) => {
             const conf = b.confidenceScore ?? 0;
@@ -1247,7 +1247,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const poolC = bets.filter((b) => {
           if (seen.has(b.id)) return false;
           if (sportFilter && b.sport !== sportFilter) return false;
-          return b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 80;
+          return b.betType === "player_prop" && (b.confidenceScore ?? 0) >= 85;
         }).sort(byConf).slice(0, 2);
 
         relatedBets = [...context, ...poolA, ...poolB, ...poolC]
@@ -1319,7 +1319,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
     const top = context[0];
     const conf = top.confidenceScore ?? 0;
-    const verdict = conf >= 80 ? "✅ STRONG BET" : conf >= 65 ? "⚠️ MODERATE" : "❌ LOW CONFIDENCE";
+    const verdict = conf >= 85 ? "✅ STRONG BET" : conf >= 65 ? "⚠️ MODERATE" : "❌ LOW CONFIDENCE";
     const lineStr = top.line != null ? ` | Line: ${top.line}` : "";
     const overStr = top.overOdds != null ? ` | Over ${top.overOdds > 0 ? "+" : ""}${top.overOdds} / Under ${top.underOdds ?? "?"}` : "";
     const factors = top.keyFactors?.slice(0, 3).join(", ") ?? "market consensus";
@@ -1332,7 +1332,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     try {
       const bets = await storage.getBets();
       const settings = await storage.getSettings();
-      const threshold = settings.confidenceThreshold ?? 80;
+      const threshold = settings.confidenceThreshold ?? 85;
 
       const total = bets.length;
       const highConf = bets.filter((b) => (b.confidenceScore ?? 0) >= threshold).length;
@@ -1771,7 +1771,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const result = await runScan(settings.oddsApiKey);
       const allBets = await storage.getBets();
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length, auto: true });
-      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 80);
+      const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
         broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
       }
