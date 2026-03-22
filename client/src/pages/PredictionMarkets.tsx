@@ -339,8 +339,12 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
 function isTodayMarket(m: PredMkt): boolean {
   if (!m.gameTime) return false;
   try {
+    const t = new Date(m.gameTime).getTime();
+    const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
-    return new Date(m.gameTime).toISOString().slice(0, 10) === today;
+    const isToday    = new Date(m.gameTime).toISOString().slice(0, 10) === today;
+    const isWithin24h = t > now && t <= now + 24 * 60 * 60 * 1000;
+    return isToday || isWithin24h;
   } catch { return false; }
 }
 

@@ -892,17 +892,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const KALSHI_BASE  = "https://api.elections.kalshi.com/trade-api/v2";
       // ── Whale/smart-money thresholds (calibrated to real API data) ──
       // Polymarket: oneHourPriceChange is rarely available; use volume24hr spike + price change combo
-      // A market is a whale alert if EITHER:
-      //   a) volume24hr is >= 3x the 7-day daily avg (genuine volume spike)
-      //   b) oneHourPriceChange >= 2% (meaningful short-term move)
-      //   c) volume24hr >= $50K absolute (large single-day flow regardless of history)
-      const WHALE_PRICE_THRESHOLD = 0.02;   // 2% 1h price move = whale
-      const WHALE_VOL_SPIKE       = 3.0;    // 3× daily avg = spike
-      const WHALE_ABS_VOL         = 50_000; // $50K absolute daily vol = whale
-      // Kalshi: volumes reported in cents (volume_24h_fp). $100+ 24h is meaningful.
-      const KALSHI_WHALE_VOL      = 100;    // $100 in 24h Kalshi volume = whale
-      const KALSHI_PREV_PRICE_DELTA = 0.02; // 2¢ move from previous = smart money
-      const PER_CATEGORY_LIMIT    = 150;    // Max 150 markets per sport category
+      // Whale = single large institutional purchase: vol24hr >= $100K on Polymarket.
+      // This is the only signal that reliably indicates a whale — a huge single-day
+      // money flow that moves price. Price moves alone are noise; only raw dollar
+      // volume at this scale implies a single large buyer/seller.
+      const WHALE_ABS_VOL         = 100_000; // $100K+ vol24h = confirmed whale
+      // Kalshi: much lower liquidity pool. $5K+ 24h vol OR 5¢+ price move from prev.
+      const KALSHI_WHALE_VOL      = 5_000;   // $5K in 24h Kalshi volume = whale
+      const KALSHI_PREV_PRICE_DELTA = 0.05;  // 5¢ move from previous = smart money
+      const PER_CATEGORY_LIMIT    = 100;     // Show 100 most popular per sport category
 
       const results: any[] = [];
 
@@ -953,12 +951,17 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Fetches 600 top-liquidity markets across all categories, then caps at 150 per sport.
       const polyEventMap = new Map<string, number>(); // normalised title → yesPrice for cross-validation
       try {
-        // Fetch top markets sorted by liquidity (descending) in parallel batches
+        // Parallel batches:
+        //   batch1 — top 100 by liquidity (most popular markets)
+        //   batch2 — top 100 by volume24hr (most traded today = most likely to have whales)
+        //   batch3 — markets closing soonest (today/imminent events first)
+        //   batch4 — next 100 by volume24hr (catch more active markets)
+        const todayIso = new Date().toISOString().slice(0, 10);
         const [batch1, batch2, batch3, batch4] = await Promise.allSettled([
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "liquidity", ascending: false }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "volume24hr", ascending: false }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "liquidity", ascending: false, offset: 150 }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "volume24hr", ascending: false, offset: 150 }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "liquidity",  ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "end_date_min", ascending: true,  endDateMin: todayIso }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false, offset: 100 }, timeout: 12000 }),
         ]);
 
         // Merge and deduplicate by market id
@@ -1019,29 +1022,21 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const pd1 = parseFloat(m.oneDayPriceChange  ?? 0) || 0;
           const pw1 = parseFloat(m.oneWeekPriceChange ?? 0) || 0;
 
-          // ── Whale/smart money detection — multi-signal
-          // Signal 1: genuine volume spike (3× daily avg AND vol > $1K)
-          const hasVolSpike   = volSpike >= WHALE_VOL_SPIKE && vol24h >= 1_000;
-          // Signal 2: large absolute 24h volume ($50K+) — big money flowing in
-          const hasAbsVol     = vol24h >= WHALE_ABS_VOL;
-          // Signal 3: meaningful price move in past hour (2%+)
-          const hasPriceMove  = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD;
-          // Signal 4: day-over-day price move of 3%+ combined with high volume
-          const hasDayMove    = Math.abs(pd1) >= 0.03 && vol24h >= 5_000;
-          const isWhaleAlert  = hasVolSpike || hasAbsVol || hasPriceMove || hasDayMove;
+          // ── Whale detection: single large purchase — vol24hr >= $100K only ──
+          // A real whale is a single institution putting $100K+ into one market
+          // in one day. Price-move signals alone are noise on illiquid markets.
+          const isWhaleAlert = vol24h >= WHALE_ABS_VOL;
 
-          // Smart money direction: favour the side that’s being bought (price going up = YES buying)
+          // Direction: rising 24h price = YES pressure, falling = NO pressure
           const priceMove = ph1 !== 0 ? ph1 : pd1;
           const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
           const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
 
-          // Smart money score (0–100) for sorting whale alerts
-          const smartScore = Math.min(100, Math.round(
-            (hasAbsVol  ? 40 : 0) +
-            (hasVolSpike ? 30 : 0) +
-            (hasPriceMove ? 20 : 0) +
-            (hasDayMove ? 10 : 0)
-          ));
+          // smartScore = % of $1M cap — so $100K=10, $500K=50, $1M+=100
+          // Biggest-money markets sort to the top of the Whale Alerts section
+          const smartScore = isWhaleAlert
+            ? Math.min(100, Math.round((vol24h / 1_000_000) * 100))
+            : 0;
 
           const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
           const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid);
@@ -1099,15 +1094,24 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // ── 2. Kalshi — all open markets, classify sport, cross-validate vs Polymarket ──
       try {
+        // Fetch 400 open Kalshi markets — sorted by close_time ASC so today's events are first
         const { data: km } = await axios.get(`${KALSHI_BASE}/markets`, {
-          params: { status: "open", limit: 200 },
+          params: { status: "open", limit: 400 },
           timeout: 10000,
         });
         const kmarkets = (km?.markets ?? []) as any[];
-        // Per-category cap for Kalshi (same 150 limit)
+        // Per-category cap for Kalshi (100 limit — 100 most popular per sport)
         const kBuckets: Record<string, number> = {};
-        // Sort Kalshi by vol_24h_fp descending so most active markets fill buckets first
+        // Sort: today-closing first (ascending close_time within 24h), then by vol24h descending
+        const kNow = Date.now();
         kmarkets.sort((a: any, b: any) => {
+          const atClose = a.close_time ? new Date(a.close_time).getTime() : Infinity;
+          const btClose = b.close_time ? new Date(b.close_time).getTime() : Infinity;
+          const aToday  = atClose > kNow && atClose <= kNow + 24 * 60 * 60 * 1000;
+          const bToday  = btClose > kNow && btClose <= kNow + 24 * 60 * 60 * 1000;
+          if (aToday && !bToday) return -1;
+          if (!aToday && bToday) return 1;
+          // Within same "today" bucket, sort by vol24h descending
           const av = parseFloat(a.volume_24h_fp ?? a.volume_24h ?? 0);
           const bv = parseFloat(b.volume_24h_fp ?? b.volume_24h ?? 0);
           return bv - av;
@@ -1149,24 +1153,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             ? parseFloat(m.previous_price_dollars)
             : m.previous_price !== undefined ? m.previous_price / 100 : null;
 
-          // ── Kalshi whale detection (multi-signal) ──────────────────────────
-          // Signal 1: absolute 24h volume >= $100 (very low bar for Kalshi)
-          const kHasAbsVol   = vol24h >= KALSHI_WHALE_VOL;
-          // Signal 2: price moved >= 2¢ from previous close
-          const kPriceDelta  = prevPriceK !== null ? Math.abs(yesPrice - prevPriceK) : 0;
+          // ── Kalshi whale detection ─────────────────────────────────
+          // Kalshi has much lower liquidity than Polymarket. Whale = $5K+ vol24h
+          // OR 5¢+ price move from previous close (price shock = large order hit).
+          const kHasAbsVol    = vol24h >= KALSHI_WHALE_VOL;
+          const kPriceDelta   = prevPriceK !== null ? Math.abs(yesPrice - prevPriceK) : 0;
           const kHasPriceMove = kPriceDelta >= KALSHI_PREV_PRICE_DELTA;
-          // Combined — either signal fires whale alert
-          const isWhaleAlert = kHasAbsVol || kHasPriceMove;
+          const isWhaleAlert  = kHasAbsVol || kHasPriceMove;
           const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
           const whalePriceMovePct = prevPriceK !== null
             ? Math.round(Math.abs(yesPrice - prevPriceK) * 1000) / 10
             : 0;
 
-          // smartScore: weight volume + price move
-          const kSmartScore = Math.min(100, Math.round(
-            (kHasAbsVol   ? Math.min(40, (vol24h / KALSHI_WHALE_VOL) * 5)   : 0) +
-            (kHasPriceMove ? Math.min(60, (kPriceDelta / 0.10) * 60)         : 0)
-          ));
+          // smartScore for Kalshi: vol relative to $50K cap + price shock weight
+          const kSmartScore = isWhaleAlert ? Math.min(100, Math.round(
+            (kHasAbsVol    ? Math.min(60, (vol24h / 50_000) * 60) : 0) +
+            (kHasPriceMove ? Math.min(40, (kPriceDelta / 0.20) * 40) : 0)
+          )) : 0;
 
           results.push({
             id:               `kalshi-${m.ticker}`,
@@ -1231,25 +1234,39 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.warn("[pred-mkt] Kalshi error:", e.message);
       }
 
-      // Sort: today's markets first, then whale alerts, then great_buy > good_buy > fair > overpriced
-      const todayStr = new Date().toISOString().slice(0, 10);
+      // Sort: today/within-24h markets FIRST, then whale alerts, then rating
+      // isTodaySrv: fires if gameTime closes within next 24 hours OR is today's date
       function isTodaySrv(gt: string | null): boolean {
         if (!gt) return false;
-        try { return new Date(gt).toISOString().slice(0, 10) === todayStr; } catch { return false; }
+        try {
+          const t = new Date(gt).getTime();
+          const now = Date.now();
+          // Fires if: closes within 24 hours from now (in-play or imminent)
+          // OR the close date is today's calendar date
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const isToday = new Date(gt).toISOString().slice(0, 10) === todayStr;
+          const isWithin24h = t > now && t <= now + 24 * 60 * 60 * 1000;
+          return isToday || isWithin24h;
+        } catch { return false; }
       }
       const ORDER = { great_buy: 0, good_buy: 1, fair: 2, overpriced: 3 };
       results.sort((a, b) => {
         const at = isTodaySrv(a.gameTime);
         const bt = isTodaySrv(b.gameTime);
+        // 1) Today/within-24h markets first
         if (at && !bt) return -1;
         if (!at && bt) return 1;
+        // 2) Within today group: whales first, sorted by smartScore desc
         if (a.isWhaleAlert && !b.isWhaleAlert) return -1;
         if (!a.isWhaleAlert && b.isWhaleAlert) return 1;
-        // Among whales, sort by smartScore descending
         if (a.isWhaleAlert && b.isWhaleAlert) {
           return (b.smartScore ?? 0) - (a.smartScore ?? 0);
         }
-        return (ORDER[a.priceRating as keyof typeof ORDER] ?? 9) - (ORDER[b.priceRating as keyof typeof ORDER] ?? 9);
+        // 3) Non-whale non-today: sort by rating then by vol24h (most active first)
+        const ratingDiff = (ORDER[a.priceRating as keyof typeof ORDER] ?? 9)
+          - (ORDER[b.priceRating as keyof typeof ORDER] ?? 9);
+        if (ratingDiff !== 0) return ratingDiff;
+        return (b.vol24h ?? 0) - (a.vol24h ?? 0);
       });
 
       predMktCache = { data: results, ts: Date.now() };
