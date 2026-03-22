@@ -1155,7 +1155,33 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Kalshi multi-game market titles are raw comma-joined strings like:
       //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
       // We parse these into a human-readable label + structured legs array.
-      function cleanKalshiTitle(raw: string): { title: string; legs: string[] | null; isParlay: boolean } {
+      // Decode Kalshi ticker prefix → human-readable stat category
+      function kalshiStatFromTicker(ticker: string): string {
+        const t = (ticker ?? "").toUpperCase();
+        if (t.includes("NBAPTS"))  return "PTS";
+        if (t.includes("NBAAST"))  return "AST";
+        if (t.includes("NBAREB"))  return "REB";
+        if (t.includes("NBASTL"))  return "STL";
+        if (t.includes("NBABLK"))  return "BLK";
+        if (t.includes("NBAREBAST")) return "REB+AST";
+        if (t.includes("NFLTD"))   return "TD";
+        if (t.includes("NFLPASS")) return "PASS YDS";
+        if (t.includes("NFLRUSH")) return "RUSH YDS";
+        if (t.includes("NFLREC"))  return "REC";
+        if (t.includes("MLBHR"))   return "HR";
+        if (t.includes("MLBRBI"))  return "RBI";
+        if (t.includes("MLBK"))    return "K";
+        if (t.includes("MLBHIT"))  return "HITS";
+        if (t.includes("NHLGOAL")) return "GOALS";
+        if (t.includes("NHLAST"))  return "ASSISTS";
+        if (t.includes("NHLSHOT")) return "SHOTS";
+        return "";  // Unknown — don't append anything
+      }
+
+      function cleanKalshiTitle(
+        raw: string,
+        mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>
+      ): { title: string; legs: string[] | null; isParlay: boolean } {
         if (!raw) return { title: raw, legs: null, isParlay: false };
 
         // Pattern: starts with "yes " or "no " followed by name: line
@@ -1164,25 +1190,33 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const parts = raw.split(/,(?=\s*(yes|no)\s+)/i).map(s => s.trim());
 
         if (parts.length >= 2 && legPattern.test(parts[0])) {
-          // Multi-leg parlay: extract readable legs
-          const legs = parts.map(leg => {
-            // "yes Derrick White: 2+" → "Derrick White 2+ PTS"
+          // Build a stat lookup from mve_selected_legs if available
+          // We match by index since the leg order mirrors the title string order
+          const legs = parts.map((leg, i) => {
             const m = leg.match(/^(yes|no)\s+(.+?):\s*([\d.]+[+\-]?)(.*)$/i);
-            if (!m) return leg;
-            const dir = m[1].toUpperCase();
+            if (!m) {
+              // Non-numeric leg (team win, spread, etc.) — clean "yes/no" prefix
+              const plain = leg.match(/^(yes|no)\s+(.+)$/i);
+              if (plain) return `${plain[1].toUpperCase()} ${plain[2].trim()}`;
+              return leg;
+            }
+            const dir  = m[1].toUpperCase();
             const name = m[2].trim();
             const line = m[3].trim();
-            const unit = m[4]?.trim() || '';
-            return `${dir} ${name} ${line}${unit ? ' ' + unit : ''}`;
+            // Try to get stat type from the corresponding mve leg ticker
+            const mveLeg = mveLegs?.[i];
+            const statTicker = mveLeg?.market_ticker ?? mveLeg?.event_ticker ?? "";
+            const stat = kalshiStatFromTicker(statTicker);
+            return `${dir} ${name} ${line}${stat ? " " + stat : ""}`;
           });
-          // Title: first player + "Multi-leg Parlay (N legs)"
+          // Title: first player + leg count
           const firstMatch = parts[0].match(/^(?:yes|no)\s+(.+?):/i);
           const firstName = firstMatch ? firstMatch[1].trim() : 'Multi-game';
           const title = `${firstName} +${legs.length - 1} more (${legs.length}-leg parlay)`;
           return { title, legs, isParlay: true };
         }
 
-        // Single market — just clean up "yes Name: line" prefix if present
+        // Single market — clean up "yes Name: line" prefix
         const single = raw.match(/^(?:yes|no)\s+(.+)$/i);
         return { title: single ? single[1].trim() : raw, legs: null, isParlay: false };
       }
@@ -1275,7 +1309,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
             ...(() => {
-              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "");
+              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs);
               return { title, legs, isParlay };
             })(),
             event:            m.event_ticker ?? m.title,
