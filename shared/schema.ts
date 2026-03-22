@@ -47,6 +47,19 @@ export const bets = pgTable("bets", {
   exitTarget: real("exit_target"),                        // price target to exit / take profit (0-1)
   isMispriced: boolean("is_mispriced").default(false),    // true when |edge| >= 5%
   mispricingDirection: text("mispricing_direction"),      // "underpriced" | "overpriced"
+  // ── Sharp Money ─────────────────────────────────────────────────────
+  isSharpMoney: boolean("is_sharp_money").default(false), // true when sharpness >= 60
+  sharpMoneyScore: real("sharp_money_score"),             // 0-100 composite sharp signal
+  // ── Cross-market Arb ────────────────────────────────────────────────
+  isArbWindow: boolean("is_arb_window").default(false),   // true when Kalshi + Poly diverge >= 4%
+  arbSpreadPct: real("arb_spread_pct"),                   // % gap between platforms
+  arbBuySide: text("arb_buy_side"),                       // "kalshi" | "polymarket" — which to buy
+  arbSellSide: text("arb_sell_side"),                     // the other platform
+  arbBuyPrice: real("arb_buy_price"),                     // price on the cheaper platform
+  arbSellPrice: real("arb_sell_price"),                   // price on the expensive platform
+  // ── Urgency / Closing Soon ───────────────────────────────────────────
+  isClosingSoon: boolean("is_closing_soon").default(false), // market closes within 3h
+  minutesToClose: integer("minutes_to_close"),              // minutes until game time / close
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

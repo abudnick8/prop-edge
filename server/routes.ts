@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { Server } from "http";
 import { storage } from "./storage";
-import { runScan, fetchLivePrices } from "./scanner";
+import { runScan, fetchLivePrices, computeSharpMoneyScore, tagUrgency } from "./scanner";
 import { broadcast } from "./ws";
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -1821,7 +1821,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           });
         }
         console.log(`[live-poll] ${updates.length} price update(s) broadcast`);
+
+        // Re-run sharp money scoring on updated bets only
+        const updatedBets = await Promise.all(updates.map(u => storage.getBetById(u.id)));
+        for (const b of updatedBets.filter(Boolean)) {
+          const sm = computeSharpMoneyScore({
+            confidenceScore: (b as any).confidenceScore,
+            sharpnessScore:  (b as any).sharpnessScore ?? null,
+            priceMovement:   (b as any).priceMovement ?? null,
+            allSources:      (b as any).allSources,
+            source:          (b as any).source,
+          });
+          await storage.patchBetSharpMoney((b as any).id, { isSharpMoney: sm.isSharpMoney, sharpMoneyScore: sm.score });
+        }
       }
+
+      // Re-tag urgency every 30s (game times tick closer)
+      await tagUrgency().catch(() => {});
+
     } catch (e: any) {
       console.warn("[live-poll] interval error:", e.message);
     }

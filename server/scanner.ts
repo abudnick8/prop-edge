@@ -3448,6 +3448,38 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   const highConf = fresh.filter((b) => (b.confidenceScore ?? 0) >= threshold).length;
   console.log(`Scan complete: ${fresh.length} live markets, ${highConf} high-confidence`);
+
+  // ── Post-scan enrichment: sharp money + arb + urgency ───────────────────────
+  // Tag sharp money on every stored bet
+  try {
+    const storedBets = await storage.getBets();
+    for (const b of storedBets) {
+      const sm = computeSharpMoneyScore({
+        confidenceScore: b.confidenceScore,
+        sharpnessScore:  (b as any).sharpnessScore ?? null,
+        priceMovement:   (b as any).priceMovement ?? null,
+        allSources:      b.allSources,
+        source:          b.source,
+      });
+      if (sm.isSharpMoney || sm.score > 0) {
+        await storage.patchBetSharpMoney(b.id, { isSharpMoney: sm.isSharpMoney, sharpMoneyScore: sm.score });
+      }
+    }
+    console.log(`[sharp] tagged sharp money on ${storedBets.length} bets`);
+  } catch (e: any) { console.warn("[sharp] error:", e.message); }
+
+  // Detect cross-market arb windows (Kalshi vs Polymarket)
+  try {
+    await detectArbWindows();
+    console.log("[arb] cross-market arb detection complete");
+  } catch (e: any) { console.warn("[arb] error:", e.message); }
+
+  // Tag urgency / closing-soon markets
+  try {
+    await tagUrgency();
+    console.log("[urgency] closing-soon tagging complete");
+  } catch (e: any) { console.warn("[urgency] error:", e.message); }
+
   return { scanned: fresh.length, highConfidence: highConf };
 }
 
@@ -3560,6 +3592,147 @@ export interface LivePriceUpdate {
   liveOddsOver: number | null;
   liveOddsUnder: number | null;
   mispricing?: MispricingResult; // present when |edge| >= 5%
+}
+
+
+// ─── Sharp Money Tagger ───────────────────────────────────────────────────────
+// Uses the existing sharpness score from CLV line snapshots, supplemented by:
+//   • High confidence score (proxy for model-perceived sharp edge)
+//   • Price movement direction matching pick side (confirming action)
+//   • Multi-source confirmation (bet appears on 2+ books)
+// Score 0-100; isSharpMoney = true when >= 60
+
+export function computeSharpMoneyScore(bet: {
+  confidenceScore?: number | null;
+  sharpnessScore?: number | null;   // from CLV snapshot if available
+  priceMovement?: string | null;    // "up" | "down" — recent 30s tick
+  allSources?: Array<{ source: string }> | null;
+  source?: string;
+}): { score: number; isSharpMoney: boolean } {
+  let score = 0;
+
+  // Component 1: CLV sharpness score (0-40 pts) — most reliable signal
+  const clvSharp = bet.sharpnessScore ?? 0;
+  score += Math.min(40, clvSharp * 0.40);
+
+  // Component 2: Model confidence (0-30 pts) — high confidence = model sees edge
+  const conf = bet.confidenceScore ?? 50;
+  if (conf >= 85) score += 30;
+  else if (conf >= 75) score += 20;
+  else if (conf >= 65) score += 10;
+
+  // Component 3: Multi-source confirmation (0-20 pts)
+  // If the bet shows up on multiple books, sharps have been placing
+  const sourceCount = (bet.allSources?.length ?? 1);
+  if (sourceCount >= 3) score += 20;
+  else if (sourceCount === 2) score += 12;
+
+  // Component 4: Recent price movement aligning with pick (0-10 pts)
+  // Prediction market price moving up = public buying YES = confirming sharp action
+  if (bet.priceMovement === "up") score += 10;
+  else if (bet.priceMovement === "down") score += 5; // contrarian sharp plays also valid
+
+  const finalScore = Math.min(100, Math.round(score));
+  return { score: finalScore, isSharpMoney: finalScore >= 60 };
+}
+
+// ─── Cross-market Arb Detector ────────────────────────────────────────────────
+// Scans all stored bets for the same event priced differently on Kalshi vs Polymarket.
+// Matching strategy: normalize title to lowercase tokens, find pairs where
+//   |kalshiProb - polyProb| >= ARB_THRESHOLD (4%)
+// The cheaper side is the "buy" — lock in both sides for a guaranteed profit.
+
+const ARB_THRESHOLD = 0.04; // 4% spread minimum
+
+export async function detectArbWindows(): Promise<void> {
+  const allBets = await storage.getBets();
+  const kalshiBets = allBets.filter(b => b.source === "kalshi");
+  const polyBets   = allBets.filter(b => b.source === "polymarket");
+
+  for (const kb of kalshiBets) {
+    const kProb = kb.impliedProbability ?? kb.yesPrice ?? null;
+    if (kProb == null) continue;
+    const kTokens = tokenize(kb.title);
+
+    for (const pb of polyBets) {
+      const pProb = pb.impliedProbability ?? pb.yesPrice ?? null;
+      if (pProb == null) continue;
+
+      // Title similarity — at least 3 matching significant tokens
+      const pTokens = tokenize(pb.title);
+      const shared  = kTokens.filter(t => pTokens.includes(t));
+      if (shared.length < 3) continue;
+
+      const spread = Math.abs(kProb - pProb);
+      if (spread < ARB_THRESHOLD) continue;
+
+      // Determine which side to buy
+      const kalshiIsCheaper = kProb < pProb;
+      const buySide    = kalshiIsCheaper ? "kalshi"     : "polymarket";
+      const sellSide   = kalshiIsCheaper ? "polymarket" : "kalshi";
+      const buyPrice   = kalshiIsCheaper ? kProb        : pProb;
+      const sellPrice  = kalshiIsCheaper ? pProb        : kProb;
+      const spreadPct  = Math.round(spread * 1000) / 10;
+
+      // Tag the Kalshi bet (primary) with arb data
+      await storage.patchBetArb(kb.id, {
+        isArbWindow: true,
+        arbSpreadPct: spreadPct,
+        arbBuySide:   buySide,
+        arbSellSide:  sellSide,
+        arbBuyPrice:  buyPrice,
+        arbSellPrice: sellPrice,
+      });
+      // Also tag the Polymarket bet
+      await storage.patchBetArb(pb.id, {
+        isArbWindow: true,
+        arbSpreadPct: spreadPct,
+        arbBuySide:   buySide,
+        arbSellSide:  sellSide,
+        arbBuyPrice:  buyPrice,
+        arbSellPrice: sellPrice,
+      });
+    }
+  }
+}
+
+function tokenize(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(t => t.length > 3 && !STOP_WORDS.has(t));
+}
+
+const STOP_WORDS = new Set([
+  "will", "the", "and", "for", "over", "under", "with", "that", "this",
+  "from", "have", "been", "they", "more", "than", "game", "match",
+  "team", "play", "wins", "beat", "score", "first", "total", "points",
+]);
+
+// ─── Urgency Tagger ───────────────────────────────────────────────────────────
+// Tags prediction market bets as "closing soon" when game starts within 3 hours.
+// Also resets the flag for bets that have passed close time.
+// Called at the end of runScan and also from the 30s live poller.
+
+const CLOSING_SOON_MINUTES = 180; // 3 hours
+
+export async function tagUrgency(): Promise<void> {
+  const allBets = await storage.getBets();
+  const now = Date.now();
+  for (const bet of allBets) {
+    if (!bet.gameTime) continue;
+    // Only tag prediction markets — sportsbook bets have open odds until game time
+    if (bet.source !== "kalshi" && bet.source !== "polymarket") continue;
+    const gt = new Date(bet.gameTime).getTime();
+    const diffMs  = gt - now;
+    const diffMin = Math.floor(diffMs / 60000);
+    const isClosingSoon = diffMin >= 0 && diffMin <= CLOSING_SOON_MINUTES;
+    await storage.patchBetUrgency(bet.id, {
+      isClosingSoon,
+      minutesToClose: Math.max(0, diffMin),
+    });
+  }
 }
 
 export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {

@@ -29,6 +29,22 @@ export interface IStorage {
     isMispriced: boolean;
     mispricingDirection: string;
   }): Promise<Bet | undefined>;
+  patchBetSharpMoney(id: string, patch: {
+    isSharpMoney: boolean;
+    sharpMoneyScore: number;
+  }): Promise<Bet | undefined>;
+  patchBetArb(id: string, patch: {
+    isArbWindow: boolean;
+    arbSpreadPct: number;
+    arbBuySide: string;
+    arbSellSide: string;
+    arbBuyPrice: number;
+    arbSellPrice: number;
+  }): Promise<Bet | undefined>;
+  patchBetUrgency(id: string, patch: {
+    isClosingSoon: boolean;
+    minutesToClose: number;
+  }): Promise<Bet | undefined>;
   deleteBet(id: string): Promise<void>;
   clearBets(): Promise<void>;
 
@@ -229,6 +245,30 @@ export class MemStorage implements IStorage {
       mispricingDirection: patch.mispricingDirection,
       updatedAt: new Date(),
     };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetSharpMoney(id: string, patch: { isSharpMoney: boolean; sharpMoneyScore: number }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = { ...bet, isSharpMoney: patch.isSharpMoney, sharpMoneyScore: patch.sharpMoneyScore, updatedAt: new Date() };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetArb(id: string, patch: { isArbWindow: boolean; arbSpreadPct: number; arbBuySide: string; arbSellSide: string; arbBuyPrice: number; arbSellPrice: number }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = { ...bet, ...patch, updatedAt: new Date() };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetUrgency(id: string, patch: { isClosingSoon: boolean; minutesToClose: number }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = { ...bet, isClosingSoon: patch.isClosingSoon, minutesToClose: patch.minutesToClose, updatedAt: new Date() };
     this.bets.set(id, updated);
     return updated;
   }

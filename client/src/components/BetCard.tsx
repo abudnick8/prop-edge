@@ -642,6 +642,30 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     {liveMovement === "up" ? "+" : ""}{liveMovementPct.toFixed(1)}%
                   </span>
                 )}
+
+                {/* Sharp Money badge */}
+                {(bet as any).isSharpMoney && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                    💰 Sharp
+                  </span>
+                )}
+
+                {/* Arb Window badge */}
+                {(bet as any).isArbWindow && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                    ⚡ ARB
+                  </span>
+                )}
+
+                {/* Closing Soon badge */}
+                {(bet as any).isClosingSoon && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse">
+                    ⏰ {(bet as any).minutesToClose <= 60
+                      ? `${(bet as any).minutesToClose}m left`
+                      : `${Math.floor((bet as any).minutesToClose / 60)}h left`
+                    }
+                  </span>
+                )}
               </div>
 
               {!compact && (
@@ -745,6 +769,64 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                           return `${roi > 0 ? "+" : ""}${roi.toFixed(1)}% ROI`;
                         })()}
                       </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Arb Window Detail Panel ──────────────────────────────────────── */}
+              {(bet as any).isArbWindow && (bet as any).arbBuySide && (
+                <div className="mt-3 rounded-lg px-3 py-2 border" style={{ background: "rgba(6,182,212,0.07)", borderColor: "rgba(6,182,212,0.3)" }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>
+                      ⚡ ARB WINDOW — {(bet as any).arbSpreadPct?.toFixed(1)}% spread
+                    </span>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>cross-market</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        Buy on {((bet as any).arbBuySide as string)?.toUpperCase()}
+                      </p>
+                      <p className="font-mono font-black text-sm" style={{ color: "#facc15" }}>
+                        {Math.round(((bet as any).arbBuyPrice ?? 0) * 100)}¢
+                      </p>
+                    </div>
+                    <div className="text-muted-foreground text-xs">→</div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        Sell on {((bet as any).arbSellSide as string)?.toUpperCase()}
+                      </p>
+                      <p className="font-mono font-black text-sm" style={{ color: "#22d3ee" }}>
+                        {Math.round(((bet as any).arbSellPrice ?? 0) * 100)}¢
+                      </p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Locked Profit</p>
+                      <p className="font-mono font-bold text-xs" style={{ color: "#a3e635" }}>
+                        {(() => {
+                          const buy  = (bet as any).arbBuyPrice  ?? 0;
+                          const sell = (bet as any).arbSellPrice ?? 0;
+                          const profit = sell - buy;
+                          return profit > 0 ? `+${(profit * 100).toFixed(1)}¢` : "—";
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Sharp Money Detail Row ───────────────────────────────────────── */}
+              {(bet as any).isSharpMoney && (bet as any).sharpMoneyScore != null && (
+                <div className="mt-2 rounded-lg px-3 py-1.5 border flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", borderColor: "rgba(139,92,246,0.25)" }}>
+                  <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Money Detected</span>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.35)" }}>Signal Strength</p>
+                      <p className="font-mono font-bold text-xs" style={{ color: "#c4b5fd" }}>{Math.round((bet as any).sharpMoneyScore)}/100</p>
+                    </div>
+                    <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${(bet as any).sharpMoneyScore}%`, background: "linear-gradient(90deg, #7c3aed, #a855f7)" }} />
                     </div>
                   </div>
                 </div>
