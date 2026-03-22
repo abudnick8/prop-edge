@@ -1,9 +1,10 @@
 import { Bet } from "@shared/schema";
-import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap } from "lucide-react";
+import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ArrowUp, ArrowDown } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import { useLocation } from "wouter";
+import { addWsListener } from "@/hooks/useWebSocket";
 
 // ── Live countdown hook ───────────────────────────────────────────────────
 function computeCountdownDisplay(gameTime: string | null | undefined): { text: string; isLive: boolean; isStarted: boolean } {
@@ -476,6 +477,36 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
   const countdown = useGameCountdown(bet.gameTime as string | null | undefined);
 
+  // ── Live price movement state ─────────────────────────────────────────────
+  const [liveMovement, setLiveMovement] = useState<"up" | "down" | "neutral" | null>(
+    (bet as any).priceMovement ?? null
+  );
+  const [liveMovementPct, setLiveMovementPct] = useState<number | null>(
+    (bet as any).priceMovementPct ?? null
+  );
+  // Pulse animation flag — true for 5s after a price tick
+  const [pricePulse, setPricePulse] = useState(false);
+  const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const unsub = addWsListener((evt) => {
+      if (evt.event !== "price:tick") return;
+      const updates: Array<{ id: string; priceMovement: string; priceMovementPct: number }> =
+        evt.data?.updates ?? [];
+      const mine = updates.find(u => u.id === bet.id);
+      if (!mine) return;
+      setLiveMovement(mine.priceMovement as "up" | "down" | "neutral");
+      setLiveMovementPct(mine.priceMovementPct);
+      setPricePulse(true);
+      if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+      pulseTimerRef.current = setTimeout(() => setPricePulse(false), 5000);
+    });
+    return () => {
+      unsub();
+      if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    };
+  }, [bet.id]);
+
   const openDrawer = (b = bet) => { setDrawerBet(b); setDrawerOpen(true); };
   const score = bet.confidenceScore ?? 0;
   const isHigh = score >= 85;
@@ -508,7 +539,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   return (
     <div
       data-testid={`bet-card-${bet.id}`}
-      className={`bet-card rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""}`}
+      className={`bet-card rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""} ${pricePulse ? "ring-1 ring-cyan-400/50" : ""}`}
       style={{
         background: `linear-gradient(145deg, hsl(265 30% 10%), hsl(265 28% 12%))`,
         borderColor: isHigh ? "rgba(245,158,11,0.4)" : "hsl(265 20% 18%)",
@@ -594,6 +625,21 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 {!bet.gameTime && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 uppercase tracking-wide">
                     📅 Futures
+                  </span>
+                )}
+                {/* Live price movement indicator */}
+                {liveMovement && liveMovement !== "neutral" && liveMovementPct !== null && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
+                      liveMovement === "up"
+                        ? "bg-green-500/15 text-green-400 border-green-500/30"
+                        : "bg-red-500/15 text-red-400 border-red-500/30"
+                    } ${pricePulse ? "animate-pulse" : ""}`}
+                  >
+                    {liveMovement === "up"
+                      ? <ArrowUp size={9} className="shrink-0" />
+                      : <ArrowDown size={9} className="shrink-0" />}
+                    {liveMovement === "up" ? "+" : ""}{liveMovementPct.toFixed(1)}%
                   </span>
                 )}
               </div>

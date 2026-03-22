@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { Server } from "http";
 import { storage } from "./storage";
-import { runScan } from "./scanner";
+import { runScan, fetchLivePrices } from "./scanner";
 import { broadcast } from "./ws";
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -602,6 +602,9 @@ async function fetchPFRStats(playerName: string): Promise<any> {
 }
 
 let scanInterval: NodeJS.Timeout | null = null;
+let livePollInterval: NodeJS.Timeout | null = null;
+// Track last live-poll result for the /api/live-poll status endpoint
+let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
   // ─── Bets ─────────────────────────────────────────────────────────────────
@@ -789,6 +792,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ─── Live Price Poll status ──────────────────────────────────────────────
+  // Returns timestamp of last poll and how many prices changed
+  app.get("/api/live-poll", async (_req, res) => {
+    res.json({
+      lastPollAt: lastLivePoll.ts ? new Date(lastLivePoll.ts).toISOString() : null,
+      changedCount: lastLivePoll.changed,
+      pollIntervalMs: 30000,
+    });
   });
 
   // Debug endpoint — check Underdog NHL cache + current bets breakdown
@@ -1763,6 +1776,33 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   };
   setTimeout(() => startupScan(), 3000); // 3s delay for Railway to fully initialize
+
+  // ── 30-second live price poller — Kalshi + Polymarket only, no ESPN ────────
+  livePollInterval = setInterval(async () => {
+    try {
+      const updates = await fetchLivePrices();
+      lastLivePoll = { ts: Date.now(), changed: updates.length };
+      if (updates.length > 0) {
+        broadcast("price:tick", { updates, ts: lastLivePoll.ts });
+        // Also fire high-conf alert if any updated bet crossed 85
+        const changed = await Promise.all(
+          updates.map(u => storage.getBetById(u.id))
+        );
+        const newHighConf = changed
+          .filter(Boolean)
+          .filter((b: any) => (b.confidenceScore ?? 0) >= 85 && !b.notificationSent);
+        if (newHighConf.length > 0) {
+          broadcast("bets:highconf", {
+            count: newHighConf.length,
+            top: newHighConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })),
+          });
+        }
+        console.log(`[live-poll] ${updates.length} price update(s) broadcast`);
+      }
+    } catch (e: any) {
+      console.warn("[live-poll] interval error:", e.message);
+    }
+  }, 30 * 1000);
 
   // Auto-scan every 30 min — broadcast result to all WS clients
   scanInterval = setInterval(async () => {

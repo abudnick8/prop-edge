@@ -66,6 +66,10 @@ function connect() {
         if (evt.event === "line:steam" || evt.event === "line:moved") {
           queryClient.invalidateQueries({ queryKey: ["/api/line-movement"] });
         }
+        // price:tick — invalidate bets so cards refetch live odds
+        if (evt.event === "price:tick") {
+          queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
+        }
       } catch {
         // ignore malformed messages
       }
@@ -94,6 +98,12 @@ function scheduleReconnect() {
     reconnectDelay = Math.min(reconnectDelay * 2, 30_000); // cap at 30s
     connect();
   }, reconnectDelay);
+}
+
+/** Subscribe a raw listener to all WS events. Returns an unsubscribe fn. */
+export function addWsListener(cb: (evt: WSEvent) => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 
 /**

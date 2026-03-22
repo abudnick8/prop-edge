@@ -7,6 +7,20 @@ export interface IStorage {
   getHighConfidenceBets(threshold?: number): Promise<Bet[]>;
   upsertBet(bet: InsertBet): Promise<Bet>;
   updateBetStatus(id: string, status: string): Promise<Bet | undefined>;
+  patchBetLivePrice(id: string, patch: {
+    impliedProbability: number;
+    prevImpliedProb: number;
+    priceMovement: string;
+    priceMovementPct: number;
+    liveOddsOver?: number | null;
+    liveOddsUnder?: number | null;
+    yesPrice?: number | null;
+    noPrice?: number | null;
+    overOdds?: number | null;
+    underOdds?: number | null;
+    confidenceScore?: number | null;
+    isHighConfidence?: boolean;
+  }): Promise<Bet | undefined>;
   deleteBet(id: string): Promise<void>;
   clearBets(): Promise<void>;
 
@@ -146,6 +160,43 @@ export class MemStorage implements IStorage {
     const bet = this.bets.get(id);
     if (!bet) return undefined;
     const updated = { ...bet, status, updatedAt: new Date() };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetLivePrice(id: string, patch: {
+    impliedProbability: number;
+    prevImpliedProb: number;
+    priceMovement: string;
+    priceMovementPct: number;
+    liveOddsOver?: number | null;
+    liveOddsUnder?: number | null;
+    yesPrice?: number | null;
+    noPrice?: number | null;
+    overOdds?: number | null;
+    underOdds?: number | null;
+    confidenceScore?: number | null;
+    isHighConfidence?: boolean;
+  }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = {
+      ...bet,
+      impliedProbability: patch.impliedProbability,
+      prevImpliedProb: patch.prevImpliedProb,
+      priceMovement: patch.priceMovement,
+      priceMovementPct: patch.priceMovementPct,
+      livePriceUpdatedAt: new Date(),
+      liveOddsOver: patch.liveOddsOver ?? bet.liveOddsOver ?? null,
+      liveOddsUnder: patch.liveOddsUnder ?? bet.liveOddsUnder ?? null,
+      yesPrice: patch.yesPrice !== undefined ? patch.yesPrice : bet.yesPrice,
+      noPrice: patch.noPrice !== undefined ? patch.noPrice : bet.noPrice,
+      overOdds: patch.overOdds !== undefined ? patch.overOdds : bet.overOdds,
+      underOdds: patch.underOdds !== undefined ? patch.underOdds : bet.underOdds,
+      confidenceScore: patch.confidenceScore !== undefined ? patch.confidenceScore : bet.confidenceScore,
+      isHighConfidence: patch.isHighConfidence !== undefined ? patch.isHighConfidence : bet.isHighConfidence,
+      updatedAt: new Date(),
+    };
     this.bets.set(id, updated);
     return updated;
   }

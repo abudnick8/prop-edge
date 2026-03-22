@@ -3450,3 +3450,130 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   console.log(`Scan complete: ${fresh.length} live markets, ${highConf} high-confidence`);
   return { scanned: fresh.length, highConfidence: highConf };
 }
+
+// ─── Live 30-second Price Poller ─────────────────────────────────────────────
+// Lightweight function — only hits Kalshi + Polymarket (2 HTTP requests).
+// Matches returned prices to existing bets by ID.
+// If implied probability changed ≥ 0.5%, patches the bet with movement data.
+// Returns only the bets whose prices changed.
+
+export interface LivePriceUpdate {
+  id: string;
+  prevImpliedProb: number;
+  newImpliedProb: number;
+  priceMovement: "up" | "down" | "neutral";
+  priceMovementPct: number;
+  liveOddsOver: number | null;
+  liveOddsUnder: number | null;
+}
+
+export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {
+  const updates: LivePriceUpdate[] = [];
+
+  try {
+    // ── 1. Build a quick lookup: betId → current stored implied prob ──────────
+    const allBets = await storage.getBets();
+    const betMap = new Map<string, { impliedProb: number; liveOddsOver: number | null; liveOddsUnder: number | null }>();
+    for (const b of allBets) {
+      betMap.set(b.id, {
+        impliedProb: b.impliedProbability ?? b.yesPrice ?? 0.5,
+        liveOddsOver: (b as any).liveOddsOver ?? null,
+        liveOddsUnder: (b as any).liveOddsUnder ?? null,
+      });
+    }
+
+    // ── 2. Fetch Kalshi open markets ──────────────────────────────────────────
+    try {
+      const { data: kd } = await axios.get(`${KALSHI_BASE}/markets`, {
+        params: { status: "open", limit: 200 },
+        timeout: 8000,
+      });
+      const kMarkets = (kd?.markets ?? []) as any[];
+      for (const m of kMarkets) {
+        const id = `kalshi-${m.ticker}`;
+        const stored = betMap.get(id);
+        if (!stored) continue; // not a bet we're tracking
+        const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
+        const newYes = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
+        const newNo = 1 - newYes;
+        const newImplied = newYes; // implied prob of the "yes" outcome
+
+        const delta = newImplied - stored.impliedProb;
+        if (Math.abs(delta) < 0.005) continue; // < 0.5% change — skip
+
+        // Compute movement metrics
+        const priceMovement: "up" | "down" | "neutral" = delta > 0 ? "up" : delta < 0 ? "down" : "neutral";
+        const priceMovementPct = stored.impliedProb > 0
+          ? Math.round((delta / stored.impliedProb) * 10000) / 100
+          : 0;
+
+        // American odds for over/under
+        const liveOddsOver = newYes >= 0.5
+          ? Math.round(-(newYes / (1 - newYes)) * 100)
+          : Math.round(((1 - newYes) / newYes) * 100);
+        const liveOddsUnder = newNo >= 0.5
+          ? Math.round(-(newNo / (1 - newNo)) * 100)
+          : Math.round(((1 - newNo) / newNo) * 100);
+
+        await storage.patchBetLivePrice(id, {
+          prevImpliedProb: stored.impliedProb,
+          priceMovement,
+          priceMovementPct,
+          liveOddsOver,
+          liveOddsUnder,
+        });
+        updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newImplied, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder });
+      }
+    } catch (e: any) {
+      console.warn("[live-poll] Kalshi error:", e.message);
+    }
+
+    // ── 3. Fetch Polymarket sports events ────────────────────────────────────
+    try {
+      const { data: pd } = await axios.get(`${POLY_BASE}/events`, {
+        params: { limit: 200, active: true, tag_slug: "sports" },
+        timeout: 8000,
+      });
+      const events = Array.isArray(pd) ? pd : (pd?.events ?? pd?.data ?? []);
+      for (const ev of events) {
+        for (const m of (ev.markets ?? [])) {
+          const id = `poly-${m.id ?? ev.id}`;
+          const stored = betMap.get(id);
+          if (!stored) continue;
+
+          const newYes = parseFloat(m.outcomePrices?.[0] ?? m.lastTradePrice ?? 0.5);
+          const newNo = 1 - newYes;
+          const delta = newYes - stored.impliedProb;
+          if (Math.abs(delta) < 0.005) continue;
+
+          const priceMovement: "up" | "down" | "neutral" = delta > 0 ? "up" : delta < 0 ? "down" : "neutral";
+          const priceMovementPct = stored.impliedProb > 0
+            ? Math.round((delta / stored.impliedProb) * 10000) / 100
+            : 0;
+
+          const liveOddsOver = newYes >= 0.5
+            ? Math.round(-(newYes / (1 - newYes)) * 100)
+            : Math.round(((1 - newYes) / newYes) * 100);
+          const liveOddsUnder = newNo >= 0.5
+            ? Math.round(-(newNo / (1 - newNo)) * 100)
+            : Math.round(((1 - newNo) / newNo) * 100);
+
+          await storage.patchBetLivePrice(id, {
+            prevImpliedProb: stored.impliedProb,
+            priceMovement,
+            priceMovementPct,
+            liveOddsOver,
+            liveOddsUnder,
+          });
+          updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newYes, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder });
+        }
+      }
+    } catch (e: any) {
+      console.warn("[live-poll] Polymarket error:", e.message);
+    }
+  } catch (e: any) {
+    console.warn("[live-poll] outer error:", e.message);
+  }
+
+  return updates;
+}

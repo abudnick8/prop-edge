@@ -33,6 +33,13 @@ export const bets = pgTable("bets", {
   allSources: jsonb("all_sources").$type<Array<{ source: string; overOdds?: number; underOdds?: number; line?: number; impliedProb?: number; pickSide?: string }>>(),
   notificationSent: boolean("notification_sent").default(false),
   status: text("status").default("open"), // open, closed, won, lost
+  // ── Live price fields (updated every 30s without full re-scan) ──
+  livePriceUpdatedAt: timestamp("live_price_updated_at"),   // last time price was polled
+  priceMovement: text("price_movement"),                    // "up", "down", "neutral"
+  priceMovementPct: real("price_movement_pct"),             // % change vs previous poll
+  prevImpliedProb: real("prev_implied_prob"),               // prob before last tick
+  liveOddsOver: integer("live_odds_over"),                  // latest over odds (American)
+  liveOddsUnder: integer("live_odds_under"),               // latest under odds (American)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
