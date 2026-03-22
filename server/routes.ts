@@ -890,8 +890,19 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       const POLY_BASE   = "https://gamma-api.polymarket.com";
       const KALSHI_BASE  = "https://api.elections.kalshi.com/trade-api/v2";
-      const WHALE_PRICE_THRESHOLD = 0.05;  // 5% 1h price move = whale flag
-      const WHALE_VOL_SPIKE       = 2.5;   // 2.5x daily avg volume = spike
+      // ── Whale/smart-money thresholds (calibrated to real API data) ──
+      // Polymarket: oneHourPriceChange is rarely available; use volume24hr spike + price change combo
+      // A market is a whale alert if EITHER:
+      //   a) volume24hr is >= 3x the 7-day daily avg (genuine volume spike)
+      //   b) oneHourPriceChange >= 2% (meaningful short-term move)
+      //   c) volume24hr >= $50K absolute (large single-day flow regardless of history)
+      const WHALE_PRICE_THRESHOLD = 0.02;   // 2% 1h price move = whale
+      const WHALE_VOL_SPIKE       = 3.0;    // 3× daily avg = spike
+      const WHALE_ABS_VOL         = 50_000; // $50K absolute daily vol = whale
+      // Kalshi: volumes reported in cents (volume_24h_fp). $100+ 24h is meaningful.
+      const KALSHI_WHALE_VOL      = 100;    // $100 in 24h Kalshi volume = whale
+      const KALSHI_PREV_PRICE_DELTA = 0.02; // 2¢ move from previous = smart money
+      const PER_CATEGORY_LIMIT    = 150;    // Max 150 markets per sport category
 
       const results: any[] = [];
 
@@ -937,86 +948,150 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return "Other";
       }
 
-      // ── 1. Polymarket Gamma API — ALL active events (not just sports) ─────
+      // ── 1. Polymarket — fetch /markets sorted by liquidity (top 150 per sport category) ──
+      // Uses /markets endpoint directly (not events) so we get all price-change fields.
+      // Fetches 600 top-liquidity markets across all categories, then caps at 150 per sport.
       const polyEventMap = new Map<string, number>(); // normalised title → yesPrice for cross-validation
       try {
-        // Fetch in two batches: sports + general (gives us both categories + Other)
-        const [sportsResp, generalResp] = await Promise.allSettled([
-          axios.get(`${POLY_BASE}/events`, { params: { limit: 200, active: true, tag_slug: "sports" }, timeout: 10000 }),
-          axios.get(`${POLY_BASE}/events`, { params: { limit: 200, active: true }, timeout: 10000 }),
+        // Fetch top markets sorted by liquidity (descending) in parallel batches
+        const [batch1, batch2, batch3, batch4] = await Promise.allSettled([
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "liquidity", ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "volume24hr", ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "liquidity", ascending: false, offset: 150 }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 150, active: true, closed: false, archived: false, order: "volume24hr", ascending: false, offset: 150 }, timeout: 12000 }),
         ]);
-        const sportsEvs  = sportsResp.status  === "fulfilled" ? (Array.isArray(sportsResp.value.data)  ? sportsResp.value.data  : (sportsResp.value.data?.events  ?? [])) : [];
-        const generalEvs = generalResp.status === "fulfilled" ? (Array.isArray(generalResp.value.data) ? generalResp.value.data : (generalResp.value.data?.events ?? [])) : [];
-        // Merge, deduplicate by id
-        const seen = new Set<string>();
-        const allEvents: any[] = [];
-        for (const ev of [...sportsEvs, ...generalEvs]) {
-          if (!seen.has(ev.id)) { seen.add(ev.id); allEvents.push(ev); }
-        }
 
-        // Collect condition IDs for CLOB mid-price enrichment
+        // Merge and deduplicate by market id
+        const seenIds = new Set<string>();
+        const allMarkets: any[] = [];
+        for (const batch of [batch1, batch2, batch3, batch4]) {
+          if (batch.status !== "fulfilled") continue;
+          const data = batch.value.data;
+          const mkts = Array.isArray(data) ? data : (data?.markets ?? []);
+          for (const m of mkts) {
+            const uid = m.id ?? m.conditionId ?? m.questionID;
+            if (uid && !seenIds.has(String(uid))) {
+              seenIds.add(String(uid));
+              allMarkets.push(m);
+            }
+          }
+        }
+        console.log(`[pred-mkt] Polymarket raw markets: ${allMarkets.length}`);
+
+        // Classify and bucket by sport, then cap at PER_CATEGORY_LIMIT each
+        const buckets: Record<string, any[]> = { NFL: [], NBA: [], MLB: [], NHL: [], Other: [] };
+        for (const m of allMarkets) {
+          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
+          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
+          if ((buckets[sport]?.length ?? 0) < PER_CATEGORY_LIMIT) {
+            buckets[sport].push(m);
+          }
+        }
+        const cappedMarkets = Object.values(buckets).flat();
+        console.log(`[pred-mkt] Polymarket after 150/category cap: ${cappedMarkets.length} markets`);
+
+        // Collect YES token IDs for CLOB mid-price enrichment
         const conditionIds: string[] = [];
-        for (const ev of allEvents.slice(0, 150)) {
-          for (const m of (ev.markets ?? [])) {
-            if (m.conditionId) conditionIds.push(m.conditionId);
-          }
+        for (const m of cappedMarkets) {
+          if (m.conditionId) conditionIds.push(m.conditionId);
         }
-        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 60));
+        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 80));
 
-        for (const ev of allEvents.slice(0, 150)) {
-          const tagSlugs: string[] = (ev.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
-          for (const m of (ev.markets ?? [])) {
-            const yesPrice = parseFloat(m.lastTradePrice ?? m.outcomePrices?.[0] ?? 0.5);
-            const noPrice  = 1 - yesPrice;
-            const bestBid  = parseFloat(m.bestBid  ?? yesPrice - 0.01);
-            const bestAsk  = parseFloat(m.bestAsk  ?? yesPrice + 0.01);
-            const spread   = Math.max(0, bestAsk - bestBid);
-            const vol24h   = parseFloat(m.volume ?? ev.volume ?? 0);
-            const vol1wk   = parseFloat(m.volume1wk ?? ev.volume1wk ?? 1);
-            const dailyAvg = vol1wk / 7;
-            const volSpike = dailyAvg > 0 ? vol24h / dailyAvg : 1;
-            const ph1      = parseFloat(m.oneHourPriceChange ?? 0);
-            const pd1      = parseFloat(m.oneDayPriceChange  ?? 0);
+        for (const m of cappedMarkets) {
+          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
+          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
 
-            const isWhaleAlert      = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
-            const whaleDirection    = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
-            const whalePriceMovePct = Math.round(Math.abs(ph1) * 1000) / 10;
+          const yesPrice = parseFloat(m.lastTradePrice ?? (m.outcomePrices?.[0] ?? 0.5));
+          if (isNaN(yesPrice) || yesPrice <= 0) continue; // skip dead/unpriced markets
+          const noPrice  = 1 - yesPrice;
+          const bestBid  = parseFloat(m.bestBid  ?? 0) || yesPrice - 0.01;
+          const bestAsk  = parseFloat(m.bestAsk  ?? 0) || yesPrice + 0.01;
+          const spread   = Math.max(0, bestAsk - bestBid);
 
-            const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
-            const rating  = rateMarket(m.question ?? ev.title ?? "", yesPrice, clobMid);
-            const sport   = classifySport(m.question ?? ev.title ?? "", tagSlugs, ev.category ?? "");
+          // ── Volume: use volume24hr (correct field), fall back to volume24hrClob
+          const vol24h   = parseFloat(m.volume24hr ?? m.volume24hrClob ?? m.volume ?? 0);
+          const vol1wk   = parseFloat(m.volume1wk  ?? m.volume1wkClob  ?? 1);
+          const dailyAvg = vol1wk / 7;
+          const volSpike = dailyAvg > 100 ? vol24h / dailyAvg : (vol24h > 0 ? 3.1 : 1);
 
-            // Build cross-validation map: key = normalised title → price
-            const normKey = (m.question ?? ev.title ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-            if (normKey) polyEventMap.set(normKey, yesPrice);
+          // ── Price changes
+          const ph1 = parseFloat(m.oneHourPriceChange ?? 0) || 0;
+          const pd1 = parseFloat(m.oneDayPriceChange  ?? 0) || 0;
+          const pw1 = parseFloat(m.oneWeekPriceChange ?? 0) || 0;
 
-            results.push({
-              id:               `poly-${m.id ?? ev.id}`,
-              source:           "polymarket",
-              title:            m.question ?? ev.title,
-              event:            ev.title,
-              sport,
-              yesPrice,
-              noPrice,
-              bestBid,
-              bestAsk,
-              spread:           Math.round(spread * 1000) / 10,
-              vol24h,
-              volSpike:         Math.round(volSpike * 10) / 10,
-              ph1:              Math.round(ph1 * 1000) / 10,
-              pd1:              Math.round(pd1 * 1000) / 10,
-              ...rating,
-              isWhaleAlert,
-              whaleDirection,
-              whalePriceMovePct,
-              gameTime:         ev.endDate ?? m.endDate ?? null,
-              polyUrl:          `https://polymarket.com/event/${ev.slug ?? ev.id}`,
-              crossValidated:   false,
-              crossPrice:       null,
-              crossSource:      null,
-              crossDelta:       null,
-            });
-          }
+          // ── Whale/smart money detection — multi-signal
+          // Signal 1: genuine volume spike (3× daily avg AND vol > $1K)
+          const hasVolSpike   = volSpike >= WHALE_VOL_SPIKE && vol24h >= 1_000;
+          // Signal 2: large absolute 24h volume ($50K+) — big money flowing in
+          const hasAbsVol     = vol24h >= WHALE_ABS_VOL;
+          // Signal 3: meaningful price move in past hour (2%+)
+          const hasPriceMove  = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD;
+          // Signal 4: day-over-day price move of 3%+ combined with high volume
+          const hasDayMove    = Math.abs(pd1) >= 0.03 && vol24h >= 5_000;
+          const isWhaleAlert  = hasVolSpike || hasAbsVol || hasPriceMove || hasDayMove;
+
+          // Smart money direction: favour the side that’s being bought (price going up = YES buying)
+          const priceMove = ph1 !== 0 ? ph1 : pd1;
+          const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
+          const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
+
+          // Smart money score (0–100) for sorting whale alerts
+          const smartScore = Math.min(100, Math.round(
+            (hasAbsVol  ? 40 : 0) +
+            (hasVolSpike ? 30 : 0) +
+            (hasPriceMove ? 20 : 0) +
+            (hasDayMove ? 10 : 0)
+          ));
+
+          const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
+          const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid);
+
+          // Build cross-validation map
+          const normKey = (m.question ?? m.groupItemTitle ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+          if (normKey) polyEventMap.set(normKey, yesPrice);
+
+          // Parse clobTokenIds for history endpoint
+          let yesTokenId: string | null = null;
+          try {
+            const tokenIds = JSON.parse(m.clobTokenIds ?? "[]");
+            yesTokenId = Array.isArray(tokenIds) && tokenIds.length > 0 ? String(tokenIds[0]) : null;
+          } catch { /* keep null */ }
+
+          // Event info (markets endpoint nests event data in m.events array)
+          const evTitle = (m.events ?? [])[0]?.title ?? m.question ?? m.groupItemTitle ?? "";
+          const evSlug  = (m.events ?? [])[0]?.slug ?? m.slug ?? "";
+          const evEndDate = (m.events ?? [])[0]?.endDate ?? m.endDate ?? null;
+
+          results.push({
+            id:               `poly-${m.id}`,
+            source:           "polymarket",
+            title:            m.question ?? m.groupItemTitle,
+            event:            evTitle,
+            sport,
+            yesPrice,
+            noPrice,
+            bestBid,
+            bestAsk,
+            spread:           Math.round(spread * 1000) / 10,
+            vol24h,
+            volSpike:         Math.round(volSpike * 10) / 10,
+            ph1:              Math.round(ph1 * 1000) / 10,
+            pd1:              Math.round(pd1 * 1000) / 10,
+            pw1:              Math.round(pw1 * 1000) / 10,
+            liquidityNum:     parseFloat(m.liquidityNum ?? m.liquidity ?? 0),
+            yesTokenId,
+            ...rating,
+            isWhaleAlert,
+            whaleDirection,
+            whalePriceMovePct,
+            smartScore,
+            gameTime:         evEndDate,
+            polyUrl:          `https://polymarket.com/event/${evSlug || m.id}`,
+            crossValidated:   false,
+            crossPrice:       null,
+            crossSource:      null,
+            crossDelta:       null,
+          });
         }
       } catch (e: any) {
         console.warn("[pred-mkt] Polymarket error:", e.message);
@@ -1029,7 +1104,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           timeout: 10000,
         });
         const kmarkets = (km?.markets ?? []) as any[];
-        // Take all markets, not just sports
+        // Per-category cap for Kalshi (same 150 limit)
+        const kBuckets: Record<string, number> = {};
+        // Sort Kalshi by vol_24h_fp descending so most active markets fill buckets first
+        kmarkets.sort((a: any, b: any) => {
+          const av = parseFloat(a.volume_24h_fp ?? a.volume_24h ?? 0);
+          const bv = parseFloat(b.volume_24h_fp ?? b.volume_24h ?? 0);
+          return bv - av;
+        });
         for (const m of kmarkets) {
           const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
           const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
@@ -1037,10 +1119,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const bestBid  = m.yes_bid_dollars ? parseFloat(m.yes_bid_dollars) : yesPrice - 0.01;
           const bestAsk  = m.yes_ask_dollars ? parseFloat(m.yes_ask_dollars) : yesPrice + 0.01;
           const spread   = Math.max(0, bestAsk - bestBid);
-          const vol24h   = parseFloat(m.volume_24h ?? 0);
+          const vol24h   = parseFloat(m.volume_24h_fp ?? m.volume_24h ?? m.volume_fp ?? 0);
 
           const rating = rateMarket(m.title ?? "", yesPrice, null);
           const sport  = classifySport(m.title ?? "", [], m.category ?? "");
+
+          // Per-category cap: skip if bucket full
+          kBuckets[sport] = (kBuckets[sport] ?? 0);
+          if (kBuckets[sport] >= PER_CATEGORY_LIMIT) continue;
 
           // Cross-validate: find matching Polymarket market by fuzzy title
           const titleWords = (m.title ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ").filter((w: string) => w.length > 3);
@@ -1059,12 +1145,29 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             crossDelta = Math.round(Math.abs(yesPrice - crossPrice) * 1000) / 10;
           }
 
-          const isWhaleAlert   = vol24h > 5000;
-          const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
-
           const prevPriceK = m.previous_price_dollars !== undefined
             ? parseFloat(m.previous_price_dollars)
             : m.previous_price !== undefined ? m.previous_price / 100 : null;
+
+          // ── Kalshi whale detection (multi-signal) ──────────────────────────
+          // Signal 1: absolute 24h volume >= $100 (very low bar for Kalshi)
+          const kHasAbsVol   = vol24h >= KALSHI_WHALE_VOL;
+          // Signal 2: price moved >= 2¢ from previous close
+          const kPriceDelta  = prevPriceK !== null ? Math.abs(yesPrice - prevPriceK) : 0;
+          const kHasPriceMove = kPriceDelta >= KALSHI_PREV_PRICE_DELTA;
+          // Combined — either signal fires whale alert
+          const isWhaleAlert = kHasAbsVol || kHasPriceMove;
+          const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
+          const whalePriceMovePct = prevPriceK !== null
+            ? Math.round(Math.abs(yesPrice - prevPriceK) * 1000) / 10
+            : 0;
+
+          // smartScore: weight volume + price move
+          const kSmartScore = Math.min(100, Math.round(
+            (kHasAbsVol   ? Math.min(40, (vol24h / KALSHI_WHALE_VOL) * 5)   : 0) +
+            (kHasPriceMove ? Math.min(60, (kPriceDelta / 0.10) * 60)         : 0)
+          ));
+
           results.push({
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
@@ -1081,11 +1184,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             ph1:              prevPriceK !== null ? Math.round((yesPrice - prevPriceK) * 1000) / 10 : 0,
             pd1:              prevPriceK !== null ? Math.round((yesPrice - prevPriceK) * 1000) / 10 : 0,
             previousPrice:    prevPriceK,
+            pw1:              0,
+            liquidityNum:     parseFloat(m.open_interest_fp ?? m.notional_value ?? 0),
             openTime:         m.open_time ?? null,
             ...rating,
             isWhaleAlert,
             whaleDirection,
-            whalePriceMovePct: 0,
+            whalePriceMovePct,
+            smartScore:       kSmartScore,
             gameTime:         m.close_time ?? null,
             kalshiUrl:        `https://kalshi.com/markets/${m.ticker}`,
             crossValidated:   crossPrice !== null,
@@ -1093,6 +1199,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             crossSource:      crossPrice !== null ? "polymarket" : null,
             crossDelta:       crossDelta,
           });
+          kBuckets[sport]++;
         }
 
         // Back-fill crossValidation onto Polymarket entries using Kalshi as reference
@@ -1138,6 +1245,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         if (!at && bt) return 1;
         if (a.isWhaleAlert && !b.isWhaleAlert) return -1;
         if (!a.isWhaleAlert && b.isWhaleAlert) return 1;
+        // Among whales, sort by smartScore descending
+        if (a.isWhaleAlert && b.isWhaleAlert) {
+          return (b.smartScore ?? 0) - (a.smartScore ?? 0);
+        }
         return (ORDER[a.priceRating as keyof typeof ORDER] ?? 9) - (ORDER[b.priceRating as keyof typeof ORDER] ?? 9);
       });
 

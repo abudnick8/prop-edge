@@ -32,6 +32,9 @@ interface PredMkt {
   isWhaleAlert: boolean;
   whaleDirection: "yes" | "no" | null;
   whalePriceMovePct: number;
+  smartScore?: number;
+  liquidityNum?: number;
+  pw1?: number;
   gameTime: string | null;
   polyUrl?: string;
   kalshiUrl?: string;
@@ -156,8 +159,11 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
             {cfg.icon} {cfg.label}
           </span>
           {m.isWhaleAlert && (
-            <span className="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse">
+            <span className="text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse inline-flex items-center gap-1.5">
               🐋 Whale Alert
+              {(m.smartScore ?? 0) > 0 && (
+                <span className="text-[9px] bg-orange-400/20 px-1 py-0.5 rounded font-mono">{m.smartScore}/100</span>
+              )}
             </span>
           )}
           {m.crossValidated && m.crossDelta !== null && (
@@ -378,8 +384,11 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
             {cfg.icon} {cfg.label}
           </span>
           {m.isWhaleAlert && (
-            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse">
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse flex items-center gap-1">
               🐋 Whale
+              {(m.smartScore ?? 0) > 0 && (
+                <span className="text-[9px] font-bold text-orange-200 opacity-80">{m.smartScore}</span>
+              )}
             </span>
           )}
         </div>
