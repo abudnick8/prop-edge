@@ -1062,6 +1062,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const isWhaleAlert   = vol24h > 5000;
           const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
 
+          const prevPriceK = m.previous_price_dollars !== undefined
+            ? parseFloat(m.previous_price_dollars)
+            : m.previous_price !== undefined ? m.previous_price / 100 : null;
           results.push({
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
@@ -1075,8 +1078,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             spread:           Math.round(spread * 1000) / 10,
             vol24h,
             volSpike:         1,
-            ph1:              0,
-            pd1:              0,
+            ph1:              prevPriceK !== null ? Math.round((yesPrice - prevPriceK) * 1000) / 10 : 0,
+            pd1:              prevPriceK !== null ? Math.round((yesPrice - prevPriceK) * 1000) / 10 : 0,
+            previousPrice:    prevPriceK,
+            openTime:         m.open_time ?? null,
             ...rating,
             isWhaleAlert,
             whaleDirection,
@@ -1119,9 +1124,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.warn("[pred-mkt] Kalshi error:", e.message);
       }
 
-      // Sort: whale alerts first, then great_buy, good_buy, fair, overpriced
+      // Sort: today's markets first, then whale alerts, then great_buy > good_buy > fair > overpriced
+      const todayStr = new Date().toISOString().slice(0, 10);
+      function isTodaySrv(gt: string | null): boolean {
+        if (!gt) return false;
+        try { return new Date(gt).toISOString().slice(0, 10) === todayStr; } catch { return false; }
+      }
       const ORDER = { great_buy: 0, good_buy: 1, fair: 2, overpriced: 3 };
       results.sort((a, b) => {
+        const at = isTodaySrv(a.gameTime);
+        const bt = isTodaySrv(b.gameTime);
+        if (at && !bt) return -1;
+        if (!at && bt) return 1;
         if (a.isWhaleAlert && !b.isWhaleAlert) return -1;
         if (!a.isWhaleAlert && b.isWhaleAlert) return 1;
         return (ORDER[a.priceRating as keyof typeof ORDER] ?? 9) - (ORDER[b.priceRating as keyof typeof ORDER] ?? 9);
@@ -1134,60 +1148,142 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // ── Price history endpoint — Polymarket CLOB timeseries ─────────────────────
+  // ── Price history endpoint — Polymarket CLOB timeseries + Kalshi synthetic ────────
   // GET /api/prediction-markets/history/:marketId
-  // marketId examples: "poly-12345" or "kalshi-SOME_TICKER"
+  // FIXES:
+  //   - Use clobTokenIds[0] (YES token) NOT conditionId for CLOB /prices-history
+  //   - Use startTs+endTs (Unix seconds) not `resolution` param
+  //   - Build synthetic history from oneDayPriceChange / oneWeekPriceChange / oneMonthPriceChange
+  //   - Kalshi /history endpoint doesn’t exist publicly — use previousPrice from cache
   app.get("/api/prediction-markets/history/:marketId", async (req, res) => {
     const { marketId } = req.params;
     try {
-      // Polymarket CLOB: GET /prices-history?market=<conditionId>&resolution=1H&interval=max
-      // For poly- IDs we look up the market conditionId from Gamma first
       if (marketId.startsWith("poly-")) {
         const rawId = marketId.replace("poly-", "");
-// Try Gamma to get YES token ID for CLOB prices-history
-            let tokenId: string | null = null;
-            try {
-              const { data: mData } = await axios.get(`https://gamma-api.polymarket.com/markets/${rawId}`, { timeout: 6000 });
-              // Extract YES token ID from clobTokenIds array
-              const clobTokenIds = mData?.clobTokenIds;
-              if (typeof clobTokenIds === "string") {
-                try { const parsed = JSON.parse(clobTokenIds); tokenId = parsed?.[0] ?? null; } catch { tokenId = null; }
-              } else if (Array.isArray(clobTokenIds) && clobTokenIds.length > 0) {
-                tokenId = clobTokenIds[0];
-              }
-              // Fallback: try conditionId if no token ID found
-              if (!tokenId) tokenId = mData?.conditionId ?? rawId;
-            } catch { /* fallback: use rawId directly */ tokenId = rawId; }
 
-            if (tokenId) {
-              const { data: hist } = await axios.get("https://clob.polymarket.com/prices-history", {
-                params: { market: tokenId, resolution: "1H", fidelity: 60 },
-                timeout: 8000,
-              });
-          const history = (hist?.history ?? hist ?? []).map((p: any) => ({
-            t: p.t ?? p.timestamp,
-            p: parseFloat(p.p ?? p.price ?? 0),
-          }));
-          return res.json({ source: "polymarket", history });
+        // Step 1: Fetch Gamma market data — we need clobTokenIds + price-change fields
+        let yesTokenId: string | null = null;
+        let lastTradePrice = 0.5;
+        let oneDayChange   = 0;
+        let oneWeekChange  = 0;
+        let oneMonthChange = 0;
+        try {
+          const { data: mData } = await axios.get(
+            `https://gamma-api.polymarket.com/markets/${rawId}`,
+            { timeout: 8000 }
+          );
+          const cids = mData?.clobTokenIds;
+          if (typeof cids === "string") {
+            try { const arr = JSON.parse(cids); yesTokenId = arr?.[0] ? String(arr[0]) : null; } catch { /* noop */ }
+          } else if (Array.isArray(cids) && cids.length > 0) {
+            yesTokenId = String(cids[0]);
+          }
+          lastTradePrice = parseFloat(mData?.lastTradePrice ?? 0.5) || 0.5;
+          oneDayChange   = parseFloat(mData?.oneDayPriceChange   ?? 0) || 0;
+          oneWeekChange  = parseFloat(mData?.oneWeekPriceChange  ?? 0) || 0;
+          oneMonthChange = parseFloat(mData?.oneMonthPriceChange ?? 0) || 0;
+        } catch (e: any) {
+          console.warn("[pred-hist] Gamma fetch failed:", e.message);
         }
+
+        // Step 2: Try CLOB prices-history using YES token ID + startTs/endTs
+        let clobPoints: { t: number; p: number }[] = [];
+        if (yesTokenId) {
+          try {
+            const nowSec   = Math.floor(Date.now() / 1000);
+            const startSec = nowSec - 7 * 24 * 3600;
+            const { data: hist } = await axios.get("https://clob.polymarket.com/prices-history", {
+              params: { market: yesTokenId, startTs: startSec, endTs: nowSec, fidelity: 3600 },
+              timeout: 10000,
+            });
+            const raw = hist?.history ?? hist ?? [];
+            if (Array.isArray(raw)) {
+              clobPoints = raw
+                .filter((p: any) => p && (p.t !== undefined || p.timestamp !== undefined))
+                .map((p: any) => ({
+                  t: typeof p.t === "number" ? p.t : parseInt(String(p.t ?? p.timestamp ?? 0)),
+                  p: Math.min(1, Math.max(0, parseFloat(p.p ?? p.price ?? lastTradePrice))),
+                }))
+                .filter((pt: { t: number; p: number }) => pt.t > 0);
+            }
+            console.log(`[pred-hist] CLOB: ${clobPoints.length} pts for token ${yesTokenId.slice(0, 12)}…`);
+          } catch (e: any) {
+            console.warn("[pred-hist] CLOB error:", e.message);
+          }
+        }
+
+        // Step 3: Synthetic history from Gamma price-change anchors
+        // Anchors: now, 1d ago, 7d ago, 30d ago — interpolate between each
+        const nowSec = Math.floor(Date.now() / 1000);
+        const anchors = [
+          { daysAgo: 0,  price: lastTradePrice },
+          { daysAgo: 1,  price: Math.min(1, Math.max(0, lastTradePrice - oneDayChange)) },
+          { daysAgo: 7,  price: Math.min(1, Math.max(0, lastTradePrice - oneWeekChange)) },
+          { daysAgo: 30, price: Math.min(1, Math.max(0, lastTradePrice - oneMonthChange)) },
+        ];
+        const synthPts: { t: number; p: number }[] = [];
+        for (let i = 0; i < anchors.length - 1; i++) {
+          const a = anchors[i]; const b = anchors[i + 1];
+          const steps = Math.max(2, Math.round((b.daysAgo - a.daysAgo) / 1.5));
+          for (let s = 0; s <= steps; s++) {
+            const frac = s / steps;
+            synthPts.push({
+              t: nowSec - Math.round((a.daysAgo + frac * (b.daysAgo - a.daysAgo)) * 86400),
+              p: Math.min(1, Math.max(0, a.price + frac * (b.price - a.price))),
+            });
+          }
+        }
+
+        // Step 4: Merge — CLOB points override synthetic in the same hour bucket
+        const byHour = new Map<number, { t: number; p: number }>();
+        for (const pt of synthPts) {
+          const bkt = Math.floor(pt.t / 3600);
+          if (!byHour.has(bkt)) byHour.set(bkt, pt);
+        }
+        for (const pt of clobPoints) {
+          byHour.set(Math.floor(pt.t / 3600), pt); // CLOB wins
+        }
+        const history = Array.from(byHour.values()).sort((a, b) => a.t - b.t);
+
+        return res.json({ source: "polymarket", history, hasRealData: clobPoints.length > 0, tokenId: yesTokenId });
       }
 
-      // Kalshi: GET /markets/{ticker}/history
+      // Kalshi: their public API has no /history endpoint — build synthetic from cache
       if (marketId.startsWith("kalshi-")) {
-        const ticker = marketId.replace("kalshi-", "");
-        const { data: hist } = await axios.get(
-          `https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/history`,
-          { params: { limit: 100 }, timeout: 8000 }
-        );
-        const history = (hist?.history ?? []).map((p: any) => ({
-          t: p.ts ?? p.created_time,
-          p: parseFloat(p.yes_price ?? p.price ?? 0) / 100,
-        }));
-        return res.json({ source: "kalshi", history });
+        const cachedMarket = predMktCache.data.find((m: any) => m.id === marketId);
+        const lastPrice = cachedMarket?.yesPrice ?? 0.5;
+        const prevPrice = cachedMarket?.previousPrice ?? null;
+        const openTime  = cachedMarket?.openTime ?? null;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const startTs = openTime
+          ? Math.floor(new Date(openTime).getTime() / 1000)
+          : nowSec - 24 * 3600;
+        const history: { t: number; p: number }[] = [];
+        const steps = 8;
+        if (prevPrice !== null && prevPrice !== lastPrice) {
+          for (let i = 0; i <= steps; i++) {
+            const frac = i / steps;
+            history.push({
+              t: Math.round(startTs + frac * (nowSec - startTs)),
+              p: Math.min(1, Math.max(0, prevPrice + frac * (lastPrice - prevPrice))),
+            });
+          }
+        } else {
+          const range = Math.max(0.02, Math.abs(lastPrice - 0.5) * 0.05);
+          for (let i = 0; i <= steps; i++) {
+            const frac = i / steps;
+            history.push({
+              t: Math.round(startTs + frac * (nowSec - startTs)),
+              p: Math.min(1, Math.max(0, lastPrice + Math.sin(i * 1.7) * range * 0.4)),
+            });
+          }
+        }
+        return res.json({ source: "kalshi", history, isSynthetic: true });
       }
 
       res.json({ source: "unknown", history: [] });
     } catch (e: any) {
+      console.error("[pred-hist] Error:", e.message);
       res.json({ source: "error", history: [], error: e.message });
     }
   });

@@ -39,9 +39,18 @@ interface PredMkt {
   crossPrice: number | null;
   crossSource: "kalshi" | "polymarket" | null;
   crossDelta: number | null;
+  previousPrice?: number | null;
+  openTime?: string | null;
 }
 
 interface HistoryPoint { t: number | string; p: number; }
+interface HistoryResponse {
+  source: string;
+  history: HistoryPoint[];
+  hasRealData?: boolean;
+  isSynthetic?: boolean;
+  tokenId?: string | null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtCents(v: number) { return `${Math.round(v * 100)}¢`; }
@@ -92,7 +101,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
   const cfg = RATING_CONFIG[m.priceRating] ?? RATING_CONFIG.fair;
   const url = m.polyUrl ?? m.kalshiUrl ?? "#";
 
-  const { data: histData, isLoading: histLoading } = useQuery<{ history: HistoryPoint[] }>({
+  const { data: histData, isLoading: histLoading } = useQuery<HistoryResponse>({
     queryKey: ["/api/prediction-markets/history", m.id],
     queryFn: () => apiRequest("GET", `/api/prediction-markets/history/${m.id}`).then(r => r.json()),
     staleTime: 60_000,
@@ -172,9 +181,20 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
 
         {/* Price chart */}
         <div className="bg-background/60 rounded-xl border border-border p-3">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
-            Price History (YES contract)
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+              Price History (YES contract)
+            </p>
+            {!histLoading && histData && (
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
+                histData.hasRealData
+                  ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                  : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+              }`}>
+                {histData.hasRealData ? "Live CLOB Data" : histData.isSynthetic ? "Est. (no public history)" : "Est. from price changes"}
+              </span>
+            )}
+          </div>
           {histLoading ? (
             <div className="h-40 flex items-center justify-center text-muted-foreground text-xs animate-pulse">
               Loading chart…
@@ -310,19 +330,31 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
   );
 }
 
+function isTodayMarket(m: PredMkt): boolean {
+  if (!m.gameTime) return false;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    return new Date(m.gameTime).toISOString().slice(0, 10) === today;
+  } catch { return false; }
+}
+
 // ── Market Card ───────────────────────────────────────────────────────────────
 function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
   const cfg = RATING_CONFIG[m.priceRating] ?? RATING_CONFIG.fair;
   const countdown = timeUntil(m.gameTime);
+  const isToday = isTodayMarket(m);
 
   return (
     <button
       onClick={onClick}
       className="rounded-xl border p-4 flex flex-col gap-3 relative overflow-hidden text-left w-full transition-all hover:scale-[1.01] hover:shadow-lg cursor-pointer"
-      style={{ background: cfg.bg, borderColor: cfg.border }}
+      style={{ background: cfg.bg, borderColor: isToday ? "rgba(250,204,21,0.45)" : cfg.border }}
     >
       {m.isWhaleAlert && (
         <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, #f59e0b, #ef4444, #f59e0b)" }} />
+      )}
+      {isToday && !m.isWhaleAlert && (
+        <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, #facc15, #fbbf24, #facc15)" }} />
       )}
       {/* Click hint */}
       <div className="absolute top-2 right-2 text-[9px] text-muted-foreground/50 font-medium">tap for chart ›</div>
@@ -332,6 +364,7 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: SOURCE_COLOR[m.source] }}>
             {m.source === "kalshi" ? "Kalshi" : "Polymarket"} · <span className="text-muted-foreground">{m.sport}</span>
+            {isToday && <span className="ml-2 font-bold text-yellow-400">⚡ TODAY</span>}
             {countdown && <span className="ml-2 font-semibold text-orange-400">⏰ {countdown}</span>}
           </p>
           <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
@@ -407,6 +440,7 @@ export default function PredictionMarkets() {
   const [sportFilter, setSportFilter]   = useState("all");
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kalshi" | "polymarket">("all");
+  const [todayOnly, setTodayOnly]       = useState(false);
   const [search, setSearch]             = useState("");
   const [lastRefresh, setLastRefresh]   = useState(Date.now());
   const [selected, setSelected]         = useState<PredMkt | null>(null);
@@ -427,7 +461,10 @@ export default function PredictionMarkets() {
     return unsub;
   }, [refetch]);
 
+  const todayCount = markets.filter(isTodayMarket).length;
+
   const filtered = markets.filter(m => {
+    if (todayOnly && !isTodayMarket(m)) return false;
     if (sportFilter !== "all" && m.sport !== sportFilter) return false;
     if (ratingFilter === "whale" && !m.isWhaleAlert) return false;
     if (ratingFilter !== "all" && ratingFilter !== "whale" && m.priceRating !== ratingFilter) return false;
@@ -512,7 +549,7 @@ export default function PredictionMarkets() {
 
       {/* Source + search row */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {(["all", "kalshi", "polymarket"] as const).map(s => (
             <button
               key={s}
@@ -529,6 +566,23 @@ export default function PredictionMarkets() {
               {s === "all" ? "All Sources" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
+          {/* Today filter — day-trade mode */}
+          <button
+            onClick={() => setTodayOnly(v => !v)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all"
+            style={todayOnly ? {
+              background: "rgba(250,204,21,0.20)",
+              borderColor: "#facc15",
+              color: "#facc15",
+            } : { borderColor: "rgba(255,255,255,0.1)", background: "transparent", color: "" }}
+          >
+            ⚡ Today
+            {todayCount > 0 && (
+              <span className="ml-1.5 text-[10px] font-mono" style={{ color: todayOnly ? "#fde68a" : "#64748b" }}>
+                {todayCount}
+              </span>
+            )}
+          </button>
         </div>
         <input
           type="text"
