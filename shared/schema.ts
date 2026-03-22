@@ -60,6 +60,16 @@ export const bets = pgTable("bets", {
   // ── Urgency / Closing Soon ───────────────────────────────────────────
   isClosingSoon: boolean("is_closing_soon").default(false), // market closes within 3h
   minutesToClose: integer("minutes_to_close"),              // minutes until game time / close
+  // ── Whale / Smart Money ─────────────────────────────────────────────
+  isWhaleAlert: boolean("is_whale_alert").default(false),   // sudden volume spike or large block trade
+  whaleDirection: text("whale_direction"),                  // "yes" | "no" — direction of smart money
+  whalePriceMovePct: real("whale_price_move_pct"),          // % price moved from the block trade
+  volume24h: real("volume_24h"),                            // 24-hour trading volume in USDC
+  volumeSpike: real("volume_spike"),                        // current vol / avg vol ratio (>2 = spike)
+  bestBid: real("best_bid"),                               // current best bid (0-1)
+  bestAsk: real("best_ask"),                               // current best ask (0-1)
+  spread: real("spread"),                                  // ask - bid (tighter = more liquid)
+  priceRating: text("price_rating"),                       // "fair" | "good_buy" | "overpriced" | "great_buy"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

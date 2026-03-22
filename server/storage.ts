@@ -45,6 +45,17 @@ export interface IStorage {
     isClosingSoon: boolean;
     minutesToClose: number;
   }): Promise<Bet | undefined>;
+  patchBetMarketData(id: string, patch: {
+    volume24h?: number | null;
+    volumeSpike?: number | null;
+    bestBid?: number | null;
+    bestAsk?: number | null;
+    spread?: number | null;
+    priceRating?: string | null;
+    isWhaleAlert?: boolean;
+    whaleDirection?: string | null;
+    whalePriceMovePct?: number | null;
+  }): Promise<Bet | undefined>;
   deleteBet(id: string): Promise<void>;
   clearBets(): Promise<void>;
 
@@ -269,6 +280,19 @@ export class MemStorage implements IStorage {
     const bet = this.bets.get(id);
     if (!bet) return undefined;
     const updated: Bet = { ...bet, isClosingSoon: patch.isClosingSoon, minutesToClose: patch.minutesToClose, updatedAt: new Date() };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetMarketData(id: string, patch: {
+    volume24h?: number | null; volumeSpike?: number | null;
+    bestBid?: number | null; bestAsk?: number | null; spread?: number | null;
+    priceRating?: string | null; isWhaleAlert?: boolean;
+    whaleDirection?: string | null; whalePriceMovePct?: number | null;
+  }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = { ...bet, ...patch, updatedAt: new Date() };
     this.bets.set(id, updated);
     return updated;
   }

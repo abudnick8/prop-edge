@@ -804,6 +804,189 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     });
   });
 
+  // ─── Prediction Markets — enriched Kalshi + Polymarket with pricing ratings + whale alerts
+  // Cache: 30 seconds (same cadence as the live poller)
+  let predMktCache: { data: any[]; ts: number } = { data: [], ts: 0 };
+  const PRED_MKT_TTL = 30_000;
+
+  app.get("/api/prediction-markets", async (_req, res) => {
+    try {
+      // Serve from cache if fresh
+      if (Date.now() - predMktCache.ts < PRED_MKT_TTL && predMktCache.data.length > 0) {
+        return res.json(predMktCache.data);
+      }
+
+      const POLY_BASE = "https://gamma-api.polymarket.com";
+      const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
+      const WHALE_PRICE_THRESHOLD = 0.05;  // 5% price move in 1h = whale flag
+      const WHALE_VOL_SPIKE = 2.5;         // vol 2.5x weekly avg = spike
+
+      const results: any[] = [];
+
+      // ── 1. Polymarket sports events ──────────────────────────────────────────
+      try {
+        const { data: eventsData } = await axios.get(`${POLY_BASE}/events`, {
+          params: { limit: 200, active: true, tag_slug: "sports" },
+          timeout: 10000,
+        });
+        const events = Array.isArray(eventsData) ? eventsData : (eventsData?.events ?? []);
+        for (const ev of events.slice(0, 100)) {
+          for (const m of (ev.markets ?? [])) {
+            const yesPrice  = parseFloat(m.lastTradePrice ?? m.outcomePrices?.[0] ?? 0.5);
+            const noPrice   = 1 - yesPrice;
+            const bestBid   = parseFloat(m.bestBid  ?? yesPrice - 0.01);
+            const bestAsk   = parseFloat(m.bestAsk  ?? yesPrice + 0.01);
+            const spread    = Math.max(0, bestAsk - bestBid);
+            const vol24h    = parseFloat(m.volume ?? ev.volume ?? 0);
+            const vol1wk    = parseFloat(m.volume1wk ?? ev.volume1wk ?? 1);
+            const dailyAvg  = vol1wk / 7;
+            const volSpike  = dailyAvg > 0 ? vol24h / dailyAvg : 1;
+            const ph1       = parseFloat(m.oneHourPriceChange  ?? 0);
+            const pd1       = parseFloat(m.oneDayPriceChange   ?? 0);
+
+            // Whale alert: 1h price move >= 5% OR volume spike >= 2.5x avg
+            const isWhaleAlert    = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
+            const whaleDirection  = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
+            const whalePriceMovePct = Math.round(Math.abs(ph1) * 1000) / 10;
+
+            // Fair value via confidence model
+            const confScore = 50; // base — Polymarket markets self-price; use market price as signal
+            const rawFair   = 0.10 + Math.min(1, Math.max(0, confScore / 100)) * 0.80;
+            const fairValue = Math.min(0.92, Math.max(0.08, rawFair));
+            const edge      = fairValue - yesPrice;
+
+            // Price rating
+            let priceRating: string;
+            if (Math.abs(edge) < 0.03)         priceRating = "fair";
+            else if (edge >= 0.08)             priceRating = "great_buy";
+            else if (edge >= 0.03)             priceRating = "good_buy";
+            else                               priceRating = "overpriced";
+
+            // Entry / exit
+            const entryPrice = yesPrice;
+            const exitTarget = priceRating === "overpriced"
+              ? yesPrice - Math.abs(edge) * 0.85
+              : yesPrice + Math.abs(edge) * 0.85;
+
+            results.push({
+              id:              `poly-${m.id ?? ev.id}`,
+              source:          "polymarket",
+              title:           m.question ?? ev.title,
+              event:           ev.title,
+              sport:           ev.tags?.find((t: any) => t.slug === "sports") ? "Sports" : "Other",
+              yesPrice,
+              noPrice,
+              bestBid,
+              bestAsk,
+              spread:          Math.round(spread * 1000) / 10,
+              vol24h,
+              volSpike:        Math.round(volSpike * 10) / 10,
+              ph1:             Math.round(ph1 * 1000) / 10,   // 1h price change %
+              pd1:             Math.round(pd1 * 1000) / 10,   // 1d price change %
+              fairValue,
+              edge:            Math.round(edge * 1000) / 10,
+              priceRating,
+              entryPrice,
+              exitTarget:      Math.round(exitTarget * 100) / 100,
+              isWhaleAlert,
+              whaleDirection,
+              whalePriceMovePct,
+              gameTime:        ev.endDate ?? m.endDate ?? null,
+              polyUrl:         `https://polymarket.com/event/${ev.slug ?? ev.id}`,
+            });
+          }
+        }
+      } catch (e: any) {
+        console.warn("[pred-mkt] Polymarket error:", e.message);
+      }
+
+      // ── 2. Kalshi sports markets ──────────────────────────────────────────
+      try {
+        const { data: km } = await axios.get(`${KALSHI_BASE}/markets`, {
+          params: { status: "open", limit: 200 },
+          timeout: 10000,
+        });
+        const kmarkets = (km?.markets ?? []) as any[];
+        const sportsMkts = kmarkets.filter((m: any) => {
+          const cat = (m.category ?? "").toLowerCase();
+          const t   = (m.title    ?? "").toLowerCase();
+          return cat === "sports" || ["nfl","nba","mlb","nhl","football","basketball","baseball","hockey"].some(s => t.includes(s) || cat.includes(s));
+        });
+        for (const m of sportsMkts) {
+          const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
+          const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
+          const noPrice  = 1 - yesPrice;
+          const bestBid  = m.yes_bid_dollars  ? parseFloat(m.yes_bid_dollars)  : yesPrice - 0.01;
+          const bestAsk  = m.yes_ask_dollars  ? parseFloat(m.yes_ask_dollars)  : yesPrice + 0.01;
+          const spread   = Math.max(0, bestAsk - bestBid);
+          const vol24h   = parseFloat(m.volume_24h ?? 0);
+
+          const confScore = 50;
+          const rawFair   = 0.10 + 0.80 * (confScore / 100);
+          const fairValue = Math.min(0.92, Math.max(0.08, rawFair));
+          const edge      = fairValue - yesPrice;
+
+          let priceRating: string;
+          if (Math.abs(edge) < 0.03)   priceRating = "fair";
+          else if (edge >= 0.08)       priceRating = "great_buy";
+          else if (edge >= 0.03)       priceRating = "good_buy";
+          else                         priceRating = "overpriced";
+
+          const entryPrice = yesPrice;
+          const exitTarget = priceRating === "overpriced"
+            ? yesPrice - Math.abs(edge) * 0.85
+            : yesPrice + Math.abs(edge) * 0.85;
+
+          // Kalshi doesn’t expose 1h price change via public API — use volume spike as whale proxy
+          const isWhaleAlert    = vol24h > 5000; // >$5k single-day volume for a single market = notable
+          const whaleDirection  = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
+
+          results.push({
+            id:              `kalshi-${m.ticker}`,
+            source:          "kalshi",
+            title:           m.title,
+            event:           m.event_ticker ?? m.title,
+            sport:           "Sports",
+            yesPrice,
+            noPrice,
+            bestBid,
+            bestAsk,
+            spread:          Math.round(spread * 1000) / 10,
+            vol24h,
+            volSpike:        1,
+            ph1:             0,
+            pd1:             0,
+            fairValue,
+            edge:            Math.round(edge * 1000) / 10,
+            priceRating,
+            entryPrice,
+            exitTarget:      Math.round(exitTarget * 100) / 100,
+            isWhaleAlert,
+            whaleDirection,
+            whalePriceMovePct: 0,
+            gameTime:        m.close_time ?? null,
+            kalshiUrl:       `https://kalshi.com/markets/${m.ticker}`,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[pred-mkt] Kalshi error:", e.message);
+      }
+
+      // Sort: whale alerts first, then great_buy, good_buy, fair, overpriced
+      const ORDER = { great_buy: 0, good_buy: 1, fair: 2, overpriced: 3 };
+      results.sort((a, b) => {
+        if (a.isWhaleAlert && !b.isWhaleAlert) return -1;
+        if (!a.isWhaleAlert && b.isWhaleAlert) return 1;
+        return (ORDER[a.priceRating as keyof typeof ORDER] ?? 9) - (ORDER[b.priceRating as keyof typeof ORDER] ?? 9);
+      });
+
+      predMktCache = { data: results, ts: Date.now() };
+      res.json(results);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Debug endpoint — check Underdog NHL cache + current bets breakdown
   app.get("/api/debug/nhl", async (req, res) => {
     try {
