@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info } from "lucide-react";
 import { addWsListener } from "@/hooks/useWebSocket";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
@@ -509,6 +509,7 @@ export default function PredictionMarkets() {
   const [search, setSearch]             = useState("");
   const [lastRefresh, setLastRefresh]   = useState(Date.now());
   const [selected, setSelected]         = useState<PredMkt | null>(null);
+  const [legendOpen, setLegendOpen]     = useState(false);
 
   const { data: markets = [], isLoading, refetch } = useQuery<PredMkt[]>({
     queryKey: ["/api/prediction-markets"],
@@ -588,6 +589,114 @@ export default function PredictionMarkets() {
             <p className="text-2xl font-black text-foreground">{isLoading ? "—" : s.val}</p>
           </div>
         ))}
+      </div>
+
+      {/* ── Legend / Key ── */}
+      <div className="mb-5 rounded-xl border border-border overflow-hidden">
+        <button
+          onClick={() => setLegendOpen(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Info size={13} className="text-primary" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">How to Read This</span>
+          </div>
+          {legendOpen ? <ChevronUp size={13} className="text-muted-foreground" /> : <ChevronDown size={13} className="text-muted-foreground" />}
+        </button>
+
+        {legendOpen && (
+          <div className="px-4 pt-4 pb-5 grid sm:grid-cols-2 gap-x-6 gap-y-4 bg-card">
+
+            {/* Whale Alert */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-base">🐋</div>
+              <div>
+                <p className="text-[11px] font-black text-orange-300 uppercase tracking-wide mb-0.5">Whale Alert + Score (e.g. 60/100)</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  A single institution moved <span className="text-foreground font-semibold">$100,000+</span> into this market in the last 24 hours — a signal that sharp, professional money is taking a position. The number (e.g. 60/100) is the <span className="text-foreground font-semibold">Smart Money Score</span>: higher = larger dollar flow. A score of 100 means $1M+ was traded today.
+                </p>
+              </div>
+            </div>
+
+            {/* YES / NO price */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-black text-primary">¢</div>
+              <div>
+                <p className="text-[11px] font-black text-foreground uppercase tracking-wide mb-0.5">YES Price (cents)</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  The cost to buy a YES contract. A price of <span className="text-foreground font-semibold">60¢</span> means the market believes there's a <span className="text-foreground font-semibold">60% chance</span> the event happens. Pays $1.00 if correct — so you profit 40¢ per contract.
+                </p>
+              </div>
+            </div>
+
+            {/* Fair Value */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-[10px] font-black text-cyan-400">FV</div>
+              <div>
+                <p className="text-[11px] font-black text-cyan-400 uppercase tracking-wide mb-0.5">Fair Value</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Our consensus estimate of what the YES price <em>should</em> be, based on signals from Polymarket, Kalshi, and Manifold. If Fair Value is higher than YES Price → the market is <span className="text-green-400 font-semibold">underpriced (buy)</span>. If lower → <span className="text-red-400 font-semibold">overpriced (fade it)</span>.
+                </p>
+              </div>
+            </div>
+
+            {/* Entry / Target */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-[10px] font-black text-yellow-400">→</div>
+              <div>
+                <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">Entry → Target</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <span className="text-foreground font-semibold">Entry</span> is the suggested buy price. <span className="text-foreground font-semibold">Target</span> is where to take profit — set at 85% of the detected edge. For overpriced markets, these flip: Entry = sell, Target = price decline.
+                </p>
+              </div>
+            </div>
+
+            {/* Price ratings */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-base">🔥</div>
+              <div>
+                <p className="text-[11px] font-black text-green-400 uppercase tracking-wide mb-0.5">Great Buy / Good Buy / Fair / Overpriced</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Rating based on the gap between YES Price and Fair Value. <span className="text-green-400 font-semibold">Great Buy</span> = 8%+ edge. <span className="text-green-300 font-semibold">Good Buy</span> = 3–8% edge. <span className="text-muted-foreground font-semibold">Fair</span> = within 3%. <span className="text-red-400 font-semibold">Overpriced</span> = market is pricing too high.
+                </p>
+              </div>
+            </div>
+
+            {/* Cross-validated */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center"><CheckCircle2 size={13} className="text-emerald-400" /></div>
+              <div>
+                <p className="text-[11px] font-black text-emerald-400 uppercase tracking-wide mb-0.5">Cross-Validated</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  The same market exists on both Kalshi <em>and</em> Polymarket. The delta (e.g. <span className="text-foreground font-semibold">2¢ gap</span>) is the price difference between platforms — a large gap (5¢+) may signal an arbitrage opportunity.
+                </p>
+              </div>
+            </div>
+
+            {/* Today badge */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-base">⚡</div>
+              <div>
+                <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">⚡ TODAY</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  This market closes within 24 hours — it's an active in-play or same-day event. These appear at the top of every list. Use the <span className="text-yellow-400 font-semibold">⚡ Today</span> filter to see only these.
+                </p>
+              </div>
+            </div>
+
+            {/* Spread / Vol */}
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center text-[10px] font-black text-slate-400">$</div>
+              <div>
+                <p className="text-[11px] font-black text-foreground uppercase tracking-wide mb-0.5">Spread · Vol · 1d %</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <span className="text-foreground font-semibold">Spread</span> = bid/ask gap (lower is more liquid). <span className="text-foreground font-semibold">Vol</span> = 24-hour dollar volume traded. <span className="text-foreground font-semibold">1d %</span> = how much the YES price moved in the last day — positive = trending yes, negative = trending no.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        )}
       </div>
 
       {/* ── Sport filter tabs ── */}
