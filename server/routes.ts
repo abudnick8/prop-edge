@@ -1092,6 +1092,42 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.warn("[pred-mkt] Polymarket error:", e.message);
       }
 
+      // ── Kalshi title cleaner ────────────────────────────────────────────────
+      // Kalshi multi-game market titles are raw comma-joined strings like:
+      //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
+      // We parse these into a human-readable label + structured legs array.
+      function cleanKalshiTitle(raw: string): { title: string; legs: string[] | null; isParlay: boolean } {
+        if (!raw) return { title: raw, legs: null, isParlay: false };
+
+        // Pattern: starts with "yes " or "no " followed by name: line
+        const legPattern = /^(yes|no)\s+.+:\s*[\d.]+[+\-]?/i;
+        // Split on comma boundaries that precede "yes " or "no "
+        const parts = raw.split(/,(?=\s*(yes|no)\s+)/i).map(s => s.trim());
+
+        if (parts.length >= 2 && legPattern.test(parts[0])) {
+          // Multi-leg parlay: extract readable legs
+          const legs = parts.map(leg => {
+            // "yes Derrick White: 2+" → "Derrick White 2+ PTS"
+            const m = leg.match(/^(yes|no)\s+(.+?):\s*([\d.]+[+\-]?)(.*)$/i);
+            if (!m) return leg;
+            const dir = m[1].toUpperCase();
+            const name = m[2].trim();
+            const line = m[3].trim();
+            const unit = m[4]?.trim() || '';
+            return `${dir} ${name} ${line}${unit ? ' ' + unit : ''}`;
+          });
+          // Title: first player + "Multi-leg Parlay (N legs)"
+          const firstMatch = parts[0].match(/^(?:yes|no)\s+(.+?):/i);
+          const firstName = firstMatch ? firstMatch[1].trim() : 'Multi-game';
+          const title = `${firstName} +${legs.length - 1} more (${legs.length}-leg parlay)`;
+          return { title, legs, isParlay: true };
+        }
+
+        // Single market — just clean up "yes Name: line" prefix if present
+        const single = raw.match(/^(?:yes|no)\s+(.+)$/i);
+        return { title: single ? single[1].trim() : raw, legs: null, isParlay: false };
+      }
+
       // ── 2. Kalshi — all open markets, classify sport, cross-validate vs Polymarket ──
       try {
         // Fetch 400 open Kalshi markets — sorted by close_time ASC so today's events are first
@@ -1174,7 +1210,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           results.push({
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
-            title:            m.title,
+            ...(() => {
+              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "");
+              return { title, legs, isParlay };
+            })(),
             event:            m.event_ticker ?? m.title,
             sport,
             yesPrice,

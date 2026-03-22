@@ -35,6 +35,8 @@ interface PredMkt {
   smartScore?: number;
   liquidityNum?: number;
   pw1?: number;
+  legs?: string[] | null;
+  isParlay?: boolean;
   gameTime: string | null;
   polyUrl?: string;
   kalshiUrl?: string;
@@ -140,9 +142,33 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
             <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: SOURCE_COLOR[m.source] }}>
               {m.source === "kalshi" ? "Kalshi" : "Polymarket"} · {m.sport}
             </p>
-            <p className="text-base font-bold text-foreground leading-snug">{m.title}</p>
-            {m.event !== m.title && (
-              <p className="text-xs text-muted-foreground mt-0.5">{m.event}</p>
+            {m.isParlay && m.legs && m.legs.length > 0 ? (
+              <div className="mt-1">
+                <p className="text-[11px] font-bold text-orange-300 mb-2">{m.legs.length}-Leg Parlay</p>
+                <div className="flex flex-col gap-1.5">
+                  {m.legs.map((leg, i) => {
+                    const isYes = leg.startsWith("YES");
+                    const legText = leg.replace(/^(YES|NO)\s+/, "");
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-[12px]">
+                        <span className={`shrink-0 font-black text-[10px] px-1.5 py-0.5 rounded ${
+                          isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                        }`}>
+                          {isYes ? "YES" : "NO"}
+                        </span>
+                        <span className="text-foreground font-semibold">{legText}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-base font-bold text-foreground leading-snug">{m.title}</p>
+                {m.event !== m.title && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{m.event}</p>
+                )}
+              </>
             )}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1">
@@ -377,9 +403,35 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
             {isToday && <span className="ml-2 font-bold text-yellow-400">⚡ TODAY</span>}
             {countdown && <span className="ml-2 font-semibold text-orange-400">⏰ {countdown}</span>}
           </p>
-          <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
-          {m.event !== m.title && (
-            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{m.event}</p>
+          {m.isParlay && m.legs && m.legs.length > 0 ? (
+            <div className="mt-0.5">
+              <p className="text-[11px] font-bold text-orange-300 mb-1.5">
+                {m.legs.length}-Leg Parlay
+              </p>
+              <div className="flex flex-col gap-1">
+                {m.legs.map((leg, i) => {
+                  const isYes = leg.startsWith("YES");
+                  const legText = leg.replace(/^(YES|NO)\s+/, "");
+                  return (
+                    <div key={i} className="flex items-center gap-1.5 text-[11px]">
+                      <span className={`shrink-0 font-black text-[9px] px-1 py-0.5 rounded ${
+                        isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                      }`}>
+                        {isYes ? "YES" : "NO"}
+                      </span>
+                      <span className="text-foreground font-medium leading-tight">{legText}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
+              {m.event !== m.title && (
+                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{m.event}</p>
+              )}
+            </>
           )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
