@@ -1144,18 +1144,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // For poly- IDs we look up the market conditionId from Gamma first
       if (marketId.startsWith("poly-")) {
         const rawId = marketId.replace("poly-", "");
-        // Try Gamma to get conditionId
-        let conditionId: string | null = null;
-        try {
-          const { data: mData } = await axios.get(`https://gamma-api.polymarket.com/markets/${rawId}`, { timeout: 6000 });
-          conditionId = mData?.conditionId ?? null;
-        } catch { /* fallback: use rawId as conditionId directly */ conditionId = rawId; }
+// Try Gamma to get YES token ID for CLOB prices-history
+            let tokenId: string | null = null;
+            try {
+              const { data: mData } = await axios.get(`https://gamma-api.polymarket.com/markets/${rawId}`, { timeout: 6000 });
+              // Extract YES token ID from clobTokenIds array
+              const clobTokenIds = mData?.clobTokenIds;
+              if (typeof clobTokenIds === "string") {
+                try { const parsed = JSON.parse(clobTokenIds); tokenId = parsed?.[0] ?? null; } catch { tokenId = null; }
+              } else if (Array.isArray(clobTokenIds) && clobTokenIds.length > 0) {
+                tokenId = clobTokenIds[0];
+              }
+              // Fallback: try conditionId if no token ID found
+              if (!tokenId) tokenId = mData?.conditionId ?? rawId;
+            } catch { /* fallback: use rawId directly */ tokenId = rawId; }
 
-        if (conditionId) {
-          const { data: hist } = await axios.get("https://clob.polymarket.com/prices-history", {
-            params: { market: conditionId, resolution: "1H", fidelity: 60 },
-            timeout: 8000,
-          });
+            if (tokenId) {
+              const { data: hist } = await axios.get("https://clob.polymarket.com/prices-history", {
+                params: { market: tokenId, resolution: "1H", fidelity: 60 },
+                timeout: 8000,
+              });
           const history = (hist?.history ?? hist ?? []).map((p: any) => ({
             t: p.t ?? p.timestamp,
             p: parseFloat(p.p ?? p.price ?? 0),
