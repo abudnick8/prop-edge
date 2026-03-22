@@ -925,24 +925,46 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         };
       }
 
-      // ── 1. Polymarket Gamma API (events + markets) ────────────────────────
+      // ── Sport classifier ──────────────────────────────────────────────────
+      function classifySport(title: string, tags: string[], category: string): string {
+        const t = title.toLowerCase();
+        const c = (category ?? "").toLowerCase();
+        const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
+        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(allText)) return "NFL";
+        if (/\bnba\b|basketball|lebron|durant|curry|celtics|lakers|knicks|heat|bucks/.test(allText)) return "NBA";
+        if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher|batter|mets|yankees|dodgers|cubs/.test(allText)) return "MLB";
+        if (/\bnhl\b|hockey|stanley cup|puck|goal.*scored|mcdavid|ovechkin|crosby/.test(allText)) return "NHL";
+        return "Other";
+      }
+
+      // ── 1. Polymarket Gamma API — ALL active events (not just sports) ─────
+      const polyEventMap = new Map<string, number>(); // normalised title → yesPrice for cross-validation
       try {
-        const { data: eventsData } = await axios.get(`${POLY_BASE}/events`, {
-          params: { limit: 200, active: true, tag_slug: "sports" },
-          timeout: 10000,
-        });
-        const events = Array.isArray(eventsData) ? eventsData : (eventsData?.events ?? []);
+        // Fetch in two batches: sports + general (gives us both categories + Other)
+        const [sportsResp, generalResp] = await Promise.allSettled([
+          axios.get(`${POLY_BASE}/events`, { params: { limit: 200, active: true, tag_slug: "sports" }, timeout: 10000 }),
+          axios.get(`${POLY_BASE}/events`, { params: { limit: 200, active: true }, timeout: 10000 }),
+        ]);
+        const sportsEvs  = sportsResp.status  === "fulfilled" ? (Array.isArray(sportsResp.value.data)  ? sportsResp.value.data  : (sportsResp.value.data?.events  ?? [])) : [];
+        const generalEvs = generalResp.status === "fulfilled" ? (Array.isArray(generalResp.value.data) ? generalResp.value.data : (generalResp.value.data?.events ?? [])) : [];
+        // Merge, deduplicate by id
+        const seen = new Set<string>();
+        const allEvents: any[] = [];
+        for (const ev of [...sportsEvs, ...generalEvs]) {
+          if (!seen.has(ev.id)) { seen.add(ev.id); allEvents.push(ev); }
+        }
 
         // Collect condition IDs for CLOB mid-price enrichment
         const conditionIds: string[] = [];
-        for (const ev of events.slice(0, 100)) {
+        for (const ev of allEvents.slice(0, 150)) {
           for (const m of (ev.markets ?? [])) {
             if (m.conditionId) conditionIds.push(m.conditionId);
           }
         }
-        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 50));
+        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 60));
 
-        for (const ev of events.slice(0, 100)) {
+        for (const ev of allEvents.slice(0, 150)) {
+          const tagSlugs: string[] = (ev.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
           for (const m of (ev.markets ?? [])) {
             const yesPrice = parseFloat(m.lastTradePrice ?? m.outcomePrices?.[0] ?? 0.5);
             const noPrice  = 1 - yesPrice;
@@ -956,37 +978,43 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const ph1      = parseFloat(m.oneHourPriceChange ?? 0);
             const pd1      = parseFloat(m.oneDayPriceChange  ?? 0);
 
-            const isWhaleAlert     = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
-            const whaleDirection   = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
+            const isWhaleAlert      = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
+            const whaleDirection    = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
             const whalePriceMovePct = Math.round(Math.abs(ph1) * 1000) / 10;
 
-            // CLOB mid-price enrichment
             const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
+            const rating  = rateMarket(m.question ?? ev.title ?? "", yesPrice, clobMid);
+            const sport   = classifySport(m.question ?? ev.title ?? "", tagSlugs, ev.category ?? "");
 
-            // Multi-source fair value: Gamma price + CLOB mid + Manifold match
-            const rating = rateMarket(m.question ?? ev.title ?? "", yesPrice, clobMid);
+            // Build cross-validation map: key = normalised title → price
+            const normKey = (m.question ?? ev.title ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+            if (normKey) polyEventMap.set(normKey, yesPrice);
 
             results.push({
-              id:              `poly-${m.id ?? ev.id}`,
-              source:          "polymarket",
-              title:           m.question ?? ev.title,
-              event:           ev.title,
-              sport:           ev.tags?.find((t: any) => t.slug === "sports") ? "Sports" : "Other",
+              id:               `poly-${m.id ?? ev.id}`,
+              source:           "polymarket",
+              title:            m.question ?? ev.title,
+              event:            ev.title,
+              sport,
               yesPrice,
               noPrice,
               bestBid,
               bestAsk,
-              spread:          Math.round(spread * 1000) / 10,
+              spread:           Math.round(spread * 1000) / 10,
               vol24h,
-              volSpike:        Math.round(volSpike * 10) / 10,
-              ph1:             Math.round(ph1 * 1000) / 10,
-              pd1:             Math.round(pd1 * 1000) / 10,
+              volSpike:         Math.round(volSpike * 10) / 10,
+              ph1:              Math.round(ph1 * 1000) / 10,
+              pd1:              Math.round(pd1 * 1000) / 10,
               ...rating,
               isWhaleAlert,
               whaleDirection,
               whalePriceMovePct,
-              gameTime:        ev.endDate ?? m.endDate ?? null,
-              polyUrl:         `https://polymarket.com/event/${ev.slug ?? ev.id}`,
+              gameTime:         ev.endDate ?? m.endDate ?? null,
+              polyUrl:          `https://polymarket.com/event/${ev.slug ?? ev.id}`,
+              crossValidated:   false,
+              crossPrice:       null,
+              crossSource:      null,
+              crossDelta:       null,
             });
           }
         }
@@ -994,19 +1022,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.warn("[pred-mkt] Polymarket error:", e.message);
       }
 
-      // ── 2. Kalshi sports markets ──────────────────────────────────────────
+      // ── 2. Kalshi — all open markets, classify sport, cross-validate vs Polymarket ──
       try {
         const { data: km } = await axios.get(`${KALSHI_BASE}/markets`, {
           params: { status: "open", limit: 200 },
           timeout: 10000,
         });
         const kmarkets = (km?.markets ?? []) as any[];
-        const sportsMkts = kmarkets.filter((m: any) => {
-          const cat = (m.category ?? "").toLowerCase();
-          const t   = (m.title    ?? "").toLowerCase();
-          return cat === "sports" || ["nfl","nba","mlb","nhl","football","basketball","baseball","hockey"].some(s => t.includes(s) || cat.includes(s));
-        });
-        for (const m of sportsMkts) {
+        // Take all markets, not just sports
+        for (const m of kmarkets) {
           const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
           const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
           const noPrice  = 1 - yesPrice;
@@ -1015,34 +1039,81 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const spread   = Math.max(0, bestAsk - bestBid);
           const vol24h   = parseFloat(m.volume_24h ?? 0);
 
-          // Fair value: Kalshi own price + Manifold cross-reference
           const rating = rateMarket(m.title ?? "", yesPrice, null);
+          const sport  = classifySport(m.title ?? "", [], m.category ?? "");
+
+          // Cross-validate: find matching Polymarket market by fuzzy title
+          const titleWords = (m.title ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ").filter((w: string) => w.length > 3);
+          let crossPrice: number | null = null;
+          let crossDelta: number | null = null;
+          let bestMatchScore = 0;
+          for (const [polyKey, polyPrice] of polyEventMap) {
+            const overlap = titleWords.filter((w: string) => polyKey.includes(w)).length;
+            const score = titleWords.length > 0 ? overlap / titleWords.length : 0;
+            if (score >= 0.60 && score > bestMatchScore) {
+              crossPrice = polyPrice;
+              bestMatchScore = score;
+            }
+          }
+          if (crossPrice !== null) {
+            crossDelta = Math.round(Math.abs(yesPrice - crossPrice) * 1000) / 10;
+          }
 
           const isWhaleAlert   = vol24h > 5000;
           const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
 
           results.push({
-            id:              `kalshi-${m.ticker}`,
-            source:          "kalshi",
-            title:           m.title,
-            event:           m.event_ticker ?? m.title,
-            sport:           "Sports",
+            id:               `kalshi-${m.ticker}`,
+            source:           "kalshi",
+            title:            m.title,
+            event:            m.event_ticker ?? m.title,
+            sport,
             yesPrice,
             noPrice,
             bestBid,
             bestAsk,
-            spread:          Math.round(spread * 1000) / 10,
+            spread:           Math.round(spread * 1000) / 10,
             vol24h,
-            volSpike:        1,
-            ph1:             0,
-            pd1:             0,
+            volSpike:         1,
+            ph1:              0,
+            pd1:              0,
             ...rating,
             isWhaleAlert,
             whaleDirection,
             whalePriceMovePct: 0,
-            gameTime:        m.close_time ?? null,
-            kalshiUrl:       `https://kalshi.com/markets/${m.ticker}`,
+            gameTime:         m.close_time ?? null,
+            kalshiUrl:        `https://kalshi.com/markets/${m.ticker}`,
+            crossValidated:   crossPrice !== null,
+            crossPrice:       crossPrice !== null ? Math.round(crossPrice * 100) / 100 : null,
+            crossSource:      crossPrice !== null ? "polymarket" : null,
+            crossDelta:       crossDelta,
           });
+        }
+
+        // Back-fill crossValidation onto Polymarket entries using Kalshi as reference
+        const kalshiMap = new Map<string, number>();
+        for (const r of results) {
+          if (r.source === "kalshi") {
+            const k = r.title.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+            if (k) kalshiMap.set(k, r.yesPrice);
+          }
+        }
+        for (const r of results) {
+          if (r.source === "polymarket" && !r.crossValidated) {
+            const words = r.title.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ").filter((w: string) => w.length > 3);
+            let bestScore = 0; let kPrice: number | null = null;
+            for (const [kk, kp] of kalshiMap) {
+              const ov = words.filter((w: string) => kk.includes(w)).length;
+              const sc = words.length > 0 ? ov / words.length : 0;
+              if (sc >= 0.60 && sc > bestScore) { kPrice = kp; bestScore = sc; }
+            }
+            if (kPrice !== null) {
+              r.crossValidated = true;
+              r.crossPrice     = Math.round(kPrice * 100) / 100;
+              r.crossSource    = "kalshi";
+              r.crossDelta     = Math.round(Math.abs(r.yesPrice - kPrice) * 1000) / 10;
+            }
+          }
         }
       } catch (e: any) {
         console.warn("[pred-mkt] Kalshi error:", e.message);
@@ -1060,6 +1131,56 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Price history endpoint — Polymarket CLOB timeseries ─────────────────────
+  // GET /api/prediction-markets/history/:marketId
+  // marketId examples: "poly-12345" or "kalshi-SOME_TICKER"
+  app.get("/api/prediction-markets/history/:marketId", async (req, res) => {
+    const { marketId } = req.params;
+    try {
+      // Polymarket CLOB: GET /prices-history?market=<conditionId>&resolution=1H&interval=max
+      // For poly- IDs we look up the market conditionId from Gamma first
+      if (marketId.startsWith("poly-")) {
+        const rawId = marketId.replace("poly-", "");
+        // Try Gamma to get conditionId
+        let conditionId: string | null = null;
+        try {
+          const { data: mData } = await axios.get(`https://gamma-api.polymarket.com/markets/${rawId}`, { timeout: 6000 });
+          conditionId = mData?.conditionId ?? null;
+        } catch { /* fallback: use rawId as conditionId directly */ conditionId = rawId; }
+
+        if (conditionId) {
+          const { data: hist } = await axios.get("https://clob.polymarket.com/prices-history", {
+            params: { market: conditionId, resolution: "1H", fidelity: 60 },
+            timeout: 8000,
+          });
+          const history = (hist?.history ?? hist ?? []).map((p: any) => ({
+            t: p.t ?? p.timestamp,
+            p: parseFloat(p.p ?? p.price ?? 0),
+          }));
+          return res.json({ source: "polymarket", history });
+        }
+      }
+
+      // Kalshi: GET /markets/{ticker}/history
+      if (marketId.startsWith("kalshi-")) {
+        const ticker = marketId.replace("kalshi-", "");
+        const { data: hist } = await axios.get(
+          `https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/history`,
+          { params: { limit: 100 }, timeout: 8000 }
+        );
+        const history = (hist?.history ?? []).map((p: any) => ({
+          t: p.ts ?? p.created_time,
+          p: parseFloat(p.yes_price ?? p.price ?? 0) / 100,
+        }));
+        return res.json({ source: "kalshi", history });
+      }
+
+      res.json({ source: "unknown", history: [] });
+    } catch (e: any) {
+      res.json({ source: "error", history: [], error: e.message });
     }
   });
 
