@@ -909,28 +909,77 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       console.log(`[pred-mkt] Manifold: ${manifoldMap.size} sports markets loaded`);
 
       // Helper: compute fair value + rating from multi-source signals
-      function rateMarket(title: string, marketPrice: number, clobMid: number | null) {
+      // Target logic:
+      //   - Minimum ROI on the contract: 10% (e.g. 50¢ entry → 55¢ target)
+      //   - Base ROI when edge detected: 15%
+      //   - High-confluence (multi-signal): 20–25%
+      //   - Single-source only (no Manifold/CLOB confirmation): use 10% floor
+      //   - Overpriced markets: fade target = entry - same ROI (price must fall)
+      function rateMarket(
+        title: string,
+        marketPrice: number,
+        clobMid: number | null,
+        extraSignals?: { isWhale?: boolean; crossValidated?: boolean }
+      ) {
         const signals: number[] = [marketPrice];
         if (clobMid !== null) signals.push(clobMid);
         const manifoldProb = findManifoldMatch(title, manifoldMap);
         if (manifoldProb !== null) signals.push(manifoldProb);
-        const fairValue = computeFairValue(signals);
-        const edge = fairValue - marketPrice;
+
+        const fairValue   = computeFairValue(signals);
+        const rawEdge     = fairValue - marketPrice;       // signed: + = buy, - = overpriced
+        const absEdge     = Math.abs(rawEdge);
+        const signalCount = signals.length;
+
+        // ── Confluence score: how many independent signals agree ──────────
+        // Each additional confirming signal adds confidence → higher target ROI
+        let confluenceBonus = 0;
+        if (signalCount >= 3)                   confluenceBonus += 1; // Manifold + CLOB + Gamma all align
+        if (extraSignals?.isWhale)              confluenceBonus += 1; // whale money flowing in
+        if (extraSignals?.crossValidated)       confluenceBonus += 1; // Kalshi/Poly cross-confirmed
+        if (absEdge >= 0.08)                    confluenceBonus += 1; // very large raw edge
+
+        // ── Minimum ROI floor (applied on entry price, not $1 face value) ─
+        // floor = 10%, base = 15%, +5% per confluence point, cap 30%
+        const MIN_ROI    = 0.10;
+        const BASE_ROI   = 0.15;
+        const targetRoi  = Math.min(0.30, BASE_ROI + confluenceBonus * 0.05);
+
+        // For single-source markets (only Gamma signal, no CLOB or Manifold),
+        // pull back to the floor — we have less conviction
+        const effectiveRoi = signalCount === 1 ? MIN_ROI : targetRoi;
+
+        // ── Price rating based on raw edge ────────────────────────────────
         let priceRating: string;
-        if (Math.abs(edge) < 0.03)  priceRating = "fair";
-        else if (edge >= 0.08)      priceRating = "great_buy";
-        else if (edge >= 0.03)      priceRating = "good_buy";
-        else                        priceRating = "overpriced";
-        const exitTarget = priceRating === "overpriced"
-          ? marketPrice - Math.abs(edge) * 0.85
-          : marketPrice + Math.abs(edge) * 0.85;
+        if (Math.abs(rawEdge) < 0.03)  priceRating = "fair";
+        else if (rawEdge >= 0.08)      priceRating = "great_buy";
+        else if (rawEdge >= 0.03)      priceRating = "good_buy";
+        else                           priceRating = "overpriced";
+
+        // ── Entry / target prices ─────────────────────────────────────────
+        // For buys:  target = entry + (entry × effectiveRoi), capped at 99¢
+        // For fades: target = entry - (entry × effectiveRoi), floored at 2¢
+        // Entry is always the current market price (live tradeable price)
+        const entry  = marketPrice;
+        let exitTarget: number;
+        if (priceRating === "overpriced") {
+          exitTarget = Math.max(0.02, entry - entry * effectiveRoi);
+        } else {
+          exitTarget = Math.min(0.99, entry + entry * effectiveRoi);
+        }
+
+        // ── Edge % for display: use ROI % so it matches the target ───────
+        const displayEdge = priceRating === "overpriced"
+          ? -Math.round(effectiveRoi * 1000) / 10
+          :  Math.round(effectiveRoi * 1000) / 10;
+
         return {
           fairValue,
-          edge:        Math.round(edge * 1000) / 10,
+          edge:        displayEdge,
           priceRating,
-          entryPrice:  marketPrice,
+          entryPrice:  Math.round(entry * 100) / 100,
           exitTarget:  Math.round(exitTarget * 100) / 100,
-          signalCount: signals.length,
+          signalCount,
         };
       }
 
@@ -1039,7 +1088,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             : 0;
 
           const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
-          const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid);
+          const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid, { isWhale: isWhaleAlert });
 
           // Build cross-validation map
           const normKey = (m.question ?? m.groupItemTitle ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
@@ -1161,7 +1210,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const spread   = Math.max(0, bestAsk - bestBid);
           const vol24h   = parseFloat(m.volume_24h_fp ?? m.volume_24h ?? m.volume_fp ?? 0);
 
-          const rating = rateMarket(m.title ?? "", yesPrice, null);
           const sport  = classifySport(m.title ?? "", [], m.category ?? "");
 
           // Per-category cap: skip if bucket full
@@ -1196,6 +1244,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const kPriceDelta   = prevPriceK !== null ? Math.abs(yesPrice - prevPriceK) : 0;
           const kHasPriceMove = kPriceDelta >= KALSHI_PREV_PRICE_DELTA;
           const isWhaleAlert  = kHasAbsVol || kHasPriceMove;
+
+          // Rate AFTER whale + cross-validation known so confluence is baked in
+          const rating = rateMarket(m.title ?? "", yesPrice, null, {
+            isWhale: isWhaleAlert,
+            crossValidated: crossPrice !== null,
+          });
           const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
           const whalePriceMovePct = prevPriceK !== null
             ? Math.round(Math.abs(yesPrice - prevPriceK) * 1000) / 10

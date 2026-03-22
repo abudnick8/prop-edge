@@ -646,7 +646,7 @@ export default function PredictionMarkets() {
               <div>
                 <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">Entry → Target</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <span className="text-foreground font-semibold">Entry</span> is the suggested buy price. <span className="text-foreground font-semibold">Target</span> is where to take profit — set at 85% of the detected edge. For overpriced markets, these flip: Entry = sell, Target = price decline.
+                  <span className="text-foreground font-semibold">Entry</span> = current market price (live). <span className="text-foreground font-semibold">Target</span> = minimum <span className="text-yellow-300 font-semibold">10% ROI</span> on the contract price, scaling up with confluence: whale alert, cross-validation, and strong edge each add +5%, up to <span className="text-yellow-300 font-semibold">30% ROI</span>. For overpriced markets, the target is a price drop of the same magnitude.
                 </p>
               </div>
             </div>
