@@ -613,7 +613,7 @@ export default function PredictionMarkets() {
               <div>
                 <p className="text-[11px] font-black text-orange-300 uppercase tracking-wide mb-0.5">Whale Alert + Score (e.g. 60/100)</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  A single institution moved <span className="text-foreground font-semibold">$100,000+</span> into this market in the last 24 hours — a signal that sharp, professional money is taking a position. The number (e.g. 60/100) is the <span className="text-foreground font-semibold">Smart Money Score</span>: higher = larger dollar flow. A score of 100 means $1M+ was traded today.
+                  A single institution moved <span className="text-foreground font-semibold">$100,000+</span> into this market in the last 24 hours — a signal that sharp, professional money is taking a position. The number (e.g. 60/100) is the <span className="text-foreground font-semibold">Smart Money Score</span>: higher = larger dollar flow. Score of <span className="text-foreground font-semibold">20 = $100K</span>, <span className="text-foreground font-semibold">50 = $250K</span>, <span className="text-foreground font-semibold">100 = $500K+</span>.
                 </p>
               </div>
             </div>

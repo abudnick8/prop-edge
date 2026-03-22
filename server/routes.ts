@@ -1032,10 +1032,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
           const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
 
-          // smartScore = % of $1M cap — so $100K=10, $500K=50, $1M+=100
-          // Biggest-money markets sort to the top of the Whale Alerts section
+          // smartScore = % of $500K cap — so $100K=20, $250K=50, $500K+=100
+          // Calibrated to sports market reality: $500K in one day is a massive position
           const smartScore = isWhaleAlert
-            ? Math.min(100, Math.round((vol24h / 1_000_000) * 100))
+            ? Math.min(100, Math.round((vol24h / 500_000) * 100))
             : 0;
 
           const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
