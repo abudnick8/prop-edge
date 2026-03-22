@@ -804,10 +804,82 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     });
   });
 
-  // ─── Prediction Markets — enriched Kalshi + Polymarket with pricing ratings + whale alerts
+  // ─── Prediction Markets — Kalshi + Polymarket Gamma + Polymarket CLOB + Manifold
+  // Fair value = consensus of (Polymarket mid-price + Manifold probability) when available,
+  // otherwise falls back to Polymarket market price alone.
   // Cache: 30 seconds (same cadence as the live poller)
   let predMktCache: { data: any[]; ts: number } = { data: [], ts: 0 };
   const PRED_MKT_TTL = 30_000;
+
+  // Pre-fetch Manifold sports markets once per cache cycle (free, no auth)
+  async function fetchManifoldSports(): Promise<Map<string, number>> {
+    // Returns map of normalised title → probability (0-1)
+    try {
+      const { data } = await axios.get("https://api.manifold.markets/v0/markets", {
+        params: { limit: 500, sort: "liquidity", filter: "open" },
+        timeout: 8000,
+      });
+      const map = new Map<string, number>();
+      for (const m of (data as any[])) {
+        const cats: string[] = m.groupSlugs ?? [];
+        const isSports = cats.some((c: string) => [
+          "sports","nfl","nba","mlb","nhl","football","basketball","baseball","hockey",
+          "soccer","tennis","golf","mma","boxing",
+        ].includes(c.toLowerCase()));
+        if (!isSports) continue;
+        const prob = typeof m.probability === "number" ? m.probability : null;
+        if (prob === null) continue;
+        const key = (m.question ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+        if (key) map.set(key, prob);
+      }
+      return map;
+    } catch {
+      return new Map();
+    }
+  }
+
+  // Pre-fetch Polymarket CLOB mid-prices for a set of condition IDs (no auth required)
+  async function fetchClobMidPrices(conditionIds: string[]): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (conditionIds.length === 0) return map;
+    try {
+      // CLOB /prices endpoint: POST with array of token IDs (YES outcome token)
+      const { data } = await axios.post("https://clob.polymarket.com/prices",
+        conditionIds.map(id => ({ token_id: id })),
+        { timeout: 8000, headers: { "Content-Type": "application/json" } }
+      );
+      for (const entry of (Array.isArray(data) ? data : [])) {
+        if (entry.token_id && typeof entry.price === "number") {
+          map.set(entry.token_id, entry.price);
+        }
+      }
+    } catch { /* CLOB optional enrichment */ }
+    return map;
+  }
+
+  // Compute consensus fair value from available signals
+  function computeFairValue(signals: number[]): number {
+    if (signals.length === 0) return 0.50;
+    const avg = signals.reduce((a, b) => a + b, 0) / signals.length;
+    return Math.min(0.95, Math.max(0.05, avg));
+  }
+
+  // Fuzzy title match against Manifold map (token-overlap score)
+  function findManifoldMatch(title: string, manifoldMap: Map<string, number>): number | null {
+    const words = title.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ").filter(w => w.length > 3);
+    if (words.length < 2) return null;
+    let best: number | null = null;
+    let bestScore = 0;
+    for (const [key, prob] of manifoldMap) {
+      const overlap = words.filter(w => key.includes(w)).length;
+      const score = overlap / words.length;
+      if (score >= 0.55 && score > bestScore) {
+        best = prob;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
 
   app.get("/api/prediction-markets", async (_req, res) => {
     try {
@@ -816,57 +888,83 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return res.json(predMktCache.data);
       }
 
-      const POLY_BASE = "https://gamma-api.polymarket.com";
-      const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
-      const WHALE_PRICE_THRESHOLD = 0.05;  // 5% price move in 1h = whale flag
-      const WHALE_VOL_SPIKE = 2.5;         // vol 2.5x weekly avg = spike
+      const POLY_BASE   = "https://gamma-api.polymarket.com";
+      const KALSHI_BASE  = "https://api.elections.kalshi.com/trade-api/v2";
+      const WHALE_PRICE_THRESHOLD = 0.05;  // 5% 1h price move = whale flag
+      const WHALE_VOL_SPIKE       = 2.5;   // 2.5x daily avg volume = spike
 
       const results: any[] = [];
 
-      // ── 1. Polymarket sports events ──────────────────────────────────────────
+      // ── Fetch Manifold sports markets in parallel (free, no auth) ──────────
+      const manifoldMap = await fetchManifoldSports();
+      console.log(`[pred-mkt] Manifold: ${manifoldMap.size} sports markets loaded`);
+
+      // Helper: compute fair value + rating from multi-source signals
+      function rateMarket(title: string, marketPrice: number, clobMid: number | null) {
+        const signals: number[] = [marketPrice];
+        if (clobMid !== null) signals.push(clobMid);
+        const manifoldProb = findManifoldMatch(title, manifoldMap);
+        if (manifoldProb !== null) signals.push(manifoldProb);
+        const fairValue = computeFairValue(signals);
+        const edge = fairValue - marketPrice;
+        let priceRating: string;
+        if (Math.abs(edge) < 0.03)  priceRating = "fair";
+        else if (edge >= 0.08)      priceRating = "great_buy";
+        else if (edge >= 0.03)      priceRating = "good_buy";
+        else                        priceRating = "overpriced";
+        const exitTarget = priceRating === "overpriced"
+          ? marketPrice - Math.abs(edge) * 0.85
+          : marketPrice + Math.abs(edge) * 0.85;
+        return {
+          fairValue,
+          edge:        Math.round(edge * 1000) / 10,
+          priceRating,
+          entryPrice:  marketPrice,
+          exitTarget:  Math.round(exitTarget * 100) / 100,
+          signalCount: signals.length,
+        };
+      }
+
+      // ── 1. Polymarket Gamma API (events + markets) ────────────────────────
       try {
         const { data: eventsData } = await axios.get(`${POLY_BASE}/events`, {
           params: { limit: 200, active: true, tag_slug: "sports" },
           timeout: 10000,
         });
         const events = Array.isArray(eventsData) ? eventsData : (eventsData?.events ?? []);
+
+        // Collect condition IDs for CLOB mid-price enrichment
+        const conditionIds: string[] = [];
         for (const ev of events.slice(0, 100)) {
           for (const m of (ev.markets ?? [])) {
-            const yesPrice  = parseFloat(m.lastTradePrice ?? m.outcomePrices?.[0] ?? 0.5);
-            const noPrice   = 1 - yesPrice;
-            const bestBid   = parseFloat(m.bestBid  ?? yesPrice - 0.01);
-            const bestAsk   = parseFloat(m.bestAsk  ?? yesPrice + 0.01);
-            const spread    = Math.max(0, bestAsk - bestBid);
-            const vol24h    = parseFloat(m.volume ?? ev.volume ?? 0);
-            const vol1wk    = parseFloat(m.volume1wk ?? ev.volume1wk ?? 1);
-            const dailyAvg  = vol1wk / 7;
-            const volSpike  = dailyAvg > 0 ? vol24h / dailyAvg : 1;
-            const ph1       = parseFloat(m.oneHourPriceChange  ?? 0);
-            const pd1       = parseFloat(m.oneDayPriceChange   ?? 0);
+            if (m.conditionId) conditionIds.push(m.conditionId);
+          }
+        }
+        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 50));
 
-            // Whale alert: 1h price move >= 5% OR volume spike >= 2.5x avg
-            const isWhaleAlert    = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
-            const whaleDirection  = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
+        for (const ev of events.slice(0, 100)) {
+          for (const m of (ev.markets ?? [])) {
+            const yesPrice = parseFloat(m.lastTradePrice ?? m.outcomePrices?.[0] ?? 0.5);
+            const noPrice  = 1 - yesPrice;
+            const bestBid  = parseFloat(m.bestBid  ?? yesPrice - 0.01);
+            const bestAsk  = parseFloat(m.bestAsk  ?? yesPrice + 0.01);
+            const spread   = Math.max(0, bestAsk - bestBid);
+            const vol24h   = parseFloat(m.volume ?? ev.volume ?? 0);
+            const vol1wk   = parseFloat(m.volume1wk ?? ev.volume1wk ?? 1);
+            const dailyAvg = vol1wk / 7;
+            const volSpike = dailyAvg > 0 ? vol24h / dailyAvg : 1;
+            const ph1      = parseFloat(m.oneHourPriceChange ?? 0);
+            const pd1      = parseFloat(m.oneDayPriceChange  ?? 0);
+
+            const isWhaleAlert     = Math.abs(ph1) >= WHALE_PRICE_THRESHOLD || volSpike >= WHALE_VOL_SPIKE;
+            const whaleDirection   = isWhaleAlert ? (ph1 >= 0 ? "yes" : "no") : null;
             const whalePriceMovePct = Math.round(Math.abs(ph1) * 1000) / 10;
 
-            // Fair value via confidence model
-            const confScore = 50; // base — Polymarket markets self-price; use market price as signal
-            const rawFair   = 0.10 + Math.min(1, Math.max(0, confScore / 100)) * 0.80;
-            const fairValue = Math.min(0.92, Math.max(0.08, rawFair));
-            const edge      = fairValue - yesPrice;
+            // CLOB mid-price enrichment
+            const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
 
-            // Price rating
-            let priceRating: string;
-            if (Math.abs(edge) < 0.03)         priceRating = "fair";
-            else if (edge >= 0.08)             priceRating = "great_buy";
-            else if (edge >= 0.03)             priceRating = "good_buy";
-            else                               priceRating = "overpriced";
-
-            // Entry / exit
-            const entryPrice = yesPrice;
-            const exitTarget = priceRating === "overpriced"
-              ? yesPrice - Math.abs(edge) * 0.85
-              : yesPrice + Math.abs(edge) * 0.85;
+            // Multi-source fair value: Gamma price + CLOB mid + Manifold match
+            const rating = rateMarket(m.question ?? ev.title ?? "", yesPrice, clobMid);
 
             results.push({
               id:              `poly-${m.id ?? ev.id}`,
@@ -881,13 +979,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
               spread:          Math.round(spread * 1000) / 10,
               vol24h,
               volSpike:        Math.round(volSpike * 10) / 10,
-              ph1:             Math.round(ph1 * 1000) / 10,   // 1h price change %
-              pd1:             Math.round(pd1 * 1000) / 10,   // 1d price change %
-              fairValue,
-              edge:            Math.round(edge * 1000) / 10,
-              priceRating,
-              entryPrice,
-              exitTarget:      Math.round(exitTarget * 100) / 100,
+              ph1:             Math.round(ph1 * 1000) / 10,
+              pd1:             Math.round(pd1 * 1000) / 10,
+              ...rating,
               isWhaleAlert,
               whaleDirection,
               whalePriceMovePct,
@@ -916,30 +1010,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
           const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
           const noPrice  = 1 - yesPrice;
-          const bestBid  = m.yes_bid_dollars  ? parseFloat(m.yes_bid_dollars)  : yesPrice - 0.01;
-          const bestAsk  = m.yes_ask_dollars  ? parseFloat(m.yes_ask_dollars)  : yesPrice + 0.01;
+          const bestBid  = m.yes_bid_dollars ? parseFloat(m.yes_bid_dollars) : yesPrice - 0.01;
+          const bestAsk  = m.yes_ask_dollars ? parseFloat(m.yes_ask_dollars) : yesPrice + 0.01;
           const spread   = Math.max(0, bestAsk - bestBid);
           const vol24h   = parseFloat(m.volume_24h ?? 0);
 
-          const confScore = 50;
-          const rawFair   = 0.10 + 0.80 * (confScore / 100);
-          const fairValue = Math.min(0.92, Math.max(0.08, rawFair));
-          const edge      = fairValue - yesPrice;
+          // Fair value: Kalshi own price + Manifold cross-reference
+          const rating = rateMarket(m.title ?? "", yesPrice, null);
 
-          let priceRating: string;
-          if (Math.abs(edge) < 0.03)   priceRating = "fair";
-          else if (edge >= 0.08)       priceRating = "great_buy";
-          else if (edge >= 0.03)       priceRating = "good_buy";
-          else                         priceRating = "overpriced";
-
-          const entryPrice = yesPrice;
-          const exitTarget = priceRating === "overpriced"
-            ? yesPrice - Math.abs(edge) * 0.85
-            : yesPrice + Math.abs(edge) * 0.85;
-
-          // Kalshi doesn’t expose 1h price change via public API — use volume spike as whale proxy
-          const isWhaleAlert    = vol24h > 5000; // >$5k single-day volume for a single market = notable
-          const whaleDirection  = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
+          const isWhaleAlert   = vol24h > 5000;
+          const whaleDirection = isWhaleAlert ? (yesPrice >= 0.5 ? "yes" : "no") : null;
 
           results.push({
             id:              `kalshi-${m.ticker}`,
@@ -956,11 +1036,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             volSpike:        1,
             ph1:             0,
             pd1:             0,
-            fairValue,
-            edge:            Math.round(edge * 1000) / 10,
-            priceRating,
-            entryPrice,
-            exitTarget:      Math.round(exitTarget * 100) / 100,
+            ...rating,
             isWhaleAlert,
             whaleDirection,
             whalePriceMovePct: 0,
