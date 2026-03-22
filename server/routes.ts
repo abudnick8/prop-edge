@@ -957,21 +957,30 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         else                           priceRating = "overpriced";
 
         // ── Entry / target prices ─────────────────────────────────────────
-        // For buys:  target = entry + (entry × effectiveRoi), capped at 99¢
-        // For fades: target = entry - (entry × effectiveRoi), floored at 2¢
-        // Entry is always the current market price (live tradeable price)
-        const entry  = marketPrice;
+        // There is no shorting. Every trade is buying a contract (YES or NO).
+        //
+        // YES markets (great_buy / good_buy / fair):
+        //   Entry = current YES price
+        //   Target = entry + (entry × effectiveRoi), capped at 99¢
+        //
+        // NO markets (overpriced YES = good NO buy):
+        //   Entry = NO price (= 1 - YES price), because that's what you pay
+        //   Target = noEntry + (noEntry × effectiveRoi), capped at 99¢
+        //   The NO contract pays $1.00 if the event does NOT happen
+        const noPrice   = Math.round((1 - marketPrice) * 100) / 100;
+        let entry: number;
         let exitTarget: number;
         if (priceRating === "overpriced") {
-          exitTarget = Math.max(0.02, entry - entry * effectiveRoi);
+          // Recommend buying NO contract instead
+          entry      = noPrice;
+          exitTarget = Math.min(0.99, entry + entry * effectiveRoi);
         } else {
+          entry      = marketPrice;
           exitTarget = Math.min(0.99, entry + entry * effectiveRoi);
         }
 
-        // ── Edge % for display: use ROI % so it matches the target ───────
-        const displayEdge = priceRating === "overpriced"
-          ? -Math.round(effectiveRoi * 1000) / 10
-          :  Math.round(effectiveRoi * 1000) / 10;
+        // Edge % for display — always positive (we always recommend the correct side)
+        const displayEdge = Math.round(effectiveRoi * 1000) / 10;
 
         return {
           fairValue,

@@ -272,8 +272,8 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
           {[
             { label: "Current",  val: fmtCents(m.yesPrice),   color: "text-foreground" },
             { label: "Fair Value", val: fmtCents(m.fairValue), color: "text-cyan-400"   },
-            { label: "Entry",    val: fmtCents(m.entryPrice),  color: "text-yellow-400" },
-            { label: "Target",   val: fmtCents(m.exitTarget),  color: ""                },
+            { label: m.priceRating === "overpriced" ? "NO Entry" : "Entry",  val: fmtCents(m.entryPrice), color: m.priceRating === "overpriced" ? "text-red-400" : "text-yellow-400" },
+            { label: m.priceRating === "overpriced" ? "NO Target" : "Target", val: fmtCents(m.exitTarget), color: "" },
           ].map(item => (
             <div key={item.label} className="text-center bg-background/40 rounded-lg py-2 px-1 border border-border">
               <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{item.label}</p>
@@ -474,11 +474,15 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
           <p className="font-mono font-bold text-sm text-cyan-400">{fmtCents(m.fairValue)}</p>
         </div>
         <div className="text-center">
-          <p className="text-[9px] text-muted-foreground uppercase">Entry</p>
-          <p className="font-mono font-bold text-sm text-yellow-400">{fmtCents(m.entryPrice)}</p>
+          <p className="text-[9px] uppercase font-bold" style={{ color: m.priceRating === "overpriced" ? "#f87171" : "#94a3b8" }}>
+            {m.priceRating === "overpriced" ? "NO Entry" : "Entry"}
+          </p>
+          <p className="font-mono font-bold text-sm" style={{ color: m.priceRating === "overpriced" ? "#f87171" : "#facc15" }}>{fmtCents(m.entryPrice)}</p>
         </div>
         <div className="text-center">
-          <p className="text-[9px] text-muted-foreground uppercase">Target</p>
+          <p className="text-[9px] uppercase font-bold" style={{ color: m.priceRating === "overpriced" ? "#f87171" : "#94a3b8" }}>
+            {m.priceRating === "overpriced" ? "NO Target" : "Target"}
+          </p>
           <p className="font-mono font-bold text-sm" style={{ color: cfg.color }}>{fmtCents(m.exitTarget)}</p>
         </div>
       </div>
@@ -635,7 +639,7 @@ export default function PredictionMarkets() {
               <div>
                 <p className="text-[11px] font-black text-cyan-400 uppercase tracking-wide mb-0.5">Fair Value</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Our consensus estimate of what the YES price <em>should</em> be, based on signals from Polymarket, Kalshi, and Manifold. If Fair Value is higher than YES Price → the market is <span className="text-green-400 font-semibold">underpriced (buy)</span>. If lower → <span className="text-red-400 font-semibold">overpriced (fade it)</span>.
+                  Our consensus estimate of what the YES price <em>should</em> be, based on signals from Polymarket, Kalshi, and Manifold. If Fair Value is higher than YES Price → the market is <span className="text-green-400 font-semibold">underpriced — buy YES</span>. If lower → <span className="text-red-400 font-semibold">overpriced — buy NO instead</span>.
                 </p>
               </div>
             </div>
@@ -646,7 +650,7 @@ export default function PredictionMarkets() {
               <div>
                 <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">Entry → Target</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <span className="text-foreground font-semibold">Entry</span> = current market price (live). <span className="text-foreground font-semibold">Target</span> = minimum <span className="text-yellow-300 font-semibold">10% ROI</span> on the contract price, scaling up with confluence: whale alert, cross-validation, and strong edge each add +5%, up to <span className="text-yellow-300 font-semibold">30% ROI</span>. For overpriced markets, the target is a price drop of the same magnitude.
+                  <span className="text-foreground font-semibold">Entry</span> = current market price (live). <span className="text-foreground font-semibold">Target</span> = minimum <span className="text-yellow-300 font-semibold">10% ROI</span> on the contract price, scaling up with confluence: whale alert, cross-validation, and strong edge each add +5%, up to <span className="text-yellow-300 font-semibold">30% ROI</span>. For <span className="text-red-400 font-semibold">Overpriced</span> markets, the recommendation flips to buying the <span className="text-foreground font-semibold">NO contract</span> — Entry and Target show as <span className="text-red-400 font-semibold">NO Entry / NO Target</span> with the same ROI logic applied to the NO price.
                 </p>
               </div>
             </div>
