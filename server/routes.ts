@@ -1063,7 +1063,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
 
           const yesPrice = parseFloat(m.lastTradePrice ?? (m.outcomePrices?.[0] ?? 0.5));
-          if (isNaN(yesPrice) || yesPrice <= 0) continue; // skip dead/unpriced markets
+          // Skip near-resolved markets: <2¢ or >98¢ means the outcome is essentially decided
+          if (isNaN(yesPrice) || yesPrice < 0.02 || yesPrice > 0.98) continue;
           const noPrice  = 1 - yesPrice;
           const bestBid  = parseFloat(m.bestBid  ?? 0) || yesPrice - 0.01;
           const bestAsk  = parseFloat(m.bestAsk  ?? 0) || yesPrice + 0.01;

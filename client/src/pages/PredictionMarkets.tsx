@@ -58,7 +58,11 @@ interface HistoryResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtCents(v: number) { return `${Math.round(v * 100)}¢`; }
+function fmtCents(v: number) {
+  const cents = v * 100;
+  if (cents < 1 && cents > 0) return `${cents.toFixed(1)}¢`;
+  return `${Math.round(cents)}¢`;
+}
 function fmtPct(v: number)   { return `${v > 0 ? "+" : ""}${v.toFixed(1)}%`; }
 function fmtVol(v: number)   {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
@@ -534,6 +538,8 @@ export default function PredictionMarkets() {
   const todayCount = markets.filter(isTodayMarket).length;
 
   const filtered = markets.filter(m => {
+    // Hide near-resolved markets (YES < 2¢ or > 98¢ = outcome essentially decided)
+    if (m.yesPrice < 0.02 || m.yesPrice > 0.98) return false;
     if (todayOnly && !isTodayMarket(m)) return false;
     if (sportFilter !== "all" && m.sport !== sportFilter) return false;
     if (ratingFilter === "whale" && !m.isWhaleAlert) return false;
