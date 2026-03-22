@@ -21,6 +21,14 @@ export interface IStorage {
     confidenceScore?: number | null;
     isHighConfidence?: boolean;
   }): Promise<Bet | undefined>;
+  patchBetMispricing(id: string, patch: {
+    fairValue: number;
+    mispricingEdge: number;
+    entryPrice: number;
+    exitTarget: number;
+    isMispriced: boolean;
+    mispricingDirection: string;
+  }): Promise<Bet | undefined>;
   deleteBet(id: string): Promise<void>;
   clearBets(): Promise<void>;
 
@@ -195,6 +203,30 @@ export class MemStorage implements IStorage {
       underOdds: patch.underOdds !== undefined ? patch.underOdds : bet.underOdds,
       confidenceScore: patch.confidenceScore !== undefined ? patch.confidenceScore : bet.confidenceScore,
       isHighConfidence: patch.isHighConfidence !== undefined ? patch.isHighConfidence : bet.isHighConfidence,
+      updatedAt: new Date(),
+    };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetMispricing(id: string, patch: {
+    fairValue: number;
+    mispricingEdge: number;
+    entryPrice: number;
+    exitTarget: number;
+    isMispriced: boolean;
+    mispricingDirection: string;
+  }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = {
+      ...bet,
+      fairValue: patch.fairValue,
+      mispricingEdge: patch.mispricingEdge,
+      entryPrice: patch.entryPrice,
+      exitTarget: patch.exitTarget,
+      isMispriced: patch.isMispriced,
+      mispricingDirection: patch.mispricingDirection,
       updatedAt: new Date(),
     };
     this.bets.set(id, updated);

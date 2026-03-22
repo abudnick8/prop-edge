@@ -70,6 +70,10 @@ function connect() {
         if (evt.event === "price:tick") {
           queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
         }
+        // price:mispriced — invalidate bets so cards show mispricing badges
+        if (evt.event === "price:mispriced") {
+          queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
+        }
       } catch {
         // ignore malformed messages
       }

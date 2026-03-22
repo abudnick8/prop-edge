@@ -3451,6 +3451,100 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   return { scanned: fresh.length, highConfidence: highConf };
 }
 
+
+// ─── Fair Value + Mispricing Engine ─────────────────────────────────────────
+//
+// THEORY:
+//   Prediction markets (Kalshi, Polymarket) price YES contracts in cents (0–1).
+//   A market is MISPRICED when its current traded probability diverges from the
+//   model's estimated "fair value" by a meaningful edge (default ≥5%).
+//
+//   Fair value = confidence-score-derived probability anchored to the scoring model.
+//   Entry price  = current market price (what you pay to enter RIGHT NOW).
+//   Exit target  = captures ~85% of the gap to fair value, leaving a safety buffer.
+//
+const MISPRICING_THRESHOLD = 0.05; // 5 percentage points minimum to signal
+
+export interface MispricingResult {
+  fairValue: number;           // model estimate (0-1)
+  marketPrice: number;         // current traded price (0-1)
+  mispricingEdge: number;      // fairValue - marketPrice (+ = underpriced)
+  entryPrice: number;          // price to enter now (0-1)
+  exitTarget: number;          // price target to exit / take profit (0-1)
+  isMispriced: boolean;
+  mispricingDirection: "underpriced" | "overpriced" | "fair";
+  entryCents: number;          // entry price in cents  e.g. 42
+  exitTargetCents: number;     // exit target in cents  e.g. 55
+  edgePct: number;             // edge as percentage    e.g. 8.3
+}
+
+/**
+ * computeMispricing
+ *
+ * Derives fair value from the model confidence score and compares to the
+ * live market price. Returns full mispricing analysis with entry/exit prices.
+ * Only meaningful for Kalshi and Polymarket (binary prediction markets).
+ *
+ * Calibration:
+ *   score 50 → fair ~0.50 | score 70 → fair ~0.66 | score 85 → fair ~0.78
+ *   score 90 → fair ~0.82 | score 95 → fair ~0.86
+ */
+export function computeMispricing(
+  confidenceScore: number,
+  marketPrice: number,   // current yes price (0-1)
+): MispricingResult {
+  // Step 1: Convert confidence score → fair probability via calibrated S-curve
+  const scoreFrac = Math.max(0, Math.min(1, confidenceScore / 100));
+  // Linear mapping: score 0 → 0.10, score 100 → 0.90
+  const rawFair   = 0.10 + scoreFrac * 0.80;
+  const fairValue = Math.min(0.92, Math.max(0.08, rawFair));
+
+  // Step 2: Edge = difference between model fair value and what the market offers
+  const mispricingEdge = fairValue - marketPrice;
+  const absEdge        = Math.abs(mispricingEdge);
+  const isMispriced    = absEdge >= MISPRICING_THRESHOLD;
+
+  const mispricingDirection: "underpriced" | "overpriced" | "fair" =
+    mispricingEdge >=  MISPRICING_THRESHOLD ? "underpriced" :
+    mispricingEdge <= -MISPRICING_THRESHOLD ? "overpriced"  : "fair";
+
+  // Step 3: Entry price = what you pay right now
+  //   Underpriced YES → buy YES at current market price
+  //   Overpriced YES  → buy NO at (1 - marketPrice)
+  const VIG_BUFFER = 0.015; // ~1.5 cent vig cushion
+  const entryPrice = mispricingDirection === "overpriced"
+    ? 1 - marketPrice            // buying NO
+    : marketPrice + VIG_BUFFER;  // buying YES
+
+  // Step 4: Exit target = converge 85% of the gap toward fair value
+  //   e.g. market=0.42, fair=0.55 → gap=0.13, exit at 0.42 + 0.13×0.85 ≈ 0.53
+  let exitTarget: number;
+  if (mispricingDirection === "underpriced") {
+    exitTarget = marketPrice + absEdge * 0.85;
+  } else if (mispricingDirection === "overpriced") {
+    const noEntry = 1 - marketPrice;
+    const noFair  = 1 - fairValue;
+    exitTarget    = noEntry + (noFair - noEntry) * 0.85;
+  } else {
+    exitTarget = fairValue;
+  }
+  exitTarget = Math.min(0.97, Math.max(0.03, exitTarget));
+
+  const clampedEntry = Math.min(0.97, Math.max(0.03, entryPrice));
+  return {
+    fairValue,
+    marketPrice,
+    mispricingEdge,
+    entryPrice:      clampedEntry,
+    exitTarget,
+    isMispriced,
+    mispricingDirection,
+    entryCents:      Math.round(clampedEntry * 100),
+    exitTargetCents: Math.round(exitTarget  * 100),
+    edgePct:         Math.round(absEdge * 1000) / 10,
+  };
+}
+
 // ─── Live 30-second Price Poller ─────────────────────────────────────────────
 // Lightweight function — only hits Kalshi + Polymarket (2 HTTP requests).
 // Matches returned prices to existing bets by ID.
@@ -3465,6 +3559,7 @@ export interface LivePriceUpdate {
   priceMovementPct: number;
   liveOddsOver: number | null;
   liveOddsUnder: number | null;
+  mispricing?: MispricingResult; // present when |edge| >= 5%
 }
 
 export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {
@@ -3473,12 +3568,13 @@ export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {
   try {
     // ── 1. Build a quick lookup: betId → current stored implied prob ──────────
     const allBets = await storage.getBets();
-    const betMap = new Map<string, { impliedProb: number; liveOddsOver: number | null; liveOddsUnder: number | null }>();
+    const betMap = new Map<string, { impliedProb: number; liveOddsOver: number | null; liveOddsUnder: number | null; confidenceScore: number }>();
     for (const b of allBets) {
       betMap.set(b.id, {
         impliedProb: b.impliedProbability ?? b.yesPrice ?? 0.5,
         liveOddsOver: (b as any).liveOddsOver ?? null,
         liveOddsUnder: (b as any).liveOddsUnder ?? null,
+        confidenceScore: b.confidenceScore ?? 50,
       });
     }
 
@@ -3522,7 +3618,19 @@ export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {
           liveOddsOver,
           liveOddsUnder,
         });
-        updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newImplied, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder });
+        // Mispricing detection — run on every tick
+        const misp = computeMispricing(stored.confidenceScore, newImplied);
+        if (misp.isMispriced) {
+          await storage.patchBetMispricing(id, {
+            fairValue: misp.fairValue,
+            mispricingEdge: misp.mispricingEdge,
+            entryPrice: misp.entryPrice,
+            exitTarget: misp.exitTarget,
+            isMispriced: true,
+            mispricingDirection: misp.mispricingDirection,
+          });
+        }
+        updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newImplied, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder, mispricing: misp.isMispriced ? misp : undefined });
       }
     } catch (e: any) {
       console.warn("[live-poll] Kalshi error:", e.message);
@@ -3565,7 +3673,19 @@ export async function fetchLivePrices(): Promise<LivePriceUpdate[]> {
             liveOddsOver,
             liveOddsUnder,
           });
-          updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newYes, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder });
+          // Mispricing detection
+          const misp = computeMispricing(stored.confidenceScore, newYes);
+          if (misp.isMispriced) {
+            await storage.patchBetMispricing(id, {
+              fairValue: misp.fairValue,
+              mispricingEdge: misp.mispricingEdge,
+              entryPrice: misp.entryPrice,
+              exitTarget: misp.exitTarget,
+              isMispriced: true,
+              mispricingDirection: misp.mispricingDirection,
+            });
+          }
+          updates.push({ id, prevImpliedProb: stored.impliedProb, newImpliedProb: newYes, priceMovement, priceMovementPct, liveOddsOver, liveOddsUnder, mispricing: misp.isMispriced ? misp : undefined });
         }
       }
     } catch (e: any) {

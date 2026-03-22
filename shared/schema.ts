@@ -40,6 +40,13 @@ export const bets = pgTable("bets", {
   prevImpliedProb: real("prev_implied_prob"),               // prob before last tick
   liveOddsOver: integer("live_odds_over"),                  // latest over odds (American)
   liveOddsUnder: integer("live_odds_under"),               // latest under odds (American)
+  // ── Mispricing / Edge fields ─────────────────────────────────────────────────
+  fairValue: real("fair_value"),                           // model-estimated true prob (0-1)
+  mispricingEdge: real("mispricing_edge"),                 // fairValue - marketPrice (positive = underpriced)
+  entryPrice: real("entry_price"),                        // suggested entry price (0-1, prediction market cents)
+  exitTarget: real("exit_target"),                        // price target to exit / take profit (0-1)
+  isMispriced: boolean("is_mispriced").default(false),    // true when |edge| >= 5%
+  mispricingDirection: text("mispricing_direction"),      // "underpriced" | "overpriced"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -1784,6 +1784,29 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       lastLivePoll = { ts: Date.now(), changed: updates.length };
       if (updates.length > 0) {
         broadcast("price:tick", { updates, ts: lastLivePoll.ts });
+
+        // Broadcast mispriced markets separately with entry/exit targets
+        const mispriced = updates.filter((u: any) => u.mispricing?.isMispriced);
+        if (mispriced.length > 0) {
+          broadcast("price:mispriced", {
+            ts: lastLivePoll.ts,
+            markets: mispriced.map((u: any) => ({
+              id: u.id,
+              priceMovement: u.priceMovement,
+              newImpliedProb: u.newImpliedProb,
+              fairValue:       u.mispricing.fairValue,
+              mispricingEdge:  u.mispricing.mispricingEdge,
+              direction:       u.mispricing.mispricingDirection,
+              entryPrice:      u.mispricing.entryPrice,
+              exitTarget:      u.mispricing.exitTarget,
+              entryCents:      u.mispricing.entryCents,
+              exitTargetCents: u.mispricing.exitTargetCents,
+              edgePct:         u.mispricing.edgePct,
+            })),
+          });
+          console.log(`[live-poll] ${mispriced.length} mispriced market(s) signaled`);
+        }
+
         // Also fire high-conf alert if any updated bet crossed 85
         const changed = await Promise.all(
           updates.map(u => storage.getBetById(u.id))

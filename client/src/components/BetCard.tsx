@@ -691,6 +691,65 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 </div>
               </div>
 
+              {/* ── Mispricing Signal ──────────────────────────────────────────── */}
+              {(bet as any).isMispriced && (bet as any).entryPrice != null && (
+                <div
+                  className="mt-3 rounded-lg px-3 py-2 border"
+                  style={{
+                    background: (bet as any).mispricingDirection === "underpriced"
+                      ? "rgba(34,197,94,0.08)"
+                      : "rgba(239,68,68,0.08)",
+                    borderColor: (bet as any).mispricingDirection === "underpriced"
+                      ? "rgba(34,197,94,0.3)"
+                      : "rgba(239,68,68,0.3)",
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span
+                      className="text-[10px] font-black uppercase tracking-widest"
+                      style={{
+                        color: (bet as any).mispricingDirection === "underpriced" ? "#22c55e" : "#ef4444"
+                      }}
+                    >
+                      {(bet as any).mispricingDirection === "underpriced" ? "⚡ UNDERPRICED" : "⚠️ OVERPRICED"}
+                      {" "}— {(bet as any).mispricingEdge !== null ? `${Math.abs(Math.round((bet as any).mispricingEdge * 100))}% edge` : ""}
+                    </span>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>
+                      fair {Math.round(((bet as any).fairValue ?? 0) * 100)}¢
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Entry Price</p>
+                      <p className="font-mono font-black text-sm" style={{ color: "#facc15" }}>
+                        {Math.round(((bet as any).entryPrice ?? 0) * 100)}¢
+                      </p>
+                    </div>
+                    <div className="text-muted-foreground text-xs">→</div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Exit Target</p>
+                      <p className="font-mono font-black text-sm" style={{
+                        color: (bet as any).mispricingDirection === "underpriced" ? "#22c55e" : "#ef4444"
+                      }}>
+                        {Math.round(((bet as any).exitTarget ?? 0) * 100)}¢
+                      </p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Potential</p>
+                      <p className="font-mono font-bold text-xs" style={{ color: "#a3e635" }}>
+                        {(() => {
+                          const entry = (bet as any).entryPrice ?? 0;
+                          const exit  = (bet as any).exitTarget ?? 0;
+                          if (entry <= 0) return "—";
+                          const roi = ((exit - entry) / entry * 100);
+                          return `${roi > 0 ? "+" : ""}${roi.toFixed(1)}% ROI`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mt-3">
                 <div className="flex items-center gap-2">
                   <RiskBadge risk={bet.riskLevel} />
