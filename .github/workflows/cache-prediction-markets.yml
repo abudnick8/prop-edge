@@ -1,0 +1,62 @@
+name: Cache Prediction Markets
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch-and-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout cache branch
+        uses: actions/checkout@v4
+        with:
+          ref: cache
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure cache directory exists
+        run: mkdir -p data/prediction-cache
+
+      - name: Fetch Polymarket prediction markets
+        run: |
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Polymarket CLOB API — active sports-related markets
+          HTTP=$(curl -s -o "data/prediction-cache/polymarket_sports.json" -w "%{http_code}" \
+            -H "Accept: application/json" \
+            -H "User-Agent: $UA" \
+            --compressed --max-time 30 \
+            "https://clob.polymarket.com/markets?closed=false&limit=100&tag=Sports")
+          echo "Polymarket Sports: HTTP $HTTP"
+
+          # Polymarket — politics/events markets
+          HTTP2=$(curl -s -o "data/prediction-cache/polymarket_events.json" -w "%{http_code}" \
+            -H "Accept: application/json" \
+            -H "User-Agent: $UA" \
+            --compressed --max-time 30 \
+            "https://clob.polymarket.com/markets?closed=false&limit=100")
+          echo "Polymarket Events: HTTP $HTTP2"
+
+          # Kalshi public markets API
+          HTTP3=$(curl -s -o "data/prediction-cache/kalshi_markets.json" -w "%{http_code}" \
+            -H "Accept: application/json" \
+            -H "User-Agent: $UA" \
+            --compressed --max-time 30 \
+            "https://api.elections.kalshi.com/trade-api/v2/markets?limit=100&status=open")
+          echo "Kalshi: HTTP $HTTP3"
+
+          # Write metadata
+          echo "{\"cached_at\":\"$NOW\",\"polymarket_sports\":$HTTP,\"polymarket_events\":$HTTP2,\"kalshi\":$HTTP3}" > data/prediction-cache/meta.json
+
+      - name: Commit and push cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/prediction-cache/
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "cache: prediction markets $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
