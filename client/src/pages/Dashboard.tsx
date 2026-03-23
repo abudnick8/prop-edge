@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
+import { useBookErrors, BookErrorsFilterButton, BookErrorsSection } from "@/components/BookErrors";
 
 interface Stats {
   total: number;
@@ -85,6 +86,8 @@ export default function Dashboard() {
   const [filterSource, setFilterSource] = useState("All");
   const [filterMinScore, setFilterMinScore] = useState(0);
   const [filterSearch, setFilterSearch] = useState("");
+  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  const { data: bookErrors = [] } = useBookErrors();
 
   // Fetch settings to know which optional sports are enabled
   const { data: settings } = useQuery<any>({
@@ -272,6 +275,11 @@ export default function Dashboard() {
                 <span className="w-1.5 h-1.5 rounded-full bg-primary" />
               )}
             </button>
+            <BookErrorsFilterButton
+              active={showErrorsOnly}
+              count={(bookErrors as any[]).length}
+              onClick={() => { setShowErrorsOnly(!showErrorsOnly); if (!showErrorsOnly) { setShowFilters(false); } }}
+            />
           </div>
 
           {/* Expanded filter panel */}
@@ -355,6 +363,11 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ═══════════ BOOK ERRORS SECTION ═══════════ */}
+      {showErrorsOnly && (mainTab === "props" || mainTab === "team") && (
+        <BookErrorsSection errors={bookErrors as any[]} />
       )}
 
       {/* ═══════════ PLAYER PROPS TAB ═══════════ */}

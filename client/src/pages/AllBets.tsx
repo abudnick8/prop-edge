@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Filter, SlidersHorizontal, Calendar, Trophy, TrendingUp, TrendingDown, Zap, RefreshCw, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
+import { useBookErrors, BookErrorsFilterButton, BookErrorsSection } from "@/components/BookErrors";
 
 const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NCAAF", "Golf"];
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
@@ -385,6 +386,8 @@ export default function AllBets() {
   const [source, setSource] = useState("All");
   const [minScore, setMinScore] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  const { data: bookErrors = [] } = useBookErrors();
   const [dayFilter, setDayFilter] = useState<DayFilter>("today");
   const [mainTab, setMainTab] = useState<MainTab>("daily");
 
@@ -497,15 +500,22 @@ export default function AllBets() {
           )}
         </div>
         {mainTab !== "markets" && (
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              showFilters ? "bg-primary/10 text-primary border-primary/30" : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <SlidersHorizontal size={14} />
-            Filters
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                showFilters ? "bg-primary/10 text-primary border-primary/30" : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+              }`}
+            >
+              <SlidersHorizontal size={14} />
+              Filters
+            </button>
+            <BookErrorsFilterButton
+              active={showErrorsOnly}
+              count={(bookErrors as any[]).length}
+              onClick={() => { setShowErrorsOnly(!showErrorsOnly); if (!showErrorsOnly) setShowFilters(false); }}
+            />
+          </div>
         )}
       </div>
 
@@ -659,8 +669,13 @@ export default function AllBets() {
       {/* ── Prediction Markets panel ── */}
       {mainTab === "markets" && <PredictionMarketsPanel />}
 
+      {/* ── Book Errors Section ── */}
+      {showErrorsOnly && mainTab !== "markets" && (
+        <BookErrorsSection errors={bookErrors as any[]} />
+      )}
+
       {/* ── Bet Grid (daily / season) ── */}
-      {mainTab !== "markets" && (
+      {!showErrorsOnly && mainTab !== "markets" && (
         <>
           {isLoading ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

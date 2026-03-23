@@ -5,9 +5,9 @@ import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Activity,
   ChevronDown, ChevronUp, Users, DollarSign, Clock, Filter,
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X,
-  AlertCircle, ShieldAlert, Target, Lightbulb, BookOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -52,22 +52,6 @@ interface GameLine {
   spread: LineData;
   total: LineData;
   moneyline: MoneylineData;
-}
-
-interface BookError {
-  id: string;
-  gameId: string;
-  gameName: string;
-  sport: string;
-  gameTime: string | null;
-  errorType: "mispriced_spread" | "mispriced_total" | "mispriced_ml" | "reverse_line_movement" | "sharp_divergence" | "stale_line";
-  betType: string;
-  actualLine: string;
-  mistake: string;
-  correctLine: string;
-  betIdea: string;
-  confidence: number;
-  severity: "high" | "medium" | "low";
 }
 
 const SPORT_EMOJI: Record<string, string> = { NBA: "🏀", MLB: "⚾", NHL: "🏒", NFL: "🏈" };
@@ -186,108 +170,6 @@ function PublicBar({ label, publicPct, moneyPct }: { label: string; publicPct: n
             <div className="h-full rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 65 ? "rgba(74,222,128,0.7)" : "rgba(245,158,11,0.5)" }} />
           </div>
           <span className="text-[10px] font-mono w-7 text-right" style={{ color: moneyPct >= 65 ? "#4ade80" : moneyPct >= 55 ? "#f59e0b" : "rgba(255,255,255,0.4)" }}>{moneyPct}%</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── BookErrorCard ───────────────────────────────────────────────────────────────────────
-
-const ERROR_TYPE_LABELS: Record<string, string> = {
-  mispriced_spread:      "Mispriced Spread",
-  mispriced_total:       "Mispriced Total",
-  mispriced_ml:          "Mispriced Moneyline",
-  reverse_line_movement: "Reverse Line Movement",
-  sharp_divergence:      "Sharp / Public Split",
-  stale_line:            "Stale Line",
-};
-
-function BookErrorCard({ error }: { error: BookError }) {
-  const [open, setOpen] = useState(false);
-
-  const sevStyle = error.severity === "high"
-    ? { border: "border-red-500/40", innerBg: "bg-red-500/8", badge: "bg-red-500/15 text-red-400 border-red-500/30", glow: "shadow-[0_0_10px_rgba(248,113,113,0.1)]" }
-    : { border: "border-amber-500/30", innerBg: "bg-amber-500/5", badge: "bg-amber-500/12 text-amber-400 border-amber-500/25", glow: "" };
-
-  const confColor = error.confidence >= 80 ? "#4ade80" : error.confidence >= 65 ? "#f59e0b" : "rgba(255,255,255,0.4)";
-
-  const errIcon = error.errorType === "reverse_line_movement" ? <TrendingDown size={11} /> :
-    error.errorType === "stale_line" ? <Clock size={11} /> :
-    error.errorType === "sharp_divergence" ? <DollarSign size={11} /> :
-    <Target size={11} />;
-
-  return (
-    <div className={`border rounded-xl overflow-hidden transition-all bg-card ${sevStyle.border} ${sevStyle.glow}`}>
-      <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-accent/20 transition-colors"
-        onClick={() => setOpen(!open)}
-        data-testid={`book-error-${error.id}`}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <ShieldAlert size={15} className={error.severity === "high" ? "text-red-400 flex-shrink-0" : "text-amber-400 flex-shrink-0"} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground truncate">{error.gameName}</span>
-              <span className="text-[10px] text-muted-foreground/50">{error.sport}</span>
-              {error.gameTime && <span className="text-[10px] text-muted-foreground/40">{fmtTime(error.gameTime)}</span>}
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <Badge className={`text-[9px] px-1.5 py-0.5 font-bold gap-1 inline-flex items-center ${sevStyle.badge}`}>
-                {errIcon}
-                <span>{ERROR_TYPE_LABELS[error.errorType]}</span>
-              </Badge>
-              <span className="text-[10px] text-muted-foreground/70">{error.betType}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="text-right hidden sm:block">
-            <p className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">Confidence</p>
-            <p className="text-sm font-bold font-mono" style={{ color: confColor }}>{error.confidence}</p>
-          </div>
-          {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
-        </div>
-      </div>
-
-      {open && (
-        <div className={`border-t ${sevStyle.border} ${sevStyle.innerBg} px-4 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200`}>
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <BookOpen size={10} className="text-blue-400" /> The Bet
-            </p>
-            <p className="text-xs font-mono font-bold text-foreground">{error.actualLine}</p>
-            <p className="text-[11px] text-muted-foreground/60">{error.betType}</p>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <AlertTriangle size={10} className="text-orange-400" /> The Mistake
-            </p>
-            <p className="text-xs text-foreground/90 leading-relaxed">{error.mistake}</p>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <Target size={10} className="text-indigo-400" /> What It Should Be
-            </p>
-            <p className="text-xs text-foreground/80 leading-relaxed">{error.correctLine}</p>
-          </div>
-
-          <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2.5 space-y-1">
-            <p className="text-[10px] font-bold text-green-400 uppercase tracking-wider flex items-center gap-1">
-              <Lightbulb size={10} /> How to Profit
-            </p>
-            <p className="text-xs text-foreground/90 leading-relaxed">{error.betIdea}</p>
-          </div>
-
-          <div className="flex items-center justify-between pt-1 border-t border-border/40">
-            <p className="text-[9px] text-muted-foreground/40">
-              Confidence: <span style={{ color: confColor }} className="font-bold font-mono">{error.confidence}/100</span>
-              &nbsp;&middot;&nbsp;Always verify lines at DraftKings, FanDuel &amp; BetMGM before placing
-            </p>
-            <Badge className={`text-[9px] px-1.5 py-0.5 ${sevStyle.badge}`}>{error.severity.toUpperCase()}</Badge>
-          </div>
         </div>
       )}
     </div>
@@ -630,13 +512,7 @@ export default function LineMovement() {
     staleTime: 4 * 60 * 1000,
   });
 
-  const { data: bookErrors = [] } = useQuery<BookError[]>({
-    queryKey: ["/api/line-movement/errors"],
-    queryFn: () => apiRequest("GET", "/api/line-movement/errors").then(r => r.json()),
-    refetchInterval: 10 * 60 * 1000,
-    staleTime: 9 * 60 * 1000,
-    enabled: !isLoading, // fetch after main data loads
-  });
+  const { data: bookErrors = [] } = useBookErrors(!isLoading);
 
   const filtered = useMemo(() => {
     let result = games as GameLine[];
@@ -775,49 +651,16 @@ export default function LineMovement() {
           ⚡ Moved Only
         </button>
         {/* Book Errors filter */}
-        <button
+        <BookErrorsFilterButton
+          active={showErrorsOnly}
+          count={(bookErrors as BookError[]).length}
           onClick={() => { setShowErrorsOnly(!showErrorsOnly); if (!showErrorsOnly) { setShowSteamOnly(false); setShowMovedOnly(false); } }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
-            showErrorsOnly
-              ? "bg-orange-500/10 text-orange-400 border-orange-500/30"
-              : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-          }`}
-          data-testid="filter-errors"
-        >
-          <AlertCircle size={11} />
-          Book Errors
-          {(bookErrors as BookError[]).length > 0 && (
-            <span className="bg-orange-500/20 text-orange-400 rounded-full px-1.5 py-0.5 text-[10px]">{(bookErrors as BookError[]).length}</span>
-          )}
-        </button>
+        />
       </div>
 
       {/* Book Errors Section */}
       {showErrorsOnly && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={14} className="text-orange-400" />
-            <h2 className="text-sm font-bold text-foreground">Book Errors &amp; Mispriced Lines</h2>
-            <span className="text-xs text-muted-foreground font-mono">{(bookErrors as BookError[]).length} detected</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-          <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-[11px] text-muted-foreground/70">
-            <AlertTriangle size={10} className="inline mr-1 text-orange-400" />
-            These signals are detected from sharp vs. public splits, reverse line movement, and cross-market inconsistencies.
-            Always verify the current line at DraftKings, FanDuel, or BetMGM before placing. Not financial advice.
-          </div>
-          {(bookErrors as BookError[]).length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-border rounded-xl">
-              <AlertCircle size={28} className="mx-auto text-muted-foreground/30 mb-2" />
-              <p className="text-sm text-muted-foreground">No book errors detected right now</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Errors appear when sharp/public data diverges significantly. Refresh to re-check.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {(bookErrors as BookError[]).map(err => <BookErrorCard key={err.id} error={err} />)}
-            </div>
-          )}
-        </div>
+        <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
 
       {/* Content */}
