@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Activity,
   ChevronDown, ChevronUp, Users, DollarSign, Clock, Filter,
-  FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X,
+  FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
