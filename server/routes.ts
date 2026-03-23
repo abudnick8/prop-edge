@@ -3229,6 +3229,260 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ── Book Error Detection ─────────────────────────────────────────────────────
+  const LM_ERRORS_CACHE = new Map<string, { data: any; ts: number }>();
+  const LM_ERRORS_TTL = 10 * 60 * 1000; // 10-min cache
+
+  interface BookError {
+    id: string;
+    gameId: string;
+    gameName: string;
+    sport: string;
+    gameTime: string | null;
+    errorType: "mispriced_spread" | "mispriced_total" | "mispriced_ml" | "reverse_line_movement" | "sharp_divergence" | "stale_line";
+    betType: string;          // e.g. "Spread (Lakers -4.5)"
+    actualLine: string;       // what the book currently shows
+    mistake: string;          // description of the error
+    correctLine: string;      // what the line should likely be
+    betIdea: string;          // how to profit
+    confidence: number;       // 1-100
+    severity: "high" | "medium" | "low";
+  }
+
+  function detectBookErrors(games: any[]): BookError[] {
+    const errors: BookError[] = [];
+
+    for (const game of games) {
+      const { id, sport, awayTeam, homeTeam, gameTime, spread, total, moneyline } = game;
+      const gameName = `${awayTeam} @ ${homeTeam}`;
+      let errIdx = 0;
+      const mkId = (type: string) => `err-${id}-${type}-${errIdx++}`;
+
+      // ── 1. Reverse Line Movement (RLM) — spread ──────────────────────────
+      // Public is hammering one side but line moved the other way → sharp money on opposite
+      if (spread.awayPublic != null && spread.awayMoney != null && spread.move != null) {
+        const publicPct = spread.awayPublic;  // % of bets on away spread
+        const moneyPct  = spread.awayMoney;   // % of money on away spread
+        const move      = spread.move;
+
+        // Case A: public loves away (+favor) but line moved against them (away spread got worse)
+        if (publicPct >= 60 && move > 0.5) {
+          // Away gets more public bets but spread rose (harder to cover) → book/sharps fading away
+          errors.push({
+            id: mkId("rlm-spread-away"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "reverse_line_movement",
+            betType: `Spread — ${awayTeam}`,
+            actualLine: `${awayTeam} ${spread.current > 0 ? "+" : ""}${spread.current}`,
+            mistake: `${publicPct}% of bets are on ${awayTeam} but the line has moved ${move > 0 ? "+" : ""}${move} against them (from ${spread.open > 0 ? "+" : ""}${spread.open}). This is a classic Reverse Line Movement signal — sharps are fading the public.`,
+            correctLine: `Sharp money says ${homeTeam} side has value at current spread`,
+            betIdea: `Bet ${homeTeam} ${spread.current > 0 ? "-" : "+"}${Math.abs(spread.current ?? 0)} — line is moving in their favor despite public being on the other side. This is an exploitable mispricing vs. the public-facing number.`,
+            confidence: Math.min(90, 55 + Math.round(publicPct * 0.4) + Math.round(Math.abs(move) * 5)),
+            severity: publicPct >= 75 || Math.abs(move) >= 2 ? "high" : "medium",
+          });
+        }
+
+        // Case B: public loves home (away gets <40% of bets) but line moved in away's favor
+        if (publicPct <= 38 && move < -0.5) {
+          errors.push({
+            id: mkId("rlm-spread-home"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "reverse_line_movement",
+            betType: `Spread — ${homeTeam}`,
+            actualLine: `${homeTeam} ${(-(spread.current ?? 0)) > 0 ? "+" : ""}${-(spread.current ?? 0)}`,
+            mistake: `${100 - publicPct}% of bets are on ${homeTeam} but the spread has moved ${Math.abs(move)} points in ${awayTeam}'s favor (from ${spread.open} → ${spread.current}). Sharps are going against the public.`,
+            correctLine: `Sharp action suggests ${awayTeam} is undervalued at this spread`,
+            betIdea: `Bet ${awayTeam} spread — sharp money is pushing this line in their direction despite public fade. The discrepancy between public bets and line direction is a textbook RLM edge.`,
+            confidence: Math.min(88, 55 + Math.round((100 - publicPct) * 0.4) + Math.round(Math.abs(move) * 5)),
+            severity: (100 - publicPct) >= 75 || Math.abs(move) >= 2 ? "high" : "medium",
+          });
+        }
+      }
+
+      // ── 2. Sharp vs Public Divergence ≥25 pts (spread) ───────────────────
+      if (spread.awayMoney != null && spread.awayPublic != null) {
+        const div = spread.awayMoney - spread.awayPublic;
+        if (Math.abs(div) >= 25) {
+          const sharpSide = div > 0 ? awayTeam : homeTeam;
+          const publicSide = div > 0 ? homeTeam : awayTeam;
+          const sharpPct = div > 0 ? spread.awayMoney : (100 - spread.awayMoney);
+          const publicPct2 = div > 0 ? spread.awayPublic : (100 - spread.awayPublic);
+          const sharpLine = div > 0
+            ? `${awayTeam} ${spread.current > 0 ? "+" : ""}${spread.current}`
+            : `${homeTeam} ${(-(spread.current ?? 0)) > 0 ? "+" : ""}${-(spread.current ?? 0)}`;
+          errors.push({
+            id: mkId("div-spread"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "sharp_divergence",
+            betType: `Spread — ${sharpSide}`,
+            actualLine: sharpLine,
+            mistake: `Massive sharp vs. public split: ${sharpPct}% of money on ${sharpSide} but only ${publicPct2}% of bets — a ${Math.abs(div)}-point divergence. The book's current spread does not fully reflect the sharp action, creating an exploitable window.`,
+            correctLine: `Market should be pricing ${sharpSide} more favorably (sharp money dominant)`,
+            betIdea: `Bet ${sharpSide} on the spread. When sharp money and public money diverge by 25+ points, following the sharp side has a documented positive expectation. Act before the line corrects.`,
+            confidence: Math.min(85, 55 + Math.round(Math.abs(div) * 0.8)),
+            severity: Math.abs(div) >= 35 ? "high" : "medium",
+          });
+        }
+      }
+
+      // ── 3. Reverse Line Movement — total ─────────────────────────────────
+      if (total.overPublic != null && total.overMoney != null && total.move != null) {
+        const overPub = total.overPublic;
+        const overMon = total.overMoney;
+        const move    = total.move;
+
+        // Public loves OVER but total went DOWN
+        if (overPub >= 60 && move < -0.5) {
+          errors.push({
+            id: mkId("rlm-total-under"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "reverse_line_movement",
+            betType: `Total (O/U)`,
+            actualLine: `O/U ${total.current} (opened ${total.open})`,
+            mistake: `${overPub}% of bets are on the OVER but the total dropped ${Math.abs(move)} points (${total.open} → ${total.current}). Sharp money is hammering the UNDER while the public piles onto the over.`,
+            correctLine: `Total likely should stay near ${total.open} if only public money — sharp pressure is pulling it under`,
+            betIdea: `Bet the UNDER at ${total.current}. Sharps are driving this total down against overwhelming public over action — a classic fade-the-public edge. Current number is artificially soft relative to sharp signals.`,
+            confidence: Math.min(88, 55 + Math.round(overPub * 0.35) + Math.round(Math.abs(move) * 6)),
+            severity: overPub >= 70 || Math.abs(move) >= 2 ? "high" : "medium",
+          });
+        }
+
+        // Public loves UNDER but total went UP
+        if (overPub <= 38 && move > 0.5) {
+          errors.push({
+            id: mkId("rlm-total-over"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "reverse_line_movement",
+            betType: `Total (O/U)`,
+            actualLine: `O/U ${total.current} (opened ${total.open})`,
+            mistake: `${100 - overPub}% of bets are on the UNDER but the total rose ${move} points (${total.open} → ${total.current}). Sharp money is on the OVER against public under sentiment.`,
+            correctLine: `Total should reflect sharp OVER pressure — current line still undervalues it`,
+            betIdea: `Bet the OVER at ${total.current}. Sharp money is inflating this total against public consensus. Get in now before further line movement pushes the number higher.`,
+            confidence: Math.min(85, 55 + Math.round((100 - overPub) * 0.35) + Math.round(Math.abs(move) * 6)),
+            severity: (100 - overPub) >= 70 || Math.abs(move) >= 2 ? "high" : "medium",
+          });
+        }
+      }
+
+      // ── 4. Stale Line — sharp money extreme but NO line movement ─────────
+      // A book hasn't moved despite overwhelming sharp action → arbitrage window
+      if (spread.awayMoney != null && spread.awayPublic != null && (spread.move == null || spread.move === 0)) {
+        const div = Math.abs(spread.awayMoney - spread.awayPublic);
+        if (div >= 30 && spread.awayMoney >= 65) {
+          errors.push({
+            id: mkId("stale-spread"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "stale_line",
+            betType: `Spread — ${awayTeam}`,
+            actualLine: `${awayTeam} ${spread.current > 0 ? "+" : ""}${spread.current} (no movement from open)`,
+            mistake: `${spread.awayMoney}% of money on ${awayTeam} but the spread has NOT moved from ${spread.open}. The book is either slow to react or intentionally holding a stale line — creating a window before the inevitable correction.`,
+            correctLine: `Expect ${awayTeam} spread to move ~0.5–1 pt in their favor once books re-price`,
+            betIdea: `Bet ${awayTeam} ${spread.current > 0 ? "+" : ""}${spread.current} NOW before the line moves. Stale lines with extreme sharp money imbalances typically correct within hours — this is a time-sensitive value window.`,
+            confidence: Math.min(80, 50 + Math.round(div * 0.7)),
+            severity: div >= 40 ? "high" : "medium",
+          });
+        }
+      }
+
+      // ── 5. ML vs Spread Inconsistency ────────────────────────────────────
+      // If spread has away as heavy favorite but ML says it's close (or vice versa)
+      if (spread.current != null && moneyline.awayCurrent != null && moneyline.homeCurrent != null) {
+        const spreadFavorsAway = spread.current < -3.5; // away favored by more than 3.5
+        const mlFavorsHome = moneyline.homeCurrent < moneyline.awayCurrent && moneyline.homeCurrent < -110;
+
+        if (spreadFavorsAway && mlFavorsHome) {
+          errors.push({
+            id: mkId("ml-spread-mismatch"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "mispriced_ml",
+            betType: `Moneyline — ${homeTeam}`,
+            actualLine: `${awayTeam} spread: ${spread.current} | ${homeTeam} ML: ${moneyline.homeCurrent > 0 ? "+" : ""}${moneyline.homeCurrent}`,
+            mistake: `Spread has ${awayTeam} as a ${Math.abs(spread.current)}-point favorite yet the moneyline favors ${homeTeam}. This is a cross-market inconsistency — the spread and ML are telling opposite stories about the game's expected outcome.`,
+            correctLine: `Spread and ML should align. Either the spread overvalues ${awayTeam} or the ML undervalues them.`,
+            betIdea: `Two angles: (1) Bet ${awayTeam} ML — if you believe the spread, the ML is priced wrong and offers value. (2) Bet ${homeTeam} spread — if you believe the ML, the spread is too generous to ${awayTeam}. Verify both numbers across books before placing.`,
+            confidence: 72,
+            severity: "medium",
+          });
+        }
+
+        const spreadFavorsHome = spread.current > 3.5;
+        const mlFavorsAway = moneyline.awayCurrent < moneyline.homeCurrent && moneyline.awayCurrent < -110;
+        if (spreadFavorsHome && mlFavorsAway) {
+          errors.push({
+            id: mkId("ml-spread-mismatch-2"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "mispriced_ml",
+            betType: `Moneyline — ${awayTeam}`,
+            actualLine: `${homeTeam} spread: ${(-(spread.current ?? 0)) > 0 ? "+" : ""}${-(spread.current ?? 0)} | ${awayTeam} ML: ${moneyline.awayCurrent > 0 ? "+" : ""}${moneyline.awayCurrent}`,
+            mistake: `Spread has ${homeTeam} as a ${spread.current}-point favorite yet the moneyline favors ${awayTeam}. The two markets disagree on the outright winner — a pricing inconsistency that shouldn't persist.`,
+            correctLine: `Spread and ML should align — one of these markets is mispriced.`,
+            betIdea: `Bet ${homeTeam} ML — if you trust the spread, the ML is mispriced and gives value on the spread's implied favorite. Verify the current ML across DraftKings, FanDuel, and BetMGM before placing.`,
+            confidence: 70,
+            severity: "medium",
+          });
+        }
+      }
+
+      // ── 6. Sharp Total Divergence ≥25 pts ────────────────────────────────
+      if (total.overMoney != null && total.overPublic != null) {
+        const div = total.overMoney - total.overPublic;
+        if (Math.abs(div) >= 25) {
+          const sharpSide = div > 0 ? "OVER" : "UNDER";
+          const sharpPct = div > 0 ? total.overMoney : (100 - total.overMoney!);
+          const publicPct3 = div > 0 ? total.overPublic : (100 - total.overPublic!);
+          errors.push({
+            id: mkId("div-total"),
+            gameId: id, gameName, sport, gameTime,
+            errorType: "sharp_divergence",
+            betType: `Total (${sharpSide})`,
+            actualLine: `O/U ${total.current}`,
+            mistake: `${sharpPct}% of money on the ${sharpSide} vs only ${publicPct3}% of tickets — a ${Math.abs(div)}-point sharp/public split on the total. The book's number doesn't yet reflect the full sharp signal.`,
+            correctLine: `Sharp pressure suggests the total should move ${div > 0 ? "up" : "down"} from current ${total.current}`,
+            betIdea: `Bet ${sharpSide} at ${total.current}. The sharp money split on totals of this magnitude historically precedes line movement. Take the current number before the book adjusts.`,
+            confidence: Math.min(82, 52 + Math.round(Math.abs(div) * 0.7)),
+            severity: Math.abs(div) >= 35 ? "high" : "medium",
+          });
+        }
+      }
+    }
+
+    // Sort: high severity first, then by confidence descending
+    errors.sort((a, b) => {
+      const sevOrder = { high: 0, medium: 1, low: 2 };
+      if (sevOrder[a.severity] !== sevOrder[b.severity]) return sevOrder[a.severity] - sevOrder[b.severity];
+      return b.confidence - a.confidence;
+    });
+
+    return errors;
+  }
+
+  app.get("/api/line-movement/errors", async (_req, res) => {
+    try {
+      const cacheKey = "lm-errors";
+      const cached = LM_ERRORS_CACHE.get(cacheKey);
+      if (cached && Date.now() - cached.ts < LM_ERRORS_TTL) {
+        return res.json(cached.data);
+      }
+
+      // Pull games from the line movement cache (or fetch fresh if needed)
+      let games: any[] = [];
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      if (lmCache && Date.now() - lmCache.ts < LM_TTL) {
+        games = lmCache.data;
+      } else {
+        // Trigger a fresh fetch by calling the LM endpoint logic inline (light version)
+        // Just return empty for now — client should load /api/line-movement first
+        return res.json([]);
+      }
+
+      const errors = detectBookErrors(games);
+      LM_ERRORS_CACHE.set(cacheKey, { data: errors, ts: Date.now() });
+      res.json(errors);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Auth Routes ──────────────────────────────────────────────────────────────────────
   const bcrypt = await import("bcryptjs");
   const { nanoid } = await import("nanoid");
