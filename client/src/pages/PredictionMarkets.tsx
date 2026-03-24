@@ -7,6 +7,39 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from "recharts";
 
+
+// ── Client-side title parser (fallback for raw strings that slipped through) ──
+function parseRawTitle(title: string, isParlay?: boolean, legs?: string[] | null): { displayLegs: string[] | null; summaryTitle: string } {
+  if (isParlay && legs && legs.length > 0) return { displayLegs: legs, summaryTitle: title };
+
+  // Detect cross-category strings: contains ",no " or ",yes " mid-string
+  if (/,\s*(yes|no)\s+/i.test(title)) {
+    const tokens = title.split(/(,\s*(?:yes|no)\s+)/i);
+    const rawLegs: string[] = [];
+    let current = tokens[0].trim();
+    for (let i = 1; i < tokens.length; i += 2) {
+      rawLegs.push(current);
+      const sideMatch = tokens[i].match(/(yes|no)/i);
+      const side = sideMatch ? sideMatch[1].toUpperCase() : 'YES';
+      current = side + ' ' + (tokens[i + 1] ?? '').trim();
+    }
+    if (current) rawLegs.push(current);
+    if (rawLegs.length >= 2) {
+      const displayLegs = rawLegs.map(leg => {
+        const m = leg.match(/^(YES|NO)\s+(.+)$/i);
+        if (m) return `${m[1].toUpperCase()} ${m[2].trim()}`;
+        return `YES ${leg.trim()}`;
+      });
+      const firstClean = displayLegs[0].replace(/^(YES|NO)\s+/i, '');
+      const teamMatch = firstClean.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+/i);
+      const teamName = teamMatch ? teamMatch[1] : 'Multi-team';
+      return { displayLegs, summaryTitle: `${teamName} +${displayLegs.length - 1} more (${displayLegs.length}-leg combo)` };
+    }
+  }
+
+  return { displayLegs: null, summaryTitle: title };
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PredMkt {
   id: string;
@@ -146,34 +179,53 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
             <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: SOURCE_COLOR[m.source] }}>
               {m.source === "kalshi" ? "Kalshi" : "Polymarket"} · {m.sport}
             </p>
-            {m.isParlay && m.legs && m.legs.length > 0 ? (
-              <div className="mt-1">
-                <p className="text-[11px] font-bold text-orange-300 mb-2">{m.legs.length}-Leg Parlay</p>
-                <div className="flex flex-col gap-1.5">
-                  {m.legs.map((leg, i) => {
-                    const isYes = leg.startsWith("YES");
-                    const legText = leg.replace(/^(YES|NO)\s+/, "");
-                    return (
-                      <div key={i} className="flex items-center gap-2 text-[12px]">
-                        <span className={`shrink-0 font-black text-[10px] px-1.5 py-0.5 rounded ${
-                          isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                        }`}>
-                          {isYes ? "YES" : "NO"}
-                        </span>
-                        <span className="text-foreground font-semibold">{legText}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <>
-                <p className="text-base font-bold text-foreground leading-snug">{m.title}</p>
-                {m.event !== m.title && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{m.event}</p>
-                )}
-              </>
-            )}
+            {(() => {
+              const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
+              if (displayLegs && displayLegs.length > 0) {
+                return (
+                  <div className="mt-1">
+                    <p className="text-[11px] font-bold text-orange-300 mb-2.5">
+                      {displayLegs.length}-Leg Combo · tap each to see full condition
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {displayLegs.map((leg, i) => {
+                        const isYes = leg.startsWith("YES");
+                        const legText = leg.replace(/^(YES|NO)\s+/, "");
+                        return (
+                          <div key={i} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-[12px] ${
+                            isYes
+                              ? "bg-green-500/5 border-green-500/20"
+                              : "bg-red-500/5 border-red-500/20"
+                          }`}>
+                            <span className={`shrink-0 font-black text-[11px] w-6 h-6 flex items-center justify-center rounded-full mt-0.5 ${
+                              isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                            }`}>
+                              {isYes ? "✓" : "✗"}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
+                                {legText}
+                              </span>
+                              <span className={`ml-2 text-[10px] font-bold uppercase tracking-wide ${isYes ? "text-green-400" : "text-red-400"}`}>
+                                {isYes ? "YES" : "NO"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <>
+                  <p className="text-base font-bold text-foreground leading-snug">{m.title}</p>
+                  {m.event !== m.title && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{m.event}</p>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1">
             <X size={18} />
@@ -407,36 +459,49 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
             {isToday && <span className="ml-2 font-bold text-yellow-400">⚡ TODAY</span>}
             {countdown && <span className="ml-2 font-semibold text-orange-400">⏰ {countdown}</span>}
           </p>
-          {m.isParlay && m.legs && m.legs.length > 0 ? (
-            <div className="mt-0.5">
-              <p className="text-[11px] font-bold text-orange-300 mb-1.5">
-                {m.legs.length}-Leg Parlay
-              </p>
-              <div className="flex flex-col gap-1">
-                {m.legs.map((leg, i) => {
-                  const isYes = leg.startsWith("YES");
-                  const legText = leg.replace(/^(YES|NO)\s+/, "");
-                  return (
-                    <div key={i} className="flex items-center gap-1.5 text-[11px]">
-                      <span className={`shrink-0 font-black text-[9px] px-1 py-0.5 rounded ${
-                        isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                      }`}>
-                        {isYes ? "YES" : "NO"}
-                      </span>
-                      <span className="text-foreground font-medium leading-tight">{legText}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
-              {m.event !== m.title && (
-                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{m.event}</p>
-              )}
-            </>
-          )}
+          {(() => {
+            const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
+            if (displayLegs && displayLegs.length > 0) {
+              // Collapse after 3 legs on the card to keep it compact
+              const SHOW = 3;
+              const shown = displayLegs.slice(0, SHOW);
+              const hidden = displayLegs.length - SHOW;
+              return (
+                <div className="mt-0.5">
+                  <p className="text-[11px] font-bold text-orange-300 mb-1.5">
+                    {displayLegs.length}-Leg Combo
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {shown.map((leg, i) => {
+                      const isYes = leg.startsWith("YES");
+                      const legText = leg.replace(/^(YES|NO)\s+/, "");
+                      return (
+                        <div key={i} className="flex items-start gap-1.5 text-[11px]">
+                          <span className={`shrink-0 font-black text-[9px] px-1 py-0.5 rounded mt-0.5 ${
+                            isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                          }`}>
+                            {isYes ? "✓" : "✗"}
+                          </span>
+                          <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground line-through"}`}>{legText}</span>
+                        </div>
+                      );
+                    })}
+                    {hidden > 0 && (
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-5">+{hidden} more legs · tap to see all</p>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <>
+                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
+                {m.event !== m.title && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{m.event}</p>
+                )}
+              </>
+            );
+          })()}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border"

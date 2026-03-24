@@ -1184,18 +1184,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       ): { title: string; legs: string[] | null; isParlay: boolean } {
         if (!raw) return { title: raw, legs: null, isParlay: false };
 
-        // Pattern: starts with "yes " or "no " followed by name: line
+        // ── Pattern A: player-prop parlay — starts with "yes/no Name: line"
         const legPattern = /^(yes|no)\s+.+:\s*[\d.]+[+\-]?/i;
         // Split on comma boundaries that precede "yes " or "no "
         const parts = raw.split(/,(?=\s*(yes|no)\s+)/i).map(s => s.trim());
 
         if (parts.length >= 2 && legPattern.test(parts[0])) {
           // Build a stat lookup from mve_selected_legs if available
-          // We match by index since the leg order mirrors the title string order
           const legs = parts.map((leg, i) => {
             const m = leg.match(/^(yes|no)\s+(.+?):\s*([\d.]+[+\-]?)(.*)$/i);
             if (!m) {
-              // Non-numeric leg (team win, spread, etc.) — clean "yes/no" prefix
               const plain = leg.match(/^(yes|no)\s+(.+)$/i);
               if (plain) return `${plain[1].toUpperCase()} ${plain[2].trim()}`;
               return leg;
@@ -1203,17 +1201,72 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const dir  = m[1].toUpperCase();
             const name = m[2].trim();
             const line = m[3].trim();
-            // Try to get stat type from the corresponding mve leg ticker
             const mveLeg = mveLegs?.[i];
             const statTicker = mveLeg?.market_ticker ?? mveLeg?.event_ticker ?? "";
             const stat = kalshiStatFromTicker(statTicker);
             return `${dir} ${name} ${line}${stat ? " " + stat : ""}`;
           });
-          // Title: first player + leg count
           const firstMatch = parts[0].match(/^(?:yes|no)\s+(.+?):/i);
           const firstName = firstMatch ? firstMatch[1].trim() : 'Multi-game';
           const title = `${firstName} +${legs.length - 1} more (${legs.length}-leg parlay)`;
           return { title, legs, isParlay: true };
+        }
+
+        // ── Pattern B: cross-category team-win parlay
+        //   e.g. "Vancouver wins by over 2.5 goals,no Montreal wins by over..."
+        //   Parts are separated by ",yes " or ",no " WITHIN the string (no leading yes/no)
+        const crossParts = raw.split(/,(?=\s*(yes|no)\s+)/i).map(s => s.trim());
+        // Also try splitting on plain commas when there are 3+ parts that look like team conditions
+        const commaParts = raw.split(/,\s*no\s+|,\s*yes\s+/i);
+        const teamConditionPattern = /wins|leads|scores|advances|covers|over|under|beats/i;
+
+        // Check if the raw string contains ",no " or ",yes " mid-string (cross-category)
+        if (/,\s*(yes|no)\s+/i.test(raw)) {
+          // Reconstruct legs with their yes/no side
+          // First part may or may not start with yes/no
+          const rawLegs: string[] = [];
+          // Split on all ",yes " and ",no " boundaries, preserving the delimiter
+          const tokens = raw.split(/(,\s*(?:yes|no)\s+)/i);
+          let current = tokens[0].trim();
+          for (let i = 1; i < tokens.length; i += 2) {
+            rawLegs.push(current);
+            const delimiter = tokens[i]; // e.g. ",no " or ",yes "
+            const sideMatch = delimiter.match(/(yes|no)/i);
+            const side = sideMatch ? sideMatch[1].toUpperCase() : 'YES';
+            current = side + ' ' + (tokens[i + 1] ?? '').trim();
+          }
+          if (current) rawLegs.push(current);
+
+          if (rawLegs.length >= 2) {
+            const legs = rawLegs.map(leg => {
+              // Leg might already start with YES/NO from reconstruction
+              const withSide = leg.match(/^(YES|NO)\s+(.+)$/i);
+              if (withSide) return `${withSide[1].toUpperCase()} ${withSide[2].trim()}`;
+              // First part had no yes/no prefix — it's a YES by default (the market is "yes" on this)
+              return `YES ${leg.trim()}`;
+            });
+
+            // Build a compact summary title
+            // Extract the core condition from first leg (e.g. "Vancouver wins by over 2.5 goals")
+            const firstLeg = legs[0].replace(/^YES\s+/i, '').replace(/^NO\s+/i, '');
+            // Try to extract team name (first 1-2 words before a verb)
+            const teamMatch = firstLeg.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+/i);
+            const teamName = teamMatch ? teamMatch[1] : 'Multi-team';
+            const title = `${teamName} +${legs.length - 1} more (${legs.length}-leg combo)`;
+            return { title, legs, isParlay: true };
+          }
+        }
+
+        // ── Pattern C: plain long comma list with no yes/no markers
+        //   Treat as multi-condition if 3+ commas and matches team condition words
+        if (raw.includes(',') && teamConditionPattern.test(raw)) {
+          const simpleParts = raw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+          if (simpleParts.length >= 3) {
+            const legs = simpleParts.map(p => `YES ${p}`);
+            const firstWord = simpleParts[0].split(/\s+/).slice(0, 2).join(' ');
+            const title = `${firstWord} +${legs.length - 1} more (${legs.length}-leg combo)`;
+            return { title, legs, isParlay: true };
+          }
         }
 
         // Single market — clean up "yes Name: line" prefix
