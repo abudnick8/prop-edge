@@ -1158,24 +1158,48 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Decode Kalshi ticker prefix → human-readable stat category
       function kalshiStatFromTicker(ticker: string): string {
         const t = (ticker ?? "").toUpperCase();
-        if (t.includes("NBAPTS"))  return "PTS";
-        if (t.includes("NBAAST"))  return "AST";
-        if (t.includes("NBAREB"))  return "REB";
-        if (t.includes("NBASTL"))  return "STL";
-        if (t.includes("NBABLK"))  return "BLK";
-        if (t.includes("NBAREBAST")) return "REB+AST";
-        if (t.includes("NFLTD"))   return "TD";
-        if (t.includes("NFLPASS")) return "PASS YDS";
-        if (t.includes("NFLRUSH")) return "RUSH YDS";
-        if (t.includes("NFLREC"))  return "REC";
-        if (t.includes("MLBHR"))   return "HR";
-        if (t.includes("MLBRBI"))  return "RBI";
-        if (t.includes("MLBK"))    return "K";
-        if (t.includes("MLBHIT"))  return "HITS";
-        if (t.includes("NHLGOAL")) return "GOALS";
-        if (t.includes("NHLAST"))  return "ASSISTS";
-        if (t.includes("NHLSHOT")) return "SHOTS";
-        return "";  // Unknown — don't append anything
+        // NBA player props
+        if (t.includes("NBAREBAST")) return "REB+AST";  // must check before REB/AST
+        if (t.includes("NBAPRA"))   return "PTS+REB+AST";
+        if (t.includes("NBAPTS"))   return "PTS";
+        if (t.includes("NBAAST"))   return "AST";
+        if (t.includes("NBAREB"))   return "REB";
+        if (t.includes("NBASTL"))   return "STL";
+        if (t.includes("NBABLK"))   return "BLK";
+        if (t.includes("NBA3PM") || t.includes("NBA3PT")) return "3PT";
+        if (t.includes("NBAFG") || t.includes("NBAFGM"))  return "FGM";
+        if (t.includes("NBATOV") || t.includes("NBATO"))  return "TOV";
+        if (t.includes("NBAMIN"))   return "MIN";
+        if (t.includes("NBA") && (t.includes("PTS") || t.includes("POINT"))) return "PTS";
+        if (t.includes("NBA") && (t.includes("AST") || t.includes("ASSIST"))) return "AST";
+        if (t.includes("NBA") && (t.includes("REB") || t.includes("REBOUND"))) return "REB";
+        // NFL player props
+        if (t.includes("NFLTD"))    return "TD";
+        if (t.includes("NFLPASS") || t.includes("NFLPYD")) return "PASS YDS";
+        if (t.includes("NFLRUSH") || t.includes("NFLRYD")) return "RUSH YDS";
+        if (t.includes("NFLREC") || t.includes("NFLRECYD")) return "REC YDS";
+        if (t.includes("NFLCOMPLETION") || t.includes("NFLCOMP")) return "COMP";
+        if (t.includes("NFLINT"))   return "INT";
+        if (t.includes("NFLSCK") || t.includes("NFLSACK")) return "SACK";
+        // MLB player props
+        if (t.includes("MLBHR"))    return "HR";
+        if (t.includes("MLBRBI"))   return "RBI";
+        if (t.includes("MLBK") && !t.includes("MLBKI")) return "K";
+        if (t.includes("MLBHIT"))   return "HITS";
+        if (t.includes("MLBSB"))    return "SB";
+        if (t.includes("MLBR") && !t.includes("MLBRBI")) return "RUNS";
+        // NHL player props
+        if (t.includes("NHLGOAL"))  return "GOALS";
+        if (t.includes("NHLAST") || t.includes("NHLASSIST")) return "ASSISTS";
+        if (t.includes("NHLSHOT"))  return "SHOTS";
+        if (t.includes("NHLPOINT") || t.includes("NHLPTS")) return "PTS";
+        // Generic fallback: if it's a player-prop market (contains a number threshold)
+        // we still want to show SOMETHING rather than nothing
+        if (t.includes("NBA") || t.includes("KQMB")) return "PROP";
+        if (t.includes("NFL")) return "PROP";
+        if (t.includes("MLB")) return "PROP";
+        if (t.includes("NHL")) return "PROP";
+        return "";  // Non-player-prop — don't append anything
       }
 
       function cleanKalshiTitle(
@@ -1191,25 +1215,41 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
         if (parts.length >= 2 && legPattern.test(parts[0])) {
           // Build a stat lookup from mve_selected_legs if available
-          const legs = parts.map((leg, i) => {
+          const rawLegs = parts.map((leg, i) => {
+            // Filter out junk legs that are just "yes" or "no" with nothing after them
+            const stripped = leg.replace(/^(yes|no)\s*/i, "").trim();
+            if (!stripped) return null;  // empty/junk — drop this leg
+
             const m = leg.match(/^(yes|no)\s+(.+?):\s*([\d.]+[+\-]?)(.*)$/i);
             if (!m) {
               const plain = leg.match(/^(yes|no)\s+(.+)$/i);
-              if (plain) return `${plain[1].toUpperCase()} ${plain[2].trim()}`;
+              if (plain) {
+                const plainContent = plain[2].trim();
+                if (!plainContent) return null;  // nothing meaningful
+                return `${plain[1].toUpperCase()} ${plainContent}`;
+              }
               return leg;
             }
             const dir  = m[1].toUpperCase();
             const name = m[2].trim();
             const line = m[3].trim();
+            // Try to find the matching mve leg — the index may shift if earlier legs were null
             const mveLeg = mveLegs?.[i];
             const statTicker = mveLeg?.market_ticker ?? mveLeg?.event_ticker ?? "";
             const stat = kalshiStatFromTicker(statTicker);
             return `${dir} ${name} ${line}${stat ? " " + stat : ""}`;
-          });
-          const firstMatch = parts[0].match(/^(?:yes|no)\s+(.+?):/i);
-          const firstName = firstMatch ? firstMatch[1].trim() : 'Multi-game';
-          const title = `${firstName} +${legs.length - 1} more (${legs.length}-leg parlay)`;
-          return { title, legs, isParlay: true };
+          }).filter((leg): leg is string => leg !== null && leg.trim() !== "");
+
+          if (rawLegs.length < 1) {
+            // All legs were junk — fall through to single market handler
+          } else {
+            const firstMatch = parts[0].match(/^(?:yes|no)\s+(.+?):/i);
+            const firstName = firstMatch ? firstMatch[1].trim() : 'Multi-game';
+            const title = rawLegs.length === 1
+              ? rawLegs[0].replace(/^(YES|NO)\s+/i, "")  // single valid leg — just show the condition
+              : `${firstName} +${rawLegs.length - 1} more (${rawLegs.length}-leg parlay)`;
+            return { title, legs: rawLegs, isParlay: rawLegs.length > 1 };
+          }
         }
 
         // ── Pattern B: cross-category team-win parlay

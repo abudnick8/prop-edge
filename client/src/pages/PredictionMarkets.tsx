@@ -206,9 +206,6 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                               <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
                                 {legText}
                               </span>
-                              <span className={`ml-2 text-[10px] font-bold uppercase tracking-wide ${isYes ? "text-green-400" : "text-red-400"}`}>
-                                {isYes ? "YES" : "NO"}
-                              </span>
                             </div>
                           </div>
                         );
