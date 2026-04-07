@@ -1913,7 +1913,7 @@ export default function Fantasy() {
                 return (
                   <button key={s} onClick={()=>setSport(s)}
                     className="px-2.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1"
-                    style={{background:sport===s?"var(--primary)":"rgba(255,255,255,0.04)",color:sport===s?"#000":"var(--muted-foreground)",border:sport===s?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                    style={{background:sport===s?"#facc15":"rgba(255,255,255,0.04)",color:sport===s?"#000":"var(--muted-foreground)",border:sport===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",boxShadow:sport===s?"0 0 8px #facc1580":"none"}}>
                     {s}
                     {badge&&s!=="ALL"&&(
                       <span className="text-[8px] font-black px-1 rounded" style={{background:`${badge.color}25`,color:badge.color}}>{badge.label}</span>
