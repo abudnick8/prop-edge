@@ -1202,9 +1202,24 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return "";  // Non-player-prop — don't append anything
       }
 
+      function annotateTeamLeg(legText: string, dir: string, sport: string): string {
+        // If the leg is just a team name (no colon, no stat number, no condition words)
+        // e.g. "Boston", "Minnesota", "Arsenal", "Oklahoma City"
+        const hasColon      = legText.includes(":");
+        const hasNumber     = /\d/.test(legText);
+        const hasCondition  = /wins|beats|covers|over|under|leads|scores|advances|moneyline|spread|ml\b/i.test(legText);
+        if (!hasColon && !hasNumber && !hasCondition) {
+          // Plain team name — annotate as moneyline win
+          const sportLabel = sport && sport !== "OTHER" ? ` (${sport})` : "";
+          return `${dir} ${legText} to Win${sportLabel}`;
+        }
+        return `${dir} ${legText}`;
+      }
+
       function cleanKalshiTitle(
         raw: string,
-        mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>
+        mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>,
+        sport?: string
       ): { title: string; legs: string[] | null; isParlay: boolean } {
         if (!raw) return { title: raw, legs: null, isParlay: false };
 
@@ -1226,7 +1241,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
               if (plain) {
                 const plainContent = plain[2].trim();
                 if (!plainContent) return null;  // nothing meaningful
-                return `${plain[1].toUpperCase()} ${plainContent}`;
+                return annotateTeamLeg(plainContent, plain[1].toUpperCase(), sport ?? "");
               }
               return leg;
             }
@@ -1281,9 +1296,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const legs = rawLegs.map(leg => {
               // Leg might already start with YES/NO from reconstruction
               const withSide = leg.match(/^(YES|NO)\s+(.+)$/i);
-              if (withSide) return `${withSide[1].toUpperCase()} ${withSide[2].trim()}`;
-              // First part had no yes/no prefix — it's a YES by default (the market is "yes" on this)
-              return `YES ${leg.trim()}`;
+              if (withSide) {
+                return annotateTeamLeg(withSide[2].trim(), withSide[1].toUpperCase(), sport ?? "");
+              }
+              // First part had no yes/no prefix — it's a YES by default
+              return annotateTeamLeg(leg.trim(), "YES", sport ?? "");
             });
 
             // Build a compact summary title
@@ -1302,7 +1319,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         if (raw.includes(',') && teamConditionPattern.test(raw)) {
           const simpleParts = raw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
           if (simpleParts.length >= 3) {
-            const legs = simpleParts.map(p => `YES ${p}`);
+            const legs = simpleParts.map(p => annotateTeamLeg(p, "YES", sport ?? ""));
             const firstWord = simpleParts[0].split(/\s+/).slice(0, 2).join(' ');
             const title = `${firstWord} +${legs.length - 1} more (${legs.length}-leg combo)`;
             return { title, legs, isParlay: true };
@@ -1402,7 +1419,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
             ...(() => {
-              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs);
+              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs, sport);
               return { title, legs, isParlay };
             })(),
             event:            m.event_ticker ?? m.title,

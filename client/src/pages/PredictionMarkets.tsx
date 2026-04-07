@@ -176,9 +176,16 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: SOURCE_COLOR[m.source] }}>
-              {m.source === "kalshi" ? "Kalshi" : "Polymarket"} · {m.sport}
-            </p>
+            <div className="flex items-center flex-wrap gap-1.5 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: SOURCE_COLOR[m.source] }}>
+                {m.source === "kalshi" ? "Kalshi" : "Polymarket"}
+              </span>
+              {m.sport && m.sport !== "OTHER" && (
+                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-white/10 text-white/80 border border-white/20">
+                  {m.sport}
+                </span>
+              )}
+            </div>
             {(() => {
               const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
               if (displayLegs && displayLegs.length > 0) {
@@ -197,10 +204,10 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                               ? "bg-green-500/5 border-green-500/20"
                               : "bg-red-500/5 border-red-500/20"
                           }`}>
-                            <span className={`shrink-0 font-black text-[11px] w-6 h-6 flex items-center justify-center rounded-full mt-0.5 ${
-                              isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                            <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
+                              isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
                             }`}>
-                              {isYes ? "✓" : "✗"}
+                              {isYes ? "YES" : "NO"}
                             </span>
                             <div className="flex-1 min-w-0">
                               <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
@@ -451,11 +458,18 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-2 pr-12">
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: SOURCE_COLOR[m.source] }}>
-            {m.source === "kalshi" ? "Kalshi" : "Polymarket"} · <span className="text-muted-foreground">{m.sport}</span>
-            {isToday && <span className="ml-2 font-bold text-yellow-400">⚡ TODAY</span>}
-            {countdown && <span className="ml-2 font-semibold text-orange-400">⏰ {countdown}</span>}
-          </p>
+          <div className="flex items-center flex-wrap gap-1.5 mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: SOURCE_COLOR[m.source] }}>
+              {m.source === "kalshi" ? "Kalshi" : "Polymarket"}
+            </span>
+            {m.sport && m.sport !== "OTHER" && (
+              <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-white/10 text-white/80 border border-white/20">
+                {m.sport}
+              </span>
+            )}
+            {isToday && <span className="text-[10px] font-bold text-yellow-400">⚡ TODAY</span>}
+            {countdown && <span className="text-[10px] font-semibold text-orange-400">⏰ {countdown}</span>}
+          </div>
           {(() => {
             const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
             if (displayLegs && displayLegs.length > 0) {
@@ -474,12 +488,12 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                       const legText = leg.replace(/^(YES|NO)\s+/, "");
                       return (
                         <div key={i} className="flex items-start gap-1.5 text-[11px]">
-                          <span className={`shrink-0 font-black text-[9px] px-1 py-0.5 rounded mt-0.5 ${
+                          <span className={`shrink-0 font-black text-[9px] px-1.5 py-0.5 rounded mt-0.5 tracking-wide ${
                             isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                           }`}>
-                            {isYes ? "✓" : "✗"}
+                            {isYes ? "YES" : "NO"}
                           </span>
-                          <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground line-through"}`}>{legText}</span>
+                          <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground"}`}>{legText}</span>
                         </div>
                       );
                     })}
