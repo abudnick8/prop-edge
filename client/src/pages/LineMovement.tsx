@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Activity,
   ChevronDown, ChevronUp, Users, DollarSign, Clock, Filter,
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
+  Bell, BellOff, Target, Wind, Thermometer, Eye, ArrowRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
@@ -57,6 +58,218 @@ interface GameLine {
 
 const SPORT_EMOJI: Record<string, string> = { NBA: "🏀", MLB: "⚾", NHL: "🏒", NFL: "🏈" };
 const SPORTS = ["All", "NBA", "MLB", "NHL", "NFL"];
+
+// ── Trigger List ──────────────────────────────────────────────────────────────
+
+interface Trigger {
+  id: string;
+  sport: string;
+  condition: string;
+  action: string;
+  direction: "over" | "under" | "fade" | "play";
+  category: "injury" | "weather" | "lineup" | "schedule" | "steam";
+  icon: string;
+}
+
+const ALL_TRIGGERS: Trigger[] = [
+  // NBA
+  { id:"nba-1",  sport:"NBA", condition:"Star player ruled OUT",                        action:"Bet the Under",           direction:"under", category:"injury",   icon:"🏀" },
+  { id:"nba-2",  sport:"NBA", condition:"Pace mismatch: fast team vs slow team",        action:"Bet the Over",            direction:"over",  category:"lineup",   icon:"🏀" },
+  { id:"nba-3",  sport:"NBA", condition:"Back-to-back fatigue (B2B)",                  action:"Bet the Under / Fade",    direction:"under", category:"schedule", icon:"🏀" },
+  { id:"nba-4",  sport:"NBA", condition:"Sharp books move 2+ pts from opener",         action:"Follow the steam",        direction:"play",  category:"steam",    icon:"🏀" },
+  // MLB
+  { id:"mlb-1",  sport:"MLB", condition:"Wind blowing OUT > 10 mph",                   action:"Bet the Over",            direction:"over",  category:"weather",  icon:"⚾" },
+  { id:"mlb-2",  sport:"MLB", condition:"Wind blowing IN > 10 mph",                    action:"Bet the Under",           direction:"under", category:"weather",  icon:"⚾" },
+  { id:"mlb-3",  sport:"MLB", condition:"Bullpen game (opener strategy)",              action:"Bet the Over",            direction:"over",  category:"lineup",   icon:"⚾" },
+  { id:"mlb-4",  sport:"MLB", condition:"Starter dealing with tightness / injury",    action:"Bet the Over / Fade",     direction:"over",  category:"injury",   icon:"⚾" },
+  { id:"mlb-5",  sport:"MLB", condition:"Elite umpire (low K rate, tight zone)",       action:"Lean Under / low-scoring",direction:"under", category:"lineup",   icon:"⚾" },
+  // NHL
+  { id:"nhl-1",  sport:"NHL", condition:"Backup goalie confirmed in crease",           action:"Bet the Over",            direction:"over",  category:"lineup",   icon:"🏒" },
+  { id:"nhl-2",  sport:"NHL", condition:"Elite starter confirmed (Vezina caliber)",    action:"Bet the Under",           direction:"under", category:"lineup",   icon:"🏒" },
+  { id:"nhl-3",  sport:"NHL", condition:"Travel fatigue (3rd game in 4 nights)",       action:"Fade the tired team",     direction:"fade",  category:"schedule", icon:"🏒" },
+  { id:"nhl-4",  sport:"NHL", condition:"Key forward out (PP1 unit broken)",           action:"Fade the team / Under",   direction:"under", category:"injury",   icon:"🏒" },
+  // NFL
+  { id:"nfl-1",  sport:"NFL", condition:"Wind > 15 mph at game time",                  action:"Bet the Under",           direction:"under", category:"weather",  icon:"🏈" },
+  { id:"nfl-2",  sport:"NFL", condition:"Rain probability spike > 60%",                action:"Bet the Under",           direction:"under", category:"weather",  icon:"🏈" },
+  { id:"nfl-3",  sport:"NFL", condition:"CB1 / CB2 listed OUT on injury report",       action:"Bet the Over / WR props", direction:"over",  category:"injury",   icon:"🏈" },
+  { id:"nfl-4",  sport:"NFL", condition:"WR1 listed LIMITED in practice (Wed–Fri)",   action:"Monitor / Fade the Over", direction:"fade",  category:"injury",   icon:"🏈" },
+  { id:"nfl-5",  sport:"NFL", condition:"Steam move ≥3 pts at sharp books",            action:"Follow steam before copy",direction:"play",  category:"steam",    icon:"🏈" },
+  { id:"nfl-6",  sport:"NFL", condition:"OL starter(s) ruled OUT",                     action:"Fade the offense / Under",direction:"under", category:"injury",   icon:"🏈" },
+];
+
+const TRIGGER_CATEGORY_COLOR: Record<string, {bg:string;text:string;label:string}> = {
+  injury:   { bg:"rgba(248,113,113,0.12)",  text:"#f87171",  label:"Injury" },
+  weather:  { bg:"rgba(96,165,250,0.12)",   text:"#60a5fa",  label:"Weather" },
+  lineup:   { bg:"rgba(167,139,250,0.12)",  text:"#a78bfa",  label:"Lineup" },
+  schedule: { bg:"rgba(251,146,60,0.12)",   text:"#fb923c",  label:"Schedule" },
+  steam:    { bg:"rgba(245,158,11,0.12)",   text:"#f59e0b",  label:"Steam" },
+};
+
+const DIRECTION_COLOR: Record<string, string> = {
+  over:  "#4ade80",
+  under: "#60a5fa",
+  fade:  "#f87171",
+  play:  "#f59e0b",
+};
+
+function TriggerList({ activeSport }: { activeSport: string }) {
+  const [open, setOpen] = useState(false);
+  const [alerts, setAlerts] = useState<Set<string>>(new Set());
+  const [filterCat, setFilterCat] = useState<string>("all");
+  const [filterSport, setFilterSport] = useState<string>(activeSport === "All" ? "all" : activeSport);
+
+  const triggered = useMemo(() => {
+    return ALL_TRIGGERS.filter(t => {
+      const matchSport = filterSport === "all" || t.sport === filterSport;
+      const matchCat   = filterCat   === "all" || t.category === filterCat;
+      return matchSport && matchCat;
+    });
+  }, [filterSport, filterCat]);
+
+  const alertCount = alerts.size;
+
+  function toggleAlert(id: string) {
+    setAlerts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const cats = ["all", "injury", "weather", "lineup", "schedule", "steam"];
+  const sports = ["all", "NBA", "MLB", "NHL", "NFL"];
+
+  return (
+    <div className="border border-amber-500/25 rounded-xl overflow-hidden" style={{ background: "rgba(245,158,11,0.04)" }}>
+      {/* Header — always visible */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-500/5 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Target size={15} className="text-amber-400" />
+          <div className="text-left">
+            <p className="text-sm font-black text-foreground flex items-center gap-2">
+              Sharp Trigger List
+              {alertCount > 0 && (
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/30">
+                  {alertCount} active
+                </span>
+              )}
+            </p>
+            <p className="text-[10px] text-muted-foreground">Auto-bet triggers — fire before books adjust · toggle alerts</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!open && (
+            <div className="flex gap-1 mr-2">
+              {["NBA","MLB","NHL","NFL"].map(s => (
+                <span key={s} className="text-[10px] px-1.5 py-0.5 rounded border border-border/30 text-muted-foreground font-semibold">
+                  {SPORT_EMOJI[s]}{ALL_TRIGGERS.filter(t=>t.sport===s).length}
+                </span>
+              ))}
+            </div>
+          )}
+          {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-amber-500/15 px-4 pb-4 pt-3 space-y-3">
+          {/* Quick tip */}
+          <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5 text-xs text-amber-200/80">
+            <span className="font-bold text-amber-400">How to use: </span>
+            These triggers fire before sportsbooks react. Toggle the bell to enable in-app notifications when a matching condition appears. Pinnacle/Circa move first — you have 30–120s before public books copy.
+          </div>
+
+          {/* Filters */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase w-10">Sport</span>
+              {sports.map(s => (
+                <button key={s} onClick={()=>setFilterSport(s)}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                  style={{ background:filterSport===s?"var(--primary)":"rgba(255,255,255,0.04)", color:filterSport===s?"#000":"var(--muted-foreground)", border:filterSport===s?"1px solid transparent":"1px solid rgba(255,255,255,0.08)" }}>
+                  {s === "all" ? "All" : `${SPORT_EMOJI[s]} ${s}`}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase w-10">Type</span>
+              {cats.map(c => {
+                const cc = c === "all" ? null : TRIGGER_CATEGORY_COLOR[c];
+                return (
+                  <button key={c} onClick={()=>setFilterCat(c)}
+                    className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                    style={{ background:filterCat===c?(cc?.text??"var(--primary)"):"rgba(255,255,255,0.04)", color:filterCat===c?"#000":"var(--muted-foreground)", border:filterCat===c?"1px solid transparent":"1px solid rgba(255,255,255,0.08)" }}>
+                    {c === "all" ? "All Types" : (cc?.label ?? c)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Trigger rows */}
+          <div className="space-y-2">
+            {triggered.map(trigger => {
+              const cat = TRIGGER_CATEGORY_COLOR[trigger.category];
+              const dirColor = DIRECTION_COLOR[trigger.direction];
+              const alertOn = alerts.has(trigger.id);
+              return (
+                <div key={trigger.id}
+                  className="flex items-center gap-3 rounded-xl border border-border/25 p-3 transition-all"
+                  style={{ background: alertOn ? `${cat.bg}` : "var(--card)" }}>
+                  {/* Sport + category */}
+                  <div className="flex-shrink-0 text-center">
+                    <span className="text-base">{trigger.icon}</span>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-foreground">{trigger.condition}</span>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                            style={{ background:cat.bg, color:cat.text, border:`1px solid ${cat.text}40` }}>
+                        {cat.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <ArrowRight size={9} style={{ color: dirColor }} />
+                      <span className="text-[11px] font-bold" style={{ color: dirColor }}>{trigger.action}</span>
+                    </div>
+                  </div>
+
+                  {/* Alert toggle */}
+                  <button
+                    onClick={() => toggleAlert(trigger.id)}
+                    title={alertOn ? "Disable notification" : "Enable notification"}
+                    className="flex-shrink-0 p-1.5 rounded-lg transition-all"
+                    style={{ background: alertOn ? `${cat.text}20` : "rgba(255,255,255,0.04)", color: alertOn ? cat.text : "var(--muted-foreground)", border: `1px solid ${alertOn ? cat.text+"40" : "rgba(255,255,255,0.08)"}` }}
+                  >
+                    {alertOn ? <Bell size={12} /> : <BellOff size={12} />}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {triggered.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">No triggers match current filter</p>
+          )}
+
+          {alertCount > 0 && (
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
+              <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
+                <Bell size={10} /> {alertCount} trigger{alertCount!==1?"s":""} active — you'll be notified when matching conditions appear
+              </p>
+              <button onClick={()=>setAlerts(new Set())} className="text-[9px] text-muted-foreground hover:text-foreground mt-1">Clear all alerts</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Thresholds for showing the Research button (must match server)
 const RESEARCH_SPREAD_THRESHOLD = 1.5;
@@ -661,6 +874,9 @@ export default function LineMovement() {
           onClick={() => { setShowErrorsOnly(!showErrorsOnly); if (!showErrorsOnly) { setShowSteamOnly(false); setShowMovedOnly(false); } }}
         />
       </div>
+
+      {/* Sharp Trigger List */}
+      <TriggerList activeSport={sport} />
 
       {/* Sport-specific tip */}
       {sport !== "All" && ["NBA","MLB","NHL","NFL"].includes(sport) && (
