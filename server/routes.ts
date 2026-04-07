@@ -1517,6 +1517,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       predMktCache = { data: results, ts: Date.now() };
+      // Expose to market-signals endpoint via global cache
+      (global as any).__predMktCache = { data: results, ts: Date.now() };
+      // Invalidate market-signals cache so it re-computes with fresh markets
+      MARKET_SIGNALS_CACHE.delete("market-signals");
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -3590,6 +3594,166 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       res.json(errors);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+
+  // ─── Market Signals — overlaps between model picks and prediction markets ──────
+  // Returns a ranked list of bets where our model AND prediction markets agree.
+  // Used to power the "Top Market-Backed Props" dashboard module and BetCard badges.
+  const MARKET_SIGNALS_CACHE = new Map<string, { ts: number; data: any[] }>();
+  const MARKET_SIGNALS_TTL = 60_000; // 1 minute
+
+  app.get("/api/market-signals", async (_req, res) => {
+    try {
+      const cacheKey = "market-signals";
+      const cached = MARKET_SIGNALS_CACHE.get(cacheKey);
+      if (cached && Date.now() - cached.ts < MARKET_SIGNALS_TTL) {
+        return res.json(cached.data);
+      }
+
+      // Pull current open sports bets
+      const allBets = await storage.getBets();
+      const sportsBets = allBets.filter(
+        (b: any) => b.status === "open" &&
+          ["NBA","NFL","MLB","NHL"].includes(b.sport) &&
+          ["player_prop","spread","total","moneyline"].includes(b.betType ?? "")
+      );
+
+      // Fetch prediction markets from cache populated by /api/prediction-markets
+      let predMarkets: any[] = [];
+      try {
+        const pmCached = (global as any).__predMktCache;
+        if (pmCached && Date.now() - pmCached.ts < 120_000) {
+          predMarkets = pmCached.data;
+        }
+      } catch {}
+
+      // Normalize string for fuzzy matching
+      function normStr(s: string): string {
+        return (s ?? "").toLowerCase()
+          .replace(/[^a-z0-9 ]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      // Count word overlap between two normalized strings
+      function wordOverlap(a: string, b: string): number {
+        const wa = new Set(a.split(" ").filter((w: string) => w.length > 2));
+        const wb = b.split(" ").filter((w: string) => w.length > 2);
+        return wb.filter((w: string) => wa.has(w)).length;
+      }
+
+      // Sports-only prediction markets (exclude OTHER / geopolitics / crypto etc.)
+      const sportsMarkets = predMarkets.filter(
+        (m: any) => m.sport && !["OTHER","CRYPTO","POLITICS","WEATHER","MACRO"].includes(m.sport)
+      );
+
+      const signals: any[] = [];
+
+      for (const bet of sportsBets) {
+        const betNorm = normStr(
+          [bet.title, bet.playerName ?? "", bet.homeTeam ?? "", bet.awayTeam ?? ""].join(" ")
+        );
+        let bestMatch: any = null;
+        let bestScore = 0;
+
+        for (const m of sportsMarkets) {
+          // Only match same sport
+          if (bet.sport && m.sport && m.sport !== bet.sport) continue;
+
+          const mNorm = normStr(
+            [m.title, m.event ?? "", ...(m.legs ?? [])].join(" ")
+          );
+          const overlap = wordOverlap(betNorm, mNorm);
+          // Boost if player name words all appear in the market
+          const playerWords = normStr(bet.playerName ?? "").split(" ").filter((w: string) => w.length > 2);
+          const playerHit = playerWords.length > 0 && playerWords.every((w: string) => mNorm.includes(w));
+          const score = playerHit ? overlap + 3 : overlap;
+          if (score >= 2 && score > bestScore) {
+            bestScore = score;
+            bestMatch = m;
+          }
+        }
+
+        if (!bestMatch) continue;
+
+        const yesPrice    = bestMatch.yesPrice   ?? 0.5;
+        const fairPrice   = bestMatch.fairPrice  ?? bestMatch.yesPrice ?? 0.5;
+        const entry       = bestMatch.entry      ?? bestMatch.yesPrice ?? 0.5;
+        const target      = bestMatch.target     ?? Math.min(1, (bestMatch.yesPrice ?? 0.5) + 0.10);
+        const edge        = Math.round((fairPrice - yesPrice) * 100);
+        const priceRating = bestMatch.priceRating ?? "fair";
+        const modelScore  = bet.confidenceScore  ?? 50;
+
+        // Agreement: does the market consensus align with our model pick?
+        const marketBull = yesPrice >= 0.55 || priceRating === "good_buy" || priceRating === "great_buy";
+        const marketBear = yesPrice <= 0.35 || priceRating === "overpriced";
+        let agreement: "confirms" | "disagrees" | "neutral" = "neutral";
+        let agreementStrength = 0;
+        if (marketBull && modelScore >= 70) {
+          agreement = "confirms";
+          agreementStrength = Math.min(100, Math.round(modelScore * 0.5 + yesPrice * 50));
+        } else if (marketBear && modelScore >= 70) {
+          agreement = "disagrees";
+          agreementStrength = Math.min(100, Math.round((1 - yesPrice) * 70));
+        } else {
+          agreementStrength = Math.round(Math.abs(yesPrice - 0.5) * 60);
+        }
+
+        // Combined score: model confidence (50%) + agreement (30%) + whale/edge/vol bonuses (20%)
+        const whaleBonus = bestMatch.isWhaleAlert ? 20 : 0;
+        const edgeBonus  = Math.min(15, Math.max(0, edge));
+        const volBonus   = (bestMatch.vol24h ?? 0) >= 50_000 ? 10 : (bestMatch.vol24h ?? 0) >= 10_000 ? 5 : 0;
+        const combinedScore = Math.min(100, Math.round(
+          modelScore * 0.5 + agreementStrength * 0.3 + whaleBonus + edgeBonus + volBonus
+        ));
+
+        signals.push({
+          betId:            bet.id,
+          betTitle:         bet.title,
+          betSport:         bet.sport,
+          betType:          bet.betType ?? "player_prop",
+          betScore:         modelScore,
+          playerName:       bet.playerName ?? null,
+          homeTeam:         bet.homeTeam  ?? null,
+          awayTeam:         bet.awayTeam  ?? null,
+          gameTime:         bet.gameTime  ?? null,
+          marketId:         bestMatch.id,
+          marketTitle:      bestMatch.title,
+          marketSource:     bestMatch.source,
+          marketSport:      bestMatch.sport,
+          marketUrl:        bestMatch.kalshiUrl ?? null,
+          yesPrice,
+          fairPrice,
+          entry,
+          target,
+          ph1:              bestMatch.ph1 ?? bestMatch.pd1 ?? 0,
+          priceRating,
+          isWhale:          bestMatch.isWhaleAlert  ?? false,
+          smartScore:       bestMatch.smartScore    ?? 0,
+          vol24h:           bestMatch.vol24h        ?? 0,
+          crossValidated:   bestMatch.crossValidated ?? false,
+          agreement,
+          agreementStrength,
+          combinedScore,
+          edge,
+        });
+      }
+
+      // Sort: confirms first, then by combinedScore desc
+      signals.sort((a: any, b: any) => {
+        if (a.agreement === "confirms" && b.agreement !== "confirms") return -1;
+        if (a.agreement !== "confirms" && b.agreement === "confirms") return 1;
+        return b.combinedScore - a.combinedScore;
+      });
+
+      const top = signals.slice(0, 25);
+      MARKET_SIGNALS_CACHE.set(cacheKey, { ts: Date.now(), data: top });
+      res.json(top);
+    } catch (e: any) {
+      console.warn("[market-signals] error:", e.message);
+      res.json([]);
     }
   });
 

@@ -584,6 +584,107 @@ export function getTeamPath(bracket: FullBracket, teamId: string): MatchupResult
   return results;
 }
 
+// ── Playoff bracket generator (NBA/NHL/MLB 16-team format) ──────────────────
+// Teams are organized into 4 "regions" (conference halves), each with 4 teams.
+// Seeds within each region: 1, 8, 4, 5 (top half) or 2, 7, 3, 6 (bottom half)
+// Round names match the actual sport terminology.
+
+function simulatePlayoffConferenceHalf(
+  region: Region,
+  allTeams: NCAATeam[],
+  roundNames: string[],
+  lockedChampionId?: string
+): GeneratedBracket {
+  const teams = allTeams.filter(t => t.region === region).sort((a, b) => a.seed - b.seed);
+  const rounds: BracketRound[] = [];
+
+  if (teams.length < 2) {
+    return { region, rounds: [], regionWinner: teams[0] ?? allTeams[0] };
+  }
+
+  // First round: highest seed vs lowest seed in the group
+  const sorted = [...teams].sort((a, b) => a.seed - b.seed);
+  const r1matchups: MatchupResult[] = [];
+  // Pair: best vs worst, second-best vs second-worst
+  for (let i = 0; i < Math.floor(sorted.length / 2); i++) {
+    const teamA = sorted[i];
+    const teamB = sorted[sorted.length - 1 - i];
+    r1matchups.push(calculateMatchupWithLock(teamA, teamB, lockedChampionId));
+  }
+  rounds.push({ round: 1, name: roundNames[0] ?? "First Round", matchups: r1matchups });
+
+  // Subsequent rounds: winners advance
+  let prevWinners = r1matchups.map(m => m.winner);
+  let roundIdx = 2;
+  while (prevWinners.length > 1) {
+    const roundMatchups: MatchupResult[] = [];
+    for (let i = 0; i < prevWinners.length; i += 2) {
+      if (prevWinners[i] && prevWinners[i + 1]) {
+        roundMatchups.push(calculateMatchupWithLock(prevWinners[i], prevWinners[i + 1], lockedChampionId));
+      }
+    }
+    rounds.push({ round: roundIdx, name: roundNames[roundIdx - 1] ?? `Round ${roundIdx}`, matchups: roundMatchups });
+    prevWinners = roundMatchups.map(m => m.winner);
+    roundIdx++;
+  }
+
+  const regionWinner = prevWinners[0] ?? teams[0];
+  return { region, rounds, regionWinner };
+}
+
+/**
+ * Generate a playoff bracket for NBA/NHL/MLB with custom teams.
+ * Teams should be split across 4 "regions" = conference halves:
+ *   East = East Conference top half, West = West Conference top half
+ *   Midwest = East Conference bottom half, South = West Conference bottom half
+ * roundNames: labels for each round e.g. ["First Round", "Second Round", "Conference Finals", "Finals"]
+ */
+export function generatePlayoffBracket(
+  teams: NCAATeam[],
+  roundNames: string[],
+  finalRoundNames: string[],
+  lockedChampionId?: string
+): FullBracket {
+  const PLAYOFF_REGIONS: Region[] = ["East", "West", "Midwest", "South"];
+  const regions = PLAYOFF_REGIONS.map(r =>
+    simulatePlayoffConferenceHalf(r, teams, roundNames, lockedChampionId)
+  );
+
+  // Conference Finals: East-half winner vs East-half winner (Midwest)
+  // West-half winner vs West-half winner (South)
+  const eastWinner    = regions.find(r => r.region === "East")!.regionWinner;
+  const midwestWinner = regions.find(r => r.region === "Midwest")!.regionWinner;
+  const westWinner    = regions.find(r => r.region === "West")!.regionWinner;
+  const southWinner   = regions.find(r => r.region === "South")!.regionWinner;
+
+  const conf1 = calculateMatchupWithLock(eastWinner, midwestWinner, lockedChampionId);
+  const conf2 = calculateMatchupWithLock(westWinner, southWinner, lockedChampionId);
+
+  const finalFour: BracketRound = {
+    round: roundNames.length,
+    name: finalRoundNames[0] ?? "Conference Finals",
+    matchups: [conf1, conf2],
+  };
+
+  const championship = calculateMatchupWithLock(conf1.winner, conf2.winner, lockedChampionId);
+
+  const allMatchups = [
+    ...regions.flatMap(r => r.rounds.flatMap(rd => rd.matchups)),
+    ...finalFour.matchups,
+    championship,
+  ];
+  const avgConfidence = allMatchups.reduce((s, m) => s + m.confidenceScore, 0) / (allMatchups.length || 1);
+
+  return {
+    regions,
+    finalFour,
+    championship,
+    champion: championship.winner,
+    generatedAt: new Date().toISOString(),
+    confidenceScore: Math.round(avgConfidence),
+  };
+}
+
 // Round name helper
 export const ROUND_NAMES: Record<number, string> = {
   1: "Round of 64",

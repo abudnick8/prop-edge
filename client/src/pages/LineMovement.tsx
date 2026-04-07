@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
+import { CheatSheetButton, CheatSheetInline } from "@/components/CheatSheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -566,16 +567,19 @@ export default function LineMovement() {
             {lastUpdated && <span className="ml-2 text-muted-foreground/50">· updated {lastUpdated}</span>}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          className="gap-1.5"
-          data-testid="button-refresh-lines"
-        >
-          <RefreshCw size={13} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <CheatSheetButton initialSection="spread" label="How to Read" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            className="gap-1.5"
+            data-testid="button-refresh-lines"
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary stat bar */}
@@ -658,6 +662,11 @@ export default function LineMovement() {
         />
       </div>
 
+      {/* Sport-specific tip */}
+      {sport !== "All" && ["NBA","MLB","NHL","NFL"].includes(sport) && (
+        <CheatSheetInline section={sport.toLowerCase() as any} />
+      )}
+
       {/* Book Errors Section */}
       {showErrorsOnly && (
         <BookErrorsSection errors={bookErrors as BookError[]} />
@@ -710,6 +719,7 @@ export default function LineMovement() {
           <span className="flex items-center gap-1"><Users size={9} /> = % of bets (public tickets)</span>
           <span className="flex items-center gap-1"><DollarSign size={9} /> = % of money (sharp signal)</span>
           <span className="flex items-center gap-1"><span className="text-green-400">Green $</span> = 65%+ sharp money on that side</span>
+          <CheatSheetButton initialSection="universal" variant="ghost" label="Full Cheat Sheet →" />
         </div>
       )}
     </div>

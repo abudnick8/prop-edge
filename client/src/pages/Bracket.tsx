@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2 } from "lucide-react";
-import { generateBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2, Calendar, CheckCircle, Clock } from "lucide-react";
+import { generateBracket, generatePlayoffBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
+import { getVisibleTournaments, Tournament } from "@/data/tournamentCalendar";
+import { PLAYOFF_TEAMS_REGISTRY } from "@/data/playoffData";
 
 // ── Confidence Ring ────────────────────────────────────────────────────────
 function ConfidenceRing({ score, size = 40 }: { score: number; size?: number }) {
@@ -29,7 +31,7 @@ function ProbBar({ prob, teamA, teamB }: { prob: number; teamA: string; teamB: s
       <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
         <span>{teamA} {pA}%</span>
         <span>{teamB} {pB}%</span>
-      </div>
+     </div>
       <div className="flex h-1.5 rounded-full overflow-hidden">
         <div className="bg-primary transition-all" style={{ width: `${pA}%` }} />
         <div className="bg-muted-foreground/30 transition-all" style={{ width: `${pB}%` }} />
@@ -229,7 +231,7 @@ function ModeSelector({
           <div>
             <p className="font-bold text-foreground text-sm">Full AI Generate</p>
             <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Let the model simulate every game using odds, KenPom efficiency, pace matchups &amp; upset factors.
+              Let the model simulate every game using odds, efficiency, pace matchups &amp; upset factors.
             </p>
           </div>
         </button>
@@ -256,9 +258,13 @@ function ModeSelector({
 
 // ── Champion picker ────────────────────────────────────────────────────────
 function ChampionPicker({
+  teams,
+  regions,
   onConfirm,
   onBack,
 }: {
+  teams: NCAATeam[];
+  regions: Region[];
   onConfirm: (team: NCAATeam) => void;
   onBack: () => void;
 }) {
@@ -267,18 +273,17 @@ function ChampionPicker({
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
-    return ALL_TEAMS
-      .filter(t => !t.id.includes("prairie-view") && !t.id.includes("lehigh") && !t.id.includes("howard") && !t.id.includes("umbc") && !t.id.includes("miami-oh") && !t.id.includes("smu") && !t.id.includes("texas") && !t.id.includes("nc-state") || ALL_TEAMS.find(x=>x.id===t.id)) // include all
+    return teams
       .filter(t => regionFilter === "All" || t.region === regionFilter)
       .filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.shortName.toLowerCase().includes(search.toLowerCase()))
       .sort((a, b) => {
-        const regionOrder: Region[] = ["East", "West", "Midwest", "South"];
-        const rA = regionOrder.indexOf(a.region), rB = regionOrder.indexOf(b.region);
+        const regionOrder = regions;
+        const rA = regionOrder.indexOf(a.region as Region), rB = regionOrder.indexOf(b.region as Region);
         return rA !== rB ? rA - rB : a.seed - b.seed;
       });
-  }, [regionFilter, search]);
+  }, [regionFilter, search, teams, regions]);
 
-  const selected = ALL_TEAMS.find(t => t.id === selectedId);
+  const selected = teams.find(t => t.id === selectedId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -305,7 +310,7 @@ function ChampionPicker({
             />
           </div>
           <div className="flex gap-1 overflow-x-auto pb-0.5">
-            {(["All", ...REGIONS] as (Region | "All")[]).map(r => (
+            {(["All", ...regions] as (Region | "All")[]).map(r => (
               <button
                 key={r}
                 onClick={() => setRegionFilter(r)}
@@ -367,10 +372,176 @@ function ChampionPicker({
   );
 }
 
+// ── Tournament Selector Card ───────────────────────────────────────────────
+function TournamentCard({
+  tournament,
+  isSelected,
+  onClick,
+}: {
+  tournament: Tournament;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const statusColor = {
+    active: "text-green-400 bg-green-500/10 border-green-500/20",
+    upcoming: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+    completed: "text-muted-foreground bg-muted/50 border-border",
+  }[tournament.status];
+
+  const statusLabel = {
+    active: "LIVE",
+    upcoming: `In ${tournament.daysUntilStart}d`,
+    completed: "FINAL",
+  }[tournament.status];
+
+  const statusIcon = {
+    active: <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />,
+    upcoming: <Clock size={9} />,
+    completed: <CheckCircle size={9} />,
+  }[tournament.status];
+
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-start gap-1 p-3 rounded-xl border transition-all text-left shrink-0 w-36 ${
+        isSelected
+          ? "border-primary/60 bg-primary/10 ring-1 ring-primary/30"
+          : tournament.status === "completed"
+          ? "border-border bg-muted/30 opacity-70 hover:opacity-90"
+          : "border-border bg-card hover:border-primary/30"
+      }`}
+    >
+      {/* Status badge */}
+      <span className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor}`}>
+        {statusIcon}
+        {statusLabel}
+      </span>
+
+      {/* Emoji + name */}
+      <div className="flex items-center gap-1.5 mt-0.5">
+        <span className="text-lg leading-none">{tournament.emoji}</span>
+        <p className="text-xs font-bold text-foreground leading-tight">{tournament.shortName}</p>
+      </div>
+
+      <p className="text-[9px] text-muted-foreground leading-tight line-clamp-2">{tournament.teamsCount} teams · {tournament.sport}</p>
+
+      {/* Lock icon for completed */}
+      {tournament.status === "completed" && (
+        <Lock size={11} className="text-muted-foreground mt-0.5" />
+      )}
+
+      {/* Accent underline for selected */}
+      {isSelected && (
+        <div
+          className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full"
+          style={{ backgroundColor: tournament.highlightColor }}
+        />
+      )}
+    </button>
+  );
+}
+
+// ── Get team data for a tournament ────────────────────────────────────────
+function getTeamsForTournament(tournament: Tournament): { teams: NCAATeam[]; regions: Region[] } {
+  if (tournament.dataKey === "ncaab_2026") {
+    return { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] };
+  }
+  const playoffTeams = PLAYOFF_TEAMS_REGISTRY[tournament.dataKey] ?? [];
+  return { teams: playoffTeams, regions: ["East", "West", "Midwest", "South"] as Region[] };
+}
+
+// ── Round names per tournament format ─────────────────────────────────────
+function getRoundNames(tournament: Tournament): { round: string[]; final: string[] } {
+  if (tournament.sport === "NBA") {
+    return {
+      round: ["First Round", "Second Round"],
+      final: ["Conference Finals", "NBA Finals"],
+    };
+  }
+  if (tournament.sport === "NHL") {
+    return {
+      round: ["First Round", "Second Round"],
+      final: ["Conference Finals", "Stanley Cup Finals"],
+    };
+  }
+  if (tournament.sport === "MLB") {
+    return {
+      round: ["Wild Card", "Division Series", "Championship Series"],
+      final: ["League Championship", "World Series"],
+    };
+  }
+  if (tournament.sport === "NFL") {
+    return {
+      round: ["Wild Card", "Divisional"],
+      final: ["Conference Championship", "Super Bowl"],
+    };
+  }
+  return {
+    round: ["Round of 64", "Round of 32", "Sweet 16", "Elite Eight"],
+    final: ["Final Four", "National Championship"],
+  };
+}
+
+// ── Get region labels per tournament ──────────────────────────────────────
+function getRegionLabels(tournament: Tournament): Record<Region, string> {
+  if (tournament.sport === "NBA") {
+    return {
+      East: "East — Top Half",
+      Midwest: "East — Bottom Half",
+      West: "West — Top Half",
+      South: "West — Bottom Half",
+    };
+  }
+  if (tournament.sport === "NHL") {
+    return {
+      East: "Atlantic Division",
+      Midwest: "Metropolitan Division",
+      West: "Central Division",
+      South: "Pacific Division",
+    };
+  }
+  return {
+    East: "East",
+    Midwest: "Midwest",
+    West: "West",
+    South: "South",
+  };
+}
+
+// ── Get Final Four label per tournament ───────────────────────────────────
+function getFinalFourLabel(tournament: Tournament, index: number): string {
+  if (tournament.sport === "NBA") return index === 0 ? "East Conference Finals" : "West Conference Finals";
+  if (tournament.sport === "NHL") return index === 0 ? "East Conference Finals" : "West Conference Finals";
+  if (tournament.sport === "MLB") return index === 0 ? "AL Championship Series" : "NL Championship Series";
+  if (tournament.sport === "NFL") return index === 0 ? "AFC Championship" : "NFC Championship";
+  return index === 0 ? "Semifinal 1 — East vs West" : "Semifinal 2 — Midwest vs South";
+}
+
 // ── Main Bracket page ──────────────────────────────────────────────────────
 type BracketView = "bracket" | "teams" | "upsets" | "compare" | "analytics";
 
 export default function Bracket() {
+  // Tournament state
+  const visibleTournaments = useMemo(() => getVisibleTournaments(), []);
+  // Default to first non-completed tournament, or first overall
+  const defaultTournament = useMemo(() => {
+    return visibleTournaments.find(t => t.status !== "completed") ?? visibleTournaments[0];
+  }, [visibleTournaments]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string>(defaultTournament?.id ?? "");
+  const selectedTournament = useMemo(
+    () => visibleTournaments.find(t => t.id === selectedTournamentId) ?? visibleTournaments[0],
+    [visibleTournaments, selectedTournamentId]
+  );
+
+  // Teams for the selected tournament
+  const { teams: currentTeams, regions: currentRegions } = useMemo(
+    () => (selectedTournament ? getTeamsForTournament(selectedTournament) : { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] }),
+    [selectedTournament]
+  );
+
+  const isLocked = selectedTournament?.status === "completed";
+  const isUpcoming = selectedTournament?.status === "upcoming";
+
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(false);
@@ -385,12 +556,33 @@ export default function Bracket() {
   const [compareResult, setCompareResult] = useState<MatchupResult | null>(null);
   const [teamPathTeam, setTeamPathTeam] = useState<NCAATeam | null>(null);
 
-  const runGenerate = (championId?: string) => {
+  // When tournament switches, clear the bracket
+  const handleSelectTournament = (id: string) => {
+    setSelectedTournamentId(id);
+    setBracket(null);
+    setLockedChampion(null);
+    setCompareTeamA(null);
+    setCompareTeamB(null);
+    setCompareResult(null);
+    setTeamPathTeam(null);
+    setActiveView("bracket");
+    setSelectedRegion("East");
+  };
+
+  const runGenerate = (tournamentId: string, championId?: string) => {
     setShowModeSelector(false);
     setShowChampionPicker(false);
     setGenerating(true);
     setTimeout(() => {
-      const result = generateBracket(championId);
+      const t = visibleTournaments.find(x => x.id === tournamentId) ?? selectedTournament;
+      let result: FullBracket;
+      if (t?.dataKey === "ncaab_2026") {
+        result = generateBracket(championId);
+      } else {
+        const { teams } = getTeamsForTournament(t!);
+        const { round, final } = getRoundNames(t!);
+        result = generatePlayoffBracket(teams, round, final, championId);
+      }
       setBracket(result);
       setGenerating(false);
     }, 800);
@@ -400,7 +592,7 @@ export default function Bracket() {
 
   const handleFullGenerate = () => {
     setLockedChampion(null);
-    runGenerate(undefined);
+    runGenerate(selectedTournamentId, undefined);
   };
 
   const handlePickWinner = () => {
@@ -410,21 +602,21 @@ export default function Bracket() {
 
   const handleConfirmChampion = (team: NCAATeam) => {
     setLockedChampion(team);
-    runGenerate(team.id);
+    runGenerate(selectedTournamentId, team.id);
   };
 
   const upsets = useMemo(() => bracket ? getUpsetPicks(bracket) : [], [bracket]);
 
   const filteredTeams = useMemo(() => {
-    if (!searchQuery) return ALL_TEAMS;
+    if (!searchQuery) return currentTeams;
     const q = searchQuery.toLowerCase();
-    return ALL_TEAMS.filter(t =>
+    return currentTeams.filter(t =>
       t.name.toLowerCase().includes(q) ||
       t.shortName.toLowerCase().includes(q) ||
       t.region.toLowerCase().includes(q) ||
       t.playStyle.some(s => s.includes(q))
     );
-  }, [searchQuery]);
+  }, [searchQuery, currentTeams]);
 
   const handleCompare = () => {
     if (compareTeamA && compareTeamB) {
@@ -448,6 +640,21 @@ export default function Bracket() {
     return bracket.regions.find(r => r.region === selectedRegion);
   }, [bracket, selectedRegion]);
 
+  const regionLabels = useMemo(
+    () => selectedTournament ? getRegionLabels(selectedTournament) : getRegionLabels({ sport: "NCAAB" } as Tournament),
+    [selectedTournament]
+  );
+
+  const totalGames = useMemo(() => {
+    // 16-team = 15 games, 68-team = 63 games
+    if (!selectedTournament) return 63;
+    if (selectedTournament.teamsCount === 68) return 63;
+    if (selectedTournament.teamsCount === 16) return 15;
+    if (selectedTournament.teamsCount === 14) return 13;
+    if (selectedTournament.teamsCount === 12) return 11;
+    return selectedTournament.teamsCount - 1;
+  }, [selectedTournament]);
+
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       {/* Modals */}
@@ -459,11 +666,33 @@ export default function Bracket() {
           onClose={() => setShowModeSelector(false)}
         />
       )}
-      {showChampionPicker && (
+      {showChampionPicker && selectedTournament && (
         <ChampionPicker
+          teams={currentTeams}
+          regions={currentRegions}
           onConfirm={handleConfirmChampion}
           onBack={() => { setShowChampionPicker(false); setShowModeSelector(true); }}
         />
+      )}
+
+      {/* ── Tournament Selector ── */}
+      {visibleTournaments.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Calendar size={14} className="text-muted-foreground" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Active Tournaments</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {visibleTournaments.map(t => (
+              <TournamentCard
+                key={t.id}
+                tournament={t}
+                isSelected={t.id === selectedTournamentId}
+                onClick={() => handleSelectTournament(t.id)}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -471,12 +700,18 @@ export default function Bracket() {
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <Trophy size={20} className="text-primary" />
-            March Madness 2026
+            {selectedTournament?.name ?? "Bracket Simulator"}
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">AI-powered bracket generator · {ALL_TEAMS.length} teams</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {isLocked
+              ? "🏆 Tournament complete — bracket is locked"
+              : isUpcoming
+              ? `Starts in ${selectedTournament.daysUntilStart} days · ${currentTeams.length} teams`
+              : `AI-powered bracket generator · ${currentTeams.length} teams`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          {bracket && (
+          {bracket && !isLocked && (
             <button
               onClick={() => setActiveView("analytics")}
               className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm font-semibold hover:border-primary/50 hover:text-primary transition-all"
@@ -485,19 +720,66 @@ export default function Bracket() {
               <BarChart2 size={13} /> Analytics
             </button>
           )}
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-60 shadow-lg"
-          >
-            {generating ? (
-              <><RefreshCw size={14} className="animate-spin" /> Simulating...</>
-            ) : (
-              <><Zap size={14} /> {bracket ? "Re-Generate" : "Generate Bracket"}</>
-            )}
-          </button>
+          {/* Generate button — disabled for completed/upcoming tournaments */}
+          {isLocked ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
+              <Lock size={14} /> Locked
+            </div>
+          ) : isUpcoming ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
+              <Clock size={14} /> Starts in {selectedTournament?.daysUntilStart}d
+            </div>
+          ) : (
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-60 shadow-lg"
+            >
+              {generating ? (
+                <><RefreshCw size={14} className="animate-spin" /> Simulating...</>
+              ) : (
+                <><Zap size={14} /> {bracket ? "Re-Generate" : "Generate Bracket"}</>
+              )}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Locked tournament banner */}
+      {isLocked && (
+        <div className="bg-muted/40 border border-border rounded-xl p-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <Lock size={16} className="text-muted-foreground" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-foreground text-sm">Tournament Complete</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              {selectedTournament?.name} has concluded. The bracket is now locked — no new simulations can be generated.
+              {selectedTournament?.sport === "NCAAB" && " Check the NBA &amp; NHL Playoffs tabs to simulate the upcoming playoff brackets."}
+            </p>
+          </div>
+          <CheckCircle size={18} className="text-muted-foreground shrink-0 mt-0.5" />
+        </div>
+      )}
+
+      {/* Upcoming tournament banner */}
+      {isUpcoming && !isLocked && (
+        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+            <Clock size={16} className="text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-foreground text-sm flex items-center gap-2">
+              {selectedTournament?.name}
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">UPCOMING</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Starts <strong className="text-foreground">{selectedTournament?.startDate}</strong> — {selectedTournament?.daysUntilStart} days away.
+              You can preview matchups now using projected seedings, or wait until the bracket is set.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Locked champion badge */}
       {lockedChampion && bracket && (
@@ -507,7 +789,7 @@ export default function Bracket() {
             Locked Pick: <span className="font-bold text-foreground">{lockedChampion.name}</span> ({lockedChampion.seed}-seed) as champion
           </span>
           <button
-            onClick={() => { setLockedChampion(null); runGenerate(undefined); }}
+            onClick={() => { setLockedChampion(null); runGenerate(selectedTournamentId, undefined); }}
             className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <X size={11} /> Remove
@@ -515,23 +797,24 @@ export default function Bracket() {
         </div>
       )}
 
-      {/* Info banner pre-generate */}
-      {!bracket && !generating && (
+      {/* Info banner pre-generate (not locked, not yet generated) */}
+      {!bracket && !generating && !isLocked && (
         <div className="bg-card border border-border rounded-xl p-5 text-center space-y-3">
           <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-            <Trophy size={24} className="text-primary" />
+            <span className="text-2xl">{selectedTournament?.emoji ?? "🏆"}</span>
           </div>
           <div>
             <p className="font-bold text-foreground">Comprehensive Bracket Analysis</p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Our model combines sportsbook championship odds, adjusted efficiency margins, scoring differential, pace/style matchups, recent form, and strength of schedule to predict every game.
+              Our model combines sportsbook championship odds, adjusted efficiency margins, scoring differential,
+              pace/style matchups, recent form, and strength of schedule to predict every game.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-[10px]">
             {[
-              { label: "Championship Odds", desc: "DraftKings market-implied probability", pct: "30%" },
-              { label: "Efficiency Margin", desc: "KenPom-style adj. offense & defense", pct: "25%" },
-              { label: "Style Matchup", desc: "Pace, paint vs. perimeter, turnovers", pct: "20%" },
+              { label: "Championship Odds", desc: "Market-implied probability", pct: "30%" },
+              { label: "Efficiency Margin", desc: "Adjusted offense & defense", pct: "25%" },
+              { label: "Style Matchup", desc: "Pace, paint vs. perimeter", pct: "20%" },
             ].map(f => (
               <div key={f.label} className="bg-muted/50 rounded-lg p-2">
                 <p className="font-bold text-primary">{f.pct}</p>
@@ -560,13 +843,13 @@ export default function Bracket() {
       {generating && (
         <div className="bg-card border border-border rounded-xl p-8 text-center space-y-3">
           <RefreshCw size={32} className="text-primary animate-spin mx-auto" />
-          <p className="font-bold text-foreground">Simulating 63 games...</p>
-          <p className="text-xs text-muted-foreground">Analyzing matchups across all 4 regions</p>
+          <p className="font-bold text-foreground">Simulating {totalGames} games...</p>
+          <p className="text-xs text-muted-foreground">Analyzing matchups across all {currentRegions.length} brackets</p>
         </div>
       )}
 
       {/* Bracket generated */}
-      {bracket && !generating && (
+      {bracket && !generating && !isLocked && (
         <>
           {/* Nav tabs */}
           <div className="flex gap-1 bg-muted rounded-lg p-1">
@@ -588,7 +871,7 @@ export default function Bracket() {
             <div className="space-y-4">
               {/* Region selector */}
               <div className="flex gap-1 overflow-x-auto pb-1">
-                {REGIONS.map(r => {
+                {currentRegions.map(r => {
                   const rData = bracket.regions.find(rd => rd.region === r);
                   return (
                     <button
@@ -596,7 +879,7 @@ export default function Bracket() {
                       onClick={() => setSelectedRegion(r)}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${selectedRegion === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
                     >
-                      {r}
+                      {regionLabels[r] ?? r}
                       {rData && <span className="ml-1 text-[9px] opacity-70">({rData.regionWinner.shortName})</span>}
                     </button>
                   );
@@ -609,7 +892,7 @@ export default function Bracket() {
                   <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-3 border border-border">
                     <Trophy size={16} className="text-primary shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-muted-foreground">Region Winner</p>
+                      <p className="text-[10px] text-muted-foreground">{regionLabels[selectedRegion] ?? selectedRegion} Winner</p>
                       <p className="font-bold text-foreground text-sm truncate">{regionData.regionWinner.name}</p>
                     </div>
                     <span className="text-xs font-mono text-primary">+{regionData.regionWinner.championshipOdds.toLocaleString()}</span>
@@ -636,13 +919,21 @@ export default function Bracket() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="h-px flex-1 bg-border" />
-                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">Final Four</span>
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">
+                    {selectedTournament?.sport === "NBA" || selectedTournament?.sport === "NHL"
+                      ? "Conference Finals"
+                      : selectedTournament?.sport === "NFL"
+                      ? "Conference Championships"
+                      : "Final Four"}
+                  </span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
                 <div className="grid grid-cols-1 gap-2">
                   {bracket.finalFour.matchups.map((m, i) => (
                     <div key={i} className="space-y-1">
-                      <p className="text-[9px] text-muted-foreground px-1 font-semibold uppercase">{i === 0 ? "Semifinal 1 — East vs West" : "Semifinal 2 — Midwest vs South"}</p>
+                      <p className="text-[9px] text-muted-foreground px-1 font-semibold uppercase">
+                        {getFinalFourLabel(selectedTournament!, i)}
+                      </p>
                       <MatchupCard result={m} />
                     </div>
                   ))}
@@ -652,7 +943,13 @@ export default function Bracket() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="h-px flex-1 bg-border" />
-                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">Championship Game</span>
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wide px-2">
+                    {selectedTournament?.sport === "NBA" ? "NBA Finals"
+                      : selectedTournament?.sport === "NHL" ? "Stanley Cup Finals"
+                      : selectedTournament?.sport === "MLB" ? "World Series"
+                      : selectedTournament?.sport === "NFL" ? "Super Bowl"
+                      : "Championship Game"}
+                  </span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
                 <MatchupCard result={bracket.championship} />
@@ -681,7 +978,7 @@ export default function Bracket() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search teams, regions, play styles..."
+                  placeholder="Search teams, play styles..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
@@ -711,19 +1008,19 @@ export default function Bracket() {
 
               {/* Region filter */}
               <div className="flex gap-1 overflow-x-auto pb-1">
-                {REGIONS.map(r => (
+                {currentRegions.map(r => (
                   <button
                     key={r}
                     onClick={() => setSelectedRegion(r)}
                     className={`flex-shrink-0 px-3 py-1 rounded-lg text-xs font-medium transition-all ${selectedRegion === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                   >
-                    {r}
+                    {regionLabels[r] ?? r}
                   </button>
                 ))}
               </div>
 
               <div className="grid grid-cols-1 gap-2">
-                {filteredTeams.filter(t => !searchQuery || t.region === selectedRegion || searchQuery.length > 0)
+                {filteredTeams
                   .filter(t => searchQuery || t.region === selectedRegion)
                   .map(t => (
                     <TeamProfileCard key={t.id} team={t} onMatchup={handleTeamMatchup} />
@@ -746,7 +1043,7 @@ export default function Bracket() {
               ) : (
                 upsets.map((u, i) => (
                   <div key={i} className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground px-1">{u.winner.region} Region · {ROUND_NAMES[Math.ceil(Math.log2(64 / u.winner.seed))]}</p>
+                    <p className="text-[10px] text-muted-foreground px-1">{u.winner.region} · {ROUND_NAMES[Math.ceil(Math.log2(64 / u.winner.seed))]}</p>
                     <MatchupCard result={u} />
                   </div>
                 ))
@@ -790,13 +1087,19 @@ export default function Bracket() {
                 </div>
               </div>
 
-              {/* Final Four Predictions */}
+              {/* Final Four / Conference Finals Predictions */}
               <div className="bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">Final Four Predictions</p>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">
+                  {selectedTournament?.sport === "NBA" || selectedTournament?.sport === "NHL"
+                    ? "Conference Finals"
+                    : "Final Four Predictions"}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   {bracket.finalFour.matchups.map((m, i) => (
                     <div key={i} className="bg-muted/50 rounded-lg p-2.5 space-y-1.5">
-                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">{i === 0 ? "East vs West" : "Midwest vs South"}</p>
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">
+                        {getFinalFourLabel(selectedTournament!, i)}
+                      </p>
                       <div className="flex items-center gap-1.5">
                         <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center">{m.winner.seed}</span>
                         <span className="text-xs font-bold text-foreground truncate">{m.winner.shortName}</span>
@@ -812,7 +1115,11 @@ export default function Bracket() {
                 </div>
                 {/* Championship */}
                 <div className="mt-3 pt-3 border-t border-border">
-                  <p className="text-[9px] text-muted-foreground font-semibold uppercase mb-2">Championship Game</p>
+                  <p className="text-[9px] text-muted-foreground font-semibold uppercase mb-2">
+                    {selectedTournament?.sport === "NBA" ? "NBA Finals"
+                      : selectedTournament?.sport === "NHL" ? "Stanley Cup Finals"
+                      : "Championship Game"}
+                  </p>
                   <MatchupCard result={bracket.championship} />
                 </div>
               </div>
@@ -842,13 +1149,15 @@ export default function Bracket() {
                 )}
               </div>
 
-              {/* Region Winners */}
+              {/* Region / Conference Winners */}
               <div className="bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">Region Winners</p>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">
+                  {selectedTournament?.sport === "NBA" || selectedTournament?.sport === "NHL" ? "Division Winners" : "Region Winners"}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   {bracket.regions.map(r => (
                     <div key={r.region} className="bg-muted/50 rounded-lg p-3 space-y-1">
-                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">{r.region}</p>
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">{regionLabels[r.region as Region] ?? r.region}</p>
                       <div className="flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-[9px] font-bold flex items-center justify-center shrink-0">{r.regionWinner.seed}</span>
                         <span className="text-xs font-bold text-foreground truncate">{r.regionWinner.shortName}</span>
@@ -874,12 +1183,12 @@ export default function Bracket() {
                     <select
                       className="w-full px-2 py-2 bg-muted border border-border rounded-lg text-xs text-foreground"
                       value={value?.id ?? ""}
-                      onChange={e => set(ALL_TEAMS.find(t => t.id === e.target.value) ?? null)}
+                      onChange={e => set(currentTeams.find(t => t.id === e.target.value) ?? null)}
                     >
                       <option value="">Select team...</option>
-                      {REGIONS.map(r => (
-                        <optgroup key={r} label={r}>
-                          {ALL_TEAMS.filter(t => t.region === r).sort((a,b) => a.seed - b.seed).map(t => (
+                      {currentRegions.map(r => (
+                        <optgroup key={r} label={regionLabels[r] ?? r}>
+                          {currentTeams.filter(t => t.region === r).sort((a,b) => a.seed - b.seed).map(t => (
                             <option key={t.id} value={t.id}>{t.seed}. {t.name}</option>
                           ))}
                         </optgroup>

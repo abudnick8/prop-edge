@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 import { useBookErrors, BookErrorsFilterButton, BookErrorsSection } from "@/components/BookErrors";
+import { CheatSheetButton } from "@/components/CheatSheet";
 
 interface Stats {
   total: number;
@@ -613,12 +614,39 @@ function HowToRead() {
         <div className="flex items-center gap-2.5">
           <BookOpen size={15} className="text-primary" />
           <span className="text-sm font-semibold text-foreground">How to Read This App</span>
-          <span className="text-xs text-muted-foreground hidden sm:inline">— betting terms explained</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">— betting terms &amp; smart money explained</span>
         </div>
         {open ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
       </button>
       {open && (
-        <div className="px-5 pb-5 pt-3 bg-card border-t border-border">
+        <div className="px-5 pb-5 pt-3 bg-card border-t border-border space-y-4">
+          {/* Smart money quick reference */}
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-foreground flex items-center gap-2">⚡ Smart Money Quick Reference</p>
+              <CheatSheetButton initialSection="howtoread" variant="pill" label="Full Guide" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
+              <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 space-y-1">
+                <p className="font-bold text-green-400">✓ Sharp Signal</p>
+                <p className="text-muted-foreground">% money <span className="font-bold text-foreground">&gt;&gt;</span> % bets</p>
+                <p className="text-muted-foreground">Line moves same direction as money</p>
+              </div>
+              <div className="bg-red-500/5 border border-red-500/15 rounded-lg p-2.5 space-y-1">
+                <p className="font-bold text-red-400">✗ Public/Fade</p>
+                <p className="text-muted-foreground">% bets <span className="font-bold text-foreground">&gt;&gt;</span> % money</p>
+                <p className="text-muted-foreground">Heavy ticket side — fading is the play</p>
+              </div>
+              <div className="bg-muted/30 border border-border rounded-lg p-2.5 space-y-1">
+                <p className="font-bold text-muted-foreground">— Neutral</p>
+                <p className="text-muted-foreground">% bets ≈ % money</p>
+                <p className="text-muted-foreground">No strong signal — skip or use other data</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground"><span className="text-foreground font-semibold">Spread</span> = strongest signal · <span className="text-foreground font-semibold">Totals</span> = medium · <span className="text-foreground font-semibold">Moneyline</span> = weakest</p>
+          </div>
+
+          {/* Betting terms */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {TERMS.map((t) => (
               <div key={t.term} className="bg-muted/30 rounded-lg p-3.5 border border-border/60">

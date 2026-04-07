@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info } from "lucide-react";
 import { addWsListener } from "@/hooks/useWebSocket";
+import { CheatSheetButton } from "@/components/CheatSheet";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from "recharts";
@@ -643,12 +644,15 @@ export default function PredictionMarkets() {
       <div className="mb-5">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-black text-foreground tracking-tight">Prediction Markets</h1>
-          <button
-            onClick={() => { refetch(); setLastRefresh(Date.now()); }}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
-          >
-            <RefreshCw size={12} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <CheatSheetButton initialSection="howtoread" label="How to Read" />
+            <button
+              onClick={() => { refetch(); setLastRefresh(Date.now()); }}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
+            >
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">
           Kalshi + Polymarket + Manifold · 30s refresh ·{" "}

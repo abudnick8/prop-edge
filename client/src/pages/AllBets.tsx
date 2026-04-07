@@ -19,6 +19,7 @@ import { Search, Filter, SlidersHorizontal, Calendar, Trophy, TrendingUp, Trendi
 import { Input } from "@/components/ui/input";
 import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
 import { useBookErrors, BookErrorsFilterButton, BookErrorsSection } from "@/components/BookErrors";
+import { CheatSheetButton } from "@/components/CheatSheet";
 
 const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NCAAF", "Golf"];
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
@@ -510,6 +511,7 @@ export default function AllBets() {
               <SlidersHorizontal size={14} />
               Filters
             </button>
+            <CheatSheetButton initialSection="howtoread" label="How to Read" />
             <BookErrorsFilterButton
               active={showErrorsOnly}
               count={(bookErrors as any[]).length}
