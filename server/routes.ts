@@ -1448,6 +1448,38 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return `${dir} ${resolved}`;
       }
 
+      // Extract a human-readable game matchup from a Kalshi event ticker.
+      // Tickers look like: KXNBA-25-BOS-LAL, KXNHL-26-TOR-BOS, KXMLB-25-NYM-ATL, etc.
+      function gameFromEventTicker(ticker: string, sport?: string): string | null {
+        if (!ticker) return null;
+        // Strip the leading "KX<SPORT>-YY-" prefix, leaving "AWAY-HOME" team codes
+        const m = ticker.match(/^KX(?:NBA|NHL|MLB|NFL|NCAAB|NCAAF)?[-_]?\d*[-_]?([A-Z]{2,4})[-_]([A-Z]{2,4})/i);
+        if (m) {
+          const away = m[1].toUpperCase();
+          const home = m[2].toUpperCase();
+          // Try to resolve abbreviations to full team names
+          const sp = (sport ?? "").toUpperCase() as keyof typeof TEAM_FULL_NAME;
+          const fullAway = TEAM_FULL_NAME[sp]?.[away] ?? away;
+          const fullHome = TEAM_FULL_NAME[sp]?.[home] ?? home;
+          return `${fullAway} @ ${fullHome}`;
+        }
+        // Fallback: try splitting on last two dash/underscore segments
+        const parts = ticker.split(/[-_]/).filter(Boolean);
+        if (parts.length >= 2) {
+          const last2 = parts.slice(-2);
+          if (last2.every(p => /^[A-Z]{2,4}$/.test(p))) {
+            return `${last2[0]} @ ${last2[1]}`;
+          }
+        }
+        return null;
+      }
+
+      // Detect a bare game total leg: "Over 205.5 points scored", "Under 6.5 runs", etc.
+      // Returns true if the leg text is a game-level total with no team context.
+      function isBareTotal(legText: string): boolean {
+        return /^(?:over|under)\s+[\d.]+\s+(?:points?|runs?|goals?|runs?|pts?)(?:\s+scored)?$/i.test(legText.trim());
+      }
+
       function cleanKalshiTitle(
         raw: string,
         mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>,
@@ -1484,7 +1516,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const mveLeg = mveLegs?.[i];
             const statTicker = mveLeg?.market_ticker ?? mveLeg?.event_ticker ?? "";
             const stat = kalshiStatFromTicker(statTicker);
-            return `${dir} ${name} ${line}${stat ? " " + stat : ""}`;
+            const builtLeg = `${dir} ${name} ${line}${stat ? " " + stat : ""}`;
+            // If this is a bare game total (no team context), append the matchup from event_ticker
+            const bareCondition = `${name} ${line}${stat ? " " + stat : ""}`;
+            if (isBareTotal(bareCondition) && mveLeg?.event_ticker) {
+              const game = gameFromEventTicker(mveLeg.event_ticker, sport);
+              if (game) return `${dir} ${bareCondition} (${game})`;
+            }
+            return builtLeg;
           }).filter((leg): leg is string => leg !== null && leg.trim() !== "");
 
           if (rawLegs.length < 1) {

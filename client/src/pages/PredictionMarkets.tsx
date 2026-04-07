@@ -9,6 +9,34 @@ import {
 } from "recharts";
 
 
+// ── Detect a bare game total leg with no matchup context ──
+// e.g. "Over 205.5 points scored" — needs a game label appended
+const BARE_TOTAL_RE = /^(?:over|under)\s+[\d.]+\s+(?:points?|runs?|goals?|pts?)(?:\s+scored)?$/i;
+
+function annotateLegWithContext(
+  legText: string,
+  allLegs: string[],
+  legIndex: number
+): { text: string; isBareTotal: boolean } {
+  if (!BARE_TOTAL_RE.test(legText.trim())) return { text: legText, isBareTotal: false };
+
+  // Try to find a team-win leg to infer the game — look for other legs that name teams
+  const teamWinRe = /^(.+?)\s+to\s+Win/i;
+  const winLegs = allLegs
+    .map(l => l.replace(/^(YES|NO)\s+/i, "").trim())
+    .filter(l => teamWinRe.test(l));
+
+  // If exactly 2 team-win legs found in the combo, deduce this is THEIR game total
+  if (winLegs.length === 2) {
+    const t1 = (winLegs[0].match(teamWinRe)?.[1] ?? "").replace(/\s*\(\w+\)$/, "").trim();
+    const t2 = (winLegs[1].match(teamWinRe)?.[1] ?? "").replace(/\s*\(\w+\)$/, "").trim();
+    return { text: `${legText} (${t1} vs ${t2})`, isBareTotal: true };
+  }
+
+  // Can't determine — mark it so we render a context warning
+  return { text: legText, isBareTotal: true };
+}
+
 // ── Client-side title parser (fallback for raw strings that slipped through) ──
 function parseRawTitle(title: string, isParlay?: boolean, legs?: string[] | null): { displayLegs: string[] | null; summaryTitle: string } {
   if (isParlay && legs && legs.length > 0) return { displayLegs: legs, summaryTitle: title };
@@ -198,7 +226,8 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                     <div className="flex flex-col gap-2">
                       {displayLegs.map((leg, i) => {
                         const isYes = leg.startsWith("YES");
-                        const legText = leg.replace(/^(YES|NO)\s+/, "");
+                        const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
+                        const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
                         return (
                           <div key={i} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-[12px] ${
                             isYes
@@ -214,6 +243,9 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                               <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
                                 {legText}
                               </span>
+                              {isBareTotal && !legText.includes("(") && (
+                                <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
+                              )}
                             </div>
                           </div>
                         );
@@ -486,7 +518,8 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                   <div className="flex flex-col gap-1">
                     {shown.map((leg, i) => {
                       const isYes = leg.startsWith("YES");
-                      const legText = leg.replace(/^(YES|NO)\s+/, "");
+                      const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
+                      const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
                       return (
                         <div key={i} className="flex items-start gap-1.5 text-[11px]">
                           <span className={`shrink-0 font-black text-[9px] px-1.5 py-0.5 rounded mt-0.5 tracking-wide ${
@@ -494,7 +527,12 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                           }`}>
                             {isYes ? "YES" : "NO"}
                           </span>
-                          <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground"}`}>{legText}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground"}`}>{legText}</span>
+                            {isBareTotal && !legText.includes("(") && (
+                              <span className="block text-[9px] text-amber-400/70 mt-0.5">⚠ game total — tap to see matchup</span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
