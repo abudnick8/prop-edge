@@ -1286,7 +1286,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {(["standard","ppr","half_ppr","superflex","dynasty","bestball"] as FormatTab[]).map(f=>(
                 <button key={f} onClick={()=>setFormat(f)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
-                  style={{background:format===f?"var(--primary)":"rgba(255,255,255,0.04)",color:format===f?"#000":"var(--muted-foreground)",border:format===f?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:format===f?"#facc15":"rgba(255,255,255,0.04)",color:format===f?"#000":"var(--muted-foreground)",border:format===f?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                   {({standard:"Standard",ppr:"PPR",half_ppr:"Half-PPR",superflex:"Superflex",dynasty:"Dynasty",bestball:"Best Ball"})[f]}
                 </button>
               ))}

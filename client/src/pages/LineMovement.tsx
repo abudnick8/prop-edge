@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -112,9 +112,13 @@ const DIRECTION_COLOR: Record<string, string> = {
   play:  "#f59e0b",
 };
 
-function TriggerList({ activeSport }: { activeSport: string }) {
+function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
+  activeSport: string;
+  alerts: Set<string>;
+  toggleAlert: (id: string) => void;
+  clearAlerts: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const [alerts, setAlerts] = useState<Set<string>>(new Set());
   const [filterCat, setFilterCat] = useState<string>("all");
   const [filterSport, setFilterSport] = useState<string>(activeSport === "All" ? "all" : activeSport);
 
@@ -127,14 +131,6 @@ function TriggerList({ activeSport }: { activeSport: string }) {
   }, [filterSport, filterCat]);
 
   const alertCount = alerts.size;
-
-  function toggleAlert(id: string) {
-    setAlerts(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
 
   const cats = ["all", "injury", "weather", "lineup", "schedule", "steam"];
   const sports = ["all", "NBA", "MLB", "NHL", "NFL"];
@@ -262,7 +258,7 @@ function TriggerList({ activeSport }: { activeSport: string }) {
               <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
                 <Bell size={10} /> {alertCount} trigger{alertCount!==1?"s":""} active — you'll be notified when matching conditions appear
               </p>
-              <button onClick={()=>setAlerts(new Set())} className="text-[9px] text-muted-foreground hover:text-foreground mt-1">Clear all alerts</button>
+              <button onClick={clearAlerts} className="text-[9px] text-muted-foreground hover:text-foreground mt-1">Clear all alerts</button>
             </div>
           )}
         </div>
@@ -719,6 +715,24 @@ export default function LineMovement() {
   const [showMovedOnly, setShowMovedOnly] = useState(false);
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
 
+  // Lifted trigger alert state — shared between header bell and TriggerList
+  const [triggerAlerts, setTriggerAlerts] = useState<Set<string>>(new Set());
+  const triggerListRef = useRef<HTMLDivElement>(null);
+
+  const toggleTriggerAlert = useCallback((id: string) => {
+    setTriggerAlerts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearTriggerAlerts = useCallback(() => setTriggerAlerts(new Set()), []);
+
+  function scrollToTriggers() {
+    triggerListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const { data: games = [], isLoading, dataUpdatedAt, refetch, isFetching } = useQuery<GameLine[]>({
     queryKey: ["/api/line-movement"],
     queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
@@ -782,6 +796,31 @@ export default function LineMovement() {
         </div>
         <div className="flex items-center gap-2">
           <CheatSheetButton initialSection="spread" label="How to Read" />
+          {/* Trigger alert bell — page-level, always visible */}
+          <button
+            onClick={scrollToTriggers}
+            title={triggerAlerts.size > 0 ? `${triggerAlerts.size} trigger alert${triggerAlerts.size !== 1 ? "s" : ""} active` : "Sharp trigger alerts"}
+            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+            style={{
+              background: triggerAlerts.size > 0 ? "rgba(250,204,21,0.12)" : "rgba(255,255,255,0.04)",
+              border: triggerAlerts.size > 0 ? "1px solid rgba(250,204,21,0.45)" : "1px solid rgba(255,255,255,0.12)",
+              color: triggerAlerts.size > 0 ? "#facc15" : "var(--muted-foreground)",
+              boxShadow: triggerAlerts.size > 0 ? "0 0 10px rgba(250,204,21,0.3)" : "none",
+            }}
+          >
+            {triggerAlerts.size > 0
+              ? <Bell size={13} className="animate-pulse" />
+              : <BellOff size={13} />}
+            <span className="hidden sm:inline">Trigger Alerts</span>
+            {triggerAlerts.size > 0 && (
+              <span
+                className="flex items-center justify-center rounded-full text-[10px] font-black w-4 h-4"
+                style={{ background: "#facc15", color: "#000" }}
+              >
+                {triggerAlerts.size}
+              </span>
+            )}
+          </button>
           <Button
             variant="outline"
             size="sm"
@@ -876,7 +915,14 @@ export default function LineMovement() {
       </div>
 
       {/* Sharp Trigger List */}
-      <TriggerList activeSport={sport} />
+      <div ref={triggerListRef}>
+        <TriggerList
+          activeSport={sport}
+          alerts={triggerAlerts}
+          toggleAlert={toggleTriggerAlert}
+          clearAlerts={clearTriggerAlerts}
+        />
+      </div>
 
       {/* Sport-specific tip */}
       {sport !== "All" && ["NBA","MLB","NHL","NFL"].includes(sport) && (
