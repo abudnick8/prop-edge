@@ -992,216 +992,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         };
       }
 
-      // ── Sport classifier ──────────────────────────────────────────────────
-      function classifySport(title: string, tags: string[], category: string): string {
-        const t = title.toLowerCase();
-        const c = (category ?? "").toLowerCase();
-        const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
-        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(allText)) return "NFL";
-        if (/\bnba\b|basketball|lebron|durant|curry|celtics|lakers|knicks|heat|bucks/.test(allText)) return "NBA";
-        if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher|batter|mets|yankees|dodgers|cubs/.test(allText)) return "MLB";
-        if (/\bnhl\b|hockey|stanley cup|puck|goal.*scored|mcdavid|ovechkin|crosby/.test(allText)) return "NHL";
-        return "Other";
-      }
-
-      // ── 1. Polymarket — fetch /markets sorted by liquidity (top 150 per sport category) ──
-      // Uses /markets endpoint directly (not events) so we get all price-change fields.
-      // Fetches 600 top-liquidity markets across all categories, then caps at 150 per sport.
-      const polyEventMap = new Map<string, number>(); // normalised title → yesPrice for cross-validation
-      try {
-        // Parallel batches:
-        //   batch1 — top 100 by liquidity (most popular markets)
-        //   batch2 — top 100 by volume24hr (most traded today = most likely to have whales)
-        //   batch3 — markets closing soonest (today/imminent events first)
-        //   batch4 — next 100 by volume24hr (catch more active markets)
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const [batch1, batch2, batch3, batch4] = await Promise.allSettled([
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "liquidity",  ascending: false }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "end_date_min", ascending: true,  endDateMin: todayIso }, timeout: 12000 }),
-          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false, offset: 100 }, timeout: 12000 }),
-        ]);
-
-        // Merge and deduplicate by market id
-        const seenIds = new Set<string>();
-        const allMarkets: any[] = [];
-        for (const batch of [batch1, batch2, batch3, batch4]) {
-          if (batch.status !== "fulfilled") continue;
-          const data = batch.value.data;
-          const mkts = Array.isArray(data) ? data : (data?.markets ?? []);
-          for (const m of mkts) {
-            const uid = m.id ?? m.conditionId ?? m.questionID;
-            if (uid && !seenIds.has(String(uid))) {
-              seenIds.add(String(uid));
-              allMarkets.push(m);
-            }
-          }
-        }
-        console.log(`[pred-mkt] Polymarket raw markets: ${allMarkets.length}`);
-
-        // Classify and bucket by sport, then cap at PER_CATEGORY_LIMIT each
-        const buckets: Record<string, any[]> = { NFL: [], NBA: [], MLB: [], NHL: [], Other: [] };
-        for (const m of allMarkets) {
-          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
-          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
-          if ((buckets[sport]?.length ?? 0) < PER_CATEGORY_LIMIT) {
-            buckets[sport].push(m);
-          }
-        }
-        const cappedMarkets = Object.values(buckets).flat();
-        console.log(`[pred-mkt] Polymarket after 150/category cap: ${cappedMarkets.length} markets`);
-
-        // Collect YES token IDs for CLOB mid-price enrichment
-        const conditionIds: string[] = [];
-        for (const m of cappedMarkets) {
-          if (m.conditionId) conditionIds.push(m.conditionId);
-        }
-        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 80));
-
-        for (const m of cappedMarkets) {
-          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
-          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
-
-          const yesPrice = parseFloat(m.lastTradePrice ?? (m.outcomePrices?.[0] ?? 0.5));
-          // Skip near-resolved markets: <2¢ or >98¢ means the outcome is essentially decided
-          if (isNaN(yesPrice) || yesPrice < 0.02 || yesPrice > 0.98) continue;
-          const noPrice  = 1 - yesPrice;
-          const bestBid  = parseFloat(m.bestBid  ?? 0) || yesPrice - 0.01;
-          const bestAsk  = parseFloat(m.bestAsk  ?? 0) || yesPrice + 0.01;
-          const spread   = Math.max(0, bestAsk - bestBid);
-
-          // ── Volume: use volume24hr (correct field), fall back to volume24hrClob
-          const vol24h   = parseFloat(m.volume24hr ?? m.volume24hrClob ?? m.volume ?? 0);
-          const vol1wk   = parseFloat(m.volume1wk  ?? m.volume1wkClob  ?? 1);
-          const dailyAvg = vol1wk / 7;
-          const volSpike = dailyAvg > 100 ? vol24h / dailyAvg : (vol24h > 0 ? 3.1 : 1);
-
-          // ── Price changes
-          const ph1 = parseFloat(m.oneHourPriceChange ?? 0) || 0;
-          const pd1 = parseFloat(m.oneDayPriceChange  ?? 0) || 0;
-          const pw1 = parseFloat(m.oneWeekPriceChange ?? 0) || 0;
-
-          // ── Whale detection: single large purchase — vol24hr >= $100K only ──
-          // A real whale is a single institution putting $100K+ into one market
-          // in one day. Price-move signals alone are noise on illiquid markets.
-          const isWhaleAlert = vol24h >= WHALE_ABS_VOL;
-
-          // Direction: rising 24h price = YES pressure, falling = NO pressure
-          const priceMove = ph1 !== 0 ? ph1 : pd1;
-          const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
-          const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
-
-          // smartScore = % of $500K cap — so $100K=20, $250K=50, $500K+=100
-          // Calibrated to sports market reality: $500K in one day is a massive position
-          const smartScore = isWhaleAlert
-            ? Math.min(100, Math.round((vol24h / 500_000) * 100))
-            : 0;
-
-          const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
-          const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid, { isWhale: isWhaleAlert });
-
-          // Build cross-validation map
-          const normKey = (m.question ?? m.groupItemTitle ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-          if (normKey) polyEventMap.set(normKey, yesPrice);
-
-          // Parse clobTokenIds for history endpoint
-          let yesTokenId: string | null = null;
-          try {
-            const tokenIds = JSON.parse(m.clobTokenIds ?? "[]");
-            yesTokenId = Array.isArray(tokenIds) && tokenIds.length > 0 ? String(tokenIds[0]) : null;
-          } catch { /* keep null */ }
-
-          // Event info (markets endpoint nests event data in m.events array)
-          const evTitle = (m.events ?? [])[0]?.title ?? m.question ?? m.groupItemTitle ?? "";
-          const evSlug  = (m.events ?? [])[0]?.slug ?? m.slug ?? "";
-          const evEndDate = (m.events ?? [])[0]?.endDate ?? m.endDate ?? null;
-
-          results.push({
-            id:               `poly-${m.id}`,
-            source:           "polymarket",
-            title:            m.question ?? m.groupItemTitle,
-            event:            evTitle,
-            sport,
-            yesPrice,
-            noPrice,
-            bestBid,
-            bestAsk,
-            spread:           Math.round(spread * 1000) / 10,
-            vol24h,
-            volSpike:         Math.round(volSpike * 10) / 10,
-            ph1:              Math.round(ph1 * 1000) / 10,
-            pd1:              Math.round(pd1 * 1000) / 10,
-            pw1:              Math.round(pw1 * 1000) / 10,
-            liquidityNum:     parseFloat(m.liquidityNum ?? m.liquidity ?? 0),
-            yesTokenId,
-            ...rating,
-            isWhaleAlert,
-            whaleDirection,
-            whalePriceMovePct,
-            smartScore,
-            gameTime:         evEndDate,
-            polyUrl:          `https://polymarket.com/event/${evSlug || m.id}`,
-            crossValidated:   false,
-            crossPrice:       null,
-            crossSource:      null,
-            crossDelta:       null,
-          });
-        }
-      } catch (e: any) {
-        console.warn("[pred-mkt] Polymarket error:", e.message);
-      }
-
-      // ── Kalshi title cleaner ────────────────────────────────────────────────
-      // Kalshi multi-game market titles are raw comma-joined strings like:
-      //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
-      // We parse these into a human-readable label + structured legs array.
-      // Decode Kalshi ticker prefix → human-readable stat category
-      function kalshiStatFromTicker(ticker: string): string {
-        const t = (ticker ?? "").toUpperCase();
-        // NBA player props
-        if (t.includes("NBAREBAST")) return "REB+AST";  // must check before REB/AST
-        if (t.includes("NBAPRA"))   return "PTS+REB+AST";
-        if (t.includes("NBAPTS"))   return "PTS";
-        if (t.includes("NBAAST"))   return "AST";
-        if (t.includes("NBAREB"))   return "REB";
-        if (t.includes("NBASTL"))   return "STL";
-        if (t.includes("NBABLK"))   return "BLK";
-        if (t.includes("NBA3PM") || t.includes("NBA3PT")) return "3PT";
-        if (t.includes("NBAFG") || t.includes("NBAFGM"))  return "FGM";
-        if (t.includes("NBATOV") || t.includes("NBATO"))  return "TOV";
-        if (t.includes("NBAMIN"))   return "MIN";
-        if (t.includes("NBA") && (t.includes("PTS") || t.includes("POINT"))) return "PTS";
-        if (t.includes("NBA") && (t.includes("AST") || t.includes("ASSIST"))) return "AST";
-        if (t.includes("NBA") && (t.includes("REB") || t.includes("REBOUND"))) return "REB";
-        // NFL player props
-        if (t.includes("NFLTD"))    return "TD";
-        if (t.includes("NFLPASS") || t.includes("NFLPYD")) return "PASS YDS";
-        if (t.includes("NFLRUSH") || t.includes("NFLRYD")) return "RUSH YDS";
-        if (t.includes("NFLREC") || t.includes("NFLRECYD")) return "REC YDS";
-        if (t.includes("NFLCOMPLETION") || t.includes("NFLCOMP")) return "COMP";
-        if (t.includes("NFLINT"))   return "INT";
-        if (t.includes("NFLSCK") || t.includes("NFLSACK")) return "SACK";
-        // MLB player props
-        if (t.includes("MLBHR"))    return "HR";
-        if (t.includes("MLBRBI"))   return "RBI";
-        if (t.includes("MLBK") && !t.includes("MLBKI")) return "K";
-        if (t.includes("MLBHIT"))   return "HITS";
-        if (t.includes("MLBSB"))    return "SB";
-        if (t.includes("MLBR") && !t.includes("MLBRBI")) return "RUNS";
-        // NHL player props
-        if (t.includes("NHLGOAL"))  return "GOALS";
-        if (t.includes("NHLAST") || t.includes("NHLASSIST")) return "ASSISTS";
-        if (t.includes("NHLSHOT"))  return "SHOTS";
-        if (t.includes("NHLPOINT") || t.includes("NHLPTS")) return "PTS";
-        // Generic fallback: if it's a player-prop market (contains a number threshold)
-        // we still want to show SOMETHING rather than nothing
-        if (t.includes("NBA") || t.includes("KQMB")) return "PROP";
-        if (t.includes("NFL")) return "PROP";
-        if (t.includes("MLB")) return "PROP";
-        if (t.includes("NHL")) return "PROP";
-        return "";  // Non-player-prop — don't append anything
-      }
-
       // ── City/nickname → Full team name lookup ─────────────────────────────
       // Covers every city or short name that prediction markets use.
       // When a leg is just "Boston" we resolve it to the full franchise name
@@ -1383,6 +1173,252 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return raw; // no match — return as-is
       }
 
+      // ── Sport classifier ──────────────────────────────────────────────────
+      function classifySport(title: string, tags: string[], category: string): string {
+        const t = title.toLowerCase();
+        const c = (category ?? "").toLowerCase();
+        const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
+        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(allText)) return "NFL";
+        if (/\bnba\b|basketball|lebron|durant|curry|celtics|lakers|knicks|heat|bucks/.test(allText)) return "NBA";
+        if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher|batter|mets|yankees|dodgers|cubs/.test(allText)) return "MLB";
+        if (/\bnhl\b|hockey|stanley cup|puck|goal.*scored|mcdavid|ovechkin|crosby/.test(allText)) return "NHL";
+        // Extended team-name detection using TEAM_FULL_NAME lookup table
+        // This fires AFTER the abbreviation/keyword checks above
+        try {
+          const NBA_TEAMS = Object.keys(TEAM_FULL_NAME.NBA).map(k => k.toLowerCase());
+          const MLB_TEAMS = Object.keys(TEAM_FULL_NAME.MLB).map(k => k.toLowerCase());
+          const NHL_TEAMS = Object.keys(TEAM_FULL_NAME.NHL).map(k => k.toLowerCase());
+          const NFL_TEAMS = Object.keys(TEAM_FULL_NAME.NFL).map(k => k.toLowerCase());
+          // Use word-boundary matching so "heat" in "heated" doesn't trigger NBA
+          const wordBoundary = (k: string) => new RegExp("\\b" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+          if (NBA_TEAMS.some(k => wordBoundary(k).test(allText))) return "NBA";
+          if (MLB_TEAMS.some(k => wordBoundary(k).test(allText))) return "MLB";
+          if (NHL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NHL";
+          if (NFL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NFL";
+        } catch { /* TEAM_FULL_NAME not yet in scope — fall through */ }
+        return "Other";
+      }
+
+      // Resolve a raw Polymarket question/title so city-only or nickname team references
+      // become full franchise names.  e.g. "Will Boston win?" → "Will Boston Celtics win?"
+      function resolvePolymarketTitle(rawTitle: string): string {
+        if (!rawTitle) return rawTitle;
+        // Look for city/nickname patterns — swap them out for full names
+        // Try all sports in priority order (NBA first since most active)
+        for (const sport of ["NBA","NHL","MLB","NFL"] as const) {
+          const table = TEAM_FULL_NAME[sport];
+          for (const [key, full] of Object.entries(table)) {
+            // Only replace standalone city/nickname words (word-boundary), skip if already full name
+            if (full === key) continue; // already the full name — nothing to expand
+            if (rawTitle.includes(full)) continue; // full name already present
+            const re = new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "g");
+            if (re.test(rawTitle)) {
+              // Replace but only if this is the first/only sport match to avoid double-replacing
+              return rawTitle.replace(re, full);
+            }
+          }
+        }
+        return rawTitle;
+      }
+
+      // ── 1. Polymarket — fetch /markets sorted by liquidity (top 150 per sport category) ──
+      // Uses /markets endpoint directly (not events) so we get all price-change fields.
+      // Fetches 600 top-liquidity markets across all categories, then caps at 150 per sport.
+      const polyEventMap = new Map<string, number>(); // normalised title → yesPrice for cross-validation
+      try {
+        // Parallel batches:
+        //   batch1 — top 100 by liquidity (most popular markets)
+        //   batch2 — top 100 by volume24hr (most traded today = most likely to have whales)
+        //   batch3 — markets closing soonest (today/imminent events first)
+        //   batch4 — next 100 by volume24hr (catch more active markets)
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const [batch1, batch2, batch3, batch4] = await Promise.allSettled([
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "liquidity",  ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "end_date_min", ascending: true,  endDateMin: todayIso }, timeout: 12000 }),
+          axios.get(`${POLY_BASE}/markets`, { params: { limit: 100, active: true, closed: false, archived: false, order: "volume24hr", ascending: false, offset: 100 }, timeout: 12000 }),
+        ]);
+
+        // Merge and deduplicate by market id
+        const seenIds = new Set<string>();
+        const allMarkets: any[] = [];
+        for (const batch of [batch1, batch2, batch3, batch4]) {
+          if (batch.status !== "fulfilled") continue;
+          const data = batch.value.data;
+          const mkts = Array.isArray(data) ? data : (data?.markets ?? []);
+          for (const m of mkts) {
+            const uid = m.id ?? m.conditionId ?? m.questionID;
+            if (uid && !seenIds.has(String(uid))) {
+              seenIds.add(String(uid));
+              allMarkets.push(m);
+            }
+          }
+        }
+        console.log(`[pred-mkt] Polymarket raw markets: ${allMarkets.length}`);
+
+        // Classify and bucket by sport, then cap at PER_CATEGORY_LIMIT each
+        const buckets: Record<string, any[]> = { NFL: [], NBA: [], MLB: [], NHL: [], Other: [] };
+        for (const m of allMarkets) {
+          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
+          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
+          if ((buckets[sport]?.length ?? 0) < PER_CATEGORY_LIMIT) {
+            buckets[sport].push(m);
+          }
+        }
+        const cappedMarkets = Object.values(buckets).flat();
+        console.log(`[pred-mkt] Polymarket after 150/category cap: ${cappedMarkets.length} markets`);
+
+        // Collect YES token IDs for CLOB mid-price enrichment
+        const conditionIds: string[] = [];
+        for (const m of cappedMarkets) {
+          if (m.conditionId) conditionIds.push(m.conditionId);
+        }
+        const clobMids = await fetchClobMidPrices(conditionIds.slice(0, 80));
+
+        for (const m of cappedMarkets) {
+          const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
+          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
+
+          const yesPrice = parseFloat(m.lastTradePrice ?? (m.outcomePrices?.[0] ?? 0.5));
+          // Skip near-resolved markets: <2¢ or >98¢ means the outcome is essentially decided
+          if (isNaN(yesPrice) || yesPrice < 0.02 || yesPrice > 0.98) continue;
+          const noPrice  = 1 - yesPrice;
+          const bestBid  = parseFloat(m.bestBid  ?? 0) || yesPrice - 0.01;
+          const bestAsk  = parseFloat(m.bestAsk  ?? 0) || yesPrice + 0.01;
+          const spread   = Math.max(0, bestAsk - bestBid);
+
+          // ── Volume: use volume24hr (correct field), fall back to volume24hrClob
+          const vol24h   = parseFloat(m.volume24hr ?? m.volume24hrClob ?? m.volume ?? 0);
+          const vol1wk   = parseFloat(m.volume1wk  ?? m.volume1wkClob  ?? 1);
+          const dailyAvg = vol1wk / 7;
+          const volSpike = dailyAvg > 100 ? vol24h / dailyAvg : (vol24h > 0 ? 3.1 : 1);
+
+          // ── Price changes
+          const ph1 = parseFloat(m.oneHourPriceChange ?? 0) || 0;
+          const pd1 = parseFloat(m.oneDayPriceChange  ?? 0) || 0;
+          const pw1 = parseFloat(m.oneWeekPriceChange ?? 0) || 0;
+
+          // ── Whale detection: single large purchase — vol24hr >= $100K only ──
+          // A real whale is a single institution putting $100K+ into one market
+          // in one day. Price-move signals alone are noise on illiquid markets.
+          const isWhaleAlert = vol24h >= WHALE_ABS_VOL;
+
+          // Direction: rising 24h price = YES pressure, falling = NO pressure
+          const priceMove = ph1 !== 0 ? ph1 : pd1;
+          const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
+          const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
+
+          // smartScore = % of $500K cap — so $100K=20, $250K=50, $500K+=100
+          // Calibrated to sports market reality: $500K in one day is a massive position
+          const smartScore = isWhaleAlert
+            ? Math.min(100, Math.round((vol24h / 500_000) * 100))
+            : 0;
+
+          const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
+          const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid, { isWhale: isWhaleAlert });
+
+          // Build cross-validation map
+          const normKey = (m.question ?? m.groupItemTitle ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+          if (normKey) polyEventMap.set(normKey, yesPrice);
+
+          // Parse clobTokenIds for history endpoint
+          let yesTokenId: string | null = null;
+          try {
+            const tokenIds = JSON.parse(m.clobTokenIds ?? "[]");
+            yesTokenId = Array.isArray(tokenIds) && tokenIds.length > 0 ? String(tokenIds[0]) : null;
+          } catch { /* keep null */ }
+
+          // Event info (markets endpoint nests event data in m.events array)
+          const evTitle = (m.events ?? [])[0]?.title ?? m.question ?? m.groupItemTitle ?? "";
+          const evSlug  = (m.events ?? [])[0]?.slug ?? m.slug ?? "";
+          const evEndDate = (m.events ?? [])[0]?.endDate ?? m.endDate ?? null;
+
+          results.push({
+            id:               `poly-${m.id}`,
+            source:           "polymarket",
+            title:            resolvePolymarketTitle(m.question ?? m.groupItemTitle ?? ""),
+            event:            evTitle,
+            sport,
+            yesPrice,
+            noPrice,
+            bestBid,
+            bestAsk,
+            spread:           Math.round(spread * 1000) / 10,
+            vol24h,
+            volSpike:         Math.round(volSpike * 10) / 10,
+            ph1:              Math.round(ph1 * 1000) / 10,
+            pd1:              Math.round(pd1 * 1000) / 10,
+            pw1:              Math.round(pw1 * 1000) / 10,
+            liquidityNum:     parseFloat(m.liquidityNum ?? m.liquidity ?? 0),
+            yesTokenId,
+            ...rating,
+            isWhaleAlert,
+            whaleDirection,
+            whalePriceMovePct,
+            smartScore,
+            gameTime:         evEndDate,
+            polyUrl:          `https://polymarket.com/event/${evSlug || m.id}`,
+            crossValidated:   false,
+            crossPrice:       null,
+            crossSource:      null,
+            crossDelta:       null,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[pred-mkt] Polymarket error:", e.message);
+      }
+
+      // ── Kalshi title cleaner ────────────────────────────────────────────────
+      // Kalshi multi-game market titles are raw comma-joined strings like:
+      //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
+      // We parse these into a human-readable label + structured legs array.
+      // Decode Kalshi ticker prefix → human-readable stat category
+      function kalshiStatFromTicker(ticker: string): string {
+        const t = (ticker ?? "").toUpperCase();
+        // NBA player props
+        if (t.includes("NBAREBAST")) return "REB+AST";  // must check before REB/AST
+        if (t.includes("NBAPRA"))   return "PTS+REB+AST";
+        if (t.includes("NBAPTS"))   return "PTS";
+        if (t.includes("NBAAST"))   return "AST";
+        if (t.includes("NBAREB"))   return "REB";
+        if (t.includes("NBASTL"))   return "STL";
+        if (t.includes("NBABLK"))   return "BLK";
+        if (t.includes("NBA3PM") || t.includes("NBA3PT")) return "3PT";
+        if (t.includes("NBAFG") || t.includes("NBAFGM"))  return "FGM";
+        if (t.includes("NBATOV") || t.includes("NBATO"))  return "TOV";
+        if (t.includes("NBAMIN"))   return "MIN";
+        if (t.includes("NBA") && (t.includes("PTS") || t.includes("POINT"))) return "PTS";
+        if (t.includes("NBA") && (t.includes("AST") || t.includes("ASSIST"))) return "AST";
+        if (t.includes("NBA") && (t.includes("REB") || t.includes("REBOUND"))) return "REB";
+        // NFL player props
+        if (t.includes("NFLTD"))    return "TD";
+        if (t.includes("NFLPASS") || t.includes("NFLPYD")) return "PASS YDS";
+        if (t.includes("NFLRUSH") || t.includes("NFLRYD")) return "RUSH YDS";
+        if (t.includes("NFLREC") || t.includes("NFLRECYD")) return "REC YDS";
+        if (t.includes("NFLCOMPLETION") || t.includes("NFLCOMP")) return "COMP";
+        if (t.includes("NFLINT"))   return "INT";
+        if (t.includes("NFLSCK") || t.includes("NFLSACK")) return "SACK";
+        // MLB player props
+        if (t.includes("MLBHR"))    return "HR";
+        if (t.includes("MLBRBI"))   return "RBI";
+        if (t.includes("MLBK") && !t.includes("MLBKI")) return "K";
+        if (t.includes("MLBHIT"))   return "HITS";
+        if (t.includes("MLBSB"))    return "SB";
+        if (t.includes("MLBR") && !t.includes("MLBRBI")) return "RUNS";
+        // NHL player props
+        if (t.includes("NHLGOAL"))  return "GOALS";
+        if (t.includes("NHLAST") || t.includes("NHLASSIST")) return "ASSISTS";
+        if (t.includes("NHLSHOT"))  return "SHOTS";
+        if (t.includes("NHLPOINT") || t.includes("NHLPTS")) return "PTS";
+        // Generic fallback: if it's a player-prop market (contains a number threshold)
+        // we still want to show SOMETHING rather than nothing
+        if (t.includes("NBA") || t.includes("KQMB")) return "PROP";
+        if (t.includes("NFL")) return "PROP";
+        if (t.includes("MLB")) return "PROP";
+        if (t.includes("NHL")) return "PROP";
+        return "";  // Non-player-prop — don't append anything
+      }
+
       function annotateTeamLeg(legText: string, dir: string, sport: string): string {
         // If the leg is just a team name (no colon, no stat number, no condition words)
         // e.g. "Boston", "Minnesota", "Arsenal", "Oklahoma City"
@@ -1390,12 +1426,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const hasNumber     = /\d/.test(legText);
         const hasCondition  = /wins|beats|covers|over|under|leads|scores|advances|moneyline|spread|ml\b/i.test(legText);
         if (!hasColon && !hasNumber && !hasCondition) {
-          // Plain team name — resolve to full franchise name then annotate
-          const fullName = resolveFullTeamName(legText, sport);
-          const sportLabel = sport && sport !== "OTHER" ? ` (${sport})` : "";
+          // Plain team name — resolve to full franchise name, detecting sport if needed
+          const s = (sport || "OTHER").toUpperCase();
+          let fullName = resolveFullTeamName(legText, sport);
+          // Determine sport label: if sport was OTHER/unknown, detect it from the resolved name
+          let detectedSport = s !== "OTHER" ? s : null;
+          if (!detectedSport) {
+            for (const sp of ["NBA","NHL","MLB","NFL"] as const) {
+              if (Object.values(TEAM_FULL_NAME[sp]).includes(fullName)) {
+                detectedSport = sp;
+                break;
+              }
+            }
+          }
+          // Never show "(Other)" — only append sport label when it adds value
+          const sportLabel = detectedSport && detectedSport !== "OTHER" ? ` (${detectedSport})` : "";
           return `${dir} ${fullName} to Win${sportLabel}`;
         }
-        return `${dir} ${legText}`;
+        // Has condition words already — just clean up any city-only team names inline
+        const resolved = resolvePolymarketTitle(legText);
+        return `${dir} ${resolved}`;
       }
 
       function cleanKalshiTitle(
