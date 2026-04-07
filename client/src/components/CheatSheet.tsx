@@ -415,7 +415,7 @@ function SportTotalSection({ sport }: { sport: "nba" | "mlb" | "nhl" | "nfl" }) 
 // Main drawer
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CheatSheetDrawer({
+export function CheatSheetDrawer({
   open,
   onClose,
   initialSection,
@@ -614,6 +614,80 @@ export function CheatSheetInline({
         </div>
       )}
 
+      <CheatSheetDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        initialSection={section}
+      />
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CheatSheetQuickTip — contextual 1-liner for bet cards
+// ─────────────────────────────────────────────────────────────────────────────
+
+type BetTypeKey = "player_prop" | "spread" | "total" | "moneyline" | "futures" | "season_long" | "season_prop" | string;
+
+const QUICK_TIPS: Record<string, { tip: string; section: CheatSheetSection }> = {
+  player_prop:  { tip: "Prop = player stats only. Check the line, opponent defense & recent averages before picking Over/Under.", section: "howtoread" },
+  spread:       { tip: "Spread is the sharpest signal. High % money with low % tickets → sharp side.", section: "spread" },
+  total:        { tip: "Totals signal: if % money jumps while % tickets stay flat → sharp Over. If % tickets jump → public/fade.", section: "total" },
+  moneyline:    { tip: "Moneyline signals are the weakest. Use to confirm a spread signal — not as a primary pick.", section: "moneyline" },
+  futures:      { tip: "Futures close early when sharp money piles in. Check if the line has already moved — value may be gone.", section: "universal" },
+  season_long:  { tip: "Season-long props resolve at season end. Sharps load futures early before the market corrects.", section: "universal" },
+  season_prop:  { tip: "Award props: track usage trends, injury reports, and positional value — market corrects quickly on news.", section: "universal" },
+};
+
+const SPORT_TOTAL_TIP: Record<string, string> = {
+  NBA: "NBA totals: star in/out is the #1 driver. Moves of 3+ pts almost always mean news — don't chase.",
+  NFL: "NFL totals: weather & QB status are the top drivers. Moves of 3–4+ pts = value gone.",
+  MLB: "MLB totals: wind direction is #1. Pitcher/umpire news follows. Don't chase 1.5+ run moves.",
+  NHL: "NHL totals: backup goalie = Over. Elite goalie confirmed = Under. Don't chase 1.5+ goal moves.",
+};
+
+/**
+ * A compact contextual tip line shown at the bottom of each BetCard.
+ * Uses bet type and sport to surface the most relevant 1-liner.
+ */
+export function CheatSheetQuickTip({
+  betType,
+  sport,
+}: {
+  betType: BetTypeKey;
+  sport?: string;
+}) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const key = betType?.toLowerCase() ?? "";
+  const sportUp = (sport ?? "").toUpperCase();
+
+  // For totals, override with sport-specific tip if we have one
+  let tip: string;
+  let section: CheatSheetSection;
+
+  if (key === "total" && SPORT_TOTAL_TIP[sportUp]) {
+    tip = SPORT_TOTAL_TIP[sportUp];
+    section = sportUp === "NBA" ? "nba" : sportUp === "NFL" ? "nfl" : sportUp === "MLB" ? "mlb" : "nhl";
+  } else if (QUICK_TIPS[key]) {
+    tip = QUICK_TIPS[key].tip;
+    section = QUICK_TIPS[key].section;
+  } else {
+    return null; // unknown bet type — don't render
+  }
+
+  return (
+    <>
+      <div className="flex items-start gap-2 mt-2 px-1">
+        <span className="text-[9px] text-primary/70 shrink-0 mt-0.5">💡</span>
+        <p className="text-[10px] text-muted-foreground leading-snug flex-1">{tip}</p>
+        <button
+          onClick={(e) => { e.stopPropagation(); setDrawerOpen(true); }}
+          className="shrink-0 text-[9px] text-primary/60 hover:text-primary underline whitespace-nowrap"
+        >
+          more →
+        </button>
+      </div>
       <CheatSheetDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

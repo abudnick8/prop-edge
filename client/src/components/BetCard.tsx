@@ -1,4 +1,5 @@
 import { Bet } from "@shared/schema";
+import { CheatSheetQuickTip } from "@/components/CheatSheet";
 import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ArrowUp, ArrowDown } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
 import { useState, useEffect, useRef } from "react";
@@ -855,6 +856,9 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           )}
       </button>
 
+
+      {/* Contextual quick tip — shown at bottom of every card */}
+      <CheatSheetQuickTip betType={bet.betType} sport={bet.sport ?? ""} />
 
       {/* Bet Detail Drawer */}
       <BetDetailDrawer
