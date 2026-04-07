@@ -1170,9 +1170,10 @@ function SortControl({sort,setSort,count,label}:{sort:SortKey;setSort:(s:SortKey
           <button key={o.key} onClick={()=>setSort(o.key)}
             className="px-2 py-0.5 rounded text-[10px] font-semibold transition-all"
             style={{
-              background:sort===o.key?"var(--primary)":"rgba(255,255,255,0.04)",
-              color:sort===o.key?"#000":"var(--muted-foreground)",
-              border:sort===o.key?"1px solid transparent":"1px solid rgba(255,255,255,0.08)",
+              background:sort===o.key?"#facc15":"rgba(255,255,255,0.04)",
+              color:sort===o.key?"#1a1a1a":"var(--muted-foreground)",
+              border:sort===o.key?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",
+              boxShadow:sort===o.key?"0 0 8px #facc1580":"none",
             }}>
             {o.label}
           </button>
@@ -1286,7 +1287,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {(["standard","ppr","half_ppr","superflex","dynasty","bestball"] as FormatTab[]).map(f=>(
                 <button key={f} onClick={()=>setFormat(f)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
-                  style={{background:format===f?"#facc15":"rgba(255,255,255,0.04)",color:format===f?"#000":"var(--muted-foreground)",border:format===f?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:format===f?"#facc15":"rgba(255,255,255,0.04)",color:format===f?"#1a1a1a":"var(--muted-foreground)",border:format===f?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                   {({standard:"Standard",ppr:"PPR",half_ppr:"Half-PPR",superflex:"Superflex",dynasty:"Dynasty",bestball:"Best Ball"})[f]}
                 </button>
               ))}
@@ -1303,7 +1304,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                   {opts.map(n=>(
                     <button key={n} onClick={()=>set(n)}
                       className="px-2 py-0.5 rounded text-[11px] font-semibold transition-all"
-                      style={{background:val===n?"var(--primary)":"rgba(255,255,255,0.04)",color:val===n?"#000":"var(--muted-foreground)",border:val===n?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                      style={{background:val===n?"#facc15":"rgba(255,255,255,0.04)",color:val===n?"#1a1a1a":"var(--muted-foreground)",border:val===n?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                       {n}
                     </button>
                   ))}
@@ -1316,7 +1317,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                 {Array.from({length:numTeams},(_,i)=>i+1).map(n=>(
                   <button key={n} onClick={()=>setUserSlot(n)}
                     className="px-2 py-0.5 rounded text-[11px] font-semibold transition-all"
-                    style={{background:userSlot===n?"var(--primary)":"rgba(255,255,255,0.04)",color:userSlot===n?"#000":"var(--muted-foreground)",border:userSlot===n?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                    style={{background:userSlot===n?"#facc15":"rgba(255,255,255,0.04)",color:userSlot===n?"#1a1a1a":"var(--muted-foreground)",border:userSlot===n?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                     {n}
                   </button>
                 ))}
@@ -1329,7 +1330,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {(["adp","best_available","positional_need","bpa_plus_news"] as CpuStrategy[]).map(s=>(
                 <button key={s} onClick={()=>setCpuStrategy(s)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
-                  style={{background:cpuStrategy===s?"var(--primary)":"rgba(255,255,255,0.04)",color:cpuStrategy===s?"#000":"var(--muted-foreground)",border:cpuStrategy===s?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:cpuStrategy===s?"#facc15":"rgba(255,255,255,0.04)",color:cpuStrategy===s?"#1a1a1a":"var(--muted-foreground)",border:cpuStrategy===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                   {({adp:"ADP Order",best_available:"Best Available",positional_need:"Positional Need",bpa_plus_news:"BPA + News-Aware"})[s]}
                 </button>
               ))}
@@ -1338,7 +1339,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
           </div>
           <button onClick={startDraft}
             className="w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-            style={{background:"var(--primary)",color:"#000"}}>
+            style={{background:"#facc15",color:"#1a1a1a"}}>
             <Play size={14}/> Start Mock Draft ({numTeams} teams · {numRounds} rounds · Pick #{userSlot})
           </button>
         </div>
@@ -1430,7 +1431,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
           </div>
           <button onClick={()=>setDraftState(null)}
             className="w-full py-2 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-            style={{background:"var(--primary)",color:"#000"}}>
+            style={{background:"#facc15",color:"#1a1a1a"}}>
             <RotateCcw size={14}/> New Mock Draft
           </button>
         </div>
@@ -1449,7 +1450,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {positions.map(pos=>(
                 <button key={pos} onClick={()=>setPosFilter(pos)}
                   className="px-1.5 py-0.5 rounded text-[10px] font-bold"
-                  style={{background:posFilter===pos?"var(--primary)":"rgba(255,255,255,0.04)",color:posFilter===pos?"#000":"var(--muted-foreground)",border:posFilter===pos?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:posFilter===pos?"#facc15":"rgba(255,255,255,0.04)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                   {pos}
                 </button>
               ))}
@@ -1657,7 +1658,7 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
         {tabs.map(t=>(
           <button key={t.key} onClick={()=>setMode(t.key)}
             className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-            style={{background:mode===t.key?"var(--primary)":"rgba(255,255,255,0.04)",color:mode===t.key?"#000":"var(--muted-foreground)",border:mode===t.key?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+            style={{background:mode===t.key?"#facc15":"rgba(255,255,255,0.04)",color:mode===t.key?"#1a1a1a":"var(--muted-foreground)",border:mode===t.key?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
             {t.label}
           </button>
         ))}
@@ -1913,7 +1914,7 @@ export default function Fantasy() {
                 return (
                   <button key={s} onClick={()=>setSport(s)}
                     className="px-2.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1"
-                    style={{background:sport===s?"#facc15":"rgba(255,255,255,0.04)",color:sport===s?"#000":"var(--muted-foreground)",border:sport===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",boxShadow:sport===s?"0 0 8px #facc1580":"none"}}>
+                    style={{background:sport===s?"#facc15":"rgba(255,255,255,0.04)",color:sport===s?"#1a1a1a":"var(--muted-foreground)",border:sport===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",boxShadow:sport===s?"0 0 8px #facc1580":"none"}}>
                     {s}
                     {badge&&s!=="ALL"&&(
                       <span className="text-[8px] font-black px-1 rounded" style={{background:`${badge.color}25`,color:badge.color}}>{badge.label}</span>
@@ -1931,7 +1932,7 @@ export default function Fantasy() {
               {positions.map(pos=>(
                 <button key={pos} onClick={()=>setPosFilter(pos as PositionF)}
                   className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
-                  style={{background:posFilter===pos?"var(--primary)":"rgba(255,255,255,0.04)",color:posFilter===pos?"#000":"var(--muted-foreground)",border:posFilter===pos?"1px solid transparent":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:posFilter===pos?"#facc15":"rgba(255,255,255,0.04)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
                   {pos}
                 </button>
               ))}
@@ -1951,14 +1952,15 @@ export default function Fantasy() {
             <button key={sv.id} onClick={()=>setSubView(sv.id)}
               className="rounded-xl p-2.5 text-left transition-all"
               style={{
-                background:subView===sv.id?"rgba(var(--primary-rgb),0.12)":"rgba(255,255,255,0.02)",
-                border:subView===sv.id?"1px solid rgba(var(--primary-rgb),0.4)":"1px solid rgba(255,255,255,0.06)",
+                background:subView===sv.id?"rgba(250,204,21,0.10)":"rgba(255,255,255,0.02)",
+                border:subView===sv.id?"1px solid rgba(250,204,21,0.50)":"1px solid rgba(255,255,255,0.06)",
+                boxShadow:subView===sv.id?"0 0 14px rgba(250,204,21,0.22)":"none",
               }}>
               <div className="flex items-center gap-1.5 mb-0.5">
                 <span className="text-base">{sv.emoji}</span>
-                {subView===sv.id&&<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{background:"var(--primary)",color:"#000"}}>NOW</span>}
+                {subView===sv.id&&<span className="text-[8px] font-black px-1.5 py-0.5 rounded" style={{background:"#facc15",color:"#1a1a1a"}}>NOW</span>}
               </div>
-              <p className="text-[11px] font-bold" style={{color:subView===sv.id?"var(--primary)":"var(--muted-foreground)"}}>{sv.label}</p>
+              <p className="text-[11px] font-bold" style={{color:subView===sv.id?"#facc15":"var(--muted-foreground)"}}>{sv.label}</p>
               <p className="text-[9px] text-muted-foreground leading-tight mt-0.5 hidden sm:block">{sv.desc}</p>
             </button>
           ))}
