@@ -1202,6 +1202,187 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return "";  // Non-player-prop — don't append anything
       }
 
+      // ── City/nickname → Full team name lookup ─────────────────────────────
+      // Covers every city or short name that prediction markets use.
+      // When a leg is just "Boston" we resolve it to the full franchise name
+      // using the sport context so "Boston" → "Boston Celtics" (NBA) or
+      // "Boston Red Sox" (MLB) or "Boston Bruins" (NHL).
+      const TEAM_FULL_NAME: Record<string, Record<string, string>> = {
+        NBA: {
+          "Atlanta": "Atlanta Hawks", "Boston": "Boston Celtics",
+          "Brooklyn": "Brooklyn Nets", "Charlotte": "Charlotte Hornets",
+          "Chicago": "Chicago Bulls", "Cleveland": "Cleveland Cavaliers",
+          "Dallas": "Dallas Mavericks", "Denver": "Denver Nuggets",
+          "Detroit": "Detroit Pistons", "Golden State": "Golden State Warriors",
+          "Houston": "Houston Rockets", "Indiana": "Indiana Pacers",
+          "Los Angeles Clippers": "LA Clippers", "Los Angeles Lakers": "LA Lakers",
+          "LA Clippers": "LA Clippers", "LA Lakers": "LA Lakers",
+          "Memphis": "Memphis Grizzlies", "Miami": "Miami Heat",
+          "Milwaukee": "Milwaukee Bucks", "Minnesota": "Minnesota Timberwolves",
+          "New Orleans": "New Orleans Pelicans", "New York": "New York Knicks",
+          "Oklahoma City": "Oklahoma City Thunder", "OKC": "Oklahoma City Thunder",
+          "Orlando": "Orlando Magic", "Philadelphia": "Philadelphia 76ers",
+          "Phoenix": "Phoenix Suns", "Portland": "Portland Trail Blazers",
+          "Sacramento": "Sacramento Kings", "San Antonio": "San Antonio Spurs",
+          "Toronto": "Toronto Raptors", "Utah": "Utah Jazz",
+          "Washington": "Washington Wizards",
+          "Celtics": "Boston Celtics", "Lakers": "LA Lakers",
+          "Warriors": "Golden State Warriors", "Knicks": "New York Knicks",
+          "Bulls": "Chicago Bulls", "Heat": "Miami Heat",
+          "Bucks": "Milwaukee Bucks", "Nets": "Brooklyn Nets",
+          "Nuggets": "Denver Nuggets", "Suns": "Phoenix Suns",
+          "Clippers": "LA Clippers", "Mavericks": "Dallas Mavericks",
+          "Mavs": "Dallas Mavericks", "Thunder": "Oklahoma City Thunder",
+          "Spurs": "San Antonio Spurs", "Rockets": "Houston Rockets",
+          "Grizzlies": "Memphis Grizzlies", "Pelicans": "New Orleans Pelicans",
+          "Magic": "Orlando Magic", "Raptors": "Toronto Raptors",
+          "Hornets": "Charlotte Hornets", "Pacers": "Indiana Pacers",
+          "Kings": "Sacramento Kings", "Jazz": "Utah Jazz",
+          "Pistons": "Detroit Pistons", "Cavaliers": "Cleveland Cavaliers",
+          "Cavs": "Cleveland Cavaliers", "Blazers": "Portland Trail Blazers",
+          "Wizards": "Washington Wizards", "Hawks": "Atlanta Hawks",
+          "Timberwolves": "Minnesota Timberwolves", "Wolves": "Minnesota Timberwolves",
+        },
+        MLB: {
+          "Arizona": "Arizona Diamondbacks", "Atlanta": "Atlanta Braves",
+          "Baltimore": "Baltimore Orioles", "Boston": "Boston Red Sox",
+          "Chicago Cubs": "Chicago Cubs", "Chicago White Sox": "Chicago White Sox",
+          "Chicago": "Chicago Cubs", // default to Cubs when ambiguous
+          "Cincinnati": "Cincinnati Reds", "Cleveland": "Cleveland Guardians",
+          "Colorado": "Colorado Rockies", "Detroit": "Detroit Tigers",
+          "Houston": "Houston Astros", "Kansas City": "Kansas City Royals",
+          "Los Angeles Dodgers": "Los Angeles Dodgers", "LA Dodgers": "Los Angeles Dodgers",
+          "Los Angeles Angels": "Los Angeles Angels", "LA Angels": "Los Angeles Angels",
+          "Los Angeles": "Los Angeles Dodgers", // default to Dodgers
+          "Miami": "Miami Marlins", "Milwaukee": "Milwaukee Brewers",
+          "Minnesota": "Minnesota Twins", "New York Mets": "New York Mets",
+          "New York Yankees": "New York Yankees", "New York": "New York Yankees",
+          "Oakland": "Oakland Athletics", "Philadelphia": "Philadelphia Phillies",
+          "Pittsburgh": "Pittsburgh Pirates", "San Diego": "San Diego Padres",
+          "San Francisco": "San Francisco Giants", "Seattle": "Seattle Mariners",
+          "St. Louis": "St. Louis Cardinals", "St Louis": "St. Louis Cardinals",
+          "Tampa Bay": "Tampa Bay Rays", "Texas": "Texas Rangers",
+          "Toronto": "Toronto Blue Jays", "Washington": "Washington Nationals",
+          "Yankees": "New York Yankees", "Red Sox": "Boston Red Sox",
+          "Dodgers": "Los Angeles Dodgers", "Cubs": "Chicago Cubs",
+          "Mets": "New York Mets", "Astros": "Houston Astros",
+          "Braves": "Atlanta Braves", "Cardinals": "St. Louis Cardinals",
+          "Giants": "San Francisco Giants", "Phillies": "Philadelphia Phillies",
+          "Padres": "San Diego Padres", "Brewers": "Milwaukee Brewers",
+          "Mariners": "Seattle Mariners", "Angels": "Los Angeles Angels",
+          "Rangers": "Texas Rangers", "Tigers": "Detroit Tigers",
+          "Royals": "Kansas City Royals", "Twins": "Minnesota Twins",
+          "Guardians": "Cleveland Guardians", "Orioles": "Baltimore Orioles",
+          "Rockies": "Colorado Rockies", "Reds": "Cincinnati Reds",
+          "Marlins": "Miami Marlins", "Rays": "Tampa Bay Rays",
+          "Athletics": "Oakland Athletics", "A's": "Oakland Athletics",
+          "Pirates": "Pittsburgh Pirates", "Nationals": "Washington Nationals",
+          "Diamondbacks": "Arizona Diamondbacks", "D-backs": "Arizona Diamondbacks",
+          "Blue Jays": "Toronto Blue Jays",
+        },
+        NHL: {
+          "Anaheim": "Anaheim Ducks", "Arizona": "Arizona Coyotes",
+          "Boston": "Boston Bruins", "Buffalo": "Buffalo Sabres",
+          "Calgary": "Calgary Flames", "Carolina": "Carolina Hurricanes",
+          "Chicago": "Chicago Blackhawks", "Colorado": "Colorado Avalanche",
+          "Columbus": "Columbus Blue Jackets", "Dallas": "Dallas Stars",
+          "Detroit": "Detroit Red Wings", "Edmonton": "Edmonton Oilers",
+          "Florida": "Florida Panthers", "Los Angeles": "Los Angeles Kings",
+          "LA Kings": "Los Angeles Kings", "Minnesota": "Minnesota Wild",
+          "Montreal": "Montreal Canadiens", "Nashville": "Nashville Predators",
+          "New Jersey": "New Jersey Devils", "New York Islanders": "New York Islanders",
+          "New York Rangers": "New York Rangers", "New York": "New York Rangers",
+          "Ottawa": "Ottawa Senators", "Philadelphia": "Philadelphia Flyers",
+          "Pittsburgh": "Pittsburgh Penguins", "San Jose": "San Jose Sharks",
+          "Seattle": "Seattle Kraken", "St. Louis": "St. Louis Blues",
+          "St Louis": "St. Louis Blues", "Tampa Bay": "Tampa Bay Lightning",
+          "Toronto": "Toronto Maple Leafs", "Utah": "Utah Mammoth",
+          "Vancouver": "Vancouver Canucks", "Vegas": "Vegas Golden Knights",
+          "Golden Knights": "Vegas Golden Knights", "Washington": "Washington Capitals",
+          "Winnipeg": "Winnipeg Jets",
+          "Bruins": "Boston Bruins", "Sabres": "Buffalo Sabres",
+          "Flames": "Calgary Flames", "Hurricanes": "Carolina Hurricanes",
+          "Blackhawks": "Chicago Blackhawks", "Avalanche": "Colorado Avalanche",
+          "Blue Jackets": "Columbus Blue Jackets", "Stars": "Dallas Stars",
+          "Red Wings": "Detroit Red Wings", "Oilers": "Edmonton Oilers",
+          "Panthers": "Florida Panthers", "Kings": "Los Angeles Kings",
+          "Wild": "Minnesota Wild", "Canadiens": "Montreal Canadiens",
+          "Predators": "Nashville Predators", "Preds": "Nashville Predators",
+          "Devils": "New Jersey Devils", "Islanders": "New York Islanders",
+          "Rangers": "New York Rangers", "Senators": "Ottawa Senators",
+          "Flyers": "Philadelphia Flyers", "Penguins": "Pittsburgh Penguins",
+          "Sharks": "San Jose Sharks", "Kraken": "Seattle Kraken",
+          "Blues": "St. Louis Blues", "Lightning": "Tampa Bay Lightning",
+          "Maple Leafs": "Toronto Maple Leafs", "Leafs": "Toronto Maple Leafs",
+          "Mammoth": "Utah Mammoth", "Canucks": "Vancouver Canucks",
+          "Jets": "Winnipeg Jets", "Ducks": "Anaheim Ducks",
+        },
+        NFL: {
+          "Arizona": "Arizona Cardinals", "Atlanta": "Atlanta Falcons",
+          "Baltimore": "Baltimore Ravens", "Buffalo": "Buffalo Bills",
+          "Carolina": "Carolina Panthers", "Chicago": "Chicago Bears",
+          "Cincinnati": "Cincinnati Bengals", "Cleveland": "Cleveland Browns",
+          "Dallas": "Dallas Cowboys", "Denver": "Denver Broncos",
+          "Detroit": "Detroit Lions", "Green Bay": "Green Bay Packers",
+          "Houston": "Houston Texans", "Indianapolis": "Indianapolis Colts",
+          "Jacksonville": "Jacksonville Jaguars", "Kansas City": "Kansas City Chiefs",
+          "Las Vegas": "Las Vegas Raiders", "Los Angeles Chargers": "Los Angeles Chargers",
+          "Los Angeles Rams": "Los Angeles Rams", "Los Angeles": "Los Angeles Rams",
+          "Miami": "Miami Dolphins", "Minnesota": "Minnesota Vikings",
+          "New England": "New England Patriots", "New Orleans": "New Orleans Saints",
+          "New York Giants": "New York Giants", "New York Jets": "New York Jets",
+          "New York": "New York Giants", "Philadelphia": "Philadelphia Eagles",
+          "Pittsburgh": "Pittsburgh Steelers", "San Francisco": "San Francisco 49ers",
+          "Seattle": "Seattle Seahawks", "Tampa Bay": "Tampa Bay Buccaneers",
+          "Tennessee": "Tennessee Titans", "Washington": "Washington Commanders",
+          "Oklahoma City": "Oklahoma City Thunder", // prediction markets sometimes use wrong sport label
+          "Cardinals": "Arizona Cardinals", "Falcons": "Atlanta Falcons",
+          "Ravens": "Baltimore Ravens", "Bills": "Buffalo Bills",
+          "Panthers": "Carolina Panthers", "Bears": "Chicago Bears",
+          "Bengals": "Cincinnati Bengals", "Browns": "Cleveland Browns",
+          "Cowboys": "Dallas Cowboys", "Broncos": "Denver Broncos",
+          "Lions": "Detroit Lions", "Packers": "Green Bay Packers",
+          "Texans": "Houston Texans", "Colts": "Indianapolis Colts",
+          "Jaguars": "Jacksonville Jaguars", "Chiefs": "Kansas City Chiefs",
+          "Raiders": "Las Vegas Raiders", "Chargers": "Los Angeles Chargers",
+          "Rams": "Los Angeles Rams", "Dolphins": "Miami Dolphins",
+          "Vikings": "Minnesota Vikings", "Patriots": "New England Patriots",
+          "Saints": "New Orleans Saints", "Giants": "New York Giants",
+          "Jets": "New York Jets", "Eagles": "Philadelphia Eagles",
+          "Steelers": "Pittsburgh Steelers", "49ers": "San Francisco 49ers",
+          "Seahawks": "Seattle Seahawks", "Buccaneers": "Tampa Bay Buccaneers",
+          "Bucs": "Tampa Bay Buccaneers", "Titans": "Tennessee Titans",
+          "Commanders": "Washington Commanders",
+        },
+        // Soccer / other — leave as-is but capitalize properly
+        OTHER: {},
+      };
+
+      // Resolve a raw city/nickname string to its full franchise name.
+      // Tries sport-specific lookup first, then all other sports if sport is OTHER/unknown.
+      function resolveFullTeamName(raw: string, sport: string): string {
+        const s = (sport || "OTHER").toUpperCase();
+        const key = raw.trim();
+        // Direct match in sport-specific table
+        if (TEAM_FULL_NAME[s]?.[key]) return TEAM_FULL_NAME[s][key];
+        // Case-insensitive match
+        const lkey = key.toLowerCase();
+        const table = TEAM_FULL_NAME[s] ?? {};
+        for (const [k, v] of Object.entries(table)) {
+          if (k.toLowerCase() === lkey) return v;
+        }
+        // Sport is OTHER or not found — try all sports in priority order
+        if (!TEAM_FULL_NAME[s] || s === "OTHER") {
+          for (const st of ["NBA", "NHL", "MLB", "NFL"]) {
+            const t = TEAM_FULL_NAME[st];
+            for (const [k, v] of Object.entries(t)) {
+              if (k.toLowerCase() === lkey) return v;
+            }
+          }
+        }
+        return raw; // no match — return as-is
+      }
+
       function annotateTeamLeg(legText: string, dir: string, sport: string): string {
         // If the leg is just a team name (no colon, no stat number, no condition words)
         // e.g. "Boston", "Minnesota", "Arsenal", "Oklahoma City"
@@ -1209,9 +1390,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const hasNumber     = /\d/.test(legText);
         const hasCondition  = /wins|beats|covers|over|under|leads|scores|advances|moneyline|spread|ml\b/i.test(legText);
         if (!hasColon && !hasNumber && !hasCondition) {
-          // Plain team name — annotate as moneyline win
+          // Plain team name — resolve to full franchise name then annotate
+          const fullName = resolveFullTeamName(legText, sport);
           const sportLabel = sport && sport !== "OTHER" ? ` (${sport})` : "";
-          return `${dir} ${legText} to Win${sportLabel}`;
+          return `${dir} ${fullName} to Win${sportLabel}`;
         }
         return `${dir} ${legText}`;
       }
