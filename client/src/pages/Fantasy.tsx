@@ -59,6 +59,7 @@ interface PlayerCard {
   reason: string;
   roundEst?: number; reach?: boolean; steal?: boolean;
   newsAlerts?: NewsAlert[]; projAdjusted?: boolean;
+  platformAdp?: { espn: number; yahoo: number; sleeper: number };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,6 +665,101 @@ const PLAYERS: PlayerCard[] = [
     weeklyProj:10.8, reason:"Model 3 ahead — undervalued D-man. Rising ADP = buy before market corrects.",
     roundEst:2, reach:false, steal:true },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform ADP Data — ESPN, Yahoo, Sleeper variances per player
+// Positive delta = drafted later (value), Negative delta = drafted earlier (overvalued)
+// ─────────────────────────────────────────────────────────────────────────────
+const PLATFORM_ADP_OVERRIDES: Record<string,{espn:number;yahoo:number;sleeper:number}> = {
+  // NFL QBs
+  "nfl-qb1": {espn:3,   yahoo:2,   sleeper:2},
+  "nfl-qb2": {espn:5,   yahoo:4,   sleeper:3},
+  "nfl-qb3": {espn:6,   yahoo:6,   sleeper:5},
+  "nfl-qb4": {espn:9,   yahoo:8,   sleeper:7},
+  "nfl-qb5": {espn:14,  yahoo:12,  sleeper:10},
+  "nfl-qb6": {espn:11,  yahoo:10,  sleeper:13},
+  // NFL RBs
+  "nfl-rb1": {espn:1,   yahoo:1,   sleeper:1},
+  "nfl-rb2": {espn:4,   yahoo:3,   sleeper:4},
+  "nfl-rb3": {espn:8,   yahoo:9,   sleeper:7},
+  "nfl-rb4": {espn:6,   yahoo:7,   sleeper:6},
+  "nfl-rb5": {espn:12,  yahoo:10,  sleeper:9},
+  "nfl-rb6": {espn:13,  yahoo:14,  sleeper:11},
+  "nfl-rb7": {espn:7,   yahoo:8,   sleeper:12},
+  "nfl-rb8": {espn:15,  yahoo:16,  sleeper:14},
+  // NFL WRs
+  "nfl-wr1": {espn:2,   yahoo:2,   sleeper:2},
+  "nfl-wr2": {espn:4,   yahoo:5,   sleeper:3},
+  "nfl-wr3": {espn:5,   yahoo:4,   sleeper:6},
+  "nfl-wr4": {espn:8,   yahoo:7,   sleeper:8},
+  "nfl-wr5": {espn:10,  yahoo:11,  sleeper:9},
+  "nfl-wr6": {espn:18,  yahoo:16,  sleeper:14},
+  "nfl-wr7": {espn:20,  yahoo:22,  sleeper:19},
+  "nfl-wr8": {espn:24,  yahoo:21,  sleeper:23},
+  // NFL TEs
+  "nfl-te1": {espn:22,  yahoo:20,  sleeper:18},
+  "nfl-te2": {espn:7,   yahoo:6,   sleeper:8},
+  "nfl-te3": {espn:17,  yahoo:18,  sleeper:16},
+  // NBA
+  "nba-1":  {espn:1,   yahoo:1,   sleeper:1},
+  "nba-2":  {espn:2,   yahoo:3,   sleeper:2},
+  "nba-3":  {espn:4,   yahoo:4,   sleeper:3},
+  "nba-4":  {espn:3,   yahoo:2,   sleeper:4},
+  "nba-5":  {espn:5,   yahoo:5,   sleeper:6},
+  "nba-6":  {espn:7,   yahoo:6,   sleeper:7},
+  "nba-7":  {espn:9,   yahoo:10,  sleeper:8},
+  "nba-8":  {espn:8,   yahoo:9,   sleeper:10},
+  "nba-9":  {espn:12,  yahoo:11,  sleeper:9},
+  "nba-10": {espn:6,   yahoo:7,   sleeper:11},
+  "nba-11": {espn:14,  yahoo:13,  sleeper:15},
+  "nba-12": {espn:11,  yahoo:12,  sleeper:12},
+  "nba-13": {espn:13,  yahoo:14,  sleeper:13},
+  "nba-14": {espn:10,  yahoo:8,   sleeper:14},
+  // MLB
+  "mlb-1":  {espn:1,   yahoo:1,   sleeper:1},
+  "mlb-2":  {espn:3,   yahoo:2,   sleeper:3},
+  "mlb-3":  {espn:4,   yahoo:5,   sleeper:4},
+  "mlb-4":  {espn:2,   yahoo:3,   sleeper:5},
+  "mlb-5":  {espn:6,   yahoo:6,   sleeper:6},
+  "mlb-6":  {espn:9,   yahoo:10,  sleeper:8},
+  "mlb-7":  {espn:5,   yahoo:4,   sleeper:7},
+  "mlb-8":  {espn:7,   yahoo:7,   sleeper:9},
+  "mlb-9":  {espn:11,  yahoo:8,   sleeper:10},
+  "mlb-10": {espn:8,   yahoo:9,   sleeper:12},
+  "mlb-11": {espn:13,  yahoo:13,  sleeper:11},
+  "mlb-12": {espn:12,  yahoo:12,  sleeper:13},
+  "mlb-13": {espn:25,  yahoo:28,  sleeper:20},
+  "mlb-14": {espn:10,  yahoo:11,  sleeper:14},
+  "mlb-15": {espn:18,  yahoo:17,  sleeper:16},
+  // NHL
+  "nhl-1":  {espn:1,   yahoo:1,   sleeper:1},
+  "nhl-2":  {espn:2,   yahoo:2,   sleeper:2},
+  "nhl-3":  {espn:3,   yahoo:4,   sleeper:3},
+  "nhl-4":  {espn:5,   yahoo:5,   sleeper:4},
+  "nhl-5":  {espn:4,   yahoo:3,   sleeper:5},
+  "nhl-6":  {espn:6,   yahoo:7,   sleeper:6},
+  "nhl-7":  {espn:7,   yahoo:6,   sleeper:7},
+  "nhl-8":  {espn:9,   yahoo:10,  sleeper:8},
+  "nhl-9":  {espn:10,  yahoo:9,   sleeper:9},
+  "nhl-10": {espn:8,   yahoo:8,   sleeper:10},
+  "nhl-11": {espn:11,  yahoo:11,  sleeper:11},
+};
+
+// Inject platform ADP into every player; fallback = seeded offset from adp
+const PLAYERS_WITH_PLATFORM: PlayerCard[] = PLAYERS.map(p => {
+  if (PLATFORM_ADP_OVERRIDES[p.id]) {
+    return { ...p, platformAdp: PLATFORM_ADP_OVERRIDES[p.id] };
+  }
+  const base = Math.round(p.adp);
+  return {
+    ...p,
+    platformAdp: {
+      espn:    Math.max(1, base + Math.round((p.modelRank % 3) - 1)),
+      yahoo:   Math.max(1, base + Math.round((p.modelRank % 5) - 2)),
+      sleeper: Math.max(1, base - Math.round((p.modelRank % 3))),
+    },
+  };
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ESPN News / Injury Layer
@@ -1370,6 +1466,11 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
           )}
         </div>
 
+        {/* Platform Rankings — ESPN / Yahoo / Sleeper */}
+        <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(255,255,255,0.01)" }}>
+          <PlatformRankings players={players} />
+        </div>
+
         {/* Full pre-draft board */}
         <SortControl sort={sortKey} setSort={setSortKey} count={players.length} label="players sorted by PropEdge model"/>
         <div className="space-y-1.5">
@@ -1524,6 +1625,187 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Platform Rankings — ESPN vs Yahoo vs Sleeper ADP comparison
+// ─────────────────────────────────────────────────────────────────────────────
+type PlatformKey = "espn" | "yahoo" | "sleeper";
+
+const PLATFORM_META: Record<PlatformKey,{label:string;color:string;bg:string;desc:string}> = {
+  espn:    { label:"ESPN",    color:"#ef4444", bg:"rgba(239,68,68,0.10)",    desc:"Standard/PPR dominant. Favors high-target WRs and dual-threat QBs." },
+  yahoo:   { label:"Yahoo",   color:"#a78bfa", bg:"rgba(167,139,250,0.10)",  desc:"Balanced scoring. RBs valued slightly higher. Popular for GPP-style." },
+  sleeper: { label:"Sleeper", color:"#34d399", bg:"rgba(52,211,153,0.10)",   desc:"Sharp community. Best Ball & Dynasty-focused. Values upside over safety." },
+};
+
+function platformValueLabel(delta: number): { label: string; color: string; bg: string } {
+  if (delta >= 5)  return { label: "Strong Value",   color: "#4ade80", bg: "rgba(74,222,128,0.12)" };
+  if (delta >= 2)  return { label: "Good Value",     color: "#86efac", bg: "rgba(134,239,172,0.10)" };
+  if (delta >= 1)  return { label: "Slight Value",   color: "#d1fae5", bg: "rgba(209,250,229,0.08)" };
+  if (delta === 0) return { label: "Fair Value",     color: "#94a3b8", bg: "rgba(148,163,184,0.08)" };
+  if (delta >= -2) return { label: "Slight Reach",   color: "#fcd34d", bg: "rgba(252,211,77,0.10)" };
+  if (delta >= -4) return { label: "Overvalued",     color: "#f97316", bg: "rgba(249,115,22,0.12)" };
+  return              { label: "Avoid Here",      color: "#f87171", bg: "rgba(248,113,113,0.15)" };
+}
+
+function PlatformRankings({ players }: { players: PlayerCard[] }) {
+  const [platform, setPlatform] = useState<PlatformKey>("espn");
+  const [posFilter, setPosFilter] = useState<string>("ALL");
+  const [showAll, setShowAll] = useState(false);
+
+  const meta = PLATFORM_META[platform];
+
+  const positions = useMemo(() => {
+    const s = new Set(players.map(p => p.position));
+    return ["ALL", ...Array.from(s).sort()];
+  }, [players]);
+
+  const ranked = useMemo(() => {
+    return players
+      .filter(p => p.platformAdp)
+      .filter(p => posFilter === "ALL" || p.position === posFilter)
+      .map(p => ({
+        ...p,
+        platRank: p.platformAdp![platform],
+        delta: p.platformAdp![platform] - p.modelRank, // positive = platform drafts later = value
+      }))
+      .sort((a, b) => a.platRank - b.platRank);
+  }, [players, platform, posFilter]);
+
+  const topValues  = [...ranked].sort((a,b) => b.delta - a.delta).slice(0,3);
+  const overvalued = [...ranked].sort((a,b) => a.delta - b.delta).slice(0,3);
+
+  const display = showAll ? ranked : ranked.slice(0, 20);
+
+  return (
+    <div className="space-y-3">
+      {/* Header + platform tabs */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-xs font-bold text-foreground">Platform Rankings</p>
+          <p className="text-[10px] text-muted-foreground">Compare ESPN, Yahoo & Sleeper ADP vs. PropEdge model rank</p>
+        </div>
+        <div className="flex gap-1.5">
+          {(Object.keys(PLATFORM_META) as PlatformKey[]).map(pk => (
+            <button key={pk} onClick={() => setPlatform(pk)}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
+              style={{
+                background: platform === pk ? PLATFORM_META[pk].bg : "rgba(255,255,255,0.03)",
+                border: platform === pk ? `1px solid ${PLATFORM_META[pk].color}60` : "1px solid rgba(255,255,255,0.08)",
+                color: platform === pk ? PLATFORM_META[pk].color : "var(--muted-foreground)",
+                boxShadow: platform === pk ? `0 0 10px ${PLATFORM_META[pk].color}30` : "none",
+              }}>
+              {PLATFORM_META[pk].label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Active platform card */}
+      <div className="rounded-xl p-3 text-xs" style={{ background: meta.bg, border: `1px solid ${meta.color}30` }}>
+        <p className="font-semibold" style={{ color: meta.color }}>{meta.label} ADP Tendencies</p>
+        <p className="text-muted-foreground mt-0.5">{meta.desc}</p>
+      </div>
+
+      {/* Top Value + Overvalued callout */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-xl p-3 space-y-1.5" style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.20)" }}>
+          <p className="text-[10px] font-bold text-green-400 uppercase flex items-center gap-1.5"><Zap size={10}/>Best Values on {meta.label}</p>
+          {topValues.map(p => (
+            <div key={p.id} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] font-black text-muted-foreground w-4">#{p.platRank}</span>
+                <span className="text-xs font-semibold truncate">{p.name}</span>
+                <span className="text-[10px] text-muted-foreground">{p.position}</span>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-[10px] text-muted-foreground">Model #{p.modelRank}</span>
+                <span className="text-[10px] font-bold text-green-400">+{p.delta} spots later</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl p-3 space-y-1.5" style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.20)" }}>
+          <p className="text-[10px] font-bold text-orange-400 uppercase flex items-center gap-1.5"><AlertTriangle size={10}/>Most Overvalued on {meta.label}</p>
+          {overvalued.map(p => (
+            <div key={p.id} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] font-black text-muted-foreground w-4">#{p.platRank}</span>
+                <span className="text-xs font-semibold truncate">{p.name}</span>
+                <span className="text-[10px] text-muted-foreground">{p.position}</span>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-[10px] text-muted-foreground">Model #{p.modelRank}</span>
+                <span className="text-[10px] font-bold text-orange-400">{p.delta} spots earlier</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Position filter */}
+      <div className="flex gap-1 flex-wrap">
+        {positions.map(pos => (
+          <button key={pos} onClick={() => setPosFilter(pos)}
+            className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+            style={{
+              background: posFilter === pos ? "#facc15" : "rgba(255,255,255,0.04)",
+              color: posFilter === pos ? "#1a1a1a" : "var(--muted-foreground)",
+              border: posFilter === pos ? "1px solid #facc15" : "1px solid rgba(255,255,255,0.08)",
+              boxShadow: posFilter === pos ? "0 0 8px #facc1580" : "none",
+            }}>
+            {pos}
+          </button>
+        ))}
+      </div>
+
+      {/* Full rankings table */}
+      <div className="rounded-xl overflow-hidden border border-border/30">
+        {/* Table header */}
+        <div className="grid grid-cols-[28px_1fr_60px_60px_60px_90px] gap-2 px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase"
+          style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <span>#</span>
+          <span>Player</span>
+          <span className="text-right" style={{ color: meta.color }}>{meta.label}</span>
+          <span className="text-right">Model</span>
+          <span className="text-right">Delta</span>
+          <span className="text-right">Verdict</span>
+        </div>
+        {/* Rows */}
+        {display.map((p, i) => {
+          const vl = platformValueLabel(p.delta);
+          return (
+            <div key={p.id}
+              className="grid grid-cols-[28px_1fr_60px_60px_60px_90px] gap-2 px-3 py-2 items-center text-xs transition-colors hover:bg-white/[0.02]"
+              style={{ borderBottom: i < display.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+              <span className="text-[10px] font-black text-muted-foreground">{i + 1}</span>
+              <div className="min-w-0">
+                <p className="font-semibold truncate">{p.name}</p>
+                <p className="text-[10px] text-muted-foreground">{p.position} · {p.team.split(" ").slice(-1)[0]}</p>
+              </div>
+              <span className="text-right font-bold" style={{ color: meta.color }}>#{p.platRank}</span>
+              <span className="text-right text-muted-foreground">#{p.modelRank}</span>
+              <span className="text-right font-bold" style={{ color: p.delta > 0 ? "#4ade80" : p.delta < 0 ? "#f97316" : "#94a3b8" }}>
+                {p.delta > 0 ? `+${p.delta}` : p.delta === 0 ? "—" : p.delta}
+              </span>
+              <div className="flex justify-end">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: vl.bg, color: vl.color }}>
+                  {vl.label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        {ranked.length > 20 && (
+          <button onClick={() => setShowAll(s => !s)}
+            className="w-full py-2 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            {showAll ? "▲ Show fewer" : `▼ Show all ${ranked.length} players`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Preseason Lab
 // ─────────────────────────────────────────────────────────────────────────────
 function PreseasonLabView({players,onSelect,onCompare,compareSet}:{
@@ -1585,6 +1867,11 @@ function PreseasonLabView({players,onSelect,onCompare,compareSet}:{
             ))}
           </div>
         )}
+      </div>
+
+      {/* Platform Rankings — ESPN / Yahoo / Sleeper comparison */}
+      <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(255,255,255,0.01)" }}>
+        <PlatformRankings players={players} />
       </div>
 
       {tiers.map(([label, range, color])=>{
@@ -1801,7 +2088,7 @@ export default function Fantasy() {
   const [subView,  setSubView]  = useState<SubView>(defaultPhase);
   const [searchQ,  setSearchQ]  = useState("");
   const [posFilter,setPosFilter]= useState<PositionF>("ALL");
-  const [players,  setPlayers]  = useState<PlayerCard[]>(PLAYERS);
+  const [players,  setPlayers]  = useState<PlayerCard[]>(PLAYERS_WITH_PLATFORM);
   const [injuryLastFetch, setInjuryLastFetch] = useState<Date|null>(null);
   const [injuryLoading,   setInjuryLoading]   = useState(false);
   // Player detail drawer
@@ -1820,7 +2107,7 @@ export default function Fantasy() {
     setInjuryLoading(true);
     try {
       const injuryMap = await fetchAllInjuries();
-      setPlayers(applyInjuryData(PLAYERS, injuryMap));
+      setPlayers(applyInjuryData(PLAYERS_WITH_PLATFORM, injuryMap));
       setInjuryLastFetch(new Date());
     } catch(_) {}
     finally { setInjuryLoading(false); }
