@@ -266,6 +266,139 @@ const SPORT_POSITIONS: Record<SportTab, PositionF[]> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Season phase detection
+// Determines which sub-view to surface for a given sport based on today's date.
+//
+// NFL:  Regular season  Sep 5 – Jan 12
+//        Draft window    Jul 15 – Sep 4   (≤ 52 days before season = "draft lab")
+//        Offseason       Jan 13 – Jul 14  → preseason
+//
+// NBA:  Regular season  Oct 22 – Apr 13
+//        Playoffs        Apr 14 – Jun 22  (still "in-season" for fantasy)
+//        Draft window    Jun 23 – Sep 30  (fantasy draft season)
+//        Offseason       Oct 1 – Oct 21   → preseason
+//
+// MLB:  Regular season  Mar 27 – Sep 28
+//        Playoffs        Sep 29 – Oct 30  (still "in-season")
+//        Draft window    Dec 1 – Mar 26   (≤ 30 days = draft lab)
+//        Offseason       Nov 1 – Nov 30   → preseason
+//
+// NHL:  Regular season  Oct 8 – Apr 17
+//        Playoffs        Apr 18 – Jun 21  (still "in-season")
+//        Draft window    Jul 1 – Aug 31   (fantasy draft season)
+//        Offseason       Sep 1 – Oct 7    → preseason
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SeasonPhase = "inseason" | "draft" | "preseason";
+
+interface SportPhaseInfo {
+  phase: SeasonPhase;
+  label: string;       // human-readable context
+  daysUntilNext: number | null;
+  nextEvent: string | null;
+}
+
+function detectSportPhase(sport: SportTab): SportPhaseInfo {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1–12
+  const day   = now.getDate();
+  // Encode as MMDD number for easy range checks
+  const md = month * 100 + day;
+
+  if (sport === "ALL") {
+    // For "All" — pick the most active sport right now
+    const phases = (["NFL","NBA","MLB","NHL"] as const).map(s => detectSportPhase(s));
+    const inSeason = phases.find(p => p.phase === "inseason");
+    if (inSeason) return inSeason;
+    const draft    = phases.find(p => p.phase === "draft");
+    if (draft) return draft;
+    return phases[0]; // fallback
+  }
+
+  if (sport === "NFL") {
+    // Regular season Sep 5 – Jan 12
+    if ((md >= 905 && md <= 1231) || md <= 112) {
+      return { phase: "inseason", label: "NFL Regular Season", daysUntilNext: null, nextEvent: "Playoffs" };
+    }
+    // Draft window Jul 15 – Sep 4
+    if (md >= 715 && md <= 904) {
+      const draftStart = new Date(now.getFullYear(), 8, 5); // Sep 5
+      const days = Math.ceil((draftStart.getTime() - now.getTime()) / 86400000);
+      return { phase: "draft", label: "Fantasy Draft Season", daysUntilNext: days, nextEvent: "NFL Season" };
+    }
+    // Offseason Jan 13 – Jul 14
+    return { phase: "preseason", label: "NFL Offseason", daysUntilNext: null, nextEvent: "Draft Season (Jul 15)" };
+  }
+
+  if (sport === "NBA") {
+    // Regular season + playoffs: Oct 22 – Jun 22
+    if ((md >= 1022 && md <= 1231) || md <= 622) {
+      const label = md >= 414 && md <= 622 ? "NBA Playoffs" : "NBA Regular Season";
+      return { phase: "inseason", label, daysUntilNext: null, nextEvent: "Offseason" };
+    }
+    // Fantasy draft window: Jun 23 – Oct 21
+    if (md >= 623 && md <= 1021) {
+      const draftEnd = new Date(now.getFullYear(), 9, 22); // Oct 22
+      const days = Math.ceil((draftEnd.getTime() - now.getTime()) / 86400000);
+      return { phase: "draft", label: "Fantasy Draft Season", daysUntilNext: days, nextEvent: "NBA Season" };
+    }
+    return { phase: "preseason", label: "NBA Preseason", daysUntilNext: null, nextEvent: null };
+  }
+
+  if (sport === "MLB") {
+    // Regular season + playoffs: Mar 27 – Oct 30
+    if (md >= 327 && md <= 1030) {
+      const label = md >= 929 ? "MLB Playoffs" : "MLB Regular Season";
+      return { phase: "inseason", label, daysUntilNext: null, nextEvent: "Offseason" };
+    }
+    // Draft window Dec 1 – Mar 26 (ramp-up: ≤ 30 days before opening day = "draft")
+    if (md >= 1201 || md <= 326) {
+      const openingDay = new Date(now.getFullYear() + (month >= 11 ? 1 : 0), 2, 27);
+      const days = Math.ceil((openingDay.getTime() - now.getTime()) / 86400000);
+      const phase: SeasonPhase = days <= 30 ? "draft" : "preseason";
+      return {
+        phase,
+        label: phase === "draft" ? "Fantasy Draft Season" : "MLB Offseason",
+        daysUntilNext: days,
+        nextEvent: "Opening Day",
+      };
+    }
+    // Nov offseason
+    return { phase: "preseason", label: "MLB Offseason", daysUntilNext: null, nextEvent: "Winter Meetings" };
+  }
+
+  if (sport === "NHL") {
+    // Regular season + playoffs: Oct 8 – Jun 21
+    if ((md >= 1008 && md <= 1231) || md <= 621) {
+      const label = md >= 418 && md <= 621 ? "Stanley Cup Playoffs" : "NHL Regular Season";
+      return { phase: "inseason", label, daysUntilNext: null, nextEvent: "Offseason" };
+    }
+    // Fantasy draft window: Jul 1 – Aug 31
+    if (md >= 701 && md <= 831) {
+      const draftEnd = new Date(now.getFullYear(), 9, 8); // Oct 8
+      const days = Math.ceil((draftEnd.getTime() - now.getTime()) / 86400000);
+      return { phase: "draft", label: "Fantasy Draft Season", daysUntilNext: days, nextEvent: "NHL Season" };
+    }
+    // Sep 1 – Oct 7 preseason
+    return { phase: "preseason", label: "NHL Preseason", daysUntilNext: null, nextEvent: "Season Start (Oct 8)" };
+  }
+
+  return { phase: "preseason", label: "Offseason", daysUntilNext: null, nextEvent: null };
+}
+
+// Which sport is most "active" right now — used for the ALL tab auto-select
+function getMostActiveSport(): SportTab {
+  const order: SportTab[] = ["MLB","NBA","NHL","NFL"];
+  for (const s of order) {
+    if (detectSportPhase(s).phase === "inseason") return s;
+  }
+  for (const s of order) {
+    if (detectSportPhase(s).phase === "draft") return s;
+  }
+  return "NFL";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Summary chips
 // ─────────────────────────────────────────────────────────────────────────────
 function SummaryChip({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: string }) {
@@ -794,11 +927,27 @@ const SPORT_TABS_LIST: { id: SportTab; label: string; emoji: string }[] = [
 ];
 
 export default function Fantasy() {
-  const [subView,  setSubView]  = useState<SubView>("preseason");
-  const [sport,    setSport]    = useState<SportTab>("ALL");
+  // Auto-detect starting sport and phase
+  const defaultSport = getMostActiveSport();
+  const defaultPhase = detectSportPhase(defaultSport).phase;
+
+  const [subView,  setSubView]  = useState<SubView>(defaultPhase);
+  const [sport,    setSport]    = useState<SportTab>(defaultSport);
   const [position, setPosition] = useState<PositionF>("ALL");
   const [search,   setSearch]   = useState("");
   const [actionFilter, setActionFilter] = useState<ActionTag | "ALL">("ALL");
+
+  // When sport tab changes, auto-switch sub-view to match that sport's current phase
+  function handleSportChange(newSport: SportTab) {
+    setSport(newSport);
+    setPosition("ALL");
+    if (newSport === "ALL") {
+      const active = getMostActiveSport();
+      setSubView(detectSportPhase(active).phase);
+    } else {
+      setSubView(detectSportPhase(newSport).phase);
+    }
+  }
 
   // Filter players
   const filtered = useMemo(() => {
@@ -865,18 +1014,51 @@ export default function Fantasy() {
               <span className="text-sm font-bold" style={{ color: subView === sv.id ? "#f59e0b" : "rgba(255,255,255,0.85)" }}>
                 {sv.label}
               </span>
+              {(() => {
+                const activeSport = sport === "ALL" ? getMostActiveSport() : sport;
+                const rec = detectSportPhase(activeSport).phase;
+                return rec === sv.id ? (
+                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.20)", color: "#f59e0b" }}>
+                    NOW
+                  </span>
+                ) : null;
+              })()}
             </div>
             <p className="text-[10px] text-muted-foreground leading-snug">{sv.desc}</p>
           </button>
         ))}
       </div>
 
+      {/* Phase context banner */}
+      {(() => {
+        const ph = sport === "ALL" ? detectSportPhase(getMostActiveSport()) : detectSportPhase(sport);
+        const cfg = ph.phase === "inseason"
+          ? { color: "#4ade80", bg: "rgba(74,222,128,0.07)", border: "rgba(74,222,128,0.20)", icon: "🟢" }
+          : ph.phase === "draft"
+          ? { color: "#f59e0b", bg: "rgba(245,158,11,0.07)", border: "rgba(245,158,11,0.20)", icon: "📋" }
+          : { color: "#94a3b8", bg: "rgba(148,163,184,0.05)", border: "rgba(148,163,184,0.15)", icon: "💤" };
+        return (
+          <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border text-xs" style={{ background: cfg.bg, borderColor: cfg.border }}>
+            <span className="flex items-center gap-2">
+              <span>{cfg.icon}</span>
+              <span className="font-bold" style={{ color: cfg.color }}>{ph.label}</span>
+              {ph.nextEvent && <span className="text-muted-foreground hidden sm:inline">· Next: {ph.nextEvent}</span>}
+            </span>
+            {ph.daysUntilNext != null && (
+              <span className="font-mono font-bold text-[10px]" style={{ color: cfg.color }}>
+                {ph.daysUntilNext}d away
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Sport tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
         {SPORT_TABS_LIST.map(s => (
           <button
             key={s.id}
-            onClick={() => { setSport(s.id); setPosition("ALL"); }}
+            onClick={() => handleSportChange(s.id)}
             className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all border"
             style={
               sport === s.id
@@ -885,6 +1067,17 @@ export default function Fantasy() {
             }
           >
             <span>{s.emoji}</span> {s.label}
+            {s.id !== "ALL" && (() => {
+              const ph = detectSportPhase(s.id as SportTab);
+              const badge = ph.phase === "inseason" ? { label: "IN SEASON", color: "#4ade80" }
+                          : ph.phase === "draft"    ? { label: "DRAFT",     color: "#f59e0b" }
+                          : null;
+              return badge ? (
+                <span className="text-[8px] font-black px-1 py-0.5 rounded" style={{ background: `${badge.color}20`, color: badge.color }}>
+                  {badge.label}
+                </span>
+              ) : null;
+            })()}
           </button>
         ))}
       </div>
