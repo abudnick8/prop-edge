@@ -14,6 +14,7 @@ import Lotto from "@/pages/Lotto";
 import LineMovement from "@/pages/LineMovement";
 import PickDetail from "@/pages/PickDetail";
 import PredictionMarkets from "@/pages/PredictionMarkets";
+import Fantasy from "@/pages/Fantasy";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -80,6 +81,7 @@ function AppInner() {
               <Route path="/bracket" component={Bracket} />
               <Route path="/clv" component={LineMovement} />
               <Route path="/markets" component={PredictionMarkets} />
+              <Route path="/fantasy" component={Fantasy} />
               <Route component={NotFound} />
             </Switch>
           </div>
