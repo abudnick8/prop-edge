@@ -327,6 +327,102 @@ function HowToReadSection() {
         </div>
       </div>
 
+      {/* ── Divider ──────────────────────────────────────────────────────────── */}
+      <div className="border-t border-border/60" />
+
+      {/* ── Purchase Patterns ─────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">📊 Purchase pattern — what it means</p>
+        <p className="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">
+          Every whale alert and Top Trader position shows a <span className="text-foreground font-semibold">purchase pattern badge</span> that tells you <em>how</em> the money entered the market — not just how much. The pattern often reveals conviction level and whether the position is still being built.
+        </p>
+
+        <div className="space-y-2">
+
+          {/* Single Buy */}
+          <div className="flex items-start gap-2.5 p-2.5 rounded-lg border"
+            style={{ borderColor: "rgba(96,165,250,0.30)", background: "rgba(96,165,250,0.06)" }}>
+            <div className="shrink-0">
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap"
+                style={{ color: "#60a5fa", background: "rgba(96,165,250,0.12)", borderColor: "rgba(96,165,250,0.30)" }}>
+                1× Single Buy
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-blue-300 mb-0.5">One transaction, full commitment</p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                The entire position was entered in a single trade. This is the hallmark of a high-conviction sharp who knew their entry price and acted decisively. They didn't try to average in — they placed the full bet at once. On Polymarket: typically when smartScore ≥ 40 with a single large USDC transaction.
+              </p>
+              <p className="text-[10px] text-blue-300/70 mt-1">→ Treat like a conviction signal. The trader had enough information to commit everything at one price.</p>
+            </div>
+          </div>
+
+          {/* Multi-Entry */}
+          <div className="flex items-start gap-2.5 p-2.5 rounded-lg border"
+            style={{ borderColor: "rgba(192,132,252,0.30)", background: "rgba(192,132,252,0.06)" }}>
+            <div className="shrink-0">
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap"
+                style={{ color: "#c084fc", background: "rgba(192,132,252,0.12)", borderColor: "rgba(192,132,252,0.30)" }}>
+                2× Multi-Entry
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-purple-300 mb-0.5">Two transactions, controlled accumulation</p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                The position was split across exactly two separate buys. This typically means the trader entered, watched how the price reacted, and added a second tranche — either to average down on a dip or to add conviction after a positive signal. More deliberate than a single buy.
+              </p>
+              <p className="text-[10px] text-purple-300/70 mt-1">→ Still a strong directional signal. The split entry suggests the trader is managing their cost basis carefully.</p>
+            </div>
+          </div>
+
+          {/* Building */}
+          <div className="flex items-start gap-2.5 p-2.5 rounded-lg border"
+            style={{ borderColor: "rgba(52,211,153,0.30)", background: "rgba(52,211,153,0.06)" }}>
+            <div className="shrink-0">
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap"
+                style={{ color: "#34d399", background: "rgba(52,211,153,0.12)", borderColor: "rgba(52,211,153,0.30)" }}>
+                📈 Building
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-emerald-300 mb-0.5">3+ transactions, actively accumulating</p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                The wallet has entered this market three or more times and keeps adding. This is the strongest conviction pattern — the trader is willing to buy at multiple price levels, even as the contract price rises. They are not done. On the Top Traders page, a Building pattern means the position is likely still growing.
+              </p>
+              <p className="text-[10px] text-emerald-300/70 mt-1">→ Highest signal strength. Expect continued upward pressure on the YES price. Follow the smart money.</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Signal strength comparison */}
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[9px] text-center">
+          {[
+            { badge: "Single Buy",  signal: "High",    note: "One decisive bet",       color: "#60a5fa" },
+            { badge: "Multi-Entry", signal: "High",    note: "Deliberate accumulation", color: "#c084fc" },
+            { badge: "Building",    signal: "Highest", note: "Still adding — follow it", color: "#34d399" },
+          ].map(r => (
+            <div key={r.badge} className="p-2 rounded-lg border border-border bg-muted/20">
+              <p className="font-bold" style={{ color: r.color }}>{r.signal}</p>
+              <p className="text-muted-foreground mt-0.5 leading-tight">{r.note}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Kalshi vs Polymarket thresholds */}
+        <div className="mt-2 p-2 rounded-lg border border-border/40 bg-muted/10">
+          <p className="text-[10px] font-bold text-muted-foreground mb-1">Platform classification thresholds</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[9px] text-muted-foreground">
+            <p><span className="text-indigo-400 font-bold">Polymarket:</span> SmartScore ≥80 → Building, ≥40 → Multi-Entry, &lt;40 → Single Buy</p>
+            <p><span className="text-cyan-400 font-bold">Kalshi:</span> Vol ≥$20K → Building, ≥$8K → Multi-Entry, &lt;$8K → Single Buy</p>
+          </div>
+          <p className="text-[9px] text-muted-foreground/60 mt-1">
+            On the Top Traders page, patterns are derived from the actual on-chain transaction count for that wallet's position, not volume estimates.
+          </p>
+        </div>
+
+      </div>
+
     </div>
   );
 }

@@ -900,6 +900,52 @@ export default function PredictionMarkets() {
               </div>
             </div>
 
+            {/* Purchase Pattern — full-width */}
+            <div className="sm:col-span-2 rounded-xl border border-border/60 overflow-hidden">
+              <div className="px-3 py-2 bg-muted/30 border-b border-border/40 flex items-center gap-2">
+                <span className="text-base">📊</span>
+                <p className="text-[11px] font-black text-foreground uppercase tracking-wide">Purchase Pattern — What It Means</p>
+              </div>
+              <div className="px-3 py-3 grid sm:grid-cols-3 gap-3">
+
+                {/* Single Buy */}
+                <div className="rounded-lg border p-2.5" style={{ borderColor: "rgba(96,165,250,0.35)", background: "rgba(96,165,250,0.06)" }}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-xs font-black px-1.5 py-0.5 rounded border" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.12)", borderColor: "rgba(96,165,250,0.30)" }}>1× Single Buy</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    The position was entered with <span className="text-foreground font-semibold">one large transaction</span>. This is typical of an institution or high-conviction trader who decided quickly and committed the full amount at once. The sharpest whale moves are often single buys — they weren't averaging in, they knew their price.
+                  </p>
+                </div>
+
+                {/* Multi-Entry */}
+                <div className="rounded-lg border p-2.5" style={{ borderColor: "rgba(192,132,252,0.35)", background: "rgba(192,132,252,0.06)" }}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-xs font-black px-1.5 py-0.5 rounded border" style={{ color: "#c084fc", background: "rgba(192,132,252,0.12)", borderColor: "rgba(192,132,252,0.30)" }}>2× Multi-Entry</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    The position was built with <span className="text-foreground font-semibold">exactly two separate transactions</span>. Common when a trader enters, sees the price improve, and adds a second tranche — or splits their entry deliberately to average a better price. Still a strong directional signal.
+                  </p>
+                </div>
+
+                {/* Building */}
+                <div className="rounded-lg border p-2.5" style={{ borderColor: "rgba(52,211,153,0.35)", background: "rgba(52,211,153,0.06)" }}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-xs font-black px-1.5 py-0.5 rounded border" style={{ color: "#34d399", background: "rgba(52,211,153,0.12)", borderColor: "rgba(52,211,153,0.30)" }}>📈 Building</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    <span className="text-foreground font-semibold">3 or more transactions</span> — this wallet is actively accumulating. They keep buying as the position develops, which suggests <span className="text-foreground font-semibold">very high conviction</span>: they're willing to average up (or down) to build a larger stake. This is the most bullish pattern.
+                  </p>
+                </div>
+
+              </div>
+              <div className="px-3 pb-3">
+                <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+                  <span className="font-semibold text-muted-foreground">How to use it:</span> A <span style={{ color: "#34d399" }}>Building</span> pattern on a whale alert means the smart money isn't done — expect continued pressure on the YES price. A <span style={{ color: "#60a5fa" }}>Single Buy</span> at massive scale is often a one-shot conviction bet from a known sharp. <span style={{ color: "#c084fc" }}>Multi-Entry</span> suggests they are patiently accumulating a specific price range.
+                </p>
+              </div>
+            </div>
+
           </div>
         )}
       </div>
