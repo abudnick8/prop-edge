@@ -416,7 +416,10 @@ function buildConvictionPlays(
     }
 
     // Score: 100 per signal, bonus for signal strength
-    const totalScore = signals.reduce((acc, s) => acc + (s.strength === "strong" ? 105 : 90), 0);
+    // A+/A edge tier adds bonus so high-value plays surface first
+    const edgeTier = (bet as any).edgeTier as string | undefined;
+    const edgeBonus = edgeTier === "A+" ? 20 : edgeTier === "A" ? 12 : edgeTier === "B" ? 5 : 0;
+    const totalScore = signals.reduce((acc, s) => acc + (s.strength === "strong" ? 105 : 90), 0) + edgeBonus;
 
     plays.push({
       id: `hc-${bet.id}`,
@@ -951,6 +954,18 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
               >
                 {play.betType.replace("_", " ").toUpperCase()}
               </span>
+              {/* Edge tier badge on conviction card */}
+              {play.bet && (play.bet as any).edgeTier && (play.bet as any).edgeTier !== "C" && (() => {
+                const tier = (play.bet as any).edgeTier as string;
+                const ep   = (play.bet as any).edgePct as number | undefined;
+                const edgeColors: Record<string, string> = { "A+": "#4ade80", "A": "#facc15", "B": "#93c5fd" };
+                const c = edgeColors[tier] ?? "#94a3b8";
+                return (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded border" style={{ background: `${c}18`, color: c, borderColor: `${c}40` }}>
+                    📊 {tier}{ep != null ? ` +${ep.toFixed(0)}%` : ""}
+                  </span>
+                );
+              })()}
             </div>
 
             {/* Teams */}

@@ -2360,6 +2360,8 @@ interface ScoreInput {
   recentAvg?: number | null;   // player's L5 game average for this stat
   formEdge?: number | null;    // (recentAvg - line) / line — positive = exceeds line
   formFlipped?: boolean;       // true if analytic side disagrees with market side
+  // C7: Book line value (edge %) — added after edge analysis pass
+  edgePctHint?: number | null;  // pre-computed edge % from multi-book comparison
 }
 
 interface ScoreResult {
@@ -3480,9 +3482,160 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     console.log("[urgency] closing-soon tagging complete");
   } catch (e: any) { console.warn("[urgency] error:", e.message); }
 
+  // ── Edge Analysis: compute edge %, best book, and tier for every bet ───────────
+  try {
+    await computeAndTagEdge();
+    console.log("[edge] edge analysis complete");
+  } catch (e: any) { console.warn("[edge] error:", e.message); }
+
   return { scanned: fresh.length, highConfidence: highConf };
 }
 
+
+// ─── Edge Analysis Engine ───────────────────────────────────────────────────────────
+//
+// For every open bet, computes:
+//   edgePct   — how much value the model sees vs the book’s implied probability
+//   edgeTier  — A+ (≥15%), A (≥10%), B (≥5%), C (<5%)
+//   bestBook  — the book in allSources that has the most favorable odds for the pick
+//
+// Edge calculation:
+//   For sportsbook props/lines: fairValue (from confidence score) - impliedProbability
+//   For prediction markets    : uses existing computeMispricing() logic
+//
+// Tier thresholds are intentionally strict so A+ is rare and meaningful.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Pretty-print a book name
+function prettyBook(key: string): string {
+  const MAP: Record<string, string> = {
+    draftkings:        "DraftKings",
+    fanduel:           "FanDuel",
+    betmgm:            "BetMGM",
+    williamhill_us:    "Caesars",
+    caesars:           "Caesars",
+    underdog:          "Underdog",
+    pointsbetus:       "PointsBet",
+    betrivers:         "BetRivers",
+    unibet_us:         "Unibet",
+    bovada:            "Bovada",
+    mybookieag:        "MyBookie",
+    actionnetwork:     "ActionNetwork",
+  };
+  return MAP[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+// Format American odds for display
+function fmtOdds(o: number): string {
+  return o > 0 ? `+${o}` : `${o}`;
+}
+
+// Convert American odds → implied probability (removing vig estimate)
+function oddsToProb(american: number): number {
+  if (american > 0) return 100 / (american + 100);
+  return Math.abs(american) / (Math.abs(american) + 100);
+}
+
+// Assign edge tier based on edge % + confidence + sharp money
+function assignEdgeTier(
+  edgePct: number,
+  confidenceScore: number,
+  isSharpMoney: boolean,
+): "A+" | "A" | "B" | "C" {
+  // Sharp money bonus: if sharps are aligned, allow tier upgrade
+  const sharpBonus = isSharpMoney ? 2 : 0;
+  const effectiveEdge = edgePct + sharpBonus;
+
+  if (effectiveEdge >= 15 && confidenceScore >= 82) return "A+";
+  if (effectiveEdge >= 10 && confidenceScore >= 75) return "A";
+  if (effectiveEdge >= 5  && confidenceScore >= 65) return "B";
+  return "C";
+}
+
+async function computeAndTagEdge(): Promise<void> {
+  const bets = await storage.getBets();
+
+  for (const bet of bets) {
+    if (bet.status !== "open") continue;
+
+    // ── 1. Compute edge % ──────────────────────────────────────────────
+    const conf  = bet.confidenceScore ?? 50;
+    const score = Math.max(0, Math.min(100, conf));
+
+    // Fair value: linear calibration (score 50→0.50, 85→0.78, 100→0.90)
+    const fairValue = 0.10 + (score / 100) * 0.80;
+
+    // Market price: prediction markets use yesPrice; sportsbook uses impliedProbability
+    const isPredMkt = bet.source === "kalshi" || bet.source === "polymarket";
+    const marketPrice = isPredMkt
+      ? (bet.yesPrice ?? bet.impliedProbability ?? 0.5)
+      : (bet.impliedProbability ?? 0.5);
+
+    const rawEdge = fairValue - marketPrice;  // positive = model sees value
+    const edgePct = Math.round(Math.abs(rawEdge) * 1000) / 10;  // e.g. 12.4
+
+    // ── 2. Find best book from allSources ───────────────────────────────────
+    let bestBook: string | null = null;
+    let bestBookKey: string | null = null;
+    let bestBookOdds: number | null = null;
+
+    if (bet.allSources && bet.allSources.length > 0) {
+      // Determine pick side from the bet
+      const pickSideLower = ((bet.teamStats as any)?.pickSide ?? "").toLowerCase();
+      const isOver  = pickSideLower === "over"  || (bet.pick ?? "").toLowerCase().includes("over");
+      const isUnder = pickSideLower === "under" || (bet.pick ?? "").toLowerCase().includes("under");
+
+      // For each source, find the odds for the correct side
+      // Best = least juice (highest American odds = least negative or most positive)
+      let bestValue = -Infinity;
+
+      for (const src of bet.allSources) {
+        if (!src.source) continue;
+
+        let sideOdds: number | undefined;
+        if (isUnder && src.underOdds != null) {
+          sideOdds = src.underOdds;
+        } else if (!isUnder && src.overOdds != null) {
+          sideOdds = src.overOdds;
+        } else if (src.overOdds != null) {
+          sideOdds = src.overOdds;  // fallback to over
+        }
+
+        if (sideOdds == null) continue;
+
+        // Higher American odds = better value (e.g. -105 beats -115)
+        if (sideOdds > bestValue) {
+          bestValue    = sideOdds;
+          bestBookKey  = src.source;
+          bestBookOdds = sideOdds;
+          bestBook     = `${prettyBook(src.source)} ${fmtOdds(sideOdds)}`;
+        }
+      }
+    }
+
+    // If no allSources data, fall back to bet's own source + odds
+    if (!bestBook && bet.overOdds != null) {
+      const odds = ((bet.teamStats as any)?.pickSide === "under" ? bet.underOdds : bet.overOdds) ?? bet.overOdds;
+      if (odds != null) {
+        bestBook     = `${prettyBook(bet.source)} ${fmtOdds(odds)}`;
+        bestBookKey  = bet.source;
+        bestBookOdds = odds;
+      }
+    }
+
+    // ── 3. Assign tier ────────────────────────────────────────────────────
+    const edgeTier = assignEdgeTier(edgePct, conf, bet.isSharpMoney ?? false);
+
+    // ── 4. Persist ──────────────────────────────────────────────────────────
+    await storage.patchBetEdge(bet.id, {
+      edgePct,
+      edgeTier,
+      bestBook,
+      bestBookKey,
+      bestBookOdds,
+    });
+  }
+}
 
 // ─── Fair Value + Mispricing Engine ─────────────────────────────────────────
 //

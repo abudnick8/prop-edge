@@ -57,6 +57,12 @@ export const bets = pgTable("bets", {
   arbSellSide: text("arb_sell_side"),                     // the other platform
   arbBuyPrice: real("arb_buy_price"),                     // price on the cheaper platform
   arbSellPrice: real("arb_sell_price"),                   // price on the expensive platform
+  // ── Edge Analysis (line value vs book) ─────────────────────────────────────
+  edgePct: real("edge_pct"),                               // % edge vs fair value (e.g. 12.4)
+  edgeTier: text("edge_tier"),                             // "A+" | "A" | "B" | "C"
+  bestBook: text("best_book"),                             // e.g. "DraftKings -108"
+  bestBookKey: text("best_book_key"),                      // e.g. "draftkings"
+  bestBookOdds: integer("best_book_odds"),                 // best American odds for pick side
   // ── Urgency / Closing Soon ───────────────────────────────────────────
   isClosingSoon: boolean("is_closing_soon").default(false), // market closes within 3h
   minutesToClose: integer("minutes_to_close"),              // minutes until game time / close

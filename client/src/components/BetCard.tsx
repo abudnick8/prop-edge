@@ -667,6 +667,26 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     }
                   </span>
                 )}
+
+                {/* Edge Tier + Edge % badge */}
+                {(bet as any).edgeTier && (bet as any).edgeTier !== "C" && (() => {
+                  const tier = (bet as any).edgeTier as string;
+                  const edgePct = (bet as any).edgePct as number | undefined;
+                  const tierStyle: Record<string, { bg: string; border: string; color: string; glow: string }> = {
+                    "A+": { bg: "rgba(34,197,94,0.15)",  border: "rgba(34,197,94,0.45)",  color: "#4ade80", glow: "0 0 8px rgba(34,197,94,0.3)" },
+                    "A":  { bg: "rgba(250,204,21,0.14)", border: "rgba(250,204,21,0.40)", color: "#facc15", glow: "" },
+                    "B":  { bg: "rgba(96,165,250,0.12)", border: "rgba(96,165,250,0.35)", color: "#93c5fd", glow: "" },
+                  };
+                  const s = tierStyle[tier] ?? tierStyle["B"];
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border"
+                      style={{ background: s.bg, borderColor: s.border, color: s.color, boxShadow: s.glow }}
+                    >
+                      📊 {tier} EDGE{edgePct != null ? ` · +${edgePct.toFixed(1)}%` : ""}
+                    </span>
+                  );
+                })()}
               </div>
 
               {!compact && (
@@ -679,6 +699,15 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   {bet.homeTeam && (
                     <span className="flex items-center gap-1">
                       {sportEmoji} {bet.awayTeam} @ {bet.homeTeam}
+                    </span>
+                  )}
+                  {/* Best book line */}
+                  {(bet as any).bestBook && (
+                    <span
+                      className="flex items-center gap-1 font-bold"
+                      style={{ color: "#a3e635" }}
+                    >
+                      🏦 Best: {(bet as any).bestBook}
                     </span>
                   )}
                   {bet.gameTime && countdown.text && !countdown.isStarted && (
