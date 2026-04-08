@@ -4,13 +4,13 @@ import { LayoutDashboard, Target, Settings, MessageCircleQuestion, Trophy, Ticke
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
+  { href: "/clv", label: "Line Movement", icon: TrendingUp, emoji: "📈" },
   { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
   { href: "/markets", label: "Pred. Markets", icon: BarChart2, emoji: "🔮" },
   { href: "/fantasy", label: "Fantasy", icon: Shuffle, emoji: "🏅" },
   { href: "/lotto", label: "Lotto", icon: Ticket, emoji: "🎰" },
   { href: "/ask", label: "Ask AI", icon: MessageCircleQuestion, emoji: "🤖" },
   { href: "/bracket", label: "Bracket", icon: Trophy, emoji: "🏆" },
-  { href: "/clv", label: "Line Movement", icon: TrendingUp, emoji: "📈" },
   { href: "/settings", label: "Settings", icon: Settings, emoji: "⚙️" },
 ];
 
