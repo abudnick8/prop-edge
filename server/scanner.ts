@@ -1831,6 +1831,13 @@ async function fetchUnderdogProps(enabledSports?: string[]): Promise<InsertBet[]
         homeTeam,
         awayTeam,
         isHighConfidence: confidence.score >= 85,
+        // ── Stat-vs-line edge (TikTok model) ────────────────────────────────────────
+        recentAvg:     recentAvg ?? null,
+        formEdgePct:   formEdgeVal != null ? Math.round(formEdgeVal * 1000) / 10 : null,
+        hitRate:       hitRate ?? null,
+        hitRateGames:  perGameValues.length > 0 ? perGameValues.length : null,
+        perGameValues: perGameValues.slice(-6),   // last 6 games for sparkline
+        statName:      statName ?? null,
         teamStats: {
           pickSide,
           pickedOdds,
@@ -3093,6 +3100,13 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
               gameTime: startTime,
               playerName,
               isHighConfidence: confidence.score >= 85,
+              // ── Stat-vs-line edge (TikTok model) ────────────────────────────────────────
+              recentAvg:     recentAvgSGO ?? null,
+              formEdgePct:   formEdgeSGO != null ? Math.round(formEdgeSGO * 1000) / 10 : null,
+              hitRate:       hitRateSGO ?? null,
+              hitRateGames:  pgvSGO.length > 0 ? pgvSGO.length : null,
+              perGameValues: pgvSGO.slice(-6),
+              statName:      statName ?? null,
               teamStats: {
                 pickSide,
                 pickedOdds,

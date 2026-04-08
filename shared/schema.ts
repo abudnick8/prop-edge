@@ -57,6 +57,13 @@ export const bets = pgTable("bets", {
   arbSellSide: text("arb_sell_side"),                     // the other platform
   arbBuyPrice: real("arb_buy_price"),                     // price on the cheaper platform
   arbSellPrice: real("arb_sell_price"),                   // price on the expensive platform
+  // ── Stat-vs-Line Edge (TikTok model: L5 avg vs posted line) ──────────────────
+  recentAvg: real("recent_avg"),                           // player L5 game average for this stat
+  formEdgePct: real("form_edge_pct"),                      // (recentAvg - line) / line * 100, e.g. +37.1
+  hitRate: real("hit_rate"),                               // fraction of L5 games that hit OVER (0–1)
+  hitRateGames: integer("hit_rate_games"),                 // number of games in the sample
+  perGameValues: jsonb("per_game_values").$type<number[]>(), // last N game values for sparkline
+  statName: text("stat_name"),                             // e.g. "Shots", "Points", "Assists"
   // ── Edge Analysis (line value vs book) ─────────────────────────────────────
   edgePct: real("edge_pct"),                               // % edge vs fair value (e.g. 12.4)
   edgeTier: text("edge_tier"),                             // "A+" | "A" | "B" | "C"

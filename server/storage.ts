@@ -41,6 +41,14 @@ export interface IStorage {
     arbBuyPrice: number;
     arbSellPrice: number;
   }): Promise<Bet | undefined>;
+  patchBetStatEdge(id: string, patch: {
+    recentAvg: number | null;
+    formEdgePct: number | null;
+    hitRate: number | null;
+    hitRateGames: number | null;
+    perGameValues: number[];
+    statName: string | null;
+  }): Promise<Bet | undefined>;
   patchBetEdge(id: string, patch: {
     edgePct: number;
     edgeTier: string;
@@ -276,6 +284,18 @@ export class MemStorage implements IStorage {
   }
 
   async patchBetArb(id: string, patch: { isArbWindow: boolean; arbSpreadPct: number; arbBuySide: string; arbSellSide: string; arbBuyPrice: number; arbSellPrice: number }): Promise<Bet | undefined> {
+    const bet = this.bets.get(id);
+    if (!bet) return undefined;
+    const updated: Bet = { ...bet, ...patch, updatedAt: new Date() };
+    this.bets.set(id, updated);
+    return updated;
+  }
+
+  async patchBetStatEdge(id: string, patch: {
+    recentAvg: number | null; formEdgePct: number | null;
+    hitRate: number | null; hitRateGames: number | null;
+    perGameValues: number[]; statName: string | null;
+  }): Promise<Bet | undefined> {
     const bet = this.bets.get(id);
     if (!bet) return undefined;
     const updated: Bet = { ...bet, ...patch, updatedAt: new Date() };
