@@ -4,7 +4,7 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   TrendingUp, CheckCircle, AlertTriangle, BarChart2, ExternalLink,
-  Loader2, Target, Activity, ChevronRight, Info, X, BookOpen
+  Loader2, Activity, ChevronRight, Info, X, BookOpen
 } from "lucide-react";
 import { Drawer, DrawerContent, DrawerClose } from "@/components/ui/drawer";
 import { formatDistanceToNow } from "date-fns";
@@ -63,168 +63,192 @@ function OddsBar({ overOdds, underOdds, pickSide }: { overOdds: number | null; u
   );
 }
 
-// ── Confidence Breakdown ──────────────────────────────────────────────────
-const SCORE_DESCRIPTIONS: Record<string, { max: number; color: string; what: string; high: string; low: string }> = {
-  "Market Edge": {
-    max: 30, color: "#22d3ee",
-    what: "How much the betting market price favors this outcome. Derived from implied probability — the higher the edge, the more the market believes this will hit.",
-    high: "Market strongly prices this outcome as likely. The implied probability is high and the line has been set in your favor.",
-    low: "Market is uncertain or slightly against this outcome. The line may be tighter or pricing has moved unfavorably.",
-  },
-  "Analytics": {
-    max: 25, color: "#a78bfa",
-    what: "Depth of statistical factors supporting this pick. Each key factor (recent form, pace, matchup, injury report, etc.) contributes points up to the 25-point max.",
-    high: "Multiple strong statistical signals align with this pick — recent performance, matchup data, and situational factors all point the same direction.",
-    low: "Fewer supporting statistics found. The pick may still be valid but with less statistical backing.",
-  },
-  "Base Model": {
-    max: 30, color: "#f59e0b",
-    what: "PropEdge's core probability model score. Based on historical hit rates for this bet type, sport, and line relative to the player's average output.",
-    high: "The base model strongly favors this line — historically, similar setups have hit at a high rate for this player and bet type.",
-    low: "The base model is neutral or cautious. Consider this a softer edge — the historical pattern is less decisive.",
-  },
-  "Source Quality": {
-    max: 15, color: "#4ade80",
-    what: "Reliability bonus from the data source(s) backing this pick. Kalshi (prediction markets) and multi-source agreement earn the most points; single-source picks earn less.",
-    high: "This bet is backed by multiple independent sources (e.g. Kalshi + Underdog + DraftKings all agreeing) — strong signal convergence.",
-    low: "Based on a single source. The pick may still be excellent, but there is less cross-market validation.",
-  },
-};
+// ── Score Explainer — real breakdown using actual model data ──────────────
+function ScoreExplainer({ bet }: { bet: Bet }) {
+  const score     = bet.confidenceScore ?? 0;
+  const factors   = (bet.keyFactors as string[] | null) ?? [];
+  const edgeTier  = (bet as any).edgeTier  as string | undefined;
+  const edgePct   = (bet as any).edgePct   as number | undefined;
+  const formEdge  = (bet as any).formEdgePct as number | undefined;
+  const recentAvg = (bet as any).recentAvg  as number | undefined;
+  const hitRate   = (bet as any).hitRate    as number | undefined;
+  const hitRateGames = (bet as any).hitRateGames as number | undefined;
+  const statName  = (bet as any).statName   as string | undefined;
+  const bestBook  = (bet as any).bestBook   as string | undefined;
+  const line      = bet.line;
 
-function ConfidenceBreakdown({ score, keyFactors, riskLevel, impliedProbability }: {
-  score: number; keyFactors: string[] | null; riskLevel: string | null; impliedProbability: number | null;
-}) {
-  const [expandedBar, setExpandedBar] = useState<string | null>(null);
+  const scoreColor = score >= 85 ? "#22c55e" : score >= 70 ? "#eab308" : "#f97316";
+  const scoreLabel = score >= 85 ? "HIGH CONFIDENCE" : score >= 70 ? "Moderate" : "Low";
 
-  // Proportional allocation: weights → raw alloc → scale to sum exactly to `score` → cap at maxPoints
-  const keyFactorsLen = keyFactors?.length ?? 0;
-  const marketWeight   = impliedProbability ?? 0.5;
-  const analyticsWeight = Math.min(1, keyFactorsLen / 5) || 0.4;
-  const riskMult       = riskLevel === "low" ? 1.0 : riskLevel === "medium" ? 0.75 : 0.5;
-  const baseWeight     = 0.6 * riskMult;
-  const sourceWeight   = keyFactorsLen >= 3 ? 0.8 : 0.4;
-  const maxPoints      = [30, 25, 30, 15];
-  const weights        = [marketWeight, analyticsWeight, baseWeight, sourceWeight];
-  const rawAlloc       = weights.map((w, i) => w * maxPoints[i]);
-  const rawTotal       = rawAlloc.reduce((a, b) => a + b, 0);
-  let scaled = rawAlloc.map((r, i) => Math.min(maxPoints[i], Math.round((r / rawTotal) * score)));
-  // Fix rounding drift so total === score exactly
-  const diff = score - scaled.reduce((a, b) => a + b, 0);
-  const adjustIdx = scaled.findIndex((v, i) => diff > 0 ? v < maxPoints[i] : v > 0);
-  if (adjustIdx >= 0) scaled[adjustIdx] = Math.max(0, Math.min(maxPoints[adjustIdx], scaled[adjustIdx] + diff));
+  // Edge tier display config
+  const TIER_STYLE: Record<string, { color: string; bg: string; border: string; label: string }> = {
+    "A+": { color: "#4ade80", bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.35)",   label: "Book significantly behind model" },
+    "A":  { color: "#facc15", bg: "rgba(250,204,21,0.12)",  border: "rgba(250,204,21,0.35)",  label: "Meaningful gap vs market price" },
+    "B":  { color: "#93c5fd", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.35)",  label: "Moderate edge — look for confirming signal" },
+    "C":  { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)", label: "Edge below threshold" },
+  };
+  const tierStyle = (edgeTier && TIER_STYLE[edgeTier]) ?? TIER_STYLE["C"];
 
-  const bars = [
-    { label: "Market Edge",   value: scaled[0], max: 30, color: "#22d3ee" },
-    { label: "Analytics",     value: scaled[1], max: 25, color: "#a78bfa" },
-    { label: "Base Model",    value: scaled[2], max: 30, color: "#f59e0b" },
-    { label: "Source Quality",value: scaled[3], max: 15, color: "#4ade80" },
-  ];
+  // Classify each factor for icon/color
+  function factorTone(f: string): "positive" | "caution" | "negative" | "neutral" {
+    const l = f.toLowerCase();
+    if (l.includes("warning") || l.includes("conflict") || l.includes("miss") || l.includes("penalty") || l.includes("coin-flip") || l.includes("extreme juice") || l.includes("public-heavy")) return "negative";
+    if (l.includes("caution") || l.includes("moderate") || l.includes("mild") || l.includes("watch") || l.includes("risk") || l.includes("slight")) return "caution";
+    if (l.includes("strong") || l.includes("solid") || l.includes("sharp") || l.includes("high market") || l.includes("clean juice") || l.includes("crushing") || l.includes("above line") || l.includes("consistent")) return "positive";
+    return "neutral";
+  }
+
+  const hitRatePct = hitRate != null ? Math.round(hitRate * 100) : null;
+  const hitRateTotal = hitRateGames ?? 5;
+  const hitRateHits  = hitRate != null ? Math.round(hitRate * hitRateTotal) : null;
 
   return (
-    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.09)" }}>
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <Activity size={13} style={{ color: "#f59e0b" }} />
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Score Breakdown</span>
-        <span className="ml-auto text-xs font-black font-mono" style={{ color: "#f59e0b" }}>{score}/100</span>
+      <div className="px-4 py-3 flex items-center gap-3" style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <Activity size={13} style={{ color: scoreColor }} />
+        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.7)" }}>Why this score?</span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[10px] font-semibold" style={{ color: scoreColor }}>{scoreLabel}</span>
+          <span className="text-sm font-black font-mono" style={{ color: scoreColor }}>{score}/100</span>
+        </div>
       </div>
 
-      {/* Bars */}
-      <div className="space-y-2.5">
-        {bars.map((bar) => {
-          const desc = SCORE_DESCRIPTIONS[bar.label];
-          const isOpen = expandedBar === bar.label;
-          const pct = (bar.value / bar.max) * 100;
-          const grade = pct >= 85 ? "Excellent" : pct >= 65 ? "Good" : pct >= 45 ? "Fair" : "Low";
-          const gradeColor = pct >= 85 ? "#4ade80" : pct >= 65 ? "#f59e0b" : pct >= 45 ? "#fb923c" : "rgba(255,255,255,0.35)";
+      <div className="p-4 space-y-4">
 
-          return (
-            <div key={bar.label}>
-              {/* Row */}
-              <button
-                className="w-full text-left"
-                onClick={() => setExpandedBar(isOpen ? null : bar.label)}
-                data-testid={`score-bar-${bar.label.toLowerCase().replace(/ /g, "-")}`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>{bar.label}</span>
-                    <Info size={9} style={{ color: "rgba(255,255,255,0.25)" }} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-semibold" style={{ color: gradeColor }}>{grade}</span>
-                    <span className="text-[10px] font-mono font-bold" style={{ color: bar.color }}>{bar.value}/{bar.max}</span>
-                  </div>
-                </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${pct}%`, background: bar.color, boxShadow: `0 0 6px ${bar.color}66` }}
-                  />
-                </div>
-              </button>
+        {/* ── Score bar ── */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Confidence score</span>
+            <span className="font-mono font-bold" style={{ color: scoreColor }}>{score}/100</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, background: `linear-gradient(90deg, ${scoreColor}99, ${scoreColor})` }} />
+          </div>
+          <div className="grid grid-cols-3 gap-1 text-center pt-0.5">
+            {[{ r: "<70", l: "Low", c: "#f97316" }, { r: "70–84", l: "Moderate", c: "#eab308" }, { r: "85+", l: "HIGH", c: "#22c55e" }].map(t => (
+              <div key={t.r} className="rounded px-1.5 py-1" style={{ background: t.c + "14", border: `1px solid ${t.c}30` }}>
+                <p className="text-[9px] font-black font-mono" style={{ color: t.c }}>{t.r}</p>
+                <p className="text-[8px]" style={{ color: "rgba(255,255,255,0.4)" }}>{t.l}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
-              {/* Expanded explanation */}
-              {isOpen && desc && (
-                <div className="mt-2 p-3 rounded-lg space-y-2" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${bar.color}30` }}>
-                  <div className="flex items-start gap-2">
-                    <BookOpen size={10} className="flex-shrink-0 mt-0.5" style={{ color: bar.color }} />
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>
-                        <span className="font-bold" style={{ color: bar.color }}>What it measures: </span>
-                        {desc.what}
-                      </p>
-                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
-                        <span className="font-semibold" style={{ color: "#4ade80" }}>High score: </span>
-                        {desc.high}
-                      </p>
-                      <p className="text-[10px] leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
-                        <span className="font-semibold" style={{ color: "#fb923c" }}>Low score: </span>
-                        {desc.low}
-                      </p>
-                      <p className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.3)" }}>
-                        Max: {bar.max} pts &nbsp;·&nbsp; This bet: {bar.value} pts ({Math.round(pct)}%)
-                      </p>
-                    </div>
-                  </div>
-                </div>
+        {/* ── Edge Grade ── */}
+        {edgeTier && edgeTier !== "C" && (
+          <div className="rounded-lg p-3 space-y-2" style={{ background: tierStyle.bg, border: `1px solid ${tierStyle.border}` }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black px-2 py-0.5 rounded border" style={{ color: tierStyle.color, borderColor: tierStyle.border, background: tierStyle.bg }}>
+                📊 {edgeTier} EDGE
+              </span>
+              {edgePct != null && (
+                <span className="text-xs font-black font-mono" style={{ color: tierStyle.color }}>+{edgePct.toFixed(1)}%</span>
+              )}
+              <span className="text-[10px] ml-1" style={{ color: "rgba(255,255,255,0.5)" }}>{tierStyle.label}</span>
+            </div>
+            <div className="text-[10px] space-y-1" style={{ color: "rgba(255,255,255,0.6)" }}>
+              <p>The model's fair value <span className="font-semibold text-foreground">minus</span> the book's implied probability = the edge gap.</p>
+              {edgePct != null && (
+                <p>
+                  This pick has a <span className="font-bold" style={{ color: tierStyle.color }}>+{edgePct.toFixed(1)}% edge</span> — the book is pricing this {edgePct.toFixed(1)}% below what the model sees as fair value.
+                </p>
+              )}
+              <div className="mt-1.5 text-[9px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                <span>A+ requires ≥15% edge + conf ≥82 &nbsp;·&nbsp; A ≥10% + conf ≥75 &nbsp;·&nbsp; B ≥5% + conf ≥65</span>
+              </div>
+            </div>
+            {bestBook && (
+              <p className="text-[10px] font-bold" style={{ color: "#a3e635" }}>🏦 Best line: {bestBook}</p>
+            )}
+          </div>
+        )}
+
+        {/* ── Stat-vs-line (L5 model) ── */}
+        {(formEdge != null || recentAvg != null) && (
+          <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.25)" }}>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold" style={{ color: "#fb923c" }}>📈 Stat-vs-line (L5 model)</span>
+              {formEdge != null && (
+                <span className="text-[10px] font-black font-mono ml-auto" style={{ color: formEdge > 0 ? "#4ade80" : "#f87171" }}>
+                  {formEdge > 0 ? "+" : ""}{formEdge.toFixed(1)}%
+                </span>
               )}
             </div>
-          );
-        })}
-      </div>
+            {recentAvg != null && line != null && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>L5 avg{statName ? ` (${statName})` : ""}</span>
+                  <span className="font-mono font-bold" style={{ color: (formEdge ?? 0) > 0 ? "#4ade80" : "#f87171" }}>
+                    {recentAvg.toFixed(1)} vs {line} line
+                  </span>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                  <div className="h-full rounded-full" style={{
+                    width: `${Math.min((recentAvg / (line * 1.5)) * 100, 100)}%`,
+                    background: (formEdge ?? 0) > 0 ? "linear-gradient(90deg,#4ade80,#22c55e)" : "linear-gradient(90deg,#f87171,#ef4444)"
+                  }} />
+                  {/* Line marker */}
+                  <div className="absolute top-0 bottom-0 w-0.5" style={{ left: `${Math.min((line / (line * 1.5)) * 100, 99)}%`, background: "rgba(255,255,255,0.6)" }} />
+                </div>
+                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  {(formEdge ?? 0) > 0
+                    ? `Player's L5 average is ${recentAvg.toFixed(1)} — ${Math.abs(formEdge ?? 0).toFixed(1)}% above the ${line} line`
+                    : `Player's L5 average is ${recentAvg.toFixed(1)} — ${Math.abs(formEdge ?? 0).toFixed(1)}% below the ${line} line`
+                  }
+                </p>
+              </div>
+            )}
+            {hitRatePct != null && hitRateHits != null && (
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Hit rate (last {hitRateTotal} games)</span>
+                    <span className="font-mono font-bold" style={{ color: hitRatePct >= 60 ? "#4ade80" : hitRatePct >= 40 ? "#fbbf24" : "#f87171" }}>
+                      {hitRateHits}/{hitRateTotal} ({hitRatePct}%)
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                    <div className="h-full rounded-full" style={{
+                      width: `${hitRatePct}%`,
+                      background: hitRatePct >= 60 ? "#4ade80" : hitRatePct >= 40 ? "#fbbf24" : "#f87171"
+                    }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Footer hint */}
-      <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.2)" }}>
-        Tap any category to learn what it means &nbsp;·&nbsp; Total max: 100 pts
-      </p>
-    </div>
-  );
-}
-
-
-// ── Key Factors ───────────────────────────────────────────────────────────
-function KeyFactorsPanel({ factors }: { factors: string[] }) {
-  return (
-    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="flex items-center gap-2">
-        <Target size={13} style={{ color: "#f59e0b" }} />
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Key Factors ({factors.length})</span>
-      </div>
-      <div className="space-y-2">
-        {factors.map((factor, i) => {
-          const isPositive = !factor.toLowerCase().includes("risk") && !factor.toLowerCase().includes("concern");
-          const isCaution = factor.toLowerCase().includes("moderate") || factor.toLowerCase().includes("watch");
-          return (
-            <div key={i} className="flex items-start gap-2.5 p-2.5 rounded-lg"
-              style={{ background: isPositive && !isCaution ? "rgba(74,222,128,0.05)" : isCaution ? "rgba(251,191,36,0.05)" : "rgba(255,255,255,0.03)", border: `1px solid ${isPositive && !isCaution ? "rgba(74,222,128,0.15)" : isCaution ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.06)"}` }}>
-              <span className="flex-shrink-0 mt-0.5">
-                {isPositive && !isCaution ? <CheckCircle size={12} color="#4ade80" /> : isCaution ? <AlertTriangle size={12} color="#fbbf24" /> : <Info size={12} color="rgba(255,255,255,0.35)" />}
-              </span>
-              <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>{factor}</p>
+        {/* ── Scoring reasons (real keyFactors from model) ── */}
+        {factors.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.35)" }}>Scoring reasons ({factors.length})</p>
+            <div className="space-y-1.5">
+              {factors.map((f, i) => {
+                const tone = factorTone(f);
+                const styles = {
+                  positive: { bg: "rgba(74,222,128,0.05)",  border: "rgba(74,222,128,0.18)",  icon: <CheckCircle  size={11} color="#4ade80" />,             text: "rgba(255,255,255,0.8)" },
+                  caution:  { bg: "rgba(251,191,36,0.05)",  border: "rgba(251,191,36,0.18)",  icon: <AlertTriangle size={11} color="#fbbf24" />,            text: "rgba(255,255,255,0.7)" },
+                  negative: { bg: "rgba(248,113,113,0.05)", border: "rgba(248,113,113,0.18)", icon: <AlertTriangle size={11} color="#f87171" />,            text: "rgba(255,255,255,0.65)" },
+                  neutral:  { bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)", icon: <Info          size={11} color="rgba(255,255,255,0.3)" />, text: "rgba(255,255,255,0.6)" },
+                }[tone];
+                return (
+                  <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg" style={{ background: styles.bg, border: `1px solid ${styles.border}` }}>
+                    <span className="flex-shrink-0 mt-0.5">{styles.icon}</span>
+                    <p className="text-[11px] leading-relaxed" style={{ color: styles.text }}>{f}</p>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        )}
+
+        {/* Fallback if no factors */}
+        {factors.length === 0 && (
+          <p className="text-[11px] text-center py-2" style={{ color: "rgba(255,255,255,0.3)" }}>Scoring detail not available for this pick.</p>
+        )}
+
       </div>
     </div>
   );
@@ -974,18 +998,8 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
             {/* Player stats with game log */}
             {bet.playerName && <PlayerStatsSection bet={bet} />}
 
-            {/* Confidence breakdown */}
-            <ConfidenceBreakdown
-              score={score}
-              keyFactors={bet.keyFactors as string[] | null}
-              riskLevel={bet.riskLevel}
-              impliedProbability={bet.impliedProbability}
-            />
-
-            {/* Key factors */}
-            {bet.keyFactors && (bet.keyFactors as string[]).length > 0 && (
-              <KeyFactorsPanel factors={bet.keyFactors as string[]} />
-            )}
+            {/* Score + Edge explainer */}
+            <ScoreExplainer bet={bet} />
 
             {/* Research summary */}
             {bet.researchSummary && (
