@@ -261,6 +261,48 @@ interface WatchingPlay {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Player prop label helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Extracts player name from bet — prefers playerName field, falls back to
+// parsing title/description for patterns like "LeBron James Over 29.5 Points"
+function extractPlayerName(bet: Bet): string {
+  if (bet.playerName && bet.playerName.trim().length > 0) return bet.playerName.trim();
+  // Try to parse from title: "[Player Name] [Over/Under] [Line] [Stat]"
+  const titleMatch = (bet.title ?? "").match(/^([A-Z][a-z]+(?: [A-Z][a-z'.]+){1,3})\s+(?:Over|Under|o\/u)/i);
+  if (titleMatch) return titleMatch[1];
+  // Try description
+  const descMatch = (bet.description ?? "").match(/^([A-Z][a-z]+(?: [A-Z][a-z'.]+){1,3})\s+(?:to|Over|Under)/i);
+  if (descMatch) return descMatch[1];
+  return "";
+}
+
+// Extracts stat type from the bet title/description
+// Returns short label: "PTS", "AST", "REB", "3PM", "YDS", etc.
+function extractStatType(bet: Bet): string {
+  const src = `${bet.title ?? ""} ${bet.description ?? ""}`.toLowerCase();
+  if (/passing yard|pass yard|passing yd/.test(src)) return "Pass Yds";
+  if (/rushing yard|rush yard|rushing yd/.test(src)) return "Rush Yds";
+  if (/receiving yard|rec yard|receiving yd/.test(src)) return "Rec Yds";
+  if (/reception|catches/.test(src)) return "REC";
+  if (/touchdown/.test(src)) return "TD";
+  if (/3-point|three.point|threes made|3pm/.test(src)) return "3PM";
+  if (/rebound/.test(src)) return "REB";
+  if (/assist/.test(src)) return "AST";
+  if (/point|pts/.test(src)) return "PTS";
+  if (/steal/.test(src)) return "STL";
+  if (/block/.test(src)) return "BLK";
+  if (/strikeout|k's/.test(src)) return "K's";
+  if (/hit/.test(src)) return "Hits";
+  if (/home run/.test(src)) return "HR";
+  if (/rbi/.test(src)) return "RBI";
+  if (/save/.test(src)) return "Saves";
+  if (/goal/.test(src)) return "Goals";
+  if (/shot/.test(src)) return "Shots";
+  return "Prop";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Confluence Engine — finds plays where all 3 signals converge
 // ─────────────────────────────────────────────────────────────────────────────
 function buildConvictionPlays(
@@ -355,8 +397,14 @@ function buildConvictionPlays(
       shortDesc = `${pickStr}${lineVal} — Spread`;
     } else if (bet.betType === "player_prop") {
       const dir = isUnder ? "UNDER" : "OVER";
-      directive = `BET ${dir}${lineVal}`;
-      shortDesc = `${pickStr}${lineVal} — Player Prop`;
+      const pName = extractPlayerName(bet);
+      const stat  = extractStatType(bet);
+      directive = pName
+        ? `BET ${pName.toUpperCase()} ${dir}${lineVal}`
+        : `BET ${dir}${lineVal}`;
+      shortDesc = pName
+        ? `${pName} ${dir}${lineVal} ${stat}`
+        : `${dir}${lineVal} — Player Prop`;
     } else {
       directive = `BET ${pickStr.toUpperCase()}`;
       shortDesc = pickStr;
@@ -564,8 +612,14 @@ function buildWatchingPlays(
       shortDesc = `${pickStr}${lineVal} — Spread`;
     } else if (bet.betType === "player_prop") {
       const dir = isUnder ? "UNDER" : "OVER";
-      directive = `WATCH ${dir}${lineVal}`;
-      shortDesc = `${pickStr}${lineVal} — Player Prop`;
+      const pName = extractPlayerName(bet);
+      const stat  = extractStatType(bet);
+      directive = pName
+        ? `WATCH ${pName.toUpperCase()} ${dir}${lineVal}`
+        : `WATCH ${dir}${lineVal}`;
+      shortDesc = pName
+        ? `${pName} ${dir}${lineVal} ${stat}`
+        : `${dir}${lineVal} — Player Prop`;
     } else {
       directive = `WATCH ${pickStr.toUpperCase()}`;
       shortDesc = pickStr;
