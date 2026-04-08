@@ -2186,6 +2186,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
                 percentPnl:   p.percentPnl ?? 0,
                 endDate:      p.endDate ?? "",
                 polyUrl:      p.slug ? `https://polymarket.com/event/${p.eventSlug || p.slug}` : null,
+                conditionId:  p.conditionId ?? "",
+                asset:        p.asset ?? "",
               }));
             return { trader, positions: active };
           } catch {
@@ -2231,6 +2233,121 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       res.json(result);
     } catch (e: any) {
       console.error("[top-traders/positions] Error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Top Traders: deep position detail ─────────────────────────────────────
+  // GET /api/top-traders/position-detail?conditionId=0x...&wallet=0x...&asset=TOKEN_ID
+  // Returns: market description, volume/liquidity, price history, full trade log for this wallet
+  const posDetailCache = new Map<string, { data: any; ts: number }>();
+  const POS_DETAIL_TTL = 2 * 60_000; // 2 min
+
+  app.get("/api/top-traders/position-detail", async (req, res) => {
+    try {
+      const conditionId = req.query.conditionId as string;
+      const wallet      = req.query.wallet      as string;
+      const asset       = req.query.asset       as string;
+
+      if (!conditionId || !wallet) {
+        return res.status(400).json({ error: "conditionId and wallet are required" });
+      }
+
+      const cacheKey = `${conditionId}:${wallet}`;
+      if (posDetailCache.has(cacheKey)) {
+        const cached = posDetailCache.get(cacheKey)!;
+        if (Date.now() - cached.ts < POS_DETAIL_TTL) return res.json(cached.data);
+      }
+
+      // Parallel fetch: market detail + price history + trade log
+      const [marketRes, historyRes, tradesRes] = await Promise.allSettled([
+        // 1. Market description, volume, resolution source
+        axios.get("https://gamma-api.polymarket.com/markets", {
+          params: { conditionIds: conditionId },
+          timeout: 8000,
+        }),
+        // 2. Price history (last 30 days, daily fidelity)
+        asset ? axios.get("https://clob.polymarket.com/prices-history", {
+          params: { market: asset, interval: "1m", fidelity: 1440 },
+          timeout: 8000,
+        }) : Promise.resolve({ data: { history: [] } }),
+        // 3. Full trade log for this wallet on this market
+        axios.get("https://data-api.polymarket.com/activity", {
+          params: { user: wallet, conditionId, type: "TRADE", limit: 50 },
+          timeout: 8000,
+        }),
+      ]);
+
+      // Parse market detail
+      let market: any = {};
+      if (marketRes.status === "fulfilled" && Array.isArray(marketRes.value.data) && marketRes.value.data.length > 0) {
+        const m = marketRes.value.data[0];
+        market = {
+          question:         m.question ?? "",
+          description:      m.description ?? "",
+          resolutionSource: m.resolutionSource ?? "",
+          volume:           m.volumeNum ?? m.volume ?? 0,
+          volume24hr:       m.volume24hr ?? 0,
+          volume1wk:        m.volume1wk ?? 0,
+          volume1mo:        m.volume1mo ?? 0,
+          liquidity:        m.liquidityNum ?? m.liquidity ?? 0,
+          outcomePrices:    (() => { try { return JSON.parse(m.outcomePrices ?? "[]"); } catch { return []; } })(),
+          outcomes:         (() => { try { return JSON.parse(m.outcomes ?? "[]"); } catch { return []; } })(),
+          startDate:        m.startDateIso ?? m.startDate ?? "",
+          endDate:          m.endDateIso   ?? m.endDate   ?? "",
+          active:           m.active ?? true,
+          closed:           m.closed ?? false,
+        };
+      }
+
+      // Parse price history
+      let priceHistory: { t: number; p: number }[] = [];
+      if (historyRes.status === "fulfilled") {
+        priceHistory = historyRes.value.data?.history ?? [];
+      }
+
+      // Parse trade log
+      let trades: any[] = [];
+      if (tradesRes.status === "fulfilled" && Array.isArray(tradesRes.value.data)) {
+        trades = tradesRes.value.data.map((t: any) => ({
+          side:      t.side ?? "BUY",
+          price:     t.price ?? 0,
+          size:      t.size ?? 0,
+          usdcSize:  t.usdcSize ?? 0,
+          outcome:   t.outcome ?? "",
+          timestamp: t.timestamp ?? 0,
+          txHash:    t.transactionHash ?? null,
+        }));
+      }
+
+      // Summary stats from trades
+      const buys        = trades.filter(t => t.side === "BUY");
+      const sells       = trades.filter(t => t.side === "SELL");
+      const totalIn     = buys.reduce((s, t) => s + t.usdcSize, 0);
+      const totalOut    = sells.reduce((s, t) => s + t.usdcSize, 0);
+      const firstTrade  = trades.length ? trades[trades.length - 1] : null;
+      const latestTrade = trades.length ? trades[0] : null;
+
+      const result = {
+        market,
+        priceHistory,
+        trades,
+        summary: {
+          totalIn:      Math.round(totalIn  * 100) / 100,
+          totalOut:     Math.round(totalOut * 100) / 100,
+          totalTrades:  trades.length,
+          buyCount:     buys.length,
+          sellCount:    sells.length,
+          firstTradeAt: firstTrade?.timestamp ?? 0,
+          latestTradeAt: latestTrade?.timestamp ?? 0,
+          avgBuyPrice:  buys.length ? buys.reduce((s, t) => s + t.price, 0) / buys.length : 0,
+        },
+      };
+
+      posDetailCache.set(cacheKey, { data: result, ts: Date.now() });
+      res.json(result);
+    } catch (e: any) {
+      console.error("[position-detail] Error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });
