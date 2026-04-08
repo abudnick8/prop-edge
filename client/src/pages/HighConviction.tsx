@@ -264,6 +264,11 @@ interface WatchingPlay {
 // Player prop label helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Team-bet classifier: moneyline, spread, total = team bets; player_prop = prop
+function isTeamBet(bet: Bet): boolean {
+  return bet.betType === "moneyline" || bet.betType === "spread" || bet.betType === "total";
+}
+
 // Extracts player name from bet — prefers playerName field, falls back to
 // parsing title/description for patterns like "LeBron James Over 29.5 Points"
 function extractPlayerName(bet: Bet): string {
@@ -429,9 +434,15 @@ function buildConvictionPlays(
     });
   }
 
-  // Sort: most signals first, then by score
-  plays.sort((a, b) => b.signals.length - a.signals.length || b.totalScore - a.totalScore);
-  return plays;
+  // Sort: team bets first (by signal count then score), then player props (capped at 3)
+  const teamPlays = plays
+    .filter(p => isTeamBet(p.bet!))
+    .sort((a, b) => b.signals.length - a.signals.length || b.totalScore - a.totalScore);
+  const propPlays = plays
+    .filter(p => !isTeamBet(p.bet!))
+    .sort((a, b) => b.signals.length - a.signals.length || b.totalScore - a.totalScore)
+    .slice(0, 3);
+  return [...teamPlays, ...propPlays];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -642,9 +653,16 @@ function buildWatchingPlays(
     });
   }
 
-  // Sort by proximity desc, cap at 5
-  candidates.sort((a, b) => b.proximity - a.proximity);
-  return candidates.slice(0, 5);
+  // Split into team bets (cap 5) and props (cap 3), team bets first — total max 8
+  const teamCandidates = candidates
+    .filter(p => isTeamBet(p.bet!))
+    .sort((a, b) => b.proximity - a.proximity)
+    .slice(0, 5);
+  const propCandidates = candidates
+    .filter(p => !isTeamBet(p.bet!))
+    .sort((a, b) => b.proximity - a.proximity)
+    .slice(0, 3);
+  return [...teamCandidates, ...propCandidates];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1286,14 +1304,36 @@ export default function HighConviction() {
         </div>
       )}
 
-      {/* Plays */}
-      {!isLoading && filtered.length > 0 && (
-        <div className="space-y-3">
-          {filtered.map(play => (
-            <ConvictionCard key={play.id} play={play} />
-          ))}
-        </div>
-      )}
+      {/* Plays — team bets first, then props (max 3) with a divider */}
+      {!isLoading && filtered.length > 0 && (() => {
+        const teamFired = filtered.filter(p => isTeamBet(p.bet!));
+        const propFired = filtered.filter(p => !isTeamBet(p.bet!));
+        return (
+          <div className="space-y-2">
+            {teamFired.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#facc15" }}>Team Bets</span>
+                  <div className="flex-1 h-px" style={{ background: "rgba(250,204,21,0.15)" }} />
+                  <span className="text-[9px] text-muted-foreground/50">{teamFired.length}</span>
+                </div>
+                {teamFired.map(play => <ConvictionCard key={play.id} play={play} />)}
+              </>
+            )}
+            {propFired.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 px-1 mt-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
+                  <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
+                  <span className="text-[9px] text-muted-foreground/50">{propFired.length}/3</span>
+                </div>
+                {propFired.map(play => <ConvictionCard key={play.id} play={play} />)}
+              </>
+            )}
+          </div>
+        );
+      })()}
+
 
       {/* Empty */}
       {!isLoading && filtered.length === 0 && <EmptyState />}
@@ -1311,25 +1351,49 @@ export default function HighConviction() {
               <div>
                 <p className="text-sm font-black" style={{ color: "#fbbf24" }}>Watching Plays</p>
                 <p className="text-[10px] text-muted-foreground">
-                  Almost there — up to 5 plays being monitored for full confluence
+                  Up to 5 team bets + 3 player props being monitored
                 </p>
               </div>
             </div>
-            <span
-              className="text-xs font-black px-2.5 py-1 rounded-full"
-              style={{ background: "rgba(251,191,36,0.14)", color: "#fbbf24" }}
-            >
-              {watchingPlays.length} / 5
-            </span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span
+                className="text-xs font-black px-2.5 py-1 rounded-full"
+                style={{ background: "rgba(251,191,36,0.14)", color: "#fbbf24" }}
+              >
+                {watchingPlays.length} / 8
+              </span>
+              <span className="text-[9px] text-muted-foreground/50 pr-1">5 team · 3 props</span>
+            </div>
           </div>
 
-          {watchingPlays.length > 0 ? (
-            <div className="space-y-2">
-              {watchingPlays.map(play => (
-                <WatchingCard key={play.id} play={play} />
-              ))}
-            </div>
-          ) : (
+          {watchingPlays.length > 0 ? (() => {
+            const teamW = watchingPlays.filter(p => isTeamBet(p.bet!));
+            const propW  = watchingPlays.filter(p => !isTeamBet(p.bet!));
+            return (
+              <div className="space-y-2">
+                {teamW.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 px-1">
+                      <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#fbbf24" }}>Team Bets</span>
+                      <div className="flex-1 h-px" style={{ background: "rgba(251,191,36,0.15)" }} />
+                      <span className="text-[9px] text-muted-foreground/50">{teamW.length}/5</span>
+                    </div>
+                    {teamW.map(play => <WatchingCard key={play.id} play={play} />)}
+                  </>
+                )}
+                {propW.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 px-1 mt-1">
+                      <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
+                      <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
+                      <span className="text-[9px] text-muted-foreground/50">{propW.length}/3</span>
+                    </div>
+                    {propW.map(play => <WatchingCard key={play.id} play={play} />)}
+                  </>
+                )}
+              </div>
+            );
+          })() : (
             <div
               className="rounded-xl border px-4 py-6 flex flex-col items-center text-center gap-2"
               style={{ background: "rgba(255,255,255,0.01)", borderColor: "rgba(255,255,255,0.06)" }}
