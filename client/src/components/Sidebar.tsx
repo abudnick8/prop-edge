@@ -1,12 +1,13 @@
 import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, MessageCircleQuestion, Trophy, Ticket, TrendingUp, BarChart2, Shuffle } from "lucide-react";
+import { LayoutDashboard, Target, Settings, MessageCircleQuestion, Trophy, Ticket, TrendingUp, BarChart2, Shuffle, Zap } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
   { href: "/clv", label: "Line Movement", icon: TrendingUp, emoji: "📈" },
-  { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
   { href: "/markets", label: "Pred. Markets", icon: BarChart2, emoji: "🔮" },
+  { href: "/conviction", label: "Top Plays", icon: Zap, emoji: "⚡" },
+  { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
   { href: "/fantasy", label: "Fantasy", icon: Shuffle, emoji: "🏅" },
   { href: "/lotto", label: "Lotto", icon: Ticket, emoji: "🎰" },
   { href: "/ask", label: "Ask AI", icon: MessageCircleQuestion, emoji: "🤖" },
@@ -63,6 +64,9 @@ export function DesktopSidebar() {
               )}
               {href === "/markets" && !isActive && (
                 <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(99,102,241,0.18)", color: "#818cf8" }}>LIVE</span>
+              )}
+              {href === "/conviction" && !isActive && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}>HOT</span>
               )}
               {href === "/fantasy" && !isActive && (
                 <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "rgba(245,158,11,0.18)", color: "#f59e0b" }}>NEW</span>

@@ -15,6 +15,7 @@ import LineMovement from "@/pages/LineMovement";
 import PickDetail from "@/pages/PickDetail";
 import PredictionMarkets from "@/pages/PredictionMarkets";
 import Fantasy from "@/pages/Fantasy";
+import HighConviction from "@/pages/HighConviction";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -82,6 +83,7 @@ function AppInner() {
               <Route path="/clv" component={LineMovement} />
               <Route path="/markets" component={PredictionMarkets} />
               <Route path="/fantasy" component={Fantasy} />
+              <Route path="/conviction" component={HighConviction} />
               <Route component={NotFound} />
             </Switch>
           </div>
