@@ -719,80 +719,119 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                 </div>
               </div>
             )}
-            {/* Stat vs prop line — show BOTH L5 avg (primary) and season avg */}
+            {/* ── 3-window context panel (analysis only, no extra tables) ── */}
             {bet.line != null && (() => {
-              // L5 avg from recentGames (most relevant — what the line is set against)
-              const l5Avg = data.recentGames && data.recentGames.length > 0
-                ? (() => {
-                    const vals = data.recentGames.map((g: any) => getGameStatValue(g));
-                    const sum = vals.reduce((a: number, b: number) => a + b, 0);
-                    return parseFloat((sum / vals.length).toFixed(1));
-                  })()
-                : null;
-              // Season avg (secondary context)
-              const seasonVal = data.season ? getSeasonStatValue(data.season) : null;
-              const seasonAvg = seasonVal && seasonVal > 0 ? parseFloat(seasonVal.toFixed(1)) : null;
+              const isUnder = pickSide === "UNDER";
+
+              // Helper: avg + hit-rate for any game array
+              function windowStats(games: any[]) {
+                if (!games || games.length === 0) return null;
+                const vals = games.map((g: any) => getGameStatValue(g));
+                const avg  = parseFloat((vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(1));
+                const hits = vals.filter((v: number) => isUnder ? v < bet.line! : v >= bet.line!).length;
+                const hitPct = Math.round((hits / vals.length) * 100);
+                return { avg, hits, total: vals.length, hitPct };
+              }
+
+              const l5   = windowStats(data.recentGames);
+              const l30  = windowStats(data.last30Games);
+              const full = windowStats(data.allGames);
+
+              // Season avg from the season object (fallback)
+              const seasonVal = data.season ? getSeasonStatValue(data.season) : 0;
+              const seasonAvg = seasonVal > 0 ? parseFloat(seasonVal.toFixed(1)) : null;
+
+              // Sport-specific full-season label
+              const sportUp = sport.toUpperCase();
+              const fullLabel =
+                sportUp === "MLB" ? `Full season (${data.gameCount ?? full?.total ?? "—"} G)` :
+                sportUp === "NBA" ? `Full season (${data.gameCount ?? full?.total ?? "—"} G)` :
+                sportUp === "NHL" ? `Full season (${data.gameCount ?? full?.total ?? "—"} G)` :
+                sportUp === "NFL" ? `Full season (${data.gameCount ?? full?.total ?? "—"} G)` :
+                "Full season";
+
+              const windows = [
+                { label: fullLabel,  stats: full,  color: "#6366f1", note: "Large sample — baseline" },
+                { label: "Last 30 G", stats: l30,  color: "#f59e0b", note: "Medium sample — recent form" },
+                { label: "Last 5 G",  stats: l5,   color: "#4ade80", note: "Hot streak window" },
+              ];
+
               return (
                 <div className="pt-1 space-y-3">
-                  {l5Avg !== null && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
-                        Last 5 Games Avg vs Prop Line
+                  {/* Sample window summary */}
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div className="px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        Sample analysis — {statKey.label} vs {bet.line} line
                       </p>
-                      <StatVsLine statLabel={statKey.label} statValue={l5Avg} propLine={bet.line} isL5 pickSide={pickSide} />
+                    </div>
+                    <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                      {windows.map(({ label, stats, color, note }) => {
+                        if (!stats) return null;
+                        const overLine = stats.avg >= bet.line!;
+                        const hitColor = stats.hitPct >= 60 ? "#4ade80" : stats.hitPct >= 40 ? "#fbbf24" : "#f87171";
+                        return (
+                          <div key={label} className="px-3 py-2.5 flex items-center gap-3">
+                            {/* Window label */}
+                            <div className="w-28 shrink-0">
+                              <p className="text-[10px] font-bold" style={{ color }}>{label}</p>
+                              <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{note}</p>
+                            </div>
+                            {/* Avg vs line bar */}
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span style={{ color: "rgba(255,255,255,0.45)" }}>avg {stats.avg}</span>
+                                <span className="font-mono font-bold" style={{ color: overLine === !isUnder ? "#4ade80" : "#f87171" }}>
+                                  {overLine ? `+${(stats.avg - bet.line!).toFixed(1)}` : `${(stats.avg - bet.line!).toFixed(1)}`} vs line
+                                </span>
+                              </div>
+                              <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                                <div className="h-full rounded-full" style={{
+                                  width: `${Math.min((stats.avg / (bet.line! * 1.6)) * 100, 100)}%`,
+                                  background: overLine === !isUnder ? "#4ade80" : "#f87171",
+                                }} />
+                                {/* Line marker */}
+                                <div className="absolute top-0 bottom-0 w-px" style={{ left: `${Math.min((bet.line! / (bet.line! * 1.6)) * 100, 98)}%`, background: "rgba(255,255,255,0.5)" }} />
+                              </div>
+                            </div>
+                            {/* Hit rate */}
+                            <div className="w-16 text-right shrink-0">
+                              <p className="text-xs font-black font-mono" style={{ color: hitColor }}>{stats.hitPct}%</p>
+                              <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>{stats.hits}/{stats.total} hit</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* L5 bar chart + game log (unchanged — only last 5 shown) */}
+                  {data.recentGames && data.recentGames.length > 0 && (
+                    <div className="space-y-4">
+                      <MiniBarChart
+                        games={data.recentGames.map((g: any) => ({
+                          ...g,
+                          _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
+                        }))}
+                        statKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
+                        propLine={bet.line}
+                        label={statKey.label}
+                        pickSide={pickSide}
+                      />
+                      <GameLogTable
+                        games={data.recentGames.map((g: any) => ({
+                          ...g,
+                          _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
+                        }))}
+                        sport={sport}
+                        focusStatKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
+                        focusStatLabel={statKey.label}
+                        propLine={bet.line}
+                        comboKeys={statKey.comboKeys}
+                        pickSide={pickSide}
+                      />
                     </div>
                   )}
-                  {seasonAvg !== null && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
-                        Season Avg vs Prop Line
-                      </p>
-                      <StatVsLine statLabel={statKey.label} statValue={seasonAvg} propLine={bet.line} pickSide={pickSide} />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            {/* Bar chart + game log */}
-            {data.recentGames && data.recentGames.length > 0 && (
-              <div className="pt-1 space-y-4">
-                <MiniBarChart
-                  games={data.recentGames.map((g: any) => ({
-                    ...g,
-                    // Inject a "_combo" key with the summed value for combo props
-                    _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
-                  }))}
-                  statKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
-                  propLine={bet.line}
-                  label={statKey.label}
-                  pickSide={pickSide}
-                />
-                <GameLogTable
-                  games={data.recentGames.map((g: any) => ({
-                    ...g,
-                    _combo: statKey.isCombo ? getGameStatValue(g) : undefined,
-                  }))}
-                  sport={sport}
-                  focusStatKey={statKey.isCombo ? "_combo" : (statKey.key === "reb" ? "trb" : statKey.key)}
-                  focusStatLabel={statKey.label}
-                  propLine={bet.line}
-                  comboKeys={statKey.comboKeys}
-                  pickSide={pickSide}
-                />
-              </div>
-            )}
-            {/* Recent hit rate */}
-            {data.recentGames && data.recentGames.length > 0 && bet.line != null && (() => {
-              const hits = data.recentGames.filter((g: any) => pickSide === "UNDER" ? getGameStatValue(g) < bet.line! : getGameStatValue(g) >= bet.line!).length;
-              const total = data.recentGames.length;
-              const hitRate = Math.round((hits / total) * 100);
-              return (
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg"
-                  style={{ background: hitRate >= 60 ? "rgba(74,222,128,0.08)" : hitRate >= 40 ? "rgba(251,191,36,0.08)" : "rgba(248,113,113,0.08)", border: `1px solid ${hitRate >= 60 ? "rgba(74,222,128,0.2)" : hitRate >= 40 ? "rgba(251,191,36,0.2)" : "rgba(248,113,113,0.2)"}` }}>
-                  <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>Recent hit rate vs {bet.line} line</span>
-                  <span className="text-sm font-black font-mono" style={{ color: hitRate >= 60 ? "#4ade80" : hitRate >= 40 ? "#fbbf24" : "#f87171" }}>
-                    {hits}/{total} ({hitRate}%)
-                  </span>
                 </div>
               );
             })()}

@@ -281,15 +281,14 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
         }
       }
 
-      // Sort chronologically (oldest → newest), take last 5 most-recent
+      // Sort chronologically (oldest → newest), keep ALL games for multi-window analysis
       allGameEntries.sort((a, b) => {
         const da = a.eventInfo.gameDate ?? "";
         const db = b.eventInfo.gameDate ?? "";
         return da.localeCompare(db);
       });
-      const last5 = allGameEntries.slice(-5);
 
-      for (const { entry, eventInfo, labels } of last5) {
+      for (const { entry, eventInfo, labels } of allGameEntries) {
         const stats = entry.stats ?? [];
         const statObj: Record<string, string> = {};
         labels.forEach((lbl, i) => { if (stats[i] != null) statObj[lbl] = String(stats[i]); });
@@ -346,7 +345,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
         `http://sports.core.api.espn.com/v2/sports/${cfg.sn}/leagues/${cfg.lg}/athletes/${espnId}/eventlog?limit=25&page=${totalPages}`,
         { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } }
       );
-      const playedEvents: any[] = (lastPageResp.data?.events?.items ?? []).filter((e: any) => e.played === true).slice(-5);
+      const playedEvents: any[] = (lastPageResp.data?.events?.items ?? []).filter((e: any) => e.played === true).slice(-30);
 
       // Fetch per-game stats for last 5 played events
       await Promise.all(playedEvents.map(async (ev: any) => {
@@ -493,7 +492,15 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
     const sportKey = sport.toLowerCase();
     const espnProfileUrl = `https://www.espn.com/${sportKey}/player/_/id/${espnId}`;
 
-    console.log(`[Stats] ${playerName} (${sport}): ${primaryGames.length} games | source=${dataSource} | verified=${dataVerified}`);
+    // ── Build the three analysis windows ────────────────────────────────────
+    // fullSeason — all available games (up to 162 MLB, 82 NBA, 82 NHL, 17 NFL)
+    // last30     — medium sample
+    // last5      — hot streak window
+    const fullSeason = primaryGames;             // sorted asc
+    const last30     = primaryGames.slice(-30);
+    const last5      = primaryGames.slice(-5);
+
+    console.log(`[Stats] ${playerName} (${sport}): ${fullSeason.length} total | last30=${last30.length} | last5=${last5.length} | source=${dataSource} | verified=${dataVerified}`);
 
     return {
       sport: sport.toUpperCase(),
@@ -502,7 +509,10 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
       bbrUrl: espnProfileUrl,
       season,
       seasonLabel,
-      recentGames: primaryGames,
+      recentGames:  last5,        // backward compat
+      last30Games:  last30,
+      allGames:     fullSeason,
+      gameCount:    fullSeason.length,
       dataSource,
       dataVerified,
     };
