@@ -2116,6 +2116,125 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Top Traders: positions (open bets) per wallet ─────────────────────────
+  // GET /api/top-traders/positions?category=SPORTS&period=ALL&limit=20
+  // Returns: all open positions held by top traders, aggregated across wallets
+  let topTradersPositionsCache: { data: any; ts: number } = { data: null, ts: 0 };
+  const POSITIONS_TTL = 3 * 60_000; // 3 min cache
+
+  app.get("/api/top-traders/positions", async (req, res) => {
+    try {
+      if (Date.now() - topTradersPositionsCache.ts < POSITIONS_TTL && topTradersPositionsCache.data) {
+        return res.json(topTradersPositionsCache.data);
+      }
+
+      const category = (req.query.category as string) ?? "SPORTS";
+      const period   = (req.query.period   as string) ?? "ALL";
+      const limit    = Math.min(25, parseInt(String(req.query.limit ?? "20"), 10));
+
+      // 1. Fetch leaderboard to get wallets
+      let traders: any[] = [];
+      try {
+        const { data: lb } = await axios.get("https://data-api.polymarket.com/v1/leaderboard", {
+          params: { category, timePeriod: period, orderBy: "PNL", limit },
+          timeout: 10000,
+        });
+        traders = Array.isArray(lb) ? lb : [];
+      } catch (e: any) {
+        console.warn("[top-traders/positions] leaderboard error:", e.message);
+      }
+
+      const TOP_N = Math.min(15, traders.length);
+
+      // 2. Fetch positions for each trader in parallel
+      const posResults = await Promise.allSettled(
+        traders.slice(0, TOP_N).map(async (trader: any) => {
+          const wallet = trader.proxyWallet;
+          if (!wallet) return { trader, positions: [] };
+          const displayName = trader.userName && !trader.userName.startsWith("0x")
+            ? trader.userName
+            : `Trader ${trader.rank ?? "?"}`;
+          try {
+            const { data: pos } = await axios.get("https://data-api.polymarket.com/positions", {
+              params: { user: wallet, limit: 20, sizeThreshold: 5 },
+              timeout: 8000,
+            });
+            const positions = Array.isArray(pos) ? pos : [];
+            // Filter out fully resolved / redeemable / near-zero value
+            const active = positions
+              .filter((p: any) => !p.redeemable && (p.currentValue ?? 0) > 1)
+              .map((p: any) => ({
+                wallet,
+                shortWallet: `${wallet.slice(0, 6)}…${wallet.slice(-4)}`,
+                displayName,
+                xUsername:    trader.xUsername ?? null,
+                profileImage: trader.profileImage ?? null,
+                rank:         trader.rank ?? 0,
+                pnl:          trader.pnl ?? 0,
+                // Position fields
+                title:        p.title ?? "",
+                slug:         p.slug ?? "",
+                eventSlug:    p.eventSlug ?? "",
+                icon:         p.icon ?? "",
+                outcome:      p.outcome ?? "",
+                size:         p.size ?? 0,
+                avgPrice:     p.avgPrice ?? 0,
+                curPrice:     p.curPrice ?? 0,
+                currentValue: p.currentValue ?? 0,
+                initialValue: p.initialValue ?? 0,
+                cashPnl:      p.cashPnl ?? 0,
+                percentPnl:   p.percentPnl ?? 0,
+                endDate:      p.endDate ?? "",
+                polyUrl:      p.slug ? `https://polymarket.com/event/${p.eventSlug || p.slug}` : null,
+              }));
+            return { trader, positions: active };
+          } catch {
+            return { trader, positions: [] };
+          }
+        })
+      );
+
+      // 3. Flatten to a unified list of positions sorted by currentValue desc
+      const allPositions: any[] = [];
+      for (const r of posResults) {
+        if (r.status === "fulfilled") {
+          allPositions.push(...r.value.positions);
+        }
+      }
+      allPositions.sort((a, b) => b.currentValue - a.currentValue);
+
+      // Also build per-trader summary (wallet → positions)
+      const byTrader: Record<string, { displayName: string; xUsername: string | null; profileImage: string | null; rank: number; pnl: number; positions: any[] }> = {};
+      for (const p of allPositions) {
+        if (!byTrader[p.wallet]) {
+          byTrader[p.wallet] = {
+            displayName:  p.displayName,
+            xUsername:    p.xUsername,
+            profileImage: p.profileImage,
+            rank:         p.rank,
+            pnl:          p.pnl,
+            positions:    [],
+          };
+        }
+        byTrader[p.wallet].positions.push(p);
+      }
+
+      const result = {
+        positions:  allPositions,
+        byTrader,
+        category,
+        period,
+        fetchedAt: new Date().toISOString(),
+      };
+
+      topTradersPositionsCache = { data: result, ts: Date.now() };
+      res.json(result);
+    } catch (e: any) {
+      console.error("[top-traders/positions] Error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Prediction Markets: per-market transaction type for whale alerts ──────
   // GET /api/prediction-markets/txtype/:marketId
   // Returns: purchaseType (single/multiple/ongoing) + txCount for a specific whale market
