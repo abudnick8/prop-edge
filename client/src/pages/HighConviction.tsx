@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Bet } from "@shared/schema";
-import { ChevronDown, ChevronUp, Zap, TrendingUp, Fish, Star, RefreshCw, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Zap, TrendingUp, Fish, Star, RefreshCw, AlertCircle, Eye, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -232,6 +232,35 @@ function lineAlignsBet(game: GameLine, bet: Bet): { aligns: boolean; signal: Con
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Watching Play type — almost aligned, not quite there yet
+// ─────────────────────────────────────────────────────────────────────────────
+interface MissingSignal {
+  type: SignalType;
+  label: string;        // "Needs line movement"
+  hint: string;         // "Spread is only +0.8 pts — watching for ≥1.5"
+  icon: string;
+}
+
+interface WatchingPlay {
+  id: string;
+  sport: string;
+  teams: string;
+  gameTime: string | null;
+  directive: string;
+  betType: string;
+  shortDesc: string;
+  // What IS confirmed
+  confirmedSignals: ConvictionSignal[];
+  // What is MISSING (close but not met)
+  missingSignals: MissingSignal[];
+  // Proximity score 0–100 — how close to firing
+  proximity: number;
+  bet?: Bet;
+  gameLine?: GameLine;
+  market?: PredMkt;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Confluence Engine — finds plays where all 3 signals converge
 // ─────────────────────────────────────────────────────────────────────────────
 function buildConvictionPlays(
@@ -355,6 +384,393 @@ function buildConvictionPlays(
   // Sort: most signals first, then by score
   plays.sort((a, b) => b.signals.length - a.signals.length || b.totalScore - a.totalScore);
   return plays;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watching Engine — picks that are close but not yet firing
+// Criteria: model ≥75 confidence (below 82 threshold OR 82+ but only 1 signal)
+//           + at least one near-miss on a 2nd signal
+// ─────────────────────────────────────────────────────────────────────────────
+function buildWatchingPlays(
+  bets: Bet[],
+  markets: PredMkt[],
+  games: GameLine[],
+  convictionIds: Set<string>   // exclude anything already in High Conviction
+): WatchingPlay[] {
+  const candidates: WatchingPlay[] = [];
+
+  // Bets in range 72–81 (promising model, not quite HC threshold)
+  // OR bets ≥82 that only have the model signal (no 2nd yet)
+  const watchBets = bets.filter(b => {
+    if (convictionIds.has(`hc-${b.id}`)) return false;   // already promoted
+    const c = b.confidenceScore ?? 0;
+    return c >= 72 && b.status === "open" &&
+      b.betType !== "season_prop" && b.betType !== "futures";
+  });
+
+  for (const bet of watchBets) {
+    const conf = bet.confidenceScore ?? 0;
+    const confirmedSignals: ConvictionSignal[] = [];
+    const missingSignals: MissingSignal[] = [];
+    let proximity = 0;
+
+    // ── Confirmed: model ────────────────────────────────────────────────────
+    confirmedSignals.push({
+      type: "model",
+      label: `PropEdge Model — ${conf}/100 Confidence`,
+      detail: `${bet.pick ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Grade: ${bet.grade ?? "A"}.`,
+      strength: conf >= 80 ? "moderate" : "moderate",
+      color: "#facc15",
+      bg: "rgba(250,204,21,0.10)",
+      icon: "⭐",
+    });
+    // Model proximity: maps 72→40pts, 81→75pts, 82+→85pts
+    proximity += conf >= 82 ? 85 : Math.round(40 + ((conf - 72) / 9) * 35);
+
+    // ── Near-miss: Line movement ─────────────────────────────────────────────
+    const betTeamWords = [bet.homeTeam ?? "", bet.awayTeam ?? ""]
+      .flatMap(t => t.toLowerCase().split(/\s+/))
+      .filter(w => w.length > 3);
+
+    const matchedGame = games.find(g => {
+      const gameTeams = [g.homeTeam, g.awayTeam].flatMap(t => t.toLowerCase().split(/\s+/));
+      return betTeamWords.some(w => gameTeams.includes(w));
+    });
+
+    let lineConfirmed = false;
+    if (matchedGame) {
+      const { aligns, signal } = lineAlignsBet(matchedGame, bet);
+      if (aligns && signal) {
+        // Already fires — this is a full signal
+        confirmedSignals.push(signal);
+        lineConfirmed = true;
+        proximity += 10; // close to full conviction
+      } else {
+        // Check near-miss: small movement in the right direction
+        const spreadMove = matchedGame.spread.move ?? 0;
+        const totalMove  = matchedGame.total.move ?? 0;
+        const abSpread   = Math.abs(spreadMove);
+        const abTotal    = Math.abs(totalMove);
+        const pick = (bet.pick ?? "").toLowerCase();
+
+        const hasSmallSpread = (bet.betType === "moneyline" || bet.betType === "spread") && abSpread >= 0.5 && abSpread < 1.5;
+        const hasSmallTotal  = bet.betType === "total" && abTotal >= 0.3 && abTotal < 1.5;
+
+        if (hasSmallSpread) {
+          proximity += Math.round((abSpread / 1.5) * 10);
+          missingSignals.push({
+            type: "line_movement",
+            label: "Needs Line Movement",
+            hint: `Spread has moved ${spreadMove > 0 ? "+" : ""}${spreadMove} pts — watching for ≥1.5 pt move in this direction.`,
+            icon: "📈",
+          });
+        } else if (hasSmallTotal) {
+          proximity += Math.round((abTotal / 1.5) * 10);
+          const dir = totalMove > 0 ? "Over" : "Under";
+          missingSignals.push({
+            type: "line_movement",
+            label: "Needs Total Movement",
+            hint: `Total has moved ${totalMove > 0 ? "+" : ""}${totalMove} pts toward ${dir} — watching for ≥1.5 pt move.`,
+            icon: "📈",
+          });
+        } else {
+          missingSignals.push({
+            type: "line_movement",
+            label: "Watching for Line Movement",
+            hint: "No significant line movement yet. A steam move or reverse-line signal would promote this play.",
+            icon: "📈",
+          });
+        }
+      }
+    } else {
+      missingSignals.push({
+        type: "line_movement",
+        label: "Watching for Line Movement",
+        hint: "No matching game line data yet. Will update as odds are posted.",
+        icon: "📈",
+      });
+    }
+
+    // ── Near-miss: Prediction market whale ────────────────────────────────────
+    let whaleConfirmed = false;
+    // Look for any market referencing the same teams — whale or near-whale
+    const betTeamLower = [bet.homeTeam ?? "", bet.awayTeam ?? ""].map(t => t.toLowerCase());
+    const relatedMkts = markets.filter(m => {
+      const title = m.title.toLowerCase();
+      return betTeamLower.some(team =>
+        team.split(" ").some(w => w.length > 3 && title.includes(w))
+      );
+    });
+
+    const whaleMkt = relatedMkts.find(m => m.isWhaleAlert && m.whaleDirection === "yes");
+    if (whaleMkt && !whaleMkt.isWhaleAlert) {
+      // Found but not whale-level
+    } else if (whaleMkt) {
+      // Actually a confirmed whale — this bet should have been in HC.
+      // Add as confirmed signal anyway (edge case where model is 72–81)
+      confirmedSignals.push({
+        type: "whale",
+        label: `🐋 Whale Buy — ${whaleMkt.source === "kalshi" ? "Kalshi" : "Polymarket"}`,
+        detail: `"${whaleMkt.title}" — whale YES buy detected.`,
+        strength: "moderate",
+        color: "#34d399",
+        bg: "rgba(52,211,153,0.10)",
+        icon: "🐋",
+      });
+      whaleConfirmed = true;
+      proximity += 8;
+    } else if (relatedMkts.length > 0) {
+      // Has related market but no whale yet
+      const best = relatedMkts.sort((a, b) => b.vol24h - a.vol24h)[0];
+      const volStr = best.vol24h > 0 ? ` (${fmtVol(best.vol24h)} volume so far)` : "";
+      proximity += 5;
+      missingSignals.push({
+        type: "whale",
+        label: "Watching for Whale Buy",
+        hint: `Related market found: "${best.title}"${volStr}. No large block purchase yet. Watching for $100K+ or 5¢ move.`,
+        icon: "🐋",
+      });
+    } else {
+      missingSignals.push({
+        type: "whale",
+        label: "No Prediction Market Signal",
+        hint: "No matching prediction market found yet. Whale signal would confirm this play.",
+        icon: "🐋",
+      });
+    }
+
+    // ── Only include if there's at least one missing signal (not already full HC) ──
+    if (missingSignals.length === 0) continue;
+    // Must have at least one near-miss OR confirmed 2nd signal
+    if (confirmedSignals.length < 1) continue;
+
+    // Build directive
+    const pickStr = bet.pick ?? "";
+    const isOver  = pickStr.toLowerCase().includes("over");
+    const isUnder = pickStr.toLowerCase().includes("under");
+    const lineVal = bet.line != null ? ` ${bet.line}` : "";
+    let directive = "";
+    let shortDesc = pickStr;
+    if (bet.betType === "total") {
+      directive = isUnder ? `WATCH UNDER${lineVal}` : `WATCH OVER${lineVal}`;
+      shortDesc = `${isUnder ? "Under" : "Over"}${lineVal} — Total`;
+    } else if (bet.betType === "moneyline") {
+      const teamShort = (pickStr.split(" ").slice(-1)[0] ?? pickStr).toUpperCase();
+      directive = `WATCH ${teamShort} ML`;
+      shortDesc = `${pickStr} — Moneyline`;
+    } else if (bet.betType === "spread") {
+      const teamShort = (pickStr.split(" ").slice(-1)[0] ?? pickStr).toUpperCase();
+      directive = `WATCH ${teamShort} SPREAD${lineVal}`;
+      shortDesc = `${pickStr}${lineVal} — Spread`;
+    } else if (bet.betType === "player_prop") {
+      const dir = isUnder ? "UNDER" : "OVER";
+      directive = `WATCH ${dir}${lineVal}`;
+      shortDesc = `${pickStr}${lineVal} — Player Prop`;
+    } else {
+      directive = `WATCH ${pickStr.toUpperCase()}`;
+      shortDesc = pickStr;
+    }
+
+    candidates.push({
+      id: `watch-${bet.id}`,
+      sport: bet.sport,
+      teams: [bet.awayTeam, bet.homeTeam].filter(Boolean).join(" @ ") || bet.sport,
+      gameTime: bet.gameTime ?? null,
+      directive,
+      betType: bet.betType ?? "bet",
+      shortDesc,
+      confirmedSignals,
+      missingSignals,
+      proximity: Math.min(99, proximity),   // never 100 — that means it fired
+      bet,
+      gameLine: matchedGame,
+      market: relatedMkts[0],
+    });
+  }
+
+  // Sort by proximity desc, cap at 5
+  candidates.sort((a, b) => b.proximity - a.proximity);
+  return candidates.slice(0, 5);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proximity Meter (for watching plays)
+// ─────────────────────────────────────────────────────────────────────────────
+function ProximityMeter({ proximity }: { proximity: number }) {
+  const color = proximity >= 85 ? "#f59e0b" : proximity >= 65 ? "#a78bfa" : "#60a5fa";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${proximity}%`,
+            background: `linear-gradient(90deg, #60a5fa, ${color})`,
+          }}
+        />
+      </div>
+      <span className="text-[10px] font-black tabular-nums" style={{ color }}>{proximity}%</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watching Card
+// ─────────────────────────────────────────────────────────────────────────────
+function WatchingCard({ play }: { play: WatchingPlay }) {
+  const [expanded, setExpanded] = useState(false);
+  const betTypeColor: Record<string, string> = {
+    moneyline: "#facc15", spread: "#a78bfa", total: "#60a5fa", player_prop: "#34d399",
+  };
+  const btColor = betTypeColor[play.betType] ?? "#94a3b8";
+  const sportEmoji: Record<string, string> = { NBA: "🏀", NFL: "🏈", MLB: "⚾", NHL: "🏒" };
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden border cursor-pointer transition-all"
+      style={{
+        borderColor: "rgba(251,191,36,0.25)",
+        boxShadow: expanded ? "0 0 16px rgba(251,191,36,0.10)" : "0 0 6px rgba(251,191,36,0.05)",
+        background: "rgba(251,191,36,0.03)",
+      }}
+      onClick={() => setExpanded(e => !e)}
+    >
+      {/* Header */}
+      <div className="px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            {/* Badges */}
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", borderColor: "rgba(251,191,36,0.30)" }}>
+                👁 WATCHING
+              </span>
+              <span className="text-[9px] text-muted-foreground">
+                {sportEmoji[play.sport] ?? "🏟"} {play.sport}
+              </span>
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background: `${btColor}18`, color: btColor }}
+              >
+                {play.betType.replace("_", " ").toUpperCase()}
+              </span>
+            </div>
+
+            {/* Teams */}
+            <p className="text-[11px] text-muted-foreground truncate">{play.teams}</p>
+
+            {/* Directive */}
+            <p className="text-lg font-black tracking-tight leading-tight mt-0.5" style={{ color: "#fbbf24" }}>
+              {play.directive}
+            </p>
+            <p className="text-[11px] font-medium text-foreground/60 mt-0.5">{play.shortDesc}</p>
+          </div>
+
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <div className="w-24">
+              <p className="text-[9px] text-muted-foreground text-right mb-1">Proximity</p>
+              <ProximityMeter proximity={play.proximity} />
+            </div>
+            {play.gameTime && (
+              <span className="text-[9px] text-muted-foreground">{fmtTime(play.gameTime)}</span>
+            )}
+            {expanded
+              ? <ChevronUp size={14} className="text-muted-foreground" />
+              : <ChevronDown size={14} className="text-muted-foreground" />}
+          </div>
+        </div>
+      </div>
+
+      {/* Collapsed: what's confirmed vs missing */}
+      {!expanded && (
+        <div className="px-4 py-2 flex items-center gap-1.5 flex-wrap border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+          {play.confirmedSignals.map((s, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
+              style={{ background: s.bg, color: s.color, borderColor: `${s.color}35` }}
+            >
+              ✓ {s.type === "model" ? "Model" : s.type === "line_movement" ? "Line Mvmt" : "Whale"}
+            </span>
+          ))}
+          {play.missingSignals.map((m, i) => (
+            <span
+              key={i}
+              className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
+              style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.30)", borderColor: "rgba(255,255,255,0.10)", textDecoration: "none" }}
+            >
+              ○ {m.type === "model" ? "Model" : m.type === "line_movement" ? "Line Mvmt" : "Whale"}
+            </span>
+          ))}
+          <span className="text-[9px] text-muted-foreground ml-auto">tap to expand →</span>
+        </div>
+      )}
+
+      {/* Expanded */}
+      {expanded && (
+        <div className="border-t px-4 py-4 space-y-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+
+          {/* Confirmed signals */}
+          {play.confirmedSignals.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Star size={10} /> Confirmed Signals
+              </p>
+              {play.confirmedSignals.map((s, i) => (
+                <SignalRow key={i} signal={s} />
+              ))}
+            </div>
+          )}
+
+          {/* Missing signals — what needs to happen */}
+          {play.missingSignals.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#fbbf24" }}>
+                <Clock size={10} /> Still Waiting On
+              </p>
+              {play.missingSignals.map((m, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border px-3 py-2.5"
+                  style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.10)" }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm leading-none">{m.icon}</span>
+                    <p className="text-xs font-bold text-muted-foreground">{m.label}</p>
+                    <span
+                      className="text-[9px] font-black px-1.5 py-0.5 rounded-full ml-auto"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}
+                    >
+                      PENDING
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed">{m.hint}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PropEdge model data */}
+          {play.bet && (
+            <div className="rounded-lg p-3 space-y-1.5 border border-yellow-500/15" style={{ background: "rgba(250,204,21,0.04)" }}>
+              <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Zap size={10} /> Model Data
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
+                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-yellow-400">{play.bet.confidenceScore}/100</span></div>
+                {play.bet.grade && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.grade}</span></div>}
+                {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
+              </div>
+            </div>
+          )}
+
+          <p className="text-[9px] text-muted-foreground/35">
+            Watching plays haven't met full confluence yet. Auto-promotes to Top Plays once all required signals align.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -721,6 +1137,13 @@ export default function HighConviction() {
   const tripleCount = allPlays.filter(p => p.signals.length >= 3).length;
   const doubleCount = allPlays.filter(p => p.signals.length === 2).length;
 
+  const convictionIds = useMemo(() => new Set(allPlays.map(p => p.id)), [allPlays]);
+
+  const watchingPlays = useMemo(
+    () => buildWatchingPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], convictionIds),
+    [bets, markets, games, convictionIds]
+  );
+
   const sports = ["All", ...Array.from(new Set(allPlays.map(p => p.sport))).sort()];
 
   function refetchAll() { refetchBets(); refetchMkts(); refetchLines(); }
@@ -820,6 +1243,52 @@ export default function HighConviction() {
 
       {/* Empty */}
       {!isLoading && filtered.length === 0 && <EmptyState />}
+
+      {/* ── Watching Plays Section ── */}
+      {!isLoading && (
+        <div className="space-y-3">
+          {/* Section header */}
+          <div
+            className="rounded-xl px-4 py-3 border flex items-center justify-between"
+            style={{ background: "rgba(251,191,36,0.04)", borderColor: "rgba(251,191,36,0.18)" }}
+          >
+            <div className="flex items-center gap-2.5">
+              <Eye size={16} style={{ color: "#fbbf24" }} />
+              <div>
+                <p className="text-sm font-black" style={{ color: "#fbbf24" }}>Watching Plays</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Almost there — up to 5 plays being monitored for full confluence
+                </p>
+              </div>
+            </div>
+            <span
+              className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{ background: "rgba(251,191,36,0.14)", color: "#fbbf24" }}
+            >
+              {watchingPlays.length} / 5
+            </span>
+          </div>
+
+          {watchingPlays.length > 0 ? (
+            <div className="space-y-2">
+              {watchingPlays.map(play => (
+                <WatchingCard key={play.id} play={play} />
+              ))}
+            </div>
+          ) : (
+            <div
+              className="rounded-xl border px-4 py-6 flex flex-col items-center text-center gap-2"
+              style={{ background: "rgba(255,255,255,0.01)", borderColor: "rgba(255,255,255,0.06)" }}
+            >
+              <Eye size={22} className="text-muted-foreground/30" />
+              <p className="text-sm font-semibold text-muted-foreground/60">Nothing on the watchlist</p>
+              <p className="text-[11px] text-muted-foreground/40 max-w-xs">
+                Plays appear here when the PropEdge model likes them but they're still waiting on a line movement or whale signal.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* How it works */}
       <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(255,255,255,0.01)" }}>
