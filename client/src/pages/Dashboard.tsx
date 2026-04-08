@@ -588,7 +588,7 @@ function SkeletonGrid() {
 // ── How to Read ────────────────────────────────────────────────────────────
 
 const TERMS = [
-  { term: "Confidence Score", badge: "e.g. 84/100", color: "text-primary", def: "Our algorithm's rating of how likely a bet is to win. 85+ is high confidence and triggers an alert. Factors in market consensus, source reliability, sport, and bet type." },
+  { term: "Confidence Score", badge: "e.g. 84/100", color: "text-primary", def: "A 0–100 rating built from 6 components: market consensus (20 pts), source quality + sharp money (28 pts), stat predictability (22 pts), sport sample size (13 pts), juice/value (12 pts), and recent form vs line (+12/−15 pts). Score 85+ = HIGH CONFIDENCE alert. See Edge Grade below for how mispricing is graded." },
   { term: "Moneyline", badge: "Bet Type", color: "text-blue-400", def: "A straight-up bet on who wins the game. A -200 favorite means risk $200 to win $100. A +170 underdog means a $100 bet wins $170." },
   { term: "Spread", badge: "Bet Type", color: "text-blue-400", def: "A handicap given to the underdog. If the Chiefs are -6.5, they must win by 7+ for the bet to win. The underdog +6.5 wins if they lose by 6 or fewer, or win outright." },
   { term: "Total (Over/Under)", badge: "Bet Type", color: "text-blue-400", def: "A bet on the combined score of both teams. If the total is 47.5, bet Over (48+) or Under (47 or less). Doesn't matter who wins." },
@@ -647,6 +647,112 @@ function HowToRead() {
                   <p className="text-xs text-muted-foreground leading-relaxed">{t.def}</p>
                 </div>
               ))}
+            </div>
+
+            {/* ── Confidence Score Breakdown ───────────────────────────────── */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+                <span className="text-sm font-bold text-foreground">How the Confidence Score is Built</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary">0–100</span>
+              </div>
+              <div className="p-4 space-y-2">
+                <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
+                  Every pick is scored using a <span className="text-foreground font-semibold">6-component model</span>. You need strong marks across all six to reach 85+. Hard gates (coin-flip odds, extreme juice, low-tier source) cap the score at 66.
+                </p>
+                {[
+                  { label: "Market consensus",     pts: "20", color: "#6366f1", w: 72,  detail: "How decisively the market prices one side. 78%+ implied = full points." },
+                  { label: "Source + sharp money", pts: "28", color: "#10b981", w: 100, detail: "DraftKings/FanDuel tier scores highest. Pro money vs public tickets split adds up to +12 pts bonus." },
+                  { label: "Stat predictability",  pts: "22", color: "#f59e0b", w: 79,  detail: "A-class (PTS, REB, AST) = 22 pts. B-class (shots, 3PT) = 14 pts. C-class (steals, goals) = 7 pts." },
+                  { label: "Sport sample size",    pts: "13", color: "#3b82f6", w: 46,  detail: "MLB 162-game season scores highest. NFL 17-game season penalized for variance." },
+                  { label: "Juice & value",         pts: "12", color: "#a78bfa", w: 43,  detail: "Clean lines (−105 to −112) = full. Heavy juice (−280+) = gated. Plus-money props score well." },
+                  { label: "Recent form vs line",   pts: "+12/−15", color: "#f97316", w: 43, detail: "L5 avg vs posted line. Player crushing the number = +12 pts. Form conflicting with pick = up to −15 pts." },
+                ].map(c => (
+                  <div key={c.label} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold w-36 shrink-0" style={{ color: c.color }}>{c.label}</span>
+                      <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${c.w}%`, background: c.color }} />
+                      </div>
+                      <span className="text-[10px] font-mono text-muted-foreground w-12 text-right shrink-0">{c.pts} pts</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground pl-[9.5rem] leading-snug">{c.detail}</p>
+                  </div>
+                ))}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { range: "85+",   label: "HIGH",     color: "#22c55e" },
+                    { range: "70–84", label: "Moderate", color: "#eab308" },
+                    { range: "<70",   label: "Low",       color: "#f97316" },
+                  ].map(t => (
+                    <div key={t.range} className="p-2 rounded-lg border border-border bg-muted/30">
+                      <p className="text-xs font-black font-mono" style={{ color: t.color }}>{t.range}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{t.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Edge Grade ──────────────────────────────────────────────── */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+                <span className="text-sm font-bold text-foreground">📊 Edge Grade</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted border border-border text-muted-foreground">A+ / A / B / C</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">Part of confidence</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  The Edge Grade shows how much <span className="text-foreground font-semibold">mispricing</span> exists between the model's fair value and what the book is currently offering. A higher confidence score = higher fair value = larger potential edge.
+                </p>
+
+                {/* Formula */}
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/20 text-[10px] text-center">
+                  <div className="flex-1">
+                    <p className="font-bold text-blue-300">Model Fair Value</p>
+                    <p className="text-muted-foreground mt-0.5">(from confidence score)</p>
+                  </div>
+                  <span className="text-muted-foreground font-bold text-base">−</span>
+                  <div className="flex-1">
+                    <p className="font-bold text-red-300">Book Implied Prob</p>
+                    <p className="text-muted-foreground mt-0.5">(from the odds)</p>
+                  </div>
+                  <span className="text-muted-foreground font-bold text-base">=</span>
+                  <div className="flex-1">
+                    <p className="font-bold" style={{ color: "#4ade80" }}>Edge %</p>
+                    <p className="text-muted-foreground mt-0.5">(positive = value)</p>
+                  </div>
+                </div>
+
+                {/* Tier rows */}
+                <div className="space-y-1.5">
+                  {[
+                    { tier: "A+", color: "#4ade80", bg: "rgba(34,197,94,0.08)",   border: "rgba(34,197,94,0.25)",   rule: "Edge ≥15% + Confidence ≥82",  note: "Book significantly behind model. High conviction play." },
+                    { tier: "A",  color: "#facc15", bg: "rgba(250,204,21,0.08)",  border: "rgba(250,204,21,0.25)",  rule: "Edge ≥10% + Confidence ≥75",  note: "Meaningful gap vs market. Strong play." },
+                    { tier: "B",  color: "#93c5fd", bg: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.25)",  rule: "Edge ≥5% + Confidence ≥65",   note: "Moderate edge. Good play, look for a confirming signal." },
+                    { tier: "C",  color: "rgba(255,255,255,0.35)", bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.12)", rule: "Edge <5% or Confidence <65", note: "No badge shown — edge too small to surface. Use other signals." },
+                  ].map(t => (
+                    <div key={t.tier} className="flex items-start gap-3 p-2.5 rounded-lg border" style={{ background: t.bg, borderColor: t.border }}>
+                      <span className="text-xs font-black shrink-0 w-6 text-center pt-0.5" style={{ color: t.color }}>📊{t.tier}</span>
+                      <div>
+                        <p className="text-[10px] font-bold" style={{ color: t.color }}>{t.rule}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{t.note}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sharp bonus + L5 model */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-lg border border-yellow-500/20 bg-yellow-500/5">
+                    <p className="text-[10px] font-bold text-yellow-300 mb-1">Sharp money bonus</p>
+                    <p className="text-[10px] text-muted-foreground leading-snug">If pro money is confirmed on your side, the effective edge is bumped +2% before tier assignment — easier to reach A+ or A.</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg border border-orange-500/20 bg-orange-500/5">
+                    <p className="text-[10px] font-bold text-orange-300 mb-1">📈 L5 stat-vs-line model</p>
+                    <p className="text-[10px] text-muted-foreground leading-snug">For props, the player's last 5 game average is compared to the posted line. A +37% edge (e.g. 4.8 avg vs 3.5 line) with 4/5 hit rate adds up to +12 pts to the confidence score and boosts the edge grade.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
