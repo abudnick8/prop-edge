@@ -522,9 +522,264 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Bet Recommendation Engine
+// Analyzes line movement signals and returns a structured play recommendation
+// ─────────────────────────────────────────────────────────────────────────────
+type RecStrength = "strong" | "moderate" | "weak" | "none";
+interface BetRec {
+  strength:  RecStrength;
+  play:      string;        // e.g. "Chiefs -3.5 (spread)"
+  signal:    string;        // e.g. "🔥 Steam Move"
+  reason:    string;        // 1-sentence explanation
+  detail:    string;        // 2-3 sentence deeper context
+  action:    string;        // directive: "Bet now", "Wait for key number", "Monitor"
+  color:     string;
+  bg:        string;
+}
+
+function buildBetRec(game: GameLine): BetRec | null {
+  const spreadMove = game.spread.move ?? 0;
+  const totalMove  = game.total.move ?? 0;
+  const mlAwayMove = (game.moneyline.awayOpen != null && game.moneyline.awayCurrent != null)
+    ? game.moneyline.awayCurrent - game.moneyline.awayOpen : 0;
+  const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
+    ? game.moneyline.homeCurrent - game.moneyline.homeOpen : 0;
+
+  const abSpread = Math.abs(spreadMove);
+  const abTotal  = Math.abs(totalMove);
+  const abMlAway = Math.abs(mlAwayMove);
+  const abMlHome = Math.abs(mlHomeMove);
+
+  // Public data for reverse-line detection
+  const awayPublic = game.spread.awayPublic ?? 50;
+  const homePublic = game.spread.homePublic ?? 50;
+  const overPublic = game.total.overPublic ?? 50;
+
+  // Helper — build team names
+  const away = game.awayTeam;
+  const home = game.homeTeam;
+
+  // ── SIGNAL 1: Spread Steam (≥3 pts) ─────────────────────────────────────
+  if (abSpread >= 3) {
+    // Line moves in favor of away (negative) = sharps on away
+    // Line moves in favor of home (positive) = sharps on home
+    const favoredTeam = spreadMove < 0 ? away : home;
+    const currentLine = game.spread.current;
+    const lineStr = currentLine != null ? `${fmtLine(currentLine)}` : "";
+    return {
+      strength: "strong",
+      play:     `${favoredTeam} ${lineStr} (spread)`,
+      signal:   "🔥 Spread Steam",
+      reason:   `Sharp money has moved the spread ${abSpread} pts toward ${favoredTeam}.`,
+      detail:   `A ${abSpread}-point steam move is a high-confidence sharp signal. Books moved the line from ${fmtLine(game.spread.open)} to ${lineStr} — that kind of movement is almost always professional money, not recreational bettors. Act before more books copy the move.`,
+      action:   "Bet now — steam windows close fast",
+      color:    "#f87171",
+      bg:       "rgba(248,113,113,0.08)",
+    };
+  }
+
+  // ── SIGNAL 2: Total Steam (≥3 pts) ─────────────────────────────────────
+  if (abTotal >= 3) {
+    const dir = totalMove > 0 ? "Over" : "Under";
+    const lineStr = game.total.current != null ? `${dir} ${game.total.current}` : dir;
+    return {
+      strength: "strong",
+      play:     `${lineStr} (total)`,
+      signal:   "🔥 Total Steam",
+      reason:   `Total steamed ${abTotal} pts toward the ${dir.toLowerCase()}.`,
+      detail:   `Total moved from ${game.total.open} to ${game.total.current} — a ${abTotal}-point shift is a sharp signal. ${dir === "Over" ? "Sharp bettors expect a higher-scoring game than the market originally priced." : "Sharps are pricing this as a lower-scoring contest than the opener suggested."} Follow the steam before books tighten limits.`,
+      action:   "Bet now — steam windows close fast",
+      color:    "#f87171",
+      bg:       "rgba(248,113,113,0.08)",
+    };
+  }
+
+  // ── SIGNAL 3: Reverse Line Movement on spread ─────────────────────────
+  // Public heavily on away (≥60%) but line moves toward home
+  if (abSpread >= 1 && game.spread.awayPublic != null && game.spread.homePublic != null) {
+    const publicOnAway = awayPublic >= 60;
+    const publicOnHome = homePublic >= 60;
+    const lineMovedToHome = spreadMove > 0; // positive = worse number for away = line moved toward home
+    const lineMovedToAway = spreadMove < 0;
+
+    if (publicOnAway && lineMovedToHome) {
+      const lineStr = game.spread.current != null ? fmtLine(game.spread.current) : "";
+      return {
+        strength: "moderate",
+        play:     `${home} ${lineStr} (spread)`,
+        signal:   "↩ Reverse Line Movement",
+        reason:   `${awayPublic}% of public is on ${away}, but the line moved ${away} to favor ${home}.`,
+        detail:   `When public money floods one side but the line moves the other way, sharp/professional money is on the other team. This is classic reverse line movement — ${awayPublic}% of tickets are on ${away} yet books moved the line toward ${home}, which means big money is on ${home}. Fade the public.`,
+        action:   "Consider fading the public",
+        color:    "#a78bfa",
+        bg:       "rgba(167,139,250,0.08)",
+      };
+    }
+    if (publicOnHome && lineMovedToAway) {
+      const lineStr = game.spread.current != null ? fmtLine(game.spread.current) : "";
+      return {
+        strength: "moderate",
+        play:     `${away} ${lineStr} (spread)`,
+        signal:   "↩ Reverse Line Movement",
+        reason:   `${homePublic}% of public is on ${home}, but the line moved to favor ${away}.`,
+        detail:   `Classic reverse line movement. ${homePublic}% of tickets on ${home} yet books moved the spread toward ${away} — professional money is likely on the away side. Fading public perception here is the sharp play.`,
+        action:   "Consider fading the public",
+        color:    "#a78bfa",
+        bg:       "rgba(167,139,250,0.08)",
+      };
+    }
+  }
+
+  // ── SIGNAL 4: Reverse Line Movement on total ─────────────────────────
+  if (abTotal >= 1 && game.total.overPublic != null) {
+    const publicOnOver = overPublic >= 60;
+    const lineMovedUnder = totalMove < 0;
+    const publicOnUnder = overPublic <= 40;
+    const lineMovedOver = totalMove > 0;
+
+    if (publicOnOver && lineMovedUnder) {
+      return {
+        strength: "moderate",
+        play:     `Under ${game.total.current} (total)`,
+        signal:   "↩ Reverse Line Movement",
+        reason:   `${overPublic}% of public bets are on the Over but the total has dropped.`,
+        detail:   `${overPublic}% of tickets are on the Over yet the line moved down to ${game.total.current}. That's sharp money hammering the Under. When the total drops against heavy public Over action, it's a reliable signal that books are respecting professional bettors who see lower scoring.`,
+        action:   "Consider the Under",
+        color:    "#60a5fa",
+        bg:       "rgba(96,165,250,0.08)",
+      };
+    }
+    if (publicOnUnder && lineMovedOver) {
+      return {
+        strength: "moderate",
+        play:     `Over ${game.total.current} (total)`,
+        signal:   "↩ Reverse Line Movement",
+        reason:   `Public is Under-heavy but the total has risen — sharp money on the Over.`,
+        detail:   `Public is heavily on the Under but the total climbed to ${game.total.current}, indicating sharp money on the Over side. Fade the public and take the Over.`,
+        action:   "Consider the Over",
+        color:    "#4ade80",
+        bg:       "rgba(74,222,128,0.08)",
+      };
+    }
+  }
+
+  // ── SIGNAL 5: Moneyline steam (≥50 points) ─────────────────────────
+  if (abMlAway >= 50 || abMlHome >= 50) {
+    const favored = abMlAway >= abMlHome
+      ? { team: away, move: mlAwayMove, current: game.moneyline.awayCurrent }
+      : { team: home, move: mlHomeMove, current: game.moneyline.homeCurrent };
+    const dir = favored.move < 0 ? "shorter" : "longer";
+    return {
+      strength: "moderate",
+      play:     `${favored.team} ML (${fmtOdds(favored.current)})`,
+      signal:   "💰 Moneyline Steam",
+      reason:   `${favored.team} ML has moved ${Math.abs(favored.move)} points — significant sharp activity.`,
+      detail:   `A ${Math.abs(favored.move)}-point ML move is a clear signal of sharp interest in ${favored.team}. The odds went ${dir} — ${favored.move < 0 ? "books are taking heavy action on this team and shortening the price" : "books are getting steamed off and lengthening the price to balance action"}. Current line is ${fmtOdds(favored.current)}.`,
+      action:   "Monitor for continued movement",
+      color:    "#facc15",
+      bg:       "rgba(250,204,21,0.08)",
+    };
+  }
+
+  // ── SIGNAL 6: Moderate spread/total move (1–2.5 pts) ───────────────────
+  if (abSpread >= 1) {
+    const favoredTeam = spreadMove < 0 ? away : home;
+    const lineStr = game.spread.current != null ? fmtLine(game.spread.current) : "";
+    return {
+      strength: "weak",
+      play:     `${favoredTeam} ${lineStr} (spread)`,
+      signal:   "⚡ Line Move",
+      reason:   `Spread has moved ${abSpread} pts toward ${favoredTeam} since opening.`,
+      detail:   `This is a notable but not extreme line move (${fmtLine(game.spread.open)} → ${lineStr}). Could be sharp action building, injury news, or weather. Watch for additional movement — if this continues toward 3 pts it becomes a strong steam signal. Check injury reports before acting.`,
+      action:   "Watch for more movement before betting",
+      color:    "#f59e0b",
+      bg:       "rgba(245,158,11,0.06)",
+    };
+  }
+  if (abTotal >= 1) {
+    const dir = totalMove > 0 ? "Over" : "Under";
+    const lineStr = game.total.current != null ? `${game.total.current}` : "";
+    return {
+      strength: "weak",
+      play:     `${dir} ${lineStr} (total)`,
+      signal:   "⚡ Total Move",
+      reason:   `Total has moved ${abTotal} pts toward the ${dir.toLowerCase()} since opening.`,
+      detail:   `Moderate total movement (${game.total.open} → ${lineStr}). Not yet steam level but worth watching. If total continues moving in the same direction, it may indicate sharp positioning on scoring expectations.`,
+      action:   "Monitor — not yet actionable",
+      color:    "#f59e0b",
+      bg:       "rgba(245,158,11,0.06)",
+    };
+  }
+
+  return null;
+}
+
+// Compact inline badge shown directly on the card header
+function RecBadge({ rec }: { rec: BetRec }) {
+  return (
+    <span
+      className="text-[9px] font-black px-2 py-0.5 rounded-full border flex-shrink-0"
+      style={{ background: rec.bg, color: rec.color, borderColor: `${rec.color}40` }}
+    >
+      {rec.signal}
+    </span>
+  );
+}
+
+// Full recommendation card shown in the expanded detail section
+function RecCard({ rec, game }: { rec: BetRec; game: GameLine }) {
+  const strengthLabel = rec.strength === "strong" ? "Strong Play" : rec.strength === "moderate" ? "Moderate Play" : "Developing Signal";
+  const strengthBg = rec.strength === "strong" ? "rgba(248,113,113,0.06)" : rec.strength === "moderate" ? "rgba(167,139,250,0.06)" : "rgba(245,158,11,0.06)";
+
+  return (
+    <div className="rounded-xl p-4 space-y-3 border" style={{ background: strengthBg, borderColor: `${rec.color}30` }}>
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-black px-2.5 py-1 rounded-full" style={{ background: rec.bg, color: rec.color }}>
+            {rec.signal}
+          </span>
+          <span
+            className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
+            style={{ color: rec.color, borderColor: `${rec.color}40`, background: "transparent" }}
+          >
+            {strengthLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* The Play */}
+      <div className="space-y-0.5">
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Recommended Play</p>
+        <p className="text-base font-black" style={{ color: rec.color }}>{rec.play}</p>
+        <p className="text-xs text-foreground/80 leading-relaxed">{rec.reason}</p>
+      </div>
+
+      {/* Detail */}
+      <div className="rounded-lg p-3 text-[11px] text-muted-foreground leading-relaxed" style={{ background: "rgba(255,255,255,0.03)" }}>
+        {rec.detail}
+      </div>
+
+      {/* Action directive */}
+      <div className="flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: rec.color }} />
+        <p className="text-xs font-bold" style={{ color: rec.color }}>{rec.action}</p>
+      </div>
+
+      {/* Disclaimer */}
+      <p className="text-[9px] text-muted-foreground/40">
+        Based on line movement data from ActionNetwork. Not financial advice — sharp signals can fail. Always manage bankroll responsibly.
+      </p>
+    </div>
+  );
+}
+
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
+
+  const rec = buildBetRec(game);
 
   const spreadMove = game.spread.move;
   const totalMove = game.total.move;
@@ -587,7 +842,9 @@ function GameCard({ game }: { game: GameLine }) {
           {hasPublicData && (
             <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
           )}
-          {/* Research button — only for significant movement */}
+          {/* Inline rec badge — always visible when there's a signal */}
+          {rec && !expanded && <RecBadge rec={rec} />}
+          {/* Research/Why button — opens line intelligence panel */}
           {hasResearchWorthy && (
             <button
               onClick={(e) => { e.stopPropagation(); setShowResearch(!showResearch); }}
@@ -631,12 +888,29 @@ function GameCard({ game }: { game: GameLine }) {
 
       {/* Research panel — shown when user clicks Why? */}
       {showResearch && (
-        <ResearchPanel gameId={game.id} onClose={() => setShowResearch(false)} />
+        <div>
+          {/* Compact rec summary at top of Why panel so context is clear */}
+          {rec && (
+            <div className="px-4 pt-3">
+              <div className="rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap" style={{ background: rec.bg, border: `1px solid ${rec.color}30` }}>
+                <span className="text-[10px] font-black" style={{ color: rec.color }}>{rec.signal}</span>
+                <span className="text-xs font-bold text-foreground">{rec.play}</span>
+                <span className="text-[10px] text-muted-foreground flex-1">— {rec.reason}</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${rec.color}20`, color: rec.color }}>{rec.action}</span>
+              </div>
+            </div>
+          )}
+          <ResearchPanel gameId={game.id} onClose={() => setShowResearch(false)} />
+        </div>
       )}
 
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-border px-4 py-4 space-y-4">
+
+          {/* ★ Bet Recommendation — shown first, most prominent section */}
+          {rec && <RecCard rec={rec} game={game} />}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
             {/* Spread */}
