@@ -1959,6 +1959,222 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Top Traders — Polymarket leaderboard + recent trades ──────────────────
+  // GET /api/top-traders?category=SPORTS&period=ALL&limit=20
+  // Returns: top Polymarket traders by PNL + their recent sports trades
+  let topTradersCache: { data: any; ts: number } = { data: null, ts: 0 };
+  const TOP_TRADERS_TTL = 5 * 60_000; // 5 min cache (leaderboard changes slowly)
+
+  app.get("/api/top-traders", async (req, res) => {
+    try {
+      if (Date.now() - topTradersCache.ts < TOP_TRADERS_TTL && topTradersCache.data) {
+        return res.json(topTradersCache.data);
+      }
+
+      const category  = (req.query.category as string) ?? "SPORTS";
+      const period    = (req.query.period   as string) ?? "ALL";
+      const limit     = Math.min(25, parseInt(String(req.query.limit ?? "20"), 10));
+
+      // ── 1. Fetch Polymarket leaderboard ──────────────────────────────────
+      let traders: any[] = [];
+      try {
+        const { data: lb } = await axios.get("https://data-api.polymarket.com/v1/leaderboard", {
+          params: { category, timePeriod: period, orderBy: "PNL", limit },
+          timeout: 10000,
+        });
+        traders = Array.isArray(lb) ? lb : [];
+      } catch (e: any) {
+        console.warn("[top-traders] Polymarket leaderboard error:", e.message);
+      }
+
+      // ── 2. Fetch recent trades for top 10 traders in parallel ────────────
+      // We cap at 10 to avoid too many parallel requests
+      const TOP_N = Math.min(10, traders.length);
+      const tradeResults = await Promise.allSettled(
+        traders.slice(0, TOP_N).map(async (trader: any) => {
+          const wallet = trader.proxyWallet;
+          if (!wallet) return { wallet, trades: [] };
+          try {
+            const { data: activity } = await axios.get("https://data-api.polymarket.com/activity", {
+              params: {
+                user:  wallet,
+                limit: 20,
+                type:  "TRADE",
+                side:  "BUY",
+                sortBy: "TIMESTAMP",
+                sortDirection: "DESC",
+              },
+              timeout: 8000,
+            });
+            const trades: any[] = Array.isArray(activity) ? activity : [];
+            // Group by conditionId to compute transaction type and total size per market
+            const byMarket = new Map<string, any[]>();
+            for (const t of trades) {
+              const cid = t.conditionId ?? t.slug ?? "unknown";
+              if (!byMarket.has(cid)) byMarket.set(cid, []);
+              byMarket.get(cid)!.push(t);
+            }
+            // Build enriched trade list — deduplicated by market, most recent first
+            const enriched: any[] = [];
+            for (const [, txns] of byMarket) {
+              const latest  = txns[0]; // already sorted newest-first
+              const total   = txns.reduce((s, t) => s + (t.usdcSize ?? 0), 0);
+              const txCount = txns.length;
+              // Classification:
+              // single = 1 transaction
+              // ongoing = same market traded 3+ times (averaging in or building position)
+              // multiple = 2 transactions
+              const purchaseType: "single" | "multiple" | "ongoing" =
+                txCount >= 3 ? "ongoing" : txCount === 1 ? "single" : "multiple";
+              enriched.push({
+                market:       latest.title ?? "",
+                slug:         latest.slug ?? "",
+                eventSlug:    latest.eventSlug ?? "",
+                outcome:      latest.outcome ?? "",
+                side:         latest.side ?? "BUY",
+                price:        latest.price ?? 0,
+                totalUsdc:    Math.round(total * 100) / 100,
+                txCount,
+                purchaseType,
+                timestamp:    latest.timestamp ?? 0,
+                icon:         latest.icon ?? "",
+                conditionId:  latest.conditionId ?? "",
+                polyUrl:      latest.slug ? `https://polymarket.com/event/${latest.eventSlug || latest.slug}` : null,
+              });
+            }
+            // Sort by total USDC spent descending (biggest bets first)
+            enriched.sort((a, b) => b.totalUsdc - a.totalUsdc);
+            return { wallet, trades: enriched.slice(0, 10) };
+          } catch {
+            return { wallet, trades: [] };
+          }
+        })
+      );
+
+      // ── 3. Merge leaderboard + trades ─────────────────────────────────────
+      const enrichedTraders = traders.slice(0, TOP_N).map((trader: any, i: number) => {
+        const result = tradeResults[i];
+        const trades = result.status === "fulfilled" ? result.value.trades : [];
+        const displayName = trader.userName && !trader.userName.startsWith("0x")
+          ? trader.userName
+          : `Trader ${(trader.rank ?? i + 1)}`;
+        const shortWallet = trader.proxyWallet
+          ? `${trader.proxyWallet.slice(0, 6)}…${trader.proxyWallet.slice(-4)}`
+          : "";
+        return {
+          rank:         trader.rank ?? String(i + 1),
+          wallet:       trader.proxyWallet ?? "",
+          shortWallet,
+          displayName,
+          xUsername:    trader.xUsername ?? null,
+          profileImage: trader.profileImage ?? null,
+          verifiedBadge: trader.verifiedBadge ?? false,
+          vol:          trader.vol  ?? 0,
+          pnl:          trader.pnl  ?? 0,
+          trades,
+          source:       "polymarket",
+        };
+      });
+
+      // Append remaining leaderboard entries (11-25) without trade detail
+      for (let i = TOP_N; i < traders.length; i++) {
+        const trader = traders[i];
+        const displayName = trader.userName && !trader.userName.startsWith("0x")
+          ? trader.userName
+          : `Trader ${(trader.rank ?? i + 1)}`;
+        const shortWallet = trader.proxyWallet
+          ? `${trader.proxyWallet.slice(0, 6)}…${trader.proxyWallet.slice(-4)}`
+          : "";
+        enrichedTraders.push({
+          rank:         trader.rank ?? String(i + 1),
+          wallet:       trader.proxyWallet ?? "",
+          shortWallet,
+          displayName,
+          xUsername:    trader.xUsername ?? null,
+          profileImage: trader.profileImage ?? null,
+          verifiedBadge: trader.verifiedBadge ?? false,
+          vol:          trader.vol  ?? 0,
+          pnl:          trader.pnl  ?? 0,
+          trades:       [],
+          source:       "polymarket",
+        });
+      }
+
+      const result = {
+        traders:   enrichedTraders,
+        category,
+        period,
+        source:    "polymarket",
+        fetchedAt: new Date().toISOString(),
+      };
+
+      topTradersCache = { data: result, ts: Date.now() };
+      res.json(result);
+    } catch (e: any) {
+      console.error("[top-traders] Error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Prediction Markets: per-market transaction type for whale alerts ──────
+  // GET /api/prediction-markets/txtype/:marketId
+  // Returns: purchaseType (single/multiple/ongoing) + txCount for a specific whale market
+  app.get("/api/prediction-markets/txtype/:marketId", async (req, res) => {
+    try {
+      const { marketId } = req.params;
+      // Only Polymarket markets can have wallet-based transaction lookup
+      if (!marketId.startsWith("poly-")) {
+        // Kalshi: use vol24h heuristic from cache
+        const cached = predMktCache.data.find((m: any) => m.id === marketId);
+        if (!cached) return res.json({ purchaseType: "single", txCount: 1 });
+        const vol = cached.vol24h ?? 0;
+        // Kalshi: vol < $2K = likely single; $2K-$8K = multiple; > $8K = ongoing
+        const purchaseType = vol >= 8_000 ? "ongoing" : vol >= 2_000 ? "multiple" : "single";
+        return res.json({ purchaseType, txCount: purchaseType === "ongoing" ? 5 : purchaseType === "multiple" ? 2 : 1, source: "heuristic" });
+      }
+
+      // Polymarket: look up CLOB trades for the conditionId
+      const rawId = marketId.replace("poly-", "");
+      const cached = predMktCache.data.find((m: any) => m.id === marketId);
+      if (!cached) return res.json({ purchaseType: "single", txCount: 1, source: "not_found" });
+
+      // Fetch recent trades on the CLOB for this market
+      try {
+        const { data: tradesData } = await axios.get("https://clob.polymarket.com/trades", {
+          params: { market: cached.conditionId ?? rawId, limit: 50 },
+          timeout: 8000,
+        });
+        const trades = (tradesData?.data ?? tradesData?.trades ?? (Array.isArray(tradesData) ? tradesData : [])) as any[];
+        if (trades.length === 0) return res.json({ purchaseType: "single", txCount: 1, source: "clob" });
+
+        // Group by maker address (takerAddress is the buyer for CLOB)
+        const byMaker = new Map<string, number>();
+        for (const t of trades) {
+          const addr = t.maker ?? t.takerAddress ?? t.maker_address ?? "";
+          if (addr) byMaker.set(addr, (byMaker.get(addr) ?? 0) + 1);
+        }
+        // Top buyer: how many transactions did they make?
+        const maxTxns = Math.max(...Array.from(byMaker.values()));
+        const purchaseType: "single" | "multiple" | "ongoing" =
+          maxTxns >= 3 ? "ongoing" : maxTxns === 1 ? "single" : "multiple";
+        return res.json({
+          purchaseType,
+          txCount:       maxTxns,
+          totalTrades:   trades.length,
+          uniqueBuyers:  byMaker.size,
+          source:        "clob",
+        });
+      } catch {
+        // CLOB may return 404 or empty — use vol24h heuristic
+        const vol = cached.vol24h ?? 0;
+        const purchaseType = vol >= 500_000 ? "ongoing" : vol >= 200_000 ? "multiple" : "single";
+        return res.json({ purchaseType, txCount: purchaseType === "ongoing" ? 5 : purchaseType === "multiple" ? 2 : 1, source: "heuristic" });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Debug endpoint — check Underdog NHL cache + current bets breakdown
   app.get("/api/debug/nhl", async (req, res) => {
     try {

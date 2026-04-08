@@ -14,6 +14,7 @@ import Lotto from "@/pages/Lotto";
 import LineMovement from "@/pages/LineMovement";
 import PickDetail from "@/pages/PickDetail";
 import PredictionMarkets from "@/pages/PredictionMarkets";
+import TopTraders from "@/pages/TopTraders";
 import Fantasy from "@/pages/Fantasy";
 import HighConviction from "@/pages/HighConviction";
 import NotFound from "@/pages/not-found";
@@ -82,6 +83,7 @@ function AppInner() {
               <Route path="/bracket" component={Bracket} />
               <Route path="/clv" component={LineMovement} />
               <Route path="/markets" component={PredictionMarkets} />
+              <Route path="/markets/top-traders" component={TopTraders} />
               <Route path="/fantasy" component={Fantasy} />
               <Route path="/conviction" component={HighConviction} />
               <Route component={NotFound} />

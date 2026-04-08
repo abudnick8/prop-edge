@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info } from "lucide-react";
+import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, Trophy } from "lucide-react";
+import { Link } from "wouter";
 import { addWsListener } from "@/hooks/useWebSocket";
 import { CheatSheetButton } from "@/components/CheatSheet";
 import {
@@ -131,6 +132,46 @@ function fmtVol(v: number)   {
   if (v >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toFixed(0)}`;
 }
+// ── Purchase type badge (client-side heuristic — no extra API call per card) ──
+// Based on vol24h pattern: single purchase, multiple entries, or ongoing position-building
+function classifyPurchaseType(vol24h: number, source: "kalshi" | "polymarket", smartScore: number): "single" | "multiple" | "ongoing" {
+  if (source === "polymarket") {
+    // Polymarket: large whales often make a single massive buy
+    // $100K-$250K = likely single; $250K-$500K = likely multiple; >$500K = ongoing
+    if (smartScore >= 80) return "ongoing";
+    if (smartScore >= 40) return "multiple";
+    return "single";
+  }
+  // Kalshi: lower volumes, so lower thresholds
+  if (vol24h >= 20_000) return "ongoing";
+  if (vol24h >= 8_000)  return "multiple";
+  return "single";
+}
+
+const PURCHASE_TYPE_CFG = {
+  single:   { label: "Single Buy",  color: "#60a5fa", bg: "rgba(96,165,250,0.12)",   border: "rgba(96,165,250,0.30)",   icon: "1×" },
+  multiple: { label: "Multi-Entry", color: "#c084fc", bg: "rgba(192,132,252,0.12)",  border: "rgba(192,132,252,0.30)",  icon: "2×" },
+  ongoing:  { label: "Building",    color: "#34d399", bg: "rgba(52,211,153,0.12)",   border: "rgba(52,211,153,0.30)",   icon: "📈" },
+} as const;
+
+function PurchaseTypeBadge({ vol24h, source, smartScore }: { vol24h: number; source: "kalshi" | "polymarket"; smartScore: number }) {
+  const type = classifyPurchaseType(vol24h, source, smartScore);
+  const cfg  = PURCHASE_TYPE_CFG[type];
+  return (
+    <span
+      className="text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5"
+      style={{ color: cfg.color, background: cfg.bg, borderColor: cfg.border }}
+      title={
+        type === "single"   ? "One large single-transaction purchase"
+        : type === "multiple" ? "Multiple separate buy transactions"
+        : "Continuously building position — same buyer buying repeatedly"
+      }
+    >
+      {cfg.icon} {cfg.label}
+    </span>
+  );
+}
+
 function timeUntil(gameTime: string | null) {
   if (!gameTime) return null;
   const diff = new Date(gameTime).getTime() - Date.now();
@@ -177,6 +218,17 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
     queryFn: () => apiRequest("GET", `/api/prediction-markets/history/${m.id}`).then(r => r.json()),
     staleTime: 60_000,
   });
+
+  // Fetch real transaction type for whale alerts (lazy — only when drawer is open)
+  const { data: txData } = useQuery<{ purchaseType: "single" | "multiple" | "ongoing"; txCount: number; source?: string }>({
+    queryKey: ["/api/prediction-markets/txtype", m.id],
+    queryFn: () => apiRequest("GET", `/api/prediction-markets/txtype/${m.id}`).then(r => r.json()),
+    enabled: m.isWhaleAlert,
+    staleTime: 2 * 60_000,
+  });
+
+  const drawerPurchaseType = txData?.purchaseType ??
+    classifyPurchaseType(m.vol24h, m.source, m.smartScore ?? 0);
 
   const history = (histData?.history ?? []).map((p, i) => ({
     idx: i,
@@ -282,6 +334,15 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               🐋 Whale Alert
               {(m.smartScore ?? 0) > 0 && (
                 <span className="text-[9px] bg-orange-400/20 px-1 py-0.5 rounded font-mono">{m.smartScore}/100</span>
+              )}
+            </span>
+          )}
+          {m.isWhaleAlert && (
+            <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              Purchase pattern:
+              <PurchaseTypeBadge vol24h={m.vol24h} source={m.source} smartScore={m.smartScore ?? 0} />
+              {txData?.source === "clob" && txData.txCount > 0 && (
+                <span className="text-[9px] text-muted-foreground/60">({txData.txCount}× via CLOB)</span>
               )}
             </span>
           )}
@@ -607,17 +668,25 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-white/5">
-        <div className="flex items-center gap-3">
-          <span>Spread {m.spread}¢</span>
-          {m.vol24h > 0 && <span>{fmtVol(m.vol24h)}</span>}
-          {m.pd1 !== 0 && (
-            <span style={{ color: m.pd1 >= 0 ? "#22c55e" : "#ef4444" }}>{fmtPct(m.pd1)} 1d</span>
-          )}
+      <div className="flex flex-col gap-1.5 pt-1 border-t border-white/5">
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <span>Spread {m.spread}¢</span>
+            {m.vol24h > 0 && <span>{fmtVol(m.vol24h)}</span>}
+            {m.pd1 !== 0 && (
+              <span style={{ color: m.pd1 >= 0 ? "#22c55e" : "#ef4444" }}>{fmtPct(m.pd1)} 1d</span>
+            )}
+          </div>
+          <span className="text-[9px]" style={{ color: cfg.color }}>
+            {m.edge > 0 ? "+" : ""}{m.edge}% edge
+          </span>
         </div>
-        <span className="text-[9px]" style={{ color: cfg.color }}>
-          {m.edge > 0 ? "+" : ""}{m.edge}% edge
-        </span>
+        {m.isWhaleAlert && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-muted-foreground/60">Purchase pattern:</span>
+            <PurchaseTypeBadge vol24h={m.vol24h} source={m.source} smartScore={m.smartScore ?? 0} />
+          </div>
+        )}
       </div>
     </button>
   );
@@ -686,6 +755,12 @@ export default function PredictionMarkets() {
           <h1 className="text-xl font-black text-foreground tracking-tight">Prediction Markets</h1>
           <div className="flex items-center gap-2">
             <CheatSheetButton initialSection="howtoread" label="How to Read" />
+            <Link
+              href="/markets/top-traders"
+              className="flex items-center gap-1.5 text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 transition-colors px-2.5 py-1.5 rounded-lg"
+            >
+              <Trophy size={12} /> Top Traders
+            </Link>
             <button
               onClick={() => { refetch(); setLastRefresh(Date.now()); }}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
