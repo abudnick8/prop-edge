@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-const CORRECT_CODE = "ADAM";
+const CORRECT_CODE = "MAGG";
 const SESSION_KEY = "pe_unlocked";
 
 export function useLockScreen() {
