@@ -1279,6 +1279,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
           const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
 
+          // Skip events whose end date has already passed
+          const evEnd = (m.events ?? [])[0]?.endDate ?? m.endDate ?? null;
+          if (evEnd && new Date(evEnd).getTime() <= Date.now()) continue;
+
           const yesPrice = parseFloat(m.lastTradePrice ?? (m.outcomePrices?.[0] ?? 0.5));
           // Skip near-resolved markets: <2¢ or >98¢ means the outcome is essentially decided
           if (isNaN(yesPrice) || yesPrice < 0.02 || yesPrice > 0.98) continue;
@@ -1626,9 +1630,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const bv = parseFloat(b.volume_24h_fp ?? b.volume_24h ?? 0);
           return bv - av;
         });
+        const kNowMs = Date.now();
         for (const m of kmarkets) {
+          // Skip markets whose close_time has already passed — the event is over
+          if (m.close_time && new Date(m.close_time).getTime() <= kNowMs) continue;
+
           const priceStr = m.yes_ask_dollars ?? m.yes_bid_dollars ?? m.last_price_dollars ?? null;
           const yesPrice = priceStr !== null ? parseFloat(priceStr) : ((m.yes_bid ?? m.last_price ?? 50) / 100);
+          // Skip near-resolved markets: <2¢ or >98¢ means outcome essentially decided
+          if (isNaN(yesPrice) || yesPrice < 0.02 || yesPrice > 0.98) continue;
+
           const noPrice  = 1 - yesPrice;
           const bestBid  = m.yes_bid_dollars ? parseFloat(m.yes_bid_dollars) : yesPrice - 0.01;
           const bestAsk  = m.yes_ask_dollars ? parseFloat(m.yes_ask_dollars) : yesPrice + 0.01;

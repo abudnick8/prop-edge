@@ -655,6 +655,8 @@ export default function PredictionMarkets() {
   const filtered = markets.filter(m => {
     // Hide near-resolved markets (YES < 2¢ or > 98¢ = outcome essentially decided)
     if (m.yesPrice < 0.02 || m.yesPrice > 0.98) return false;
+    // Hide events that have already ended (close_time / endDate in the past)
+    if (m.gameTime && new Date(m.gameTime).getTime() <= Date.now()) return false;
     if (todayOnly && !isTodayMarket(m)) return false;
     if (sportFilter !== "all" && m.sport !== sportFilter) return false;
     if (ratingFilter === "whale" && !m.isWhaleAlert) return false;
