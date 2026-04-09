@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2, Calendar, CheckCircle, Clock } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2, Calendar, CheckCircle, Clock, TrendingUp, Activity } from "lucide-react";
 import { generateBracket, generatePlayoffBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
 import { getVisibleTournaments, Tournament } from "@/data/tournamentCalendar";
 import { PLAYOFF_TEAMS_REGISTRY } from "@/data/playoffData";
+import { fetchLiveStandings, buildLivePlayoffTeams, LiveStandingsData } from "@/data/livePlayoffTeams";
 
 // ── Confidence Ring ────────────────────────────────────────────────────────
 function ConfidenceRing({ score, size = 40 }: { score: number; size?: number }) {
@@ -442,10 +443,19 @@ function TournamentCard({
 }
 
 // ── Get team data for a tournament ────────────────────────────────────────
-function getTeamsForTournament(tournament: Tournament): { teams: NCAATeam[]; regions: Region[] } {
+function getTeamsForTournament(
+  tournament: Tournament,
+  liveData?: LiveStandingsData | null
+): { teams: NCAATeam[]; regions: Region[] } {
   if (tournament.dataKey === "ncaab_2026") {
     return { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] };
   }
+  // Use live standings data if available and bracketUnlocked
+  if (liveData && liveData.bracketUnlocked && tournament.liveStandingsSport) {
+    const built = buildLivePlayoffTeams(liveData);
+    if (built.teams.length >= 4) return built;
+  }
+  // Fall back to static registry
   const playoffTeams = PLAYOFF_TEAMS_REGISTRY[tournament.dataKey] ?? [];
   return { teams: playoffTeams, regions: ["East", "West", "Midwest", "South"] as Region[] };
 }
@@ -533,14 +543,57 @@ export default function Bracket() {
     [visibleTournaments, selectedTournamentId]
   );
 
-  // Teams for the selected tournament
+  // Teams for the selected tournament — uses live standings when available
   const { teams: currentTeams, regions: currentRegions } = useMemo(
-    () => (selectedTournament ? getTeamsForTournament(selectedTournament) : { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] }),
-    [selectedTournament]
+    () => (selectedTournament
+      ? getTeamsForTournament(selectedTournament, liveStandings)
+      : { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] }),
+    [selectedTournament, liveStandings]
   );
 
+  // Live standings state
+  const [liveStandings, setLiveStandings] = useState<LiveStandingsData | null>(null);
+  const [standingsLoading, setStandingsLoading] = useState(false);
+  const [standingsError, setStandingsError] = useState<string | null>(null);
+
+  // Fetch live standings for the current tournament if it's a live-seeding league
+  const loadLiveStandings = useCallback(async (tournament: Tournament | null | undefined) => {
+    if (!tournament?.liveStandingsSport) {
+      setLiveStandings(null);
+      setStandingsError(null);
+      return;
+    }
+    setStandingsLoading(true);
+    setStandingsError(null);
+    try {
+      const data = await fetchLiveStandings(tournament.liveStandingsSport);
+      setLiveStandings(data);
+    } catch (e: any) {
+      setStandingsError("Could not load live standings");
+      setLiveStandings(null);
+    } finally {
+      setStandingsLoading(false);
+    }
+  }, []);
+
+  // Load on mount and whenever tournament changes
+  useEffect(() => {
+    loadLiveStandings(selectedTournament);
+  }, [selectedTournament?.id, loadLiveStandings]);
+
   const isLocked = selectedTournament?.status === "completed";
-  const isUpcoming = selectedTournament?.status === "upcoming";
+  // Season-progress lock: if seasonUnlockPct defined AND standings loaded AND season < threshold
+  const seasonPct = liveStandings?.seasonPct ?? null;
+  const unlockThreshold = selectedTournament?.seasonUnlockPct ?? null;
+  const seasonLocked = (
+    !isLocked &&
+    selectedTournament?.liveStandingsSport != null &&
+    !standingsLoading &&
+    liveStandings != null &&
+    unlockThreshold != null &&
+    (liveStandings.seasonPct < unlockThreshold)
+  );
+  const isUpcoming = selectedTournament?.status === "upcoming" && !seasonLocked;
 
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -579,7 +632,7 @@ export default function Bracket() {
       if (t?.dataKey === "ncaab_2026") {
         result = generateBracket(championId);
       } else {
-        const { teams } = getTeamsForTournament(t!);
+        const { teams } = getTeamsForTournament(t!, liveStandings);
         const { round, final } = getRoundNames(t!);
         result = generatePlayoffBracket(teams, round, final, championId);
       }
@@ -705,6 +758,12 @@ export default function Bracket() {
           <p className="text-xs text-muted-foreground mt-0.5">
             {isLocked
               ? "🏆 Tournament complete — bracket is locked"
+              : seasonLocked
+              ? `Season ${seasonPct?.toFixed(0) ?? "?"}% complete — unlocks at ${unlockThreshold}%`
+              : standingsLoading
+              ? "Loading live seedings..."
+              : (liveStandings?.bracketUnlocked && selectedTournament?.liveStandingsSport)
+              ? `Live seedings · Updated daily · ${currentTeams.length} teams`
               : isUpcoming
               ? `Starts in ${selectedTournament.daysUntilStart} days · ${currentTeams.length} teams`
               : `AI-powered bracket generator · ${currentTeams.length} teams`}
@@ -724,6 +783,14 @@ export default function Bracket() {
           {isLocked ? (
             <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
               <Lock size={14} /> Locked
+            </div>
+          ) : seasonLocked ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
+              <Clock size={14} /> Season in progress
+            </div>
+          ) : standingsLoading ? (
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
+              <RefreshCw size={14} className="animate-spin" /> Loading...
             </div>
           ) : isUpcoming ? (
             <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
@@ -762,8 +829,92 @@ export default function Bracket() {
         </div>
       )}
 
+      {/* Season-in-progress lock banner */}
+      {seasonLocked && !isLocked && liveStandings && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+              <Activity size={16} className="text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-foreground text-sm flex items-center gap-2">
+                {selectedTournament?.name}
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-500/10 text-amber-400 rounded-full border border-amber-500/20">SEASON IN PROGRESS</span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                The bracket unlocks when the season reaches <strong className="text-foreground">{unlockThreshold}% complete</strong>.
+                Live playoff seedings will update automatically once the threshold is reached.
+                Check back as the season winds down.
+              </p>
+            </div>
+          </div>
+          {/* Season progress bar */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Season Progress</span>
+              <span className="font-mono font-bold text-amber-400">{seasonPct?.toFixed(1)}% / {unlockThreshold}% to unlock</span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, (seasonPct ?? 0) / (unlockThreshold ?? 100) * 100)}%`,
+                  background: "linear-gradient(90deg, #f59e0b, #fbbf24)",
+                }}
+              />
+            </div>
+            <div className="flex justify-between text-[9px] text-muted-foreground">
+              <span>0 games</span>
+              <span>{liveStandings.maxGamesPlayed} / {liveStandings.totalGamesPerTeam} games played</span>
+            </div>
+          </div>
+          {/* Current leaders */}
+          {Object.keys(liveStandings.conferences).length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wide">Current Leaders</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(liveStandings.conferences).map(([conf, teams]: [string, any[]]) => {
+                  const leader = teams.sort((a, b) => (a.seed || 99) - (b.seed || 99))[0];
+                  if (!leader) return null;
+                  return (
+                    <div key={conf} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1">
+                      <span className="text-[9px] font-bold text-primary">#{leader.seed}</span>
+                      <span className="text-[9px] font-semibold text-foreground">{leader.shortName || leader.abbreviation}</span>
+                      <span className="text-[9px] text-muted-foreground">{leader.record}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Live seedings active banner */}
+      {!seasonLocked && !isLocked && liveStandings?.bracketUnlocked && selectedTournament?.liveStandingsSport && currentTeams.length > 0 && (
+        <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <TrendingUp size={11} className="text-green-400" />
+              Live Seedings Active
+              <span className="text-[9px] font-normal text-muted-foreground ml-1">
+                {liveStandings.seasonPct.toFixed(0)}% of season complete · {currentTeams.length} playoff teams · Updated daily
+              </span>
+            </p>
+          </div>
+          <button
+            onClick={() => loadLiveStandings(selectedTournament)}
+            className="text-[10px] text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors"
+            title="Refresh standings"
+          >
+            <RefreshCw size={10} />
+          </button>
+        </div>
+      )}
+
       {/* Upcoming tournament banner */}
-      {isUpcoming && !isLocked && (
+      {isUpcoming && !isLocked && !seasonLocked && (
         <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
             <Clock size={16} className="text-blue-400" />
@@ -797,8 +948,8 @@ export default function Bracket() {
         </div>
       )}
 
-      {/* Info banner pre-generate (not locked, not yet generated) */}
-      {!bracket && !generating && !isLocked && (
+      {/* Info banner pre-generate (not locked, not yet generated, not season-locked) */}
+      {!bracket && !generating && !isLocked && !seasonLocked && (
         <div className="bg-card border border-border rounded-xl p-5 text-center space-y-3">
           <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
             <span className="text-2xl">{selectedTournament?.emoji ?? "🏆"}</span>

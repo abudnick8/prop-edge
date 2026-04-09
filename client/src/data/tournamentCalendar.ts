@@ -28,6 +28,11 @@ export interface Tournament {
   daysUntilStart: number;      // computed
   daysUntilEnd: number;        // computed
   isSportsLeague: boolean;     // true = NBA/NHL/NFL/MLB (vs college)
+  // For live-seeding sports leagues: bracket unlocks when season is >= this % complete
+  // Undefined = always available (e.g. March Madness)
+  seasonUnlockPct?: number;
+  // API sport key for /api/live-standings
+  liveStandingsSport?: "mlb" | "nba" | "nhl" | "nfl";
 }
 
 // Raw tournament definitions — dates only, status computed below
@@ -64,6 +69,8 @@ const RAW_TOURNAMENTS: Omit<Tournament, "status" | "daysUntilStart" | "daysUntil
     dataKey: "nba_playoffs_2026",
     highlightColor: "#1d4ed8",
     isSportsLeague: true,
+    seasonUnlockPct: 90,
+    liveStandingsSport: "nba",
   },
 
   // ── 2026 Stanley Cup Playoffs ────────────────────────────────────────────
@@ -81,6 +88,8 @@ const RAW_TOURNAMENTS: Omit<Tournament, "status" | "daysUntilStart" | "daysUntil
     dataKey: "nhl_playoffs_2026",
     highlightColor: "#0ea5e9",
     isSportsLeague: true,
+    seasonUnlockPct: 90,
+    liveStandingsSport: "nhl",
   },
 
   // ── 2026 MLB Postseason ──────────────────────────────────────────────────
@@ -90,7 +99,7 @@ const RAW_TOURNAMENTS: Omit<Tournament, "status" | "daysUntilStart" | "daysUntil
     shortName: "MLB Playoffs",
     sport: "MLB",
     emoji: "⚾",
-    description: "12-team bracket with Wild Card round. Starts late September after the regular season.",
+    description: "12-team bracket with Wild Card round. Live seedings update daily as the regular season winds down.",
     startDate: "2026-09-29",
     endDate: "2026-10-30",
     teamsCount: 12,
@@ -98,6 +107,8 @@ const RAW_TOURNAMENTS: Omit<Tournament, "status" | "daysUntilStart" | "daysUntil
     dataKey: "mlb_postseason_2026",
     highlightColor: "#dc2626",
     isSportsLeague: true,
+    seasonUnlockPct: 90,
+    liveStandingsSport: "mlb",
   },
 
   // ── 2026 NFL Playoffs (next cycle) ───────────────────────────────────────
@@ -115,6 +126,8 @@ const RAW_TOURNAMENTS: Omit<Tournament, "status" | "daysUntilStart" | "daysUntil
     dataKey: "nfl_playoffs_2027",
     highlightColor: "#7c3aed",
     isSportsLeague: true,
+    seasonUnlockPct: 90,
+    liveStandingsSport: "nfl",
   },
 ];
 
@@ -154,11 +167,18 @@ export const ALL_TOURNAMENTS: Tournament[] = RAW_TOURNAMENTS.map(t => ({
 //   • active: always show
 //   • upcoming: show if starting within 30 days
 //   • completed: show if ended within 14 days (so users can still review it, locked)
+// Sport leagues with seasonUnlockPct show in the bracket tab even when "upcoming"
+// once they are within the season window (so we can show live seedings)
+// The actual unlock check is done in the Bracket page based on live standings data.
 export function getVisibleTournaments(): Tournament[] {
   return ALL_TOURNAMENTS.filter(t => {
     if (t.status === "active")    return true;
-    if (t.status === "upcoming")  return t.daysUntilStart <= 30;
     if (t.status === "completed") return t.daysUntilEnd >= -14; // ended ≤14 days ago
+    if (t.status === "upcoming") {
+      // For live-seeding sports leagues, show within 120 days so the in-season progress bar appears
+      if (t.isSportsLeague && t.seasonUnlockPct != null) return t.daysUntilStart <= 120;
+      return t.daysUntilStart <= 30;
+    }
     return false;
   }).sort((a, b) => {
     // Order: active first, then upcoming (soonest first), then completed (most recent first)

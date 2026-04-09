@@ -2069,6 +2069,229 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     };
   }
 
+
+  // ── Live Standings for Bracket Tab ────────────────────────────────────────
+  // Cache: 24 hours (standings update once daily)
+  const STANDINGS_TTL = 24 * 60 * 60 * 1000;
+  const standingsCache = new Map<string, { ts: number; data: any }>();
+
+  app.get("/api/live-standings", async (req, res) => {
+    const sport = ((req.query.sport as string) ?? "mlb").toLowerCase();
+    const cached = standingsCache.get(sport);
+    if (cached && Date.now() - cached.ts < STANDINGS_TTL) return res.json(cached.data);
+
+    try {
+      const ESPN_PATHS: Record<string, string> = {
+        mlb: "baseball/mlb",
+        nba: "basketball/nba",
+        nhl: "hockey/nhl",
+        nfl: "football/nfl",
+      };
+      const TOTAL_GAMES: Record<string, number> = { mlb: 162, nba: 82, nhl: 82, nfl: 17 };
+      const espnPath = ESPN_PATHS[sport];
+      if (!espnPath) return res.status(400).json({ error: "Unknown sport" });
+
+      const standingsUrl = `https://site.api.espn.com/apis/v2/sports/${espnPath}/standings`;
+      const standingsResp = await fetch(standingsUrl);
+      if (!standingsResp.ok) throw new Error(`ESPN standings failed: ${standingsResp.status}`);
+      const standingsData: any = await standingsResp.json();
+
+      const seasonYear = standingsData?.season?.year ?? new Date().getFullYear();
+      const totalGamesPerTeam = TOTAL_GAMES[sport] ?? 82;
+
+      // Flatten all entries across all conference/division children
+      const allEntries: any[] = [];
+      function extractEntries(node: any) {
+        const entries = node?.standings?.entries;
+        if (Array.isArray(entries)) {
+          allEntries.push(...entries);
+        }
+        if (Array.isArray(node?.children)) {
+          node.children.forEach(extractEntries);
+        }
+      }
+      extractEntries(standingsData);
+
+      // Deduplicate by team id
+      const seen = new Set<string>();
+      const uniqueEntries = allEntries.filter(e => {
+        const id = e?.team?.id;
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      // Parse each team's stats
+      function getStat(stats: any[], name: string): number {
+        const s = stats.find((x: any) => x.name === name);
+        return s ? parseFloat(s.value ?? s.displayValue ?? "0") || 0 : 0;
+      }
+      function getStatStr(stats: any[], name: string): string {
+        const s = stats.find((x: any) => x.name === name);
+        return s ? (s.displayValue ?? "") : "";
+      }
+
+      // Calculate max games played to estimate season completion
+      let maxGamesPlayed = 0;
+      const teams = uniqueEntries.map(e => {
+        const team = e.team ?? {};
+        const stats = e.stats ?? [];
+        const gp = getStat(stats, "gamesPlayed");
+        if (gp > maxGamesPlayed) maxGamesPlayed = gp;
+        const wins = getStat(stats, "wins");
+        const losses = getStat(stats, "losses");
+        const seed = getStat(stats, "playoffSeed");
+        const pctg = getStat(stats, "winPercent");
+        const ppg = getStat(stats, "avgPointsFor") || getStat(stats, "points");
+        const oppPpg = getStat(stats, "avgPointsAgainst");
+        const differential = getStat(stats, "differential");
+        // Conference: use parent chain if available
+        const conference = e._conf ?? "";
+        return {
+          id: team.id ?? "",
+          name: team.displayName ?? team.name ?? "Unknown",
+          shortName: team.shortDisplayName ?? team.abbreviation ?? "",
+          abbreviation: team.abbreviation ?? "",
+          logoUrl: team.logos?.[0]?.href ?? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${sport === "mlb" ? "mlb" : sport === "nba" ? "nba" : sport === "nhl" ? "nhl" : "nfl"}/500/${(team.abbreviation ?? "").toLowerCase()}.png&w=64&h=64`,
+          seed: seed,
+          gamesPlayed: gp,
+          wins: wins,
+          losses: losses,
+          winPct: pctg,
+          ppg: ppg,
+          oppPpg: oppPpg,
+          differential: differential,
+          conference: conference,
+          record: `${wins}-${losses}`,
+        };
+      });
+
+      // Assign conference from standings children structure
+      function assignConference(node: any, confName: string) {
+        const entries = node?.standings?.entries;
+        if (Array.isArray(entries)) {
+          entries.forEach((e: any) => { e._conf = confName; });
+        }
+        if (Array.isArray(node?.children)) {
+          node.children.forEach((c: any) => assignConference(c, confName));
+        }
+      }
+      // Re-do with conference info
+      if (Array.isArray(standingsData?.children)) {
+        standingsData.children.forEach((confNode: any) => {
+          const confName = confNode.name ?? "";
+          assignConference(confNode, confName);
+        });
+      }
+
+      // Re-parse with conference
+      const teamsWithConf = uniqueEntries.map(e => {
+        const team = e.team ?? {};
+        const stats = e.stats ?? [];
+        const gp = getStat(stats, "gamesPlayed");
+        const wins = getStat(stats, "wins");
+        const losses = getStat(stats, "losses");
+        const seed = getStat(stats, "playoffSeed");
+        const pctg = getStat(stats, "winPercent");
+        const ppg = getStat(stats, "avgPointsFor") || getStat(stats, "points");
+        const oppPpg = getStat(stats, "avgPointsAgainst");
+        const differential = getStat(stats, "differential");
+        const gb = getStatStr(stats, "gamesBehind");
+        const elim = getStat(stats, "magicNumberElimination");
+        const clinch = getStat(stats, "magicNumberClinch");
+        const streakStat = stats.find((x: any) => x.name === "streak");
+        const streak = streakStat?.displayValue ?? "";
+        return {
+          id: String(team.id ?? ""),
+          espnId: String(team.id ?? ""),
+          name: team.displayName ?? team.name ?? "Unknown",
+          shortName: team.shortDisplayName ?? team.abbreviation ?? "",
+          abbreviation: team.abbreviation ?? "",
+          seed: Math.round(seed),
+          gamesPlayed: Math.round(gp),
+          wins: Math.round(wins),
+          losses: Math.round(losses),
+          winPct: pctg,
+          ppg: ppg,
+          oppPpg: oppPpg,
+          differential: differential,
+          conference: e._conf ?? "",
+          record: `${Math.round(wins)}-${Math.round(losses)}`,
+          gamesBehind: gb,
+          streak: streak,
+        };
+      });
+
+      // Compute season completion %
+      // NBA/NHL: if gamesPlayed=0 it means off-season, check season year
+      let seasonPct = 0;
+      const currentYear = new Date().getFullYear();
+      const currentMonth = new Date().getMonth() + 1; // 1-based
+
+      if (maxGamesPlayed > 0) {
+        seasonPct = Math.min(100, (maxGamesPlayed / totalGamesPerTeam) * 100);
+      } else {
+        // gamesPlayed=0 means completed season — check if it's the right year
+        // NBA: season ends ~June, next starts ~October
+        // NHL: season ends ~June, next starts ~October
+        // MLB: season ends ~October, next starts ~April
+        // NFL: season ends ~February, next starts ~September
+        const isOffseason = (sport === "nba" && (currentMonth >= 7 && currentMonth <= 9)) ||
+                            (sport === "nhl" && (currentMonth >= 7 && currentMonth <= 9)) ||
+                            (sport === "mlb" && (currentMonth >= 11 || currentMonth <= 2)) ||
+                            (sport === "nfl" && (currentMonth >= 3 && currentMonth <= 8));
+        seasonPct = isOffseason ? 0 : 100; // if not offseason and gp=0, treat as completed
+      }
+
+      // Determine bracket unlock state
+      const UNLOCK_THRESHOLD = 90; // show bracket at 90% of season complete
+      const bracketUnlocked = seasonPct >= UNLOCK_THRESHOLD;
+
+      // Identify playoff teams (top 6 for MLB, top 8 for NBA/NHL, top 7 for NFL)
+      const PLAYOFF_SPOTS: Record<string, number> = { mlb: 6, nba: 8, nhl: 8, nfl: 7 };
+      const playoffSpots = PLAYOFF_SPOTS[sport] ?? 8;
+
+      // Group by conference and get top seeds
+      const conferences = new Map<string, any[]>();
+      teamsWithConf.forEach(t => {
+        const key = t.conference || "League";
+        if (!conferences.has(key)) conferences.set(key, []);
+        conferences.get(key)!.push(t);
+      });
+
+      const playoffTeamsByConf: Record<string, any[]> = {};
+      conferences.forEach((teams, confName) => {
+        const sorted = [...teams].sort((a, b) => (a.seed || 99) - (b.seed || 99));
+        playoffTeamsByConf[confName] = sorted.slice(0, playoffSpots);
+      });
+
+      const result = {
+        sport,
+        seasonYear,
+        seasonPct: Math.round(seasonPct * 10) / 10,
+        maxGamesPlayed,
+        totalGamesPerTeam,
+        bracketUnlocked,
+        unlockThreshold: UNLOCK_THRESHOLD,
+        updatedAt: new Date().toISOString(),
+        conferences: Object.fromEntries(
+          Array.from(conferences.entries()).map(([name, teams]) => [
+            name,
+            [...teams].sort((a, b) => (a.seed || 99) - (b.seed || 99)),
+          ])
+        ),
+        playoffTeamsByConf,
+        allTeams: teamsWithConf,
+      };
+
+      standingsCache.set(sport, { ts: Date.now(), data: result });
+      return res.json(result);
+    } catch (e: any) {
+      console.error("[live-standings]", e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/linemate-props", async (req, res) => {
     const sport  = ((req.query.sport as string) ?? "nba").toLowerCase();
     const cached = linemateCache.get(sport);
