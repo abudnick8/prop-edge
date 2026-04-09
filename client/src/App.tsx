@@ -17,6 +17,7 @@ import PredictionMarkets from "@/pages/PredictionMarkets";
 import TopTraders from "@/pages/TopTraders";
 import Fantasy from "@/pages/Fantasy";
 import HighConviction from "@/pages/HighConviction";
+import LinemateProps from "@/pages/LinemateProps";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -86,6 +87,7 @@ function AppInner() {
               <Route path="/markets/top-traders" component={TopTraders} />
               <Route path="/fantasy" component={Fantasy} />
               <Route path="/conviction" component={HighConviction} />
+              <Route path="/linemate" component={LinemateProps} />
               <Route component={NotFound} />
             </Switch>
           </div>

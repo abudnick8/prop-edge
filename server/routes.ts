@@ -1959,6 +1959,224 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Linemate + PrizePicks props ──────────────────────────────────────────
+  // GET /api/linemate-props?sport=nba  (nba|nfl|mlb|nhl)
+  // Returns: recommended picks (SAFE/RISKY/100% Club), full market browser
+  // with real lines from PrizePicks/DraftKings/Sleeper + hit rates across
+  // L5/L10/L20/L30/Season windows.
+  const linemateCache = new Map<string, { data: any; ts: number }>();
+  const LINEMATE_TTL = 5 * 60_000; // 5-min cache
+
+  const LINEMATE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Origin":  "https://linemate.io",
+    "Referer": "https://linemate.io/",
+    "Accept":  "application/json",
+  };
+
+  // Normalise a Linemate pick/market into a consistent shape PropEdge can use
+  function normalisePick(p: any, group: string, sport: string) {
+    const player     = p.player ?? {};
+    const market     = p.market ?? {};
+    const books      = market.books ?? p.books ?? {};
+
+    // Collect lines per book
+    const bookLines: Record<string, { line: number; overOdds: number | null; underOdds: number | null }> = {};
+    for (const [bookName, bookData] of Object.entries(books as Record<string, any>)) {
+      const over  = bookData?.over?.current;
+      const under = bookData?.under?.current;
+      if (over?.value != null) {
+        bookLines[bookName] = {
+          line:      over.value,
+          overOdds:  over.odds?.american  ?? null,
+          underOdds: under?.odds?.american ?? null,
+        };
+      }
+    }
+
+    // Consensus line = mode of lines across books
+    const lineVals = Object.values(bookLines).map(b => b.line);
+    const consensusLine = lineVals.length
+      ? lineVals.sort((a, b) =>
+          lineVals.filter(v => v === b).length - lineVals.filter(v => v === a).length
+        )[0]
+      : null;
+
+    // Hit records — keyed by line value, then window name
+    const hitRecords = p.pregameHitRecords ?? market.pregameHitRecords ?? {};
+    const hitForLine = consensusLine != null ? (hitRecords[String(consensusLine)] ?? {}) : {};
+
+    // Key windows
+    const l5  = hitForLine["LAST_5"]?.all  ?? null;
+    const l10 = hitForLine["LAST_10"]?.all ?? null;
+    const l20 = hitForLine["LAST_20"]?.all ?? null;
+    const l30 = hitForLine["LAST_30"]?.all ?? null;
+    const season = hitForLine["SEASON"]?.all ?? null;
+    const recentForm = hitForLine["CUSTOM_RECENT_FORM_OVER"]?.all
+                    ?? hitForLine["CUSTOM_RECENT_FORM_UNDER"]?.all
+                    ?? null;
+
+    // Determine best hit rate across windows (for "100% club" detection)
+    const winRates = [l5, l10, l20, l30].filter(Boolean).map((w: any) => w.hitRate ?? 0);
+    const bestHitRate = winRates.length ? Math.max(...winRates) : null;
+
+    // Insights / narratives
+    const insights   = p.insights   ?? [];
+    const narratives = p.narratives ?? [];
+    const contextual = p.contextualInsights ?? [];
+    const description = p.description ?? "";
+
+    return {
+      // Identity
+      sport,
+      group,
+      gameId:      p.gameId ?? "",
+      playerName:  player.fullName  ?? "",
+      playerPos:   player.position  ?? "",
+      teamCode:    p.team?.code     ?? "",
+      opponent:    p.opposingTeam?.code ?? "",
+      isHome:      p.home ?? null,
+      gameTime:    p.timestamp ?? "",
+
+      // Market
+      marketName:    market.name ?? p.market ?? "",
+      marketType:    market.type ?? "OVER_UNDER",
+      outcome:       p.outcome ?? "OVER",
+      consensusLine,
+      bookLines,
+
+      // Hit rates (most useful at a glance)
+      hitRateL5:     l5?.hitRate     ?? null,
+      hitRateL10:    l10?.hitRate    ?? null,
+      hitRateL20:    l20?.hitRate    ?? null,
+      hitRateL30:    l30?.hitRate    ?? null,
+      hitRateSeason: season?.hitRate ?? null,
+      hitRateRecentForm: recentForm?.hitRate ?? null,
+      avgRecentForm: recentForm?.average ?? null,
+      bestHitRate,
+      is100Club:     bestHitRate != null && bestHitRate >= 100,
+
+      // Full hit records (for detail drawer)
+      hitRecords,
+
+      // Context
+      description,
+      insights,
+      narratives,
+      contextual,
+      impactingInjuries: p.impactingInjuries ?? [],
+      opponentDefRank:   p.opponentDefensiveRankInsights ?? null,
+    };
+  }
+
+  app.get("/api/linemate-props", async (req, res) => {
+    const sport  = ((req.query.sport as string) ?? "nba").toLowerCase();
+    const cached = linemateCache.get(sport);
+    if (cached && Date.now() - cached.ts < LINEMATE_TTL) return res.json(cached.data);
+
+    try {
+      const BASE = `https://api.linemate.io/api/${sport}`;
+
+      // Parallel fetch: recommended picks + full market list
+      const [straightsRes, marketsRes, gamesRes] = await Promise.allSettled([
+        axios.get(`${BASE}/v1/discovery/preview/straights`, {
+          params: {
+            preferredProviders: "",
+            limit: 20,
+            groups: "SAFE,RISKY,PERFECT_HIT_RATE_ALTERNATES",
+            narratives: "",
+          },
+          headers: LINEMATE_HEADERS, timeout: 12000,
+        }),
+        axios.get(`${BASE}/v2/markets`, {
+          params: { levelsToInclude: "player" },
+          headers: LINEMATE_HEADERS, timeout: 12000,
+        }),
+        axios.get(`${BASE}/v2/games/current`, {
+          params: { recordType: "REGULAR" },
+          headers: LINEMATE_HEADERS, timeout: 8000,
+        }),
+      ]);
+
+      // ── Recommended picks ────────────────────────────────────────────────
+      const picks: Record<string, any[]> = { SAFE: [], RISKY: [], "100_CLUB": [] };
+      if (straightsRes.status === "fulfilled") {
+        const groups = straightsRes.value.data?.groups ?? {};
+        for (const [grp, items] of Object.entries(groups as Record<string, any[]>)) {
+          const propGroup = grp === "PERFECT_HIT_RATE_ALTERNATES" ? "100_CLUB"
+                          : grp === "SAFE"  ? "SAFE"
+                          : grp === "RISKY" ? "RISKY"
+                          : null;
+          if (!propGroup) continue;
+          picks[propGroup] = (items ?? []).map(p => normalisePick(p, propGroup, sport.toUpperCase()));
+        }
+      }
+
+      // ── Full market browser ──────────────────────────────────────────────
+      let markets: any[] = [];
+      if (marketsRes.status === "fulfilled" && Array.isArray(marketsRes.value.data)) {
+        markets = marketsRes.value.data
+          .filter((m: any) => m.player && m.name)
+          .map((m: any) => normalisePick(
+            {
+              gameId:         m.gameId,
+              player:         m.player,
+              team:           m.team,
+              opposingTeam:   m.opposingTeam,
+              isHome:         m.isHome,
+              market:         m,
+              outcome:        "OVER",
+              pregameHitRecords: m.pregameHitRecords,
+              pregameAverages:   m.pregameAverages,
+            },
+            "MARKET",
+            sport.toUpperCase()
+          ));
+      }
+
+      // ── Today's games ────────────────────────────────────────────────────
+      let games: any[] = [];
+      if (gamesRes.status === "fulfilled" && Array.isArray(gamesRes.value.data)) {
+        games = gamesRes.value.data.map((g: any) => ({
+          gameId:    g.id,
+          home:      g.homeTeamCode,
+          away:      g.awayTeamCode,
+          timestamp: g.timestamp,
+          status:    g.status,
+        }));
+      }
+
+      // ── Build a flat prop-line map for scanner enrichment ─────────────────
+      // Key: "PLAYERNAMELOWER:MARKETNAME" → { line, hitRateL10, hitRateL5 }
+      const propLineMap: Record<string, { line: number; hitRateL5: number | null; hitRateL10: number | null; source: string }> = {};
+      for (const m of markets) {
+        if (!m.playerName || m.consensusLine == null) continue;
+        const key = `${m.playerName.toLowerCase()}:${m.marketName}`;
+        propLineMap[key] = {
+          line:       m.consensusLine,
+          hitRateL5:  m.hitRateL5,
+          hitRateL10: m.hitRateL10,
+          source:     "linemate",
+        };
+      }
+
+      const result = {
+        sport: sport.toUpperCase(),
+        picks,
+        markets,
+        games,
+        propLineMap,
+        fetchedAt: new Date().toISOString(),
+      };
+
+      linemateCache.set(sport, { data: result, ts: Date.now() });
+      res.json(result);
+    } catch (e: any) {
+      console.error(`[linemate-props/${sport}] Error:`, e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Top Traders — Polymarket leaderboard + recent trades ──────────────────
   // GET /api/top-traders?category=SPORTS&period=ALL&limit=20
   // Returns: top Polymarket traders by PNL + their recent sports trades

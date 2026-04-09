@@ -3299,6 +3299,167 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
   }
   console.log(`SGO merge: ${sgoMerged} merged into existing props, ${sgoAdded} new props added`);
 
+  // ── Linemate enrichment ─────────────────────────────────────────────────────
+  // Fetch consensus lines + hit rates from Linemate (PrizePicks/DraftKings/Sleeper/etc.)
+  // for all 4 sports in parallel. Enrich existing player prop cards with:
+  //   • Real consensus line (if current card has no line)
+  //   • L5/L10 hit rates stored on teamStats for display in BetDetail
+  //   • Confidence boost: +2 if Linemate confirms line, +3 if hitRateL5 >= 70%
+  // Also adds "linemate" as an entry in allSources so the card shows it as a source.
+  // This runs regardless of Odds API quota — it's a free independent enrichment source.
+  try {
+    // Map from scanner stat type (lower) → Linemate marketName (upper)
+    const STAT_TO_LINEMATE: Record<string, string> = {
+      // NBA
+      points: "POINTS", assists: "ASSISTS", rebounds: "REBOUNDS",
+      blocks: "BLOCKS", steals: "STEALS", threes: "THREE_POINTERS_MADE",
+      // NHL
+      goals: "GOALS", shots: "SHOTS_ON_GOAL", saves: "SAVES",
+      // MLB
+      hits: "HITS", home_runs: "HOME_RUNS", rbi: "RBIS", rbis: "RBIS",
+      strikeouts: "STRIKEOUTS", runs: "RUNS",
+      // NFL
+      passing_yards: "PASSING_YARDS", rushing_yards: "RUSHING_YARDS",
+      receiving_yards: "RECEIVING_YARDS", receptions: "RECEPTIONS",
+      touchdowns: "TOUCHDOWNS",
+    };
+
+    const SPORT_TO_LINEMATE: Record<string, string> = {
+      NBA: "nba", NFL: "nfl", MLB: "mlb", NHL: "nhl",
+    };
+
+    // Collect which sports we actually need to fetch
+    const sportsNeeded = new Set<string>();
+    for (const b of results) {
+      if (b.betType === "player_prop" && b.playerName && b.sport) {
+        const lm = SPORT_TO_LINEMATE[b.sport.toUpperCase()];
+        if (lm) sportsNeeded.add(lm);
+      }
+    }
+
+    if (sportsNeeded.size > 0) {
+      // Fetch Linemate data for all needed sports in parallel
+      const linerateMaps = await Promise.all(
+        Array.from(sportsNeeded).map(async (lmSport) => {
+          try {
+            const baseUrl = `https://api.linemate.io/api/${lmSport}`;
+            const LINEMATE_HEADERS = {
+              "Origin": "https://linemate.io",
+              "Referer": "https://linemate.io/",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              "Accept": "application/json",
+            };
+            const { data } = await axios.get(
+              `${baseUrl}/v2/markets?levelsToInclude=player`,
+              { headers: LINEMATE_HEADERS, timeout: 12000 }
+            );
+            // Build propLineMap: key = "playernamelower:MARKETNAME"
+            const propLineMap: Record<string, { line: number; hitRateL5: number | null; hitRateL10: number | null }> = {};
+            const markets: any[] = data?.data?.markets ?? data?.markets ?? [];
+            for (const mkt of markets) {
+              const player = mkt.playerName ?? mkt.player_name ?? "";
+              if (!player) continue;
+              const marketName = (mkt.marketName ?? mkt.market_name ?? "").toUpperCase();
+              if (!marketName) continue;
+              // Consensus line = mode across book lines
+              const lines = Object.values(mkt.bookLines ?? {}) as any[];
+              const lineVals = lines.map((l: any) => l.line).filter((l: any) => typeof l === "number");
+              if (lineVals.length === 0) continue;
+              const freq: Record<number, number> = {};
+              let bestLine = lineVals[0], bestFreq = 0;
+              for (const v of lineVals) {
+                freq[v] = (freq[v] ?? 0) + 1;
+                if (freq[v] > bestFreq) { bestFreq = freq[v]; bestLine = v; }
+              }
+              const hrWindows = mkt.hitRateWindows ?? mkt.hitRates ?? {};
+              const l5 = hrWindows.LAST_5?.hitRate ?? null;
+              const l10 = hrWindows.LAST_10?.hitRate ?? null;
+              const key = `${player.toLowerCase().replace(/\s+/g, "")}:${marketName}`;
+              propLineMap[key] = { line: bestLine, hitRateL5: l5, hitRateL10: l10 };
+            }
+            return { sport: lmSport.toUpperCase(), propLineMap };
+          } catch (e: any) {
+            console.warn(`[scanner/linemate/${lmSport}] fetch failed: ${e.message}`);
+            return { sport: lmSport.toUpperCase(), propLineMap: {} };
+          }
+        })
+      );
+
+      // Build a combined lookup by sport
+      const lmBySport = new Map<string, Record<string, { line: number; hitRateL5: number | null; hitRateL10: number | null }>>();
+      for (const { sport, propLineMap } of linerateMaps) {
+        lmBySport.set(sport, propLineMap);
+      }
+
+      let lmEnriched = 0;
+      for (const b of results) {
+        if (b.betType !== "player_prop" || !b.playerName || !b.sport) continue;
+        const propLineMap = lmBySport.get(b.sport.toUpperCase());
+        if (!propLineMap) continue;
+
+        const ts = b.teamStats as { statType?: string; pickSide?: string } | null;
+        const statRaw = (ts?.statType ?? "").toLowerCase().trim();
+        const lmMarket = STAT_TO_LINEMATE[statRaw];
+        if (!lmMarket) continue;
+
+        const playerKey = b.playerName.toLowerCase().replace(/\s+/g, "");
+        const lmData = propLineMap[`${playerKey}:${lmMarket}`];
+        if (!lmData) continue;
+
+        let boost = 0;
+        const factors: string[] = [];
+
+        // Fill missing line from Linemate consensus
+        if (b.line === null || b.line === undefined) {
+          b.line = lmData.line;
+          factors.push(`Linemate consensus line: ${lmData.line}`);
+          boost += 2;
+        } else if (Math.abs((b.line ?? 0) - lmData.line) <= 0.5) {
+          // Line confirms — small boost
+          boost += 2;
+          factors.push(`Linemate confirms line ${lmData.line}`);
+        }
+
+        // High hit rate boost
+        if (lmData.hitRateL5 !== null && lmData.hitRateL5 >= 0.7) {
+          boost += 3;
+          factors.push(`L5 hit rate: ${Math.round(lmData.hitRateL5 * 100)}%`);
+        } else if (lmData.hitRateL10 !== null && lmData.hitRateL10 >= 0.7) {
+          boost += 2;
+          factors.push(`L10 hit rate: ${Math.round(lmData.hitRateL10 * 100)}%`);
+        }
+
+        if (boost > 0) {
+          b.confidenceScore = Math.min(98, (b.confidenceScore ?? 50) + boost);
+          b.isHighConfidence = (b.confidenceScore ?? 0) >= 85;
+          b.keyFactors = [...(b.keyFactors ?? []), ...factors].slice(0, 8);
+          // Store hit rates on teamStats for BetDetail display
+          if (b.teamStats && typeof b.teamStats === "object") {
+            (b.teamStats as any).lmHitRateL5 = lmData.hitRateL5;
+            (b.teamStats as any).lmHitRateL10 = lmData.hitRateL10;
+            (b.teamStats as any).lmConsensusLine = lmData.line;
+          }
+          // Add Linemate as a source entry
+          if (!b.allSources) b.allSources = [];
+          if (!b.allSources.some(s => s.source === "linemate")) {
+            b.allSources.push({
+              source: "linemate",
+              line: lmData.line,
+              overOdds: undefined,
+              underOdds: undefined,
+              impliedProb: lmData.hitRateL5 ?? undefined,
+              pickSide: ts?.pickSide ?? undefined,
+            });
+          }
+          lmEnriched++;
+        }
+      }
+      console.log(`Linemate enrichment: ${lmEnriched} player props enriched with consensus lines + hit rates`);
+    }
+  } catch (e: any) {
+    console.warn(`[scanner/linemate] Enrichment skipped: ${e.message}`);
+  }
+
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
   const apifyKey = process.env.APIFY_API_KEY ?? null;
   if (apifyKey) {
