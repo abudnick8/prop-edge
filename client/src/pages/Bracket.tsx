@@ -1700,35 +1700,107 @@ export default function Bracket() {
 
       {/* Teams view BEFORE bracket is generated — for live seedings */}
       {!bracket && !generating && !isLocked && !seasonLocked && isLiveSeedingTournament && currentTeams.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Section header + Reset */}
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-foreground uppercase tracking-wide flex items-center gap-1.5">
               <TrendingUp size={11} className="text-green-800" /> Current Playoff Seedings
             </p>
-            <p className="text-[10px] text-muted-foreground">Tap ✏ to adjust projected spots</p>
+            <div className="flex items-center gap-2">
+              {seedOverrides.size > 0 && (
+                <button
+                  onClick={handleResetOverrides}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-card border border-border text-foreground/70 rounded-lg text-[10px] font-semibold hover:border-primary/40 hover:text-foreground transition-all"
+                >
+                  <RotateCcw size={10} /> Reset
+                </button>
+              )}
+              <p className="text-[10px] text-foreground/55">Tap any projected seed to swap</p>
+            </div>
           </div>
-          {currentRegions.map(region => {
-            const regionTeams = currentTeams
-              .filter(t => t.region === region)
-              .sort((a, b) => a.seed - b.seed);
-            if (regionTeams.length === 0) return null;
-            return (
-              <div key={region} className="space-y-1.5">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide px-1">
-                  {regionLabels[region] ?? region}
-                </p>
-                {regionTeams.map(t => (
-                  <TeamProfileCard
-                    key={t.id}
-                    team={t}
-                    onMatchup={() => {}}
-                    onSwap={handleOpenSwapper}
-                    isLiveSeeding={true}
-                  />
-                ))}
-              </div>
-            );
-          })}
+
+          {/* Conference columns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {currentRegions.map(region => {
+              const regionTeams = currentTeams
+                .filter(t => t.region === region)
+                .sort((a, b) => a.seed - b.seed);
+              if (regionTeams.length === 0) return null;
+              const confLabel = regionLabels[region] ?? region;
+              return (
+                <div key={region} className="bg-card border border-border rounded-xl overflow-hidden">
+                  {/* Conference header */}
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                    <p className="text-xs font-bold text-foreground">{confLabel}</p>
+                    <p className="text-[9px] text-foreground/55 font-semibold">{regionTeams.length} seeds</p>
+                  </div>
+
+                  {/* Seed rows */}
+                  <div className="divide-y divide-border/50">
+                    {regionTeams.map(t => {
+                      const lt = t as LiveNCAATeam;
+                      const status = lt.clinchStatus ?? "projected";
+                      const isClinched = status === "clinched";
+                      const isOverridden = seedOverrides.has(`${lt.conference}|${t.seed}`);
+
+                      return isClinched ? (
+                        // ── Locked row (clinched) ──
+                        <div
+                          key={t.id}
+                          className="flex items-center gap-2.5 px-3 py-2.5"
+                        >
+                          <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
+                            {t.seed}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-bold text-foreground leading-tight truncate">{t.name}</p>
+                              <ClinchBadge status="clinched" />
+                            </div>
+                            <p className="text-[10px] text-foreground/55">{t.record}</p>
+                          </div>
+                          <Lock size={11} className="text-foreground/30 shrink-0" />
+                        </div>
+                      ) : (
+                        // ── Editable row (projected / playin) ──
+                        <button
+                          key={t.id}
+                          onClick={() => handleOpenSwapper(lt)}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-all active:scale-[0.99] hover:bg-muted/60 ${
+                            isOverridden ? "bg-amber-500/5" : ""
+                          }`}
+                        >
+                          <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                            isOverridden ? "bg-amber-500/20 text-amber-800" : "bg-muted text-foreground/60"
+                          }`}>
+                            {t.seed}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className={`text-xs font-semibold leading-tight truncate ${
+                                isOverridden ? "text-amber-800" : "text-foreground"
+                              }`}>{t.name}</p>
+                              <ClinchBadge status={status} />
+                              {isOverridden && (
+                                <span className="text-[8px] font-bold px-1 py-0.5 bg-amber-500/15 text-amber-800 rounded border border-amber-500/25">CUSTOM</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-foreground/55">{t.record}</p>
+                          </div>
+                          <Pencil size={11} className="text-orange-700/70 shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom hint */}
+          <p className="text-[10px] text-foreground/45 text-center">
+            🔒 Clinched seeds are locked · Tap any other seed row to swap the team
+          </p>
         </div>
       )}
     </div>
