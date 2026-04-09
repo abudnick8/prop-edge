@@ -35,14 +35,14 @@ function AppInner() {
           height: "100dvh",
           minHeight: "-webkit-fill-available",
           paddingTop: "env(safe-area-inset-top, 0px)",
-          background: "#0a141e",
+          background: "#F6F1E7",
         }}
       >
         {/* Desktop: left sidebar */}
         <DesktopSidebar />
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto" style={{ background: "#0a141e" }}>
+        <main className="flex-1 overflow-y-auto" style={{ background: "#F6F1E7" }}>
           {/* Top bar — navy on mobile, cream on desktop */}
           <div
             className="sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 py-3"
