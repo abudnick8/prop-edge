@@ -621,10 +621,7 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
           </span>
           {m.isWhaleAlert && (
             <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse flex items-center gap-1">
-              🐋 Whale
-              {(m.smartScore ?? 0) > 0 && (
-                <span className="text-[9px] font-bold text-orange-200 opacity-80">{m.smartScore}</span>
-              )}
+              🐋 Whale{(m.smartScore ?? 0) > 0 ? ` · ${m.smartScore}` : ""}
             </span>
           )}
         </div>
