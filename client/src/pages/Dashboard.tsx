@@ -181,9 +181,9 @@ export default function Dashboard() {
   ];
 
   const MAIN_TABS: { key: MainTab; label: string; icon: React.ReactNode; count: number; color: string }[] = [
-    { key: "props",  label: "Player Props", icon: <Target size={13} />,   count: allPlayerProps.length, color: "text-green-400" },
+    { key: "props",  label: "Player Props", icon: <Target size={13} />,   count: allPlayerProps.length, color: "text-green-800" },
     { key: "team",   label: "Team Bets",    icon: <Users size={13} />,    count: allTeamBets.length, color: "text-blue-400" },
-    { key: "season", label: "Season Bets",  icon: <Trophy size={13} />,   count: seasonBets.length, color: "text-yellow-400" },
+    { key: "season", label: "Season Bets",  icon: <Trophy size={13} />,   count: seasonBets.length, color: "text-amber-800" },
   ];
 
   return (
@@ -339,24 +339,24 @@ export default function Dashboard() {
                   {filterSport !== "All" && (
                     <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       {filterSport}
-                      <button onClick={() => setFilterSport("All")} className="hover:text-red-400">×</button>
+                      <button onClick={() => setFilterSport("All")} className="hover:text-red-700">×</button>
                     </span>
                   )}
                   {filterSource !== "All" && (
                     <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       {filterSource}
-                      <button onClick={() => setFilterSource("All")} className="hover:text-red-400">×</button>
+                      <button onClick={() => setFilterSource("All")} className="hover:text-red-700">×</button>
                     </span>
                   )}
                   {filterMinScore > 0 && (
                     <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       ≥{filterMinScore} conf
-                      <button onClick={() => setFilterMinScore(0)} className="hover:text-red-400">×</button>
+                      <button onClick={() => setFilterMinScore(0)} className="hover:text-red-700">×</button>
                     </span>
                   )}
                   <button
                     onClick={() => { setFilterSport("All"); setFilterSource("All"); setFilterMinScore(0); setFilterSearch(""); }}
-                    className="text-xs text-muted-foreground hover:text-red-400 ml-auto transition-colors"
+                    className="text-xs text-muted-foreground hover:text-red-700 ml-auto transition-colors"
                   >
                     Clear all
                   </button>
@@ -390,7 +390,7 @@ export default function Dashboard() {
                       Show All Days
                     </button>
                   )}
-                  <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/30 hover:bg-green-500/20 transition-colors">
+                  <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-green-500/10 text-green-800 rounded-lg border border-green-500/30 hover:bg-green-500/20 transition-colors">
                     Scan Now
                   </button>
                 </div>
@@ -402,7 +402,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                   <h2 className="text-base font-bold text-foreground">🎯 Player Props</h2>
-                  <span className="text-xs font-mono bg-green-500/15 text-green-400 px-2 py-0.5 rounded-md border border-green-500/30">
+                  <span className="text-xs font-mono bg-green-500/15 text-green-800 px-2 py-0.5 rounded-md border border-green-500/30">
                     {propBets.length} props
                   </span>
                 </div>
@@ -469,7 +469,7 @@ export default function Dashboard() {
       {mainTab === "season" && (
         <div className="space-y-5">
           <div className="flex items-center gap-3 px-4 py-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl">
-            <Trophy size={16} className="text-yellow-400 flex-shrink-0" />
+            <Trophy size={16} className="text-amber-800 flex-shrink-0" />
             <div>
               <p className="text-sm font-semibold text-foreground">Season-Long Futures & Outrights</p>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -485,7 +485,7 @@ export default function Dashboard() {
               title="No season futures loaded yet"
               subtitle="Click Scan Now to load season-long markets"
               actions={
-                <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-yellow-500/10 text-yellow-400 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors">
+                <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-yellow-500/10 text-amber-800 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors">
                   Scan Now
                 </button>
               }
@@ -495,7 +495,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
                 <h2 className="text-base font-bold text-foreground">🏆 Season Futures</h2>
-                <span className="text-xs font-mono bg-yellow-500/15 text-yellow-400 px-2 py-0.5 rounded-md border border-yellow-500/30">
+                <span className="text-xs font-mono bg-yellow-500/15 text-amber-800 px-2 py-0.5 rounded-md border border-yellow-500/30">
                   {seasonBets.length} picks
                 </span>
               </div>
@@ -593,12 +593,12 @@ const TERMS = [
   { term: "Moneyline", badge: "Bet Type", color: "text-blue-400", def: "A straight-up bet on who wins the game. A -200 favorite means risk $200 to win $100. A +170 underdog means a $100 bet wins $170." },
   { term: "Spread", badge: "Bet Type", color: "text-blue-400", def: "A handicap given to the underdog. If the Chiefs are -6.5, they must win by 7+ for the bet to win. The underdog +6.5 wins if they lose by 6 or fewer, or win outright." },
   { term: "Total (Over/Under)", badge: "Bet Type", color: "text-blue-400", def: "A bet on the combined score of both teams. If the total is 47.5, bet Over (48+) or Under (47 or less). Doesn't matter who wins." },
-  { term: "Player Prop", badge: "Bet Type", color: "text-green-400", def: "A bet on an individual player's stats — e.g. 'LeBron James Over 25.5 points.' Only depends on the player's performance, not who wins." },
-  { term: "TAKE OVER / TAKE UNDER", badge: "Recommendation", color: "text-green-400", def: "The system's pick on a player prop. TAKE OVER means the player is projected to exceed the line. TAKE UNDER means they're projected to fall short." },
-  { term: "Season Futures", badge: "Bet Type", color: "text-yellow-400", def: "A bet on a season-long outcome — e.g. 'Yankees to win the World Series.' These live in the Season Bets tab and resolve at season's end." },
-  { term: "Implied Probability", badge: "Market Metric", color: "text-yellow-400", def: "The win probability implied by the odds. A -200 favorite = ~67% implied. On Kalshi/Polymarket, a $0.72 price = 72% chance." },
-  { term: "Recommended Allocation", badge: "Portfolio Sizing", color: "text-green-400", def: "Suggested % of your bankroll for this bet, using quarter-Kelly sizing. 5% on a $1,000 bankroll = $50 bet." },
-  { term: "Risk Level", badge: "Low / Medium / High", color: "text-orange-400", def: "Low = score ≥75 with >55% implied probability. Medium = score ≥60. High = lower confidence. Always size bets by risk level." },
+  { term: "Player Prop", badge: "Bet Type", color: "text-green-800", def: "A bet on an individual player's stats — e.g. 'LeBron James Over 25.5 points.' Only depends on the player's performance, not who wins." },
+  { term: "TAKE OVER / TAKE UNDER", badge: "Recommendation", color: "text-green-800", def: "The system's pick on a player prop. TAKE OVER means the player is projected to exceed the line. TAKE UNDER means they're projected to fall short." },
+  { term: "Season Futures", badge: "Bet Type", color: "text-amber-800", def: "A bet on a season-long outcome — e.g. 'Yankees to win the World Series.' These live in the Season Bets tab and resolve at season's end." },
+  { term: "Implied Probability", badge: "Market Metric", color: "text-amber-800", def: "The win probability implied by the odds. A -200 favorite = ~67% implied. On Kalshi/Polymarket, a $0.72 price = 72% chance." },
+  { term: "Recommended Allocation", badge: "Portfolio Sizing", color: "text-green-800", def: "Suggested % of your bankroll for this bet, using quarter-Kelly sizing. 5% on a $1,000 bankroll = $50 bet." },
+  { term: "Risk Level", badge: "Low / Medium / High", color: "text-orange-700", def: "Low = score ≥75 with >55% implied probability. Medium = score ≥60. High = lower confidence. Always size bets by risk level." },
   { term: "Kalshi / Polymarket", badge: "Sources", color: "text-purple-400", def: "Regulated prediction markets where real money trades on outcomes. Prices reflect collective market intelligence — generally more accurate than sportsbook lines." },
   { term: "ActionNetwork", badge: "Source", color: "text-purple-400", def: "Public betting consensus — % of money and tickets on each side. High sharp money % on one side with low ticket % signals professional action." },
 ];
@@ -924,7 +924,7 @@ function AskSection() {
                         )}
                         {item.relatedBets.map((bet: any, legIdx: number) => {
                           const conf = bet.confidenceScore ?? 0;
-                          const confColor = conf >= 85 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 70 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
+                          const confColor = conf >= 85 ? "text-green-800 border-green-500/30 bg-green-500/10" : conf >= 70 ? "text-amber-800 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
                           const verdict = conf >= 85 ? "✅ Strong" : conf >= 70 ? "⚠️ Moderate" : "❌ Risky";
                           const isParlay = bet.similarityReason === "parlay leg";
                           const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? "+" + n : "" + n);

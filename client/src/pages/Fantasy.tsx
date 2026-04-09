@@ -980,12 +980,12 @@ function PlayerDrawer({player,onClose}:{player:PlayerCard;onClose:()=>void}) {
               </div>
             </div>
             {player.projAdjusted && (
-              <p className="text-[10px] text-amber-400 mt-1 font-semibold">⚠ Projection adjusted due to news/injury</p>
+              <p className="text-[10px] text-amber-800 mt-1 font-semibold">⚠ Projection adjusted due to news/injury</p>
             )}
             <p className="text-[11px] text-muted-foreground mt-2 border-t border-border/20 pt-2">{player.projection}</p>
             <div className="flex gap-3 text-[10px] mt-1">
-              <span>Ceil: <span className="text-green-400 font-semibold">{player.ceiling}</span></span>
-              <span>Floor: <span className="text-red-400 font-semibold">{player.floor}</span></span>
+              <span>Ceil: <span className="text-green-800 font-semibold">{player.ceiling}</span></span>
+              <span>Floor: <span className="text-red-700 font-semibold">{player.floor}</span></span>
             </div>
           </div>
 
@@ -1014,7 +1014,7 @@ function PlayerDrawer({player,onClose}:{player:PlayerCard;onClose:()=>void}) {
             {player.valueGap !== 0 && (
               <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                    style={{background:player.valueGap<0?"rgba(74,222,128,0.08)":"rgba(248,113,113,0.08)"}}>
-                {player.valueGap<0?<ArrowUpRight size={12} className="text-green-400"/>:<ArrowDownRight size={12} className="text-red-400"/>}
+                {player.valueGap<0?<ArrowUpRight size={12} className="text-green-800"/>:<ArrowDownRight size={12} className="text-red-700"/>}
                 <span style={{color:player.valueGap<0?"#4ade80":"#f87171"}} className="font-bold">
                   {player.valueGap<0?`Undervalued by ${Math.abs(player.valueGap)} draft spots`:`Overvalued by ${player.valueGap} draft spots`}
                 </span>
@@ -1055,7 +1055,7 @@ function PlayerDrawer({player,onClose}:{player:PlayerCard;onClose:()=>void}) {
           {/* News alerts */}
           {player.newsAlerts && player.newsAlerts.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-amber-400 uppercase flex items-center gap-1"><Newspaper size={9}/> Latest News</p>
+              <p className="text-[10px] font-bold text-amber-800 uppercase flex items-center gap-1"><Newspaper size={9}/> Latest News</p>
               {player.newsAlerts.map((a,i)=>(
                 <div key={i} className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2">
                   <p className="text-[11px] text-amber-300 font-semibold">{a.headline}</p>
@@ -1205,7 +1205,7 @@ function PlayerCard({p, view, onSelect, onCompare, inCompare}:{
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-foreground">{p.name}</span>
             <TrendBadge trend={p.trend} adpTrend={p.adpTrend}/>
-            {p.projAdjusted && <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1 rounded">NEWS</span>}
+            {p.projAdjusted && <span className="text-[9px] font-bold text-amber-800 bg-amber-400/10 border border-amber-400/30 px-1 rounded">NEWS</span>}
             <InjuryBadge status={p.injuryStatus} adjusted={p.projAdjusted}/>
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1213,8 +1213,8 @@ function PlayerCard({p, view, onSelect, onCompare, inCompare}:{
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{background:"rgba(255,255,255,0.05)",color:"var(--muted-foreground)"}}>
               {p.position}
             </span>
-            {view==="draft"&&p.steal&&<span className="text-[9px] font-bold text-green-400 bg-green-400/10 border border-green-400/30 px-1 rounded">STEAL</span>}
-            {view==="draft"&&p.reach&&<span className="text-[9px] font-bold text-red-400 bg-red-400/10 border border-red-400/30 px-1 rounded">REACH</span>}
+            {view==="draft"&&p.steal&&<span className="text-[9px] font-bold text-green-800 bg-green-400/10 border border-green-400/30 px-1 rounded">STEAL</span>}
+            {view==="draft"&&p.reach&&<span className="text-[9px] font-bold text-red-700 bg-red-400/10 border border-red-400/30 px-1 rounded">REACH</span>}
           </div>
         </div>
 
@@ -1444,22 +1444,22 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {steals.length>0&&(
             <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 space-y-1.5">
-              <p className="text-[10px] font-bold text-green-400 uppercase tracking-wide flex items-center gap-1.5"><Zap size={11}/>Steals Available</p>
+              <p className="text-[10px] font-bold text-green-800 uppercase tracking-wide flex items-center gap-1.5"><Zap size={11}/>Steals Available</p>
               {steals.map(p=>(
                 <div key={p.id} className="flex justify-between text-xs">
                   <span className="font-semibold">{p.name} <span className="text-muted-foreground">({p.position})</span></span>
-                  <span className="text-green-400 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
+                  <span className="text-green-800 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
                 </div>
               ))}
             </div>
           )}
           {reaches.length>0&&(
             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-1.5">
-              <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide flex items-center gap-1.5"><AlertTriangle size={11}/>Reaches — Skip</p>
+              <p className="text-[10px] font-bold text-red-700 uppercase tracking-wide flex items-center gap-1.5"><AlertTriangle size={11}/>Reaches — Skip</p>
               {reaches.map(p=>(
                 <div key={p.id} className="flex justify-between text-xs">
                   <span className="font-semibold">{p.name} <span className="text-muted-foreground">({p.position})</span></span>
-                  <span className="text-red-400 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
+                  <span className="text-red-700 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
                 </div>
               ))}
             </div>
@@ -1500,7 +1500,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
       <div className="bg-card border border-border/40 rounded-xl p-3 flex items-center justify-between gap-2 flex-wrap">
         <div>
           {draftState.complete ? (
-            <p className="text-sm font-black text-green-400">Draft Complete!</p>
+            <p className="text-sm font-black text-green-800">Draft Complete!</p>
           ) : isUserTurn ? (
             <p className="text-xs font-black text-primary animate-pulse">YOUR PICK — Round {currentSlot.round}, Pick #{currentSlot.pick}</p>
           ) : (
@@ -1517,7 +1517,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
       {draftState.complete ? (
         <div className="space-y-3">
           <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 space-y-2">
-            <p className="text-xs font-bold text-green-400 flex items-center gap-1.5"><Trophy size={12}/>Your Draft — {draftState.myRoster.length} picks</p>
+            <p className="text-xs font-bold text-green-800 flex items-center gap-1.5"><Trophy size={12}/>Your Draft — {draftState.myRoster.length} picks</p>
             {draftState.myRoster.map((p,i)=>(
               <div key={p.id} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
@@ -1526,7 +1526,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                   <span className="text-muted-foreground">{p.position}</span>
                   <InjuryBadge status={p.injuryStatus}/>
                 </div>
-                <span className="text-green-400 font-bold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span>
+                <span className="text-green-800 font-bold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span>
               </div>
             ))}
           </div>
@@ -1568,10 +1568,10 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-bold">{p.name}</span>
                           <span className="text-[10px] text-muted-foreground">{p.position}</span>
-                          {p.steal&&<span className="text-[9px] text-green-400 font-bold">STEAL</span>}
+                          {p.steal&&<span className="text-[9px] text-green-800 font-bold">STEAL</span>}
                           <InjuryBadge status={p.injuryStatus}/>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">#{p.modelRank} model · ADP {p.adp.toFixed(1)} · <span className="text-green-400 font-semibold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span></p>
+                        <p className="text-[10px] text-muted-foreground">#{p.modelRank} model · ADP {p.adp.toFixed(1)} · <span className="text-green-800 font-semibold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span></p>
                       </div>
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
                             style={{background:ac.bg,color:ac.text}}>{p.actionTag}</span>
@@ -1598,7 +1598,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                           <span className="text-[10px] text-muted-foreground">{p.position}</span>
                           <InjuryBadge status={p.injuryStatus}/>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">{p.team} · <span className="text-green-400">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span></p>
+                        <p className="text-[10px] text-muted-foreground">{p.team} · <span className="text-green-800">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts/wk`}</span></p>
                       </div>
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{background:ac.bg,color:ac.text}}>{p.actionTag}</span>
                     </div>
@@ -1707,7 +1707,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
       {/* Top Value + Overvalued callout */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-xl p-3 space-y-1.5" style={{ background: "rgba(74,222,128,0.05)", border: "1px solid rgba(74,222,128,0.20)" }}>
-          <p className="text-[10px] font-bold text-green-400 uppercase flex items-center gap-1.5"><Zap size={10}/>Best Values on {meta.label}</p>
+          <p className="text-[10px] font-bold text-green-800 uppercase flex items-center gap-1.5"><Zap size={10}/>Best Values on {meta.label}</p>
           {topValues.map(p => (
             <div key={p.id} className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1717,13 +1717,13 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <span className="text-[10px] text-muted-foreground">Model #{p.modelRank}</span>
-                <span className="text-[10px] font-bold text-green-400">+{p.delta} spots later</span>
+                <span className="text-[10px] font-bold text-green-800">+{p.delta} spots later</span>
               </div>
             </div>
           ))}
         </div>
         <div className="rounded-xl p-3 space-y-1.5" style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.20)" }}>
-          <p className="text-[10px] font-bold text-orange-400 uppercase flex items-center gap-1.5"><AlertTriangle size={10}/>Most Overvalued on {meta.label}</p>
+          <p className="text-[10px] font-bold text-orange-700 uppercase flex items-center gap-1.5"><AlertTriangle size={10}/>Most Overvalued on {meta.label}</p>
           {overvalued.map(p => (
             <div key={p.id} className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1733,7 +1733,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <span className="text-[10px] text-muted-foreground">Model #{p.modelRank}</span>
-                <span className="text-[10px] font-bold text-orange-400">{p.delta} spots earlier</span>
+                <span className="text-[10px] font-bold text-orange-700">{p.delta} spots earlier</span>
               </div>
             </div>
           ))}
@@ -1831,7 +1831,7 @@ function PreseasonLabView({players,onSelect,onCompare,compareSet}:{
 
       {injured.length>0&&(
         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-2">
-          <p className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5"><Siren size={11}/>Injury Watch — Fantasy Impact</p>
+          <p className="text-[10px] font-bold text-red-700 uppercase flex items-center gap-1.5"><Siren size={11}/>Injury Watch — Fantasy Impact</p>
           {injured.map(p=>(
             <div key={p.id} className="flex items-center justify-between text-xs gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -1847,22 +1847,22 @@ function PreseasonLabView({players,onSelect,onCompare,compareSet}:{
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {sleepers.length>0&&(
           <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 space-y-1.5">
-            <p className="text-[10px] font-bold text-green-400 uppercase flex items-center gap-1.5"><Zap size={11}/>Top Sleepers</p>
+            <p className="text-[10px] font-bold text-green-800 uppercase flex items-center gap-1.5"><Zap size={11}/>Top Sleepers</p>
             {sleepers.map(p=>(
               <div key={p.id} className="flex justify-between text-xs">
                 <span className="font-semibold">{p.name} <span className="text-muted-foreground">({p.position})</span></span>
-                <span className="text-green-400 font-bold">{p.fantasyPtsWeekly.toFixed(1)} pts/wk</span>
+                <span className="text-green-800 font-bold">{p.fantasyPtsWeekly.toFixed(1)} pts/wk</span>
               </div>
             ))}
           </div>
         )}
         {busts.length>0&&(
           <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-1.5">
-            <p className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5"><AlertTriangle size={11}/>Bust Watch</p>
+            <p className="text-[10px] font-bold text-red-700 uppercase flex items-center gap-1.5"><AlertTriangle size={11}/>Bust Watch</p>
             {busts.map(p=>(
               <div key={p.id} className="flex justify-between text-xs">
                 <span className="font-semibold">{p.name} <span className="text-muted-foreground">({p.position})</span></span>
-                <span className="text-red-400 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
+                <span className="text-red-700 font-bold">ADP {p.adp.toFixed(1)} → #{p.modelRank}</span>
               </div>
             ))}
           </div>
@@ -1925,7 +1925,7 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
 
       {injured.length>0&&(
         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-2">
-          <p className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5"><Siren size={11}/>Active Injury Impact</p>
+          <p className="text-[10px] font-bold text-red-700 uppercase flex items-center gap-1.5"><Siren size={11}/>Active Injury Impact</p>
           {injured.slice(0,5).map(p=>(
             <div key={p.id} className="flex items-center justify-between text-xs gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -1956,28 +1956,28 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {starts.length>0&&(
               <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 space-y-1.5">
-                <p className="text-[10px] font-bold text-green-400 uppercase flex items-center gap-1.5"><CheckCircle size={11}/>Start — Confidence Plays</p>
+                <p className="text-[10px] font-bold text-green-800 uppercase flex items-center gap-1.5"><CheckCircle size={11}/>Start — Confidence Plays</p>
                 {starts.slice(0,6).map(p=>(
                   <div key={p.id} className="flex justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold">{p.name}</span>
                       <InjuryBadge status={p.injuryStatus}/>
                     </div>
-                    <span className="text-green-400 font-bold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts`}</span>
+                    <span className="text-green-800 font-bold">{p.fantasyPtsWeekly===0?"OUT":`${p.fantasyPtsWeekly.toFixed(1)} pts`}</span>
                   </div>
                 ))}
               </div>
             )}
             {sits.length>0&&(
               <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-1.5">
-                <p className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5"><XCircle size={11}/>Sit — Fade This Week</p>
+                <p className="text-[10px] font-bold text-red-700 uppercase flex items-center gap-1.5"><XCircle size={11}/>Sit — Fade This Week</p>
                 {sits.slice(0,6).map(p=>(
                   <div key={p.id} className="flex justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold">{p.name}</span>
                       <InjuryBadge status={p.injuryStatus}/>
                     </div>
-                    <span className="text-red-400 font-bold">{p.actionScore}/100</span>
+                    <span className="text-red-700 font-bold">{p.actionScore}/100</span>
                   </div>
                 ))}
               </div>
@@ -2000,7 +2000,7 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-blue-400 font-bold">{p.fantasyPtsWeekly.toFixed(1)} pts/wk</span>
-                  <span className="text-green-400 text-[10px]">+{Math.abs(p.valueGap)} spots</span>
+                  <span className="text-green-800 text-[10px]">+{Math.abs(p.valueGap)} spots</span>
                 </div>
               </div>
             ))}
@@ -2023,11 +2023,11 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
               ))}
             </div>
             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 space-y-1.5">
-              <p className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5"><ArrowUpRight size={11}/>Sell High</p>
+              <p className="text-[10px] font-bold text-red-700 uppercase flex items-center gap-1.5"><ArrowUpRight size={11}/>Sell High</p>
               {sells.slice(0,5).map(p=>(
                 <div key={p.id} className="flex justify-between text-xs">
                   <span className="font-semibold">{p.name} <span className="text-muted-foreground">({p.position})</span></span>
-                  <span className="text-red-400 font-bold">ADP {p.adp.toFixed(1)}</span>
+                  <span className="text-red-700 font-bold">ADP {p.adp.toFixed(1)}</span>
                 </div>
               ))}
             </div>
@@ -2051,7 +2051,7 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
                     <span className="text-xs font-bold">{p.name}</span>
                     <span className="text-[10px] text-muted-foreground">{p.position} · {p.team}</span>
                     <TrendBadge trend={p.trend} adpTrend={p.adpTrend}/>
-                    {p.projAdjusted&&<span className="text-amber-400 text-[9px] font-bold">⚠ ADJ</span>}
+                    {p.projAdjusted&&<span className="text-amber-800 text-[9px] font-bold">⚠ ADJ</span>}
                     <InjuryBadge status={p.injuryStatus}/>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{p.projection}</p>
@@ -2160,8 +2160,8 @@ export default function Fantasy() {
             <h1 className="text-xl font-black tracking-tight text-foreground">Fantasy Engine</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               {filtered.length} players · news-adjusted projections
-              {injuryLoading&&<span className="ml-2 text-amber-400 animate-pulse">↻ loading news…</span>}
-              {!injuryLoading&&injuryLastFetch&&<span className="ml-2 text-green-400">✓ ESPN {injuryLastFetch.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>}
+              {injuryLoading&&<span className="ml-2 text-amber-800 animate-pulse">↻ loading news…</span>}
+              {!injuryLoading&&injuryLastFetch&&<span className="ml-2 text-green-800">✓ ESPN {injuryLastFetch.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2186,7 +2186,7 @@ export default function Fantasy() {
             {ph.label.toUpperCase()}
           </span>
           {ph.daysUntilNext!==null&&<span className="text-muted-foreground">{ph.daysUntilNext}d until {ph.nextEvent}</span>}
-          {injuredCount>0&&<span className="ml-auto text-amber-400 font-bold flex items-center gap-1"><AlertTriangle size={11}/>{injuredCount} injury alerts</span>}
+          {injuredCount>0&&<span className="ml-auto text-amber-800 font-bold flex items-center gap-1"><AlertTriangle size={11}/>{injuredCount} injury alerts</span>}
         </div>
 
         {/* ── Grouped Filter Bar ── */}

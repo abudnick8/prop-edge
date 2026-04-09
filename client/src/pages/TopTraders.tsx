@@ -762,8 +762,8 @@ function PositionCard({ pos, idx, onOpen }: { pos: Position; idx: number; onOpen
                 <p className="text-xs font-mono text-foreground">{fmtCents(pos.curPrice)}</p>
                 {Math.abs(pos.curPrice - pos.avgPrice) >= 0.005 && (
                   priceUp
-                    ? <TrendingUp size={9} className="text-green-400 shrink-0" />
-                    : <TrendingDown size={9} className="text-red-400 shrink-0" />
+                    ? <TrendingUp size={9} className="text-green-800 shrink-0" />
+                    : <TrendingDown size={9} className="text-red-700 shrink-0" />
                 )}
               </div>
             </div>
@@ -821,7 +821,7 @@ function PositionsView({
       {/* Summary chips */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-          <Wallet size={11} className="text-yellow-400" />
+          <Wallet size={11} className="text-amber-800" />
           <span className="font-bold text-yellow-300">{positions.length} open positions</span>
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
@@ -995,7 +995,7 @@ export default function TopTraders() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-black text-foreground tracking-tight flex items-center gap-2">
-              <Trophy size={20} className="text-yellow-400" />
+              <Trophy size={20} className="text-amber-800" />
               Top Profitable Traders
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1016,11 +1016,11 @@ export default function TopTraders() {
         {viewMode === "profiles" && !profilesLoading && traders.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-              <Trophy size={11} className="text-yellow-400" />
+              <Trophy size={11} className="text-amber-800" />
               <span className="font-bold text-yellow-300">{traders.length} traders shown</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
-              <TrendingUp size={11} className="text-green-400" />
+              <TrendingUp size={11} className="text-green-800" />
               <span className="font-bold text-green-300">{traders.filter(t => t.pnl > 0).length} profitable</span>
             </div>
             <div className="px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 font-bold">

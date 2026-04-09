@@ -33,7 +33,7 @@
 
     /* Muted: mid-tan — section fills, table rows */
     --muted: 37 20% 91%;               /* warm light tan */
-    --muted-foreground: 213 10% 44%;   /* #6E7683 slate */
+    --muted-foreground: 213 12% 36%;   /* #52606D slate — darkened for AA contrast on cream */
 
     /* Accent: soft tan — badges, subtle highlights */
     --accent: 35 25% 88%;              /* warm tan */
@@ -58,7 +58,7 @@
     --field-green: #3F6B4B;
     --tan:         #D8CCB8;
     --text-main:   #1E2430;
-    --text-muted:  #6E7683;
+    --text-muted:  #52606D;            /* darkened: 5.74:1 on cream, was 4.07:1 */
     --text-on-navy: #F0EAD9;
 
     /* ── Typography ── */
@@ -67,8 +67,8 @@
     --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
 
     /* ── Confidence signal colors (restrained) ── */
-    --conf-high:   #3F6B4B;   /* field green — value / favorable */
-    --conf-mid:    #8B6914;   /* warm gold — moderate signal */
+    --conf-high:   #2E5038;   /* field green darkened — 8.0:1 on cream, was 5.46:1 */
+    --conf-mid:    #7A5A0A;   /* warm gold darkened — 5.66:1 on cream, was 4.52:1 */
     --conf-low:    #A23B32;   /* cardinal — caution */
   }
 
@@ -145,8 +145,8 @@
 }
 
 /* ── Source badges — editorial, restrained ──────────────────────────────── */
-.source-kalshi        { background: rgba(63,107,75,0.1);   color: #3F6B4B; border-color: rgba(63,107,75,0.25); }
-.source-polymarket    { background: rgba(139,105,20,0.1);  color: #8B6914; border-color: rgba(139,105,20,0.25); }
+.source-kalshi        { background: rgba(46,80,56,0.1);    color: #2E5038; border-color: rgba(46,80,56,0.25); }
+.source-polymarket    { background: rgba(122,90,10,0.1);   color: #7A5A0A; border-color: rgba(122,90,10,0.25); }
 .source-draftkings    { background: rgba(19,35,58,0.1);    color: #13233A; border-color: rgba(19,35,58,0.25); }
 .source-underdog      { background: rgba(162,59,50,0.1);   color: #A23B32; border-color: rgba(162,59,50,0.25); }
 .source-sportsgameodds { background: rgba(19,35,58,0.08);  color: #3A567A; border-color: rgba(19,35,58,0.2); }
@@ -154,17 +154,17 @@
 
 /* ── Sport badges ────────────────────────────────────────────────────────── */
 .sport-nfl   { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
-.sport-nba   { background: rgba(139,105,20,0.1); color: #8B6914; border-color: rgba(139,105,20,0.25); }
+.sport-nba   { background: rgba(122,90,10,0.1);  color: #7A5A0A; border-color: rgba(122,90,10,0.25); }
 .sport-mlb   { background: rgba(19,35,58,0.1);   color: #13233A; border-color: rgba(19,35,58,0.25); }
-.sport-nhl   { background: rgba(63,107,75,0.1);  color: #3F6B4B; border-color: rgba(63,107,75,0.25); }
+.sport-nhl   { background: rgba(46,80,56,0.1);   color: #2E5038; border-color: rgba(46,80,56,0.25); }
 .sport-ncaab { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
-.sport-golf  { background: rgba(63,107,75,0.12); color: #3F6B4B; border-color: rgba(63,107,75,0.3); }
+.sport-golf  { background: rgba(46,80,56,0.12);  color: #2E5038; border-color: rgba(46,80,56,0.3); }
 
 /* ── Pick direction banners ──────────────────────────────────────────────── */
 .pick-over {
-  background: rgba(63,107,75,0.08);
-  color: #3F6B4B;
-  border: 1px solid rgba(63,107,75,0.25);
+  background: rgba(46,80,56,0.08);
+  color: #2E5038;
+  border: 1px solid rgba(46,80,56,0.25);
 }
 .pick-under {
   background: rgba(162,59,50,0.08);
@@ -173,10 +173,10 @@
 }
 
 /* ── Status badges ───────────────────────────────────────────────────────── */
-.status-active  { background: rgba(139,105,20,0.12); color: #8B6914; border-color: rgba(139,105,20,0.3); }
-.status-hit     { background: rgba(63,107,75,0.12);  color: #3F6B4B; border-color: rgba(63,107,75,0.3); }
+.status-active  { background: rgba(122,90,10,0.12);  color: #7A5A0A; border-color: rgba(122,90,10,0.3); }
+.status-hit     { background: rgba(46,80,56,0.12);   color: #2E5038; border-color: rgba(46,80,56,0.3); }
 .status-missed  { background: rgba(162,59,50,0.12);  color: #A23B32; border-color: rgba(162,59,50,0.3); }
-.status-expired { background: rgba(110,118,131,0.1); color: #6E7683; border-color: rgba(110,118,131,0.2); }
+.status-expired { background: rgba(82,96,109,0.1);   color: #52606D; border-color: rgba(82,96,109,0.2); }
 
 /* ── Confidence coloring ─────────────────────────────────────────────────── */
 .score-high   { color: var(--conf-high); }
@@ -201,9 +201,9 @@
   text-transform: uppercase;
 }
 .badge-hot {
-  background: rgba(139,105,20,0.10);
-  color: #8B6914;
-  border: 1px solid rgba(139,105,20,0.28);
+  background: rgba(122,90,10,0.10);
+  color: #7A5A0A;
+  border: 1px solid rgba(122,90,10,0.28);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -254,7 +254,7 @@
 
 /* ── Confidence bar ──────────────────────────────────────────────────────── */
 .confidence-bar {
-  background: linear-gradient(90deg, #A23B32 0%, #8B6914 50%, #3F6B4B 100%);
+  background: linear-gradient(90deg, #A23B32 0%, #7A5A0A 50%, #2E5038 100%);
   border-radius: 9999px;
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -45,7 +45,7 @@ function ProbBar({ prob, teamA, teamB }: { prob: number; teamA: string; teamB: s
 function ClinchBadge({ status }: { status: "clinched" | "playin" | "projected" | "eliminated" }) {
   if (status === "clinched") {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30 shrink-0">
         <Lock size={7} /> CLINCHED
       </span>
     );
@@ -59,7 +59,7 @@ function ClinchBadge({ status }: { status: "clinched" | "playin" | "projected" |
   }
   if (status === "projected") {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/25 shrink-0">
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-700 border border-orange-500/25 shrink-0">
         PROJ
       </span>
     );
@@ -80,8 +80,8 @@ function MatchupCard({ result, showDetail = false }: { result: MatchupResult; sh
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          {upsetAlert && <AlertTriangle size={12} className="text-yellow-400 shrink-0" />}
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${upsetAlert ? "bg-yellow-500/20 text-yellow-400" : "bg-primary/10 text-primary"}`}>
+          {upsetAlert && <AlertTriangle size={12} className="text-amber-800 shrink-0" />}
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${upsetAlert ? "bg-yellow-500/20 text-amber-800" : "bg-primary/10 text-primary"}`}>
             {upsetAlert ? "UPSET" : `${Math.round(winProbability * 100)}%`}
           </span>
         </div>
@@ -140,27 +140,27 @@ function MatchupCard({ result, showDetail = false }: { result: MatchupResult; sh
             <div className="grid grid-cols-3 gap-1 text-[10px]">
               <span className="text-primary font-bold text-right">{winner.shortName}</span>
               <span className="text-center text-muted-foreground">Stat</span>
-              <span className="text-red-400 font-bold">{loser.shortName}</span>
+              <span className="text-red-700 font-bold">{loser.shortName}</span>
 
-              <span className={`text-right font-mono ${winner.adjOffRating > loser.adjOffRating ? "text-green-400" : "text-muted-foreground"}`}>{winner.adjOffRating.toFixed(1)}</span>
+              <span className={`text-right font-mono ${winner.adjOffRating > loser.adjOffRating ? "text-green-800" : "text-muted-foreground"}`}>{winner.adjOffRating.toFixed(1)}</span>
               <span className="text-center text-muted-foreground">Adj. Off</span>
-              <span className={`font-mono ${loser.adjOffRating > winner.adjOffRating ? "text-green-400" : "text-muted-foreground"}`}>{loser.adjOffRating.toFixed(1)}</span>
+              <span className={`font-mono ${loser.adjOffRating > winner.adjOffRating ? "text-green-800" : "text-muted-foreground"}`}>{loser.adjOffRating.toFixed(1)}</span>
 
-              <span className={`text-right font-mono ${winner.adjDefRating < loser.adjDefRating ? "text-green-400" : "text-muted-foreground"}`}>{winner.adjDefRating.toFixed(1)}</span>
+              <span className={`text-right font-mono ${winner.adjDefRating < loser.adjDefRating ? "text-green-800" : "text-muted-foreground"}`}>{winner.adjDefRating.toFixed(1)}</span>
               <span className="text-center text-muted-foreground">Adj. Def</span>
-              <span className={`font-mono ${loser.adjDefRating < winner.adjDefRating ? "text-green-400" : "text-muted-foreground"}`}>{loser.adjDefRating.toFixed(1)}</span>
+              <span className={`font-mono ${loser.adjDefRating < winner.adjDefRating ? "text-green-800" : "text-muted-foreground"}`}>{loser.adjDefRating.toFixed(1)}</span>
 
-              <span className={`text-right font-mono ${winner.adjEffMargin > loser.adjEffMargin ? "text-green-400" : "text-muted-foreground"}`}>+{winner.adjEffMargin.toFixed(1)}</span>
+              <span className={`text-right font-mono ${winner.adjEffMargin > loser.adjEffMargin ? "text-green-800" : "text-muted-foreground"}`}>+{winner.adjEffMargin.toFixed(1)}</span>
               <span className="text-center text-muted-foreground">Eff. Margin</span>
-              <span className={`font-mono ${loser.adjEffMargin > winner.adjEffMargin ? "text-green-400" : "text-muted-foreground"}`}>+{loser.adjEffMargin.toFixed(1)}</span>
+              <span className={`font-mono ${loser.adjEffMargin > winner.adjEffMargin ? "text-green-800" : "text-muted-foreground"}`}>+{loser.adjEffMargin.toFixed(1)}</span>
 
-              <span className={`text-right font-mono ${winner.fg3Pct > loser.fg3Pct ? "text-green-400" : "text-muted-foreground"}`}>{winner.fg3Pct}%</span>
+              <span className={`text-right font-mono ${winner.fg3Pct > loser.fg3Pct ? "text-green-800" : "text-muted-foreground"}`}>{winner.fg3Pct}%</span>
               <span className="text-center text-muted-foreground">3PT%</span>
-              <span className={`font-mono ${loser.fg3Pct > winner.fg3Pct ? "text-green-400" : "text-muted-foreground"}`}>{loser.fg3Pct}%</span>
+              <span className={`font-mono ${loser.fg3Pct > winner.fg3Pct ? "text-green-800" : "text-muted-foreground"}`}>{loser.fg3Pct}%</span>
 
-              <span className={`text-right font-mono ${winner.ppg > loser.ppg ? "text-green-400" : "text-muted-foreground"}`}>{winner.ppg}</span>
+              <span className={`text-right font-mono ${winner.ppg > loser.ppg ? "text-green-800" : "text-muted-foreground"}`}>{winner.ppg}</span>
               <span className="text-center text-muted-foreground">PPG</span>
-              <span className={`font-mono ${loser.ppg > winner.ppg ? "text-green-400" : "text-muted-foreground"}`}>{loser.ppg}</span>
+              <span className={`font-mono ${loser.ppg > winner.ppg ? "text-green-800" : "text-muted-foreground"}`}>{loser.ppg}</span>
             </div>
           </div>
 
@@ -168,7 +168,7 @@ function MatchupCard({ result, showDetail = false }: { result: MatchupResult; sh
           <div className="grid grid-cols-2 gap-2">
             {[winner, loser].map((t, i) => (
               <div key={t.id} className={`p-2 rounded-lg ${i === 0 ? "bg-primary/5 border border-primary/20" : "bg-red-500/5 border border-red-500/20"}`}>
-                <p className={`text-[9px] font-bold uppercase mb-1 ${i === 0 ? "text-primary" : "text-red-400"}`}>{t.shortName} Key Players</p>
+                <p className={`text-[9px] font-bold uppercase mb-1 ${i === 0 ? "text-primary" : "text-red-700"}`}>{t.shortName} Key Players</p>
                 {t.keyPlayers.map((p, j) => (
                   <div key={j} className="text-[9px] text-muted-foreground">
                     <span className="font-semibold text-foreground">{p.name}</span> — {p.stat}
@@ -226,7 +226,7 @@ function TeamProfileCard({
               className="w-7 h-7 rounded-full bg-orange-500/15 border border-orange-500/25 flex items-center justify-center hover:bg-orange-500/25 transition-all shrink-0"
               title="Swap this seed slot"
             >
-              <Pencil size={11} className="text-orange-400" />
+              <Pencil size={11} className="text-orange-700" />
             </button>
           )}
         </div>
@@ -242,15 +242,15 @@ function TeamProfileCard({
         </div>
         <div className="bg-muted/50 rounded p-1 text-center">
           <p className="text-muted-foreground">Margin</p>
-          <p className="font-mono font-bold text-green-400">+{team.adjEffMargin.toFixed(1)}</p>
+          <p className="font-mono font-bold text-green-800">+{team.adjEffMargin.toFixed(1)}</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-1">
         {team.playStyle.slice(0, 3).map(s => (
           <span key={s} className="text-[9px] px-1.5 py-0.5 bg-muted rounded-full text-muted-foreground">{s}</span>
         ))}
-        {team.recentForm === "hot" && <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded-full">🔥 hot</span>}
-        {team.upsetAlert && <span className="text-[9px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full">⚠ upset alert</span>}
+        {team.recentForm === "hot" && <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/20 text-orange-700 rounded-full">🔥 hot</span>}
+        {team.upsetAlert && <span className="text-[9px] px-1.5 py-0.5 bg-yellow-500/20 text-amber-800 rounded-full">⚠ upset alert</span>}
         {team.sleeper && <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full">💤 sleeper</span>}
       </div>
     </div>
@@ -258,9 +258,10 @@ function TeamProfileCard({
 }
 
 // ── TeamSwapper Modal ──────────────────────────────────────────────────────
-// Shown when user taps the pencil icon on an unclinched/projected team card.
-// Lists all non-eliminated teams in the same conference sorted by current seed.
-// User picks a replacement; the swap is applied to seedOverrides.
+// No search — all teams shown immediately as tappable rows.
+// Clinched teams are locked (greyed, lock icon). Non-clinched are selectable.
+// "In the Race" section surfaces bubble teams closest to the target seed first.
+// Currently-assigned team gets a checkmark highlight.
 function TeamSwapper({
   confName,
   targetSeed,
@@ -276,77 +277,145 @@ function TeamSwapper({
   onSelect: (team: StandingsTeam) => void;
   onClose: () => void;
 }) {
-  const [search, setSearch] = useState("");
+  const sorted = useMemo(
+    () => [...allConfTeams].sort((a, b) => (a.seed || 99) - (b.seed || 99)),
+    [allConfTeams]
+  );
 
-  const sorted = useMemo(() => {
-    return allConfTeams
-      .filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.abbreviation.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => (a.seed || 99) - (b.seed || 99));
-  }, [allConfTeams, search]);
+  // Bubble teams: non-clinched, within ±3 seeds of the target slot
+  const inTheRace = useMemo(
+    () => sorted.filter(t =>
+      t.clinchStatus !== "clinched" &&
+      t.clinchStatus !== "eliminated" &&
+      Math.abs((t.seed || 99) - targetSeed) <= 3
+    ),
+    [sorted, targetSeed]
+  );
+
+  const renderRow = (t: StandingsTeam, highlighted: boolean = false) => {
+    const isClinched = t.clinchStatus === "clinched";
+    const isCurrent = t.name === currentTeamName;
+
+    if (isClinched) {
+      return (
+        <div
+          key={t.id}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/40 bg-muted/20 opacity-40 cursor-not-allowed select-none"
+        >
+          <span className="w-6 h-6 rounded-full bg-muted text-muted-foreground text-[9px] font-bold flex items-center justify-center shrink-0">
+            {t.seed || "?"}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium text-muted-foreground truncate">{t.name}</p>
+              <ClinchBadge status="clinched" />
+            </div>
+            <p className="text-[10px] text-muted-foreground">{t.record}</p>
+          </div>
+          <Lock size={11} className="text-muted-foreground/50 shrink-0" />
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={t.id}
+        onClick={() => onSelect(t)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-all active:scale-[0.98] ${
+          isCurrent
+            ? "border-primary/60 bg-primary/10"
+            : highlighted
+            ? "border-orange-400/30 bg-orange-400/5 hover:border-orange-400/50 hover:bg-orange-400/10"
+            : "border-border bg-muted/30 hover:border-primary/30 hover:bg-muted/60"
+        }`}
+      >
+        <span className={`w-6 h-6 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 ${
+          isCurrent ? "bg-primary/20 text-primary" :
+          highlighted ? "bg-orange-400/15 text-orange-700" : "bg-muted text-muted-foreground"
+        }`}>
+          {t.seed || "?"}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className={`text-xs font-semibold truncate ${isCurrent ? "text-primary" : "text-foreground"}`}>
+              {t.name}
+            </p>
+            <ClinchBadge status={t.clinchStatus} />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {t.record} · {(t.winPct * 100).toFixed(0)}% win
+          </p>
+        </div>
+        {isCurrent ? (
+          <span className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+            <span className="text-[8px] text-primary-foreground font-black">✓</span>
+          </span>
+        ) : (
+          <ChevronRight size={13} className="text-muted-foreground/50 shrink-0" />
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-card border border-border rounded-2xl w-full max-w-sm flex flex-col" style={{ maxHeight: "85vh" }} onClick={e => e.stopPropagation()}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm flex flex-col" style={{ maxHeight: "82vh" }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-border shrink-0">
           <div>
-            <h3 className="font-bold text-foreground text-base flex items-center gap-2">
-              <Pencil size={14} className="text-orange-400" />
-              Swap Seed #{targetSeed}
+            <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
+              <Pencil size={13} className="text-orange-700" />
+              Project Seed #{targetSeed}
             </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {confName} · Currently: <span className="text-foreground font-semibold">{currentTeamName}</span>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {confName} · Now: <span className="text-foreground font-semibold">{currentTeamName}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X size={15} />
+          </button>
         </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-border shrink-0">
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search teams..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
-            />
-          </div>
-          <p className="text-[9px] text-muted-foreground mt-2">
-            Select any team from the {confName} to project into seed #{targetSeed}
-          </p>
-        </div>
-
-        {/* Team list */}
-        <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
-          {sorted.map(t => (
-            <button
-              key={t.id}
-              onClick={() => onSelect(t)}
-              className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/40 hover:border-primary/40 hover:bg-muted/70 text-left transition-all"
-            >
-              <span className="w-7 h-7 rounded-full bg-muted text-muted-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
-                {t.seed || "?"}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
-                  <ClinchBadge status={t.clinchStatus} />
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  {t.record} · #{t.seed ?? "?"} seed
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-[10px] font-mono text-primary">{(t.winPct * 100).toFixed(1)}%</p>
-                <p className="text-[9px] text-muted-foreground">win%</p>
-              </div>
-            </button>
-          ))}
-          {sorted.length === 0 && (
-            <p className="text-center text-xs text-muted-foreground py-6">No teams found</p>
+        <div className="overflow-y-auto flex-1">
+          {/* "In the race" — bubble teams close to this seed */}
+          {inTheRace.length > 0 && (
+            <div className="p-3 space-y-1.5">
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest px-0.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />
+                In the Race for Seed #{targetSeed}
+              </p>
+              {inTheRace.map(t => renderRow(t, true))}
+            </div>
           )}
+
+          {/* Divider */}
+          {inTheRace.length > 0 && sorted.some(t => !inTheRace.find(r => r.id === t.id)) && (
+            <div className="flex items-center gap-2 px-4 py-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide whitespace-nowrap">Full {confName}</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          )}
+
+          {/* Full conference list (remaining teams not already shown above) */}
+          <div className="p-3 pt-1.5 space-y-1.5">
+            {inTheRace.length === 0 && (
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest px-0.5 mb-1">
+                {confName} — Tap to project
+              </p>
+            )}
+            {sorted.map(t => {
+              if (inTheRace.some(r => r.id === t.id)) return null;
+              return renderRow(t, false);
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2.5 border-t border-border shrink-0">
+          <p className="text-[9px] text-muted-foreground text-center">
+            Clinched spots are locked · Tap any other team to project into seed #{targetSeed}
+          </p>
         </div>
       </div>
     </div>
@@ -537,7 +606,7 @@ function TournamentCard({
   onClick: () => void;
 }) {
   const statusColor = {
-    active: "text-green-400 bg-green-500/10 border-green-500/20",
+    active: "text-green-800 bg-green-500/10 border-green-500/20",
     upcoming: "text-blue-400 bg-blue-500/10 border-blue-500/20",
     completed: "text-muted-foreground bg-muted/50 border-border",
   }[tournament.status];
@@ -1000,7 +1069,7 @@ export default function Bracket() {
           {seedOverrides.size > 0 && (
             <button
               onClick={handleResetOverrides}
-              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg text-xs font-semibold hover:bg-orange-500/20 transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-700 rounded-lg text-xs font-semibold hover:bg-orange-500/20 transition-all"
               title="Reset to live seedings"
             >
               <RotateCcw size={12} /> Reset ({seedOverrides.size})
@@ -1070,12 +1139,12 @@ export default function Bracket() {
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 space-y-3">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
-              <Activity size={16} className="text-amber-400" />
+              <Activity size={16} className="text-amber-800" />
             </div>
             <div className="flex-1">
               <p className="font-bold text-foreground text-sm flex items-center gap-2">
                 {selectedTournament?.name}
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-500/10 text-amber-400 rounded-full border border-amber-500/20">SEASON IN PROGRESS</span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-500/10 text-amber-800 rounded-full border border-amber-500/20">SEASON IN PROGRESS</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                 The bracket unlocks when the season reaches <strong className="text-foreground">{unlockThreshold}% complete</strong>.
@@ -1088,7 +1157,7 @@ export default function Bracket() {
           <div className="space-y-1.5">
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>Season Progress</span>
-              <span className="font-mono font-bold text-amber-400">{seasonPct?.toFixed(1)}% / {unlockThreshold}% to unlock</span>
+              <span className="font-mono font-bold text-amber-800">{seasonPct?.toFixed(1)}% / {unlockThreshold}% to unlock</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
               <div
@@ -1132,13 +1201,13 @@ export default function Bracket() {
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
           <div className="flex-1">
             <p className="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
-              <TrendingUp size={11} className="text-green-400" />
+              <TrendingUp size={11} className="text-green-800" />
               Live Seedings Active
               <span className="text-[9px] font-normal text-muted-foreground ml-1">
                 {liveStandings.seasonPct.toFixed(0)}% of season complete · {currentTeams.length} playoff teams · Updated daily
               </span>
               {seedOverrides.size > 0 && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-orange-500/15 text-orange-400 rounded-full border border-orange-500/25">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-orange-500/15 text-orange-700 rounded-full border border-orange-500/25">
                   {seedOverrides.size} custom swap{seedOverrides.size !== 1 ? "s" : ""}
                 </span>
               )}
@@ -1146,7 +1215,7 @@ export default function Bracket() {
           </div>
           <button
             onClick={() => loadLiveStandings(selectedTournament)}
-            className="text-[10px] text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors shrink-0"
+            className="text-[10px] text-green-800 hover:text-green-300 flex items-center gap-1 transition-colors shrink-0"
             title="Refresh standings"
           >
             <RefreshCw size={10} />
@@ -1388,7 +1457,7 @@ export default function Bracket() {
                   {teamPath.map((m, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${m.winner.id === teamPathTeam.id ? "bg-green-400" : "bg-red-400"}`} />
-                      <span className={`font-semibold ${m.winner.id === teamPathTeam.id ? "text-green-400" : "text-red-400"}`}>
+                      <span className={`font-semibold ${m.winner.id === teamPathTeam.id ? "text-green-800" : "text-red-700"}`}>
                         {m.winner.id === teamPathTeam.id ? "WIN" : "LOSS"}
                       </span>
                       <span className="text-muted-foreground">{ROUND_NAMES[i + 1]}</span>
@@ -1432,7 +1501,7 @@ export default function Bracket() {
           {activeView === "upsets" && (
             <div className="space-y-3">
               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
-                <p className="text-xs font-bold text-yellow-400 flex items-center gap-1.5">
+                <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
                   <AlertTriangle size={13} /> {upsets.length} Projected Upsets
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-1">Lower seeds predicted to defeat higher seeds based on our model</p>
@@ -1471,11 +1540,11 @@ export default function Bracket() {
                 {/* Key Stats Grid */}
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {[
-                    { label: "Adj Off", value: bracket.champion.adjOffRating.toFixed(1), color: "text-green-400" },
+                    { label: "Adj Off", value: bracket.champion.adjOffRating.toFixed(1), color: "text-green-800" },
                     { label: "Adj Def", value: bracket.champion.adjDefRating.toFixed(1), color: "text-blue-400" },
                     { label: "Eff Margin", value: `+${bracket.champion.adjEffMargin.toFixed(1)}`, color: "text-primary" },
                     { label: "PPG", value: bracket.champion.ppg.toFixed(1), color: "text-foreground" },
-                    { label: "3PT%", value: `${(bracket.champion.fg3Pct * 100).toFixed(1)}%`, color: "text-yellow-400" },
+                    { label: "3PT%", value: `${(bracket.champion.fg3Pct * 100).toFixed(1)}%`, color: "text-amber-800" },
                     { label: "SOS", value: bracket.champion.strengthOfSchedule.toFixed(1), color: "text-muted-foreground" },
                   ].map(stat => (
                     <div key={stat.label} className="bg-black/20 rounded-lg p-2 text-center">
@@ -1525,7 +1594,7 @@ export default function Bracket() {
 
               {/* Upsets Summary */}
               <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
-                <p className="text-xs font-bold text-yellow-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                   <AlertTriangle size={13} /> {upsets.length} Projected Upsets
                 </p>
                 {upsets.length === 0 ? (
@@ -1534,7 +1603,7 @@ export default function Bracket() {
                   <div className="space-y-2">
                     {upsets.slice(0, 5).map((u, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
-                        <span className="bg-yellow-500/20 text-yellow-400 font-bold px-1.5 py-0.5 rounded text-[9px]">#{u.winner.seed} over #{u.loser.seed}</span>
+                        <span className="bg-yellow-500/20 text-amber-800 font-bold px-1.5 py-0.5 rounded text-[9px]">#{u.winner.seed} over #{u.loser.seed}</span>
                         <span className="text-foreground font-semibold truncate">{u.winner.shortName}</span>
                         <span className="text-muted-foreground">def.</span>
                         <span className="text-muted-foreground truncate">{u.loser.shortName}</span>
@@ -1562,7 +1631,7 @@ export default function Bracket() {
                         <span className="text-xs font-bold text-foreground truncate">{r.regionWinner.shortName}</span>
                       </div>
                       <p className="text-[9px] font-mono text-primary">+{r.regionWinner.championshipOdds.toLocaleString()}</p>
-                      <p className="text-[9px] text-green-400">Eff: +{r.regionWinner.adjEffMargin.toFixed(1)}</p>
+                      <p className="text-[9px] text-green-800">Eff: +{r.regionWinner.adjEffMargin.toFixed(1)}</p>
                     </div>
                   ))}
                 </div>
@@ -1598,7 +1667,7 @@ export default function Bracket() {
                         <p className="font-bold text-foreground">{value.name}</p>
                         <p className="text-muted-foreground">{value.record} · {value.region}</p>
                         <p className="font-mono text-primary">+{value.championshipOdds.toLocaleString()} title odds</p>
-                        <p className="text-green-400">Eff Margin: +{value.adjEffMargin.toFixed(1)}</p>
+                        <p className="text-green-800">Eff Margin: +{value.adjEffMargin.toFixed(1)}</p>
                       </div>
                     )}
                   </div>
@@ -1634,7 +1703,7 @@ export default function Bracket() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-foreground uppercase tracking-wide flex items-center gap-1.5">
-              <TrendingUp size={11} className="text-green-400" /> Current Playoff Seedings
+              <TrendingUp size={11} className="text-green-800" /> Current Playoff Seedings
             </p>
             <p className="text-[10px] text-muted-foreground">Tap ✏ to adjust projected spots</p>
           </div>

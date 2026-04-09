@@ -624,7 +624,7 @@ export default function ClvTracker() {
         <TabsList className="mb-4 h-8" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <TabsTrigger value="lines" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">Lines</TabsTrigger>
           <TabsTrigger value="alerts" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">
-            Alerts {activeAlerts.length > 0 && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">{activeAlerts.length}</span>}
+            Alerts {activeAlerts.length > 0 && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-800 px-1 rounded">{activeAlerts.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="analytics" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">Analytics</TabsTrigger>
         </TabsList>

@@ -249,7 +249,7 @@ export default function Lotto() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <Ticket size={20} className="text-amber-400" />
+            <Ticket size={20} className="text-amber-800" />
             <h1 className="text-xl font-bold text-foreground">Lotto Picks</h1>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -272,7 +272,7 @@ export default function Lotto() {
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
               showFilters || hasActiveFilters
-                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                ? "bg-amber-500/10 text-amber-800 border-amber-500/30"
                 : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
             }`}
             data-testid="button-lotto-filters"
@@ -303,7 +303,7 @@ export default function Lotto() {
               <span className="text-base">{rule.icon}</span>
               <div>
                 <p className="text-[10px] font-bold text-foreground leading-tight">{sport}</p>
-                <p className="text-[10px] text-amber-400 leading-tight font-semibold">{rule.label}</p>
+                <p className="text-[10px] text-amber-800 leading-tight font-semibold">{rule.label}</p>
               </div>
               {isActive && (
                 <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary animate-pulse flex-shrink-0" />
@@ -315,9 +315,9 @@ export default function Lotto() {
 
       {/* Info banner */}
       <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-        <Ticket size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
+        <Ticket size={15} className="text-amber-800 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-xs font-semibold text-amber-400 mb-0.5">High-Reward / High-Risk Props</p>
+          <p className="text-xs font-semibold text-amber-800 mb-0.5">High-Reward / High-Risk Props</p>
           <p className="text-xs text-muted-foreground">
             MLB: Home Runs · NHL: Goals · NFL: Touchdowns · NBA: Points — props priced at +150 or better.
             5 to 20 picks per active sport, ranked by confidence. Refreshes automatically.
@@ -358,7 +358,7 @@ export default function Lotto() {
               />
               <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                 <span>0</span>
-                <span className="text-amber-400 font-bold">80+ 🎰</span>
+                <span className="text-amber-800 font-bold">80+ 🎰</span>
                 <span>95</span>
               </div>
             </div>
@@ -388,7 +388,7 @@ export default function Lotto() {
         </div>
       ) : activeSports.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-amber-500/20 rounded-xl">
-          <Ticket size={32} className="mx-auto text-amber-400/40 mb-3" />
+          <Ticket size={32} className="mx-auto text-amber-800/40 mb-3" />
           <p className="text-sm font-medium text-foreground">No lotto picks available right now</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
             Lotto shows: MLB Home Runs, NHL Goals, NFL Touchdowns, and NBA Points — priced +150 or better.
@@ -397,7 +397,7 @@ export default function Lotto() {
           {hasActiveFilters && (
             <button
               onClick={() => { setSearch(""); setSource("All"); setMinScore(0); }}
-              className="mt-3 text-xs px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+              className="mt-3 text-xs px-3 py-1.5 bg-amber-500/10 text-amber-800 rounded-lg border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
             >
               Clear Filters
             </button>
@@ -417,10 +417,10 @@ export default function Lotto() {
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{rule.icon}</span>
                     <h2 className="text-base font-bold text-foreground">{sport}</h2>
-                    <span className="text-xs font-semibold text-amber-400">— {rule.label}</span>
+                    <span className="text-xs font-semibold text-amber-800">— {rule.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-800 border border-amber-500/20 font-semibold">
                       LOTTO
                     </span>
                     <span className="text-xs text-muted-foreground font-mono">

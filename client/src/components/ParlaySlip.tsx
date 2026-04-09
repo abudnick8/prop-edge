@@ -109,7 +109,7 @@ export default function ParlaySlip() {
           {legs.length > 0 && (
             <button
               onClick={e => { e.stopPropagation(); clearSlip(); }}
-              className="text-xs text-muted-foreground hover:text-red-400 transition-colors"
+              className="text-xs text-muted-foreground hover:text-red-700 transition-colors"
               data-testid="parlay-slip-clear"
             >
               Clear
@@ -160,7 +160,7 @@ export default function ParlaySlip() {
                     </div>
                     <button
                       onClick={() => removeLeg(leg.betId)}
-                      className="text-muted-foreground hover:text-red-400 transition-colors mt-0.5"
+                      className="text-muted-foreground hover:text-red-700 transition-colors mt-0.5"
                       data-testid={`parlay-remove-${leg.betId}`}
                     >
                       <X size={13} />

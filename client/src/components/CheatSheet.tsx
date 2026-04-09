@@ -152,14 +152,14 @@ function HowToReadSection() {
           <div className="flex items-start gap-3 p-2.5 bg-muted/30 rounded-lg border border-border">
             <span className="text-sm font-black text-primary shrink-0 w-4 text-center">2</span>
             <div className="text-xs leading-relaxed space-y-1">
-              <p>More <MoneyPill /> than <BetsPill /> → <span className="text-green-400 font-bold">Smart money ↑</span></p>
-              <p>More <BetsPill /> than <MoneyPill /> → <span className="text-red-400 font-bold">Public/Fade ↓</span></p>
+              <p>More <MoneyPill /> than <BetsPill /> → <span className="text-green-800 font-bold">Smart money ↑</span></p>
+              <p>More <BetsPill /> than <MoneyPill /> → <span className="text-red-700 font-bold">Public/Fade ↓</span></p>
             </div>
           </div>
           <div className="flex items-start gap-3 p-2.5 bg-muted/30 rounded-lg border border-border">
             <span className="text-sm font-black text-primary shrink-0 w-4 text-center">3</span>
             <div className="text-xs leading-relaxed space-y-0.5">
-              <p>Line moved same direction as <MoneyPill /> → <span className="text-green-400 font-bold">Strong sharp signal</span></p>
+              <p>Line moved same direction as <MoneyPill /> → <span className="text-green-800 font-bold">Strong sharp signal</span></p>
               <p>Line moved against <MoneyPill /> → <span className="text-muted-foreground">Weak signal</span></p>
             </div>
           </div>
@@ -198,7 +198,7 @@ function HowToReadSection() {
 
         {/* Hard gates */}
         <div className="mt-2 p-2 rounded-lg border border-red-500/20 bg-red-500/5">
-          <p className="text-[10px] font-bold text-red-400 mb-1">Hard gates — cap score at 66</p>
+          <p className="text-[10px] font-bold text-red-700 mb-1">Hard gates — cap score at 66</p>
           <div className="space-y-0.5 text-[10px] text-muted-foreground">
             <p>• True coin-flip pricing (48–52% implied) — no identifiable edge</p>
             <p>• Extreme juice under −280 on a player prop</p>
@@ -442,8 +442,8 @@ function SpreadSection() {
       <div className="space-y-1.5 pt-1">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Rules</p>
         <div className="space-y-1 text-xs text-muted-foreground">
-          <p>• <MoneyPill /> much higher than <BetsPill /> → <span className="text-green-400">Smart money</span></p>
-          <p>• <BetsPill /> much higher than <MoneyPill /> → <span className="text-red-400">Public/Fade side</span></p>
+          <p>• <MoneyPill /> much higher than <BetsPill /> → <span className="text-green-800">Smart money</span></p>
+          <p>• <BetsPill /> much higher than <MoneyPill /> → <span className="text-red-700">Public/Fade side</span></p>
           <p>• Numbers close together → <span className="text-muted-foreground">No signal</span></p>
         </div>
       </div>
@@ -461,12 +461,12 @@ function TotalSection() {
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Signal Rules</p>
         <div className="space-y-1.5 text-xs">
           <div className="flex items-center gap-2 p-2 bg-green-500/5 border border-green-500/15 rounded-lg">
-            <TrendingUp size={13} className="text-green-400 shrink-0" />
-            <p className="text-muted-foreground"><MoneyPill /> jumps while <BetsPill /> stays low → <span className="text-green-400 font-bold">Sharp Over ↑</span></p>
+            <TrendingUp size={13} className="text-green-800 shrink-0" />
+            <p className="text-muted-foreground"><MoneyPill /> jumps while <BetsPill /> stays low → <span className="text-green-800 font-bold">Sharp Over ↑</span></p>
           </div>
           <div className="flex items-center gap-2 p-2 bg-red-500/5 border border-red-500/15 rounded-lg">
-            <TrendingDown size={13} className="text-red-400 shrink-0" />
-            <p className="text-muted-foreground"><BetsPill /> jumps while <MoneyPill /> stays low → <span className="text-red-400 font-bold">Public/Fade ↓</span></p>
+            <TrendingDown size={13} className="text-red-700 shrink-0" />
+            <p className="text-muted-foreground"><BetsPill /> jumps while <MoneyPill /> stays low → <span className="text-red-700 font-bold">Public/Fade ↓</span></p>
           </div>
           <div className="flex items-center gap-2 p-2 bg-muted/30 border border-border rounded-lg">
             <Minus size={13} className="text-muted-foreground shrink-0" />
@@ -500,8 +500,8 @@ function MoneylineSection() {
         </div>
       </div>
       <div className="space-y-1 text-xs text-muted-foreground">
-        <p>• <MoneyPill /> significantly higher → <span className="text-green-400">Smart interest ↑</span></p>
-        <p>• <BetsPill /> significantly higher → <span className="text-red-400">Public side ↓</span></p>
+        <p>• <MoneyPill /> significantly higher → <span className="text-green-800">Smart interest ↑</span></p>
+        <p>• <BetsPill /> significantly higher → <span className="text-red-700">Public side ↓</span></p>
       </div>
     </div>
   );
@@ -626,7 +626,7 @@ function SportTotalSection({ sport }: { sport: "nba" | "mlb" | "nhl" | "nfl" }) 
       {/* Up / Down */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-green-400 uppercase tracking-wide flex items-center gap-1">
+          <p className="text-[10px] font-bold text-green-800 uppercase tracking-wide flex items-center gap-1">
             <TrendingUp size={11} /> Line Moves UP
           </p>
           {data.up.map((item, i) => (
@@ -637,7 +637,7 @@ function SportTotalSection({ sport }: { sport: "nba" | "mlb" | "nhl" | "nfl" }) 
           ))}
         </div>
         <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide flex items-center gap-1">
+          <p className="text-[10px] font-bold text-red-700 uppercase tracking-wide flex items-center gap-1">
             <TrendingDown size={11} /> Line Moves DOWN
           </p>
           {data.down.map((item, i) => (
@@ -662,7 +662,7 @@ function SportTotalSection({ sport }: { sport: "nba" | "mlb" | "nhl" | "nfl" }) 
                 borderColor: item.ok ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.15)",
               }}
             >
-              <span className={`text-[10px] font-bold shrink-0 ${item.ok ? "text-green-400" : "text-red-400"}`}>
+              <span className={`text-[10px] font-bold shrink-0 ${item.ok ? "text-green-800" : "text-red-700"}`}>
                 {item.ok ? "✓" : "✗"}
               </span>
               <div>
@@ -773,7 +773,7 @@ export function CheatSheetDrawer({
           <div className="flex items-center gap-4 text-[9px] text-muted-foreground">
             <span className="flex items-center gap-1"><Users size={9} /> = % of bets (public tickets)</span>
             <span className="flex items-center gap-1"><DollarSign size={9} /> = % of money (sharp signal)</span>
-            <span className="flex items-center gap-1 text-green-400"><Zap size={9} /> Green $ = sharp</span>
+            <span className="flex items-center gap-1 text-green-800"><Zap size={9} /> Green $ = sharp</span>
           </div>
         </div>
       </div>

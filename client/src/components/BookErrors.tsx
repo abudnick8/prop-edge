@@ -78,13 +78,13 @@ export function BookErrorCard({ error }: { error: BookError }) {
       ? {
           border: "border-red-500/40",
           innerBg: "bg-red-500/8",
-          badge: "bg-red-500/15 text-red-400 border-red-500/30",
+          badge: "bg-red-500/15 text-red-700 border-red-500/30",
           glow: "shadow-[0_0_10px_rgba(248,113,113,0.1)]",
         }
       : {
           border: "border-amber-500/30",
           innerBg: "bg-amber-500/5",
-          badge: "bg-amber-500/12 text-amber-400 border-amber-500/25",
+          badge: "bg-amber-500/12 text-amber-800 border-amber-500/25",
           glow: "",
         };
 
@@ -121,8 +121,8 @@ export function BookErrorCard({ error }: { error: BookError }) {
             size={15}
             className={
               error.severity === "high"
-                ? "text-red-400 flex-shrink-0"
-                : "text-amber-400 flex-shrink-0"
+                ? "text-red-700 flex-shrink-0"
+                : "text-amber-800 flex-shrink-0"
             }
           />
           <div className="min-w-0">
@@ -193,7 +193,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
           {/* The Mistake */}
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <AlertTriangle size={10} className="text-orange-400" /> The
+              <AlertTriangle size={10} className="text-orange-700" /> The
               Mistake
             </p>
             <p className="text-xs text-foreground/90 leading-relaxed">
@@ -213,7 +213,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
 
           {/* How to Profit */}
           <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2.5 space-y-1">
-            <p className="text-[10px] font-bold text-green-400 uppercase tracking-wider flex items-center gap-1">
+            <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider flex items-center gap-1">
               <Lightbulb size={10} /> How to Profit
             </p>
             <p className="text-xs text-foreground/90 leading-relaxed">
@@ -252,7 +252,7 @@ export function BookErrorsSection({ errors }: { errors: BookError[] }) {
     <div className="space-y-3">
       {/* Section header */}
       <div className="flex items-center gap-2">
-        <AlertCircle size={14} className="text-orange-400" />
+        <AlertCircle size={14} className="text-orange-700" />
         <h2 className="text-sm font-bold text-foreground">
           Book Errors &amp; Mispriced Lines
         </h2>
@@ -264,7 +264,7 @@ export function BookErrorsSection({ errors }: { errors: BookError[] }) {
 
       {/* Disclaimer */}
       <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-[11px] text-muted-foreground/70 flex items-start gap-2">
-        <AlertTriangle size={11} className="text-orange-400 mt-0.5 flex-shrink-0" />
+        <AlertTriangle size={11} className="text-orange-700 mt-0.5 flex-shrink-0" />
         <span>
           These signals are detected from sharp vs. public splits, reverse line
           movement, and cross-market inconsistencies. Always verify the current
@@ -316,7 +316,7 @@ export function BookErrorsFilterButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
         active
-          ? "bg-orange-500/10 text-orange-400 border-orange-500/30"
+          ? "bg-orange-500/10 text-orange-700 border-orange-500/30"
           : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
       }`}
       data-testid="filter-book-errors"
@@ -328,7 +328,7 @@ export function BookErrorsFilterButton({
           className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
             active
               ? "bg-orange-500/25 text-orange-300"
-              : "bg-orange-500/15 text-orange-400"
+              : "bg-orange-500/15 text-orange-700"
           }`}
         >
           {count}

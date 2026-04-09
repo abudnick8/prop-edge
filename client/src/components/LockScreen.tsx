@@ -86,12 +86,12 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
             maxLength={20}
             className={`w-full text-center text-lg font-bold tracking-[0.3em] rounded-xl border px-4 py-4 bg-card outline-none transition-all placeholder:text-muted-foreground placeholder:tracking-normal placeholder:font-normal ${
               error
-                ? "border-red-500/60 text-red-400 bg-red-500/5"
+                ? "border-red-500/60 text-red-700 bg-red-500/5"
                 : "border-border text-foreground focus:border-primary/60 focus:ring-1 focus:ring-primary/30"
             }`}
           />
           {error && (
-            <p className="text-center text-xs text-red-400 font-medium">Incorrect code — try again</p>
+            <p className="text-center text-xs text-red-700 font-medium">Incorrect code — try again</p>
           )}
         </div>
 

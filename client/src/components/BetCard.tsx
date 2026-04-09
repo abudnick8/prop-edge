@@ -303,9 +303,9 @@ function SportBadge({ sport }: { sport: string }) {
 function RiskBadge({ risk }: { risk: string | null }) {
   if (!risk) return null;
   const classes: Record<string, string> = {
-    low: "bg-green-500/10 text-green-400 border-green-500/30",
-    medium: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-    high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+    low: "bg-green-500/10 text-green-800 border-green-500/30",
+    medium: "bg-yellow-500/10 text-amber-800 border-yellow-500/30",
+    high: "bg-orange-500/10 text-orange-700 border-orange-500/30",
   };
   const Icon = risk === "low" ? Shield : risk === "medium" ? TrendingUp : AlertTriangle;
   const riskEmoji = risk === "low" ? "✅" : risk === "medium" ? "⚠️" : "🔥";
@@ -624,7 +624,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   </span>
                 )}
                 {!bet.gameTime && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 uppercase tracking-wide">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-500/10 text-amber-800 border border-yellow-500/30 uppercase tracking-wide">
                     📅 Futures
                   </span>
                 )}
@@ -633,8 +633,8 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   <span
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
                       liveMovement === "up"
-                        ? "bg-green-500/15 text-green-400 border-green-500/30"
-                        : "bg-red-500/15 text-red-400 border-red-500/30"
+                        ? "bg-green-500/15 text-green-800 border-green-500/30"
+                        : "bg-red-500/15 text-red-700 border-red-500/30"
                     } ${pricePulse ? "animate-pulse" : ""}`}
                   >
                     {liveMovement === "up"
@@ -712,7 +712,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   )}
                   {bet.gameTime && countdown.text && !countdown.isStarted && (
                     countdown.isLive ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-400 border border-green-500/30 uppercase tracking-wide animate-pulse">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-800 border border-green-500/30 uppercase tracking-wide animate-pulse">
                         ● LIVE &mdash; {countdown.text}
                       </span>
                     ) : (

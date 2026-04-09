@@ -143,12 +143,12 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-500/5 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <Target size={15} className="text-amber-400" />
+          <Target size={15} className="text-amber-800" />
           <div className="text-left">
             <p className="text-sm font-black text-foreground flex items-center gap-2">
               Sharp Trigger List
               {alertCount > 0 && (
-                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/30">
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-800 border border-amber-400/30">
                   {alertCount} active
                 </span>
               )}
@@ -174,7 +174,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
         <div className="border-t border-amber-500/15 px-4 pb-4 pt-3 space-y-3">
           {/* Quick tip */}
           <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5 text-xs text-amber-200/80">
-            <span className="font-bold text-amber-400">How to use: </span>
+            <span className="font-bold text-amber-800">How to use: </span>
             These triggers fire before sportsbooks react. Toggle the bell to enable in-app notifications when a matching condition appears. Pinnacle/Circa move first — you have 30–120s before public books copy.
           </div>
 
@@ -255,7 +255,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
 
           {alertCount > 0 && (
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
-              <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-amber-800 flex items-center gap-1.5">
                 <Bell size={10} /> {alertCount} trigger{alertCount!==1?"s":""} active — you'll be notified when matching conditions appear
               </p>
               <button onClick={clearAlerts} className="text-[9px] text-muted-foreground hover:text-foreground mt-1">Clear all alerts</button>
@@ -397,9 +397,9 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
 
   const statusColor = (s: string) => {
     const sl = s.toLowerCase();
-    if (sl.includes("out") || sl.includes("ir")) return "text-red-400";
-    if (sl.includes("doubtful")) return "text-orange-400";
-    if (sl.includes("questionable")) return "text-yellow-400";
+    if (sl.includes("out") || sl.includes("ir")) return "text-red-700";
+    if (sl.includes("doubtful")) return "text-orange-700";
+    if (sl.includes("questionable")) return "text-amber-800";
     return "text-muted-foreground";
   };
 
@@ -431,7 +431,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
       )}
 
       {isError && (
-        <div className="flex items-center gap-2 text-xs text-red-400">
+        <div className="flex items-center gap-2 text-xs text-red-700">
           <AlertTriangle size={13} />
           <span>{(error as any)?.message ?? "Research failed. Try refreshing the page first."}</span>
         </div>
@@ -442,7 +442,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           {data.moveSummary && (
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Zap size={10} className="text-amber-400" /> Line Movement
+                <Zap size={10} className="text-amber-800" /> Line Movement
               </p>
               <p className="text-xs text-foreground/90 leading-relaxed">{data.moveSummary}</p>
             </div>
@@ -451,7 +451,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           {data.sharpSignals.length > 0 && (
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <DollarSign size={10} className="text-green-400" /> Sharp Money
+                <DollarSign size={10} className="text-green-800" /> Sharp Money
               </p>
               <ul className="space-y-0.5">
                 {data.sharpSignals.map((sig, i) => (
@@ -463,7 +463,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
 
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <AlertTriangle size={10} className="text-orange-400" /> Injury Report
+              <AlertTriangle size={10} className="text-orange-700" /> Injury Report
             </p>
             {data.injuries.length === 0 ? (
               <p className="text-xs text-muted-foreground/70">No significant injuries found for these teams</p>
@@ -862,10 +862,10 @@ function GameCard({ game }: { game: GameLine }) {
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Movement summary chips */}
           {hasSteam && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border-red-500/30 font-bold">🔥 STEAM</Badge>
+            <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-700 border-red-500/30 font-bold">🔥 STEAM</Badge>
           )}
           {!hasSteam && hasSignificant && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border-amber-500/20 font-bold">⚡ MOVED</Badge>
+            <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-800 border-amber-500/20 font-bold">⚡ MOVED</Badge>
           )}
           {hasPublicData && (
             <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
@@ -893,7 +893,7 @@ function GameCard({ game }: { game: GameLine }) {
               <p className="text-[11px] font-mono text-muted-foreground">
                 {fmtLine(game.spread.current)}
                 {spreadMove != null && spreadMove !== 0 && (
-                  <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                  <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-700" : "text-amber-800"}`}>
                     ({spreadMove > 0 ? "+" : ""}{spreadMove})
                   </span>
                 )}
@@ -903,7 +903,7 @@ function GameCard({ game }: { game: GameLine }) {
               <p className="text-[10px] font-mono text-muted-foreground/70">
                 O/U {game.total.current}
                 {totalMove != null && totalMove !== 0 && (
-                  <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                  <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-700" : "text-amber-800"}`}>
                     ({totalMove > 0 ? "+" : ""}{totalMove})
                   </span>
                 )}
@@ -1156,7 +1156,7 @@ export default function LineMovement() {
             onClick={() => setShowErrorsOnly(!showErrorsOnly)}
           >
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <AlertCircle size={10} className="text-orange-400" /> Book Errors
+              <AlertCircle size={10} className="text-orange-700" /> Book Errors
             </p>
             <p className="text-2xl font-bold mt-0.5" style={{ color: (bookErrors as BookError[]).length > 0 ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
               {(bookErrors as BookError[]).length}
@@ -1188,20 +1188,20 @@ export default function LineMovement() {
           onClick={() => { setShowSteamOnly(!showSteamOnly); if (!showSteamOnly) setShowMovedOnly(false); }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
             showSteamOnly
-              ? "bg-red-500/10 text-red-400 border-red-500/30"
+              ? "bg-red-500/10 text-red-700 border-red-500/30"
               : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
           }`}
           data-testid="filter-steam"
         >
           🔥 Steam Only
-          {steamCount > 0 && <span className="bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5 text-[10px]">{steamCount}</span>}
+          {steamCount > 0 && <span className="bg-red-500/20 text-red-700 rounded-full px-1.5 py-0.5 text-[10px]">{steamCount}</span>}
         </button>
         {/* Moved filter */}
         <button
           onClick={() => { setShowMovedOnly(!showMovedOnly); if (!showMovedOnly) { setShowSteamOnly(false); setShowErrorsOnly(false); } }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
             showMovedOnly
-              ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+              ? "bg-amber-500/10 text-amber-800 border-amber-500/30"
               : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
           }`}
           data-testid="filter-moved"
@@ -1278,11 +1278,11 @@ export default function LineMovement() {
       {/* Legend */}
       {!isLoading && filtered.length > 0 && (
         <div className="flex flex-wrap gap-4 pt-2 text-[10px] text-muted-foreground/60 border-t border-border">
-          <span className="flex items-center gap-1"><span className="text-red-400 font-bold">🔥 Steam</span> = line moved ≥3pts from open</span>
-          <span className="flex items-center gap-1"><span className="text-amber-400 font-bold">⚡ Moved</span> = any line movement</span>
+          <span className="flex items-center gap-1"><span className="text-red-700 font-bold">🔥 Steam</span> = line moved ≥3pts from open</span>
+          <span className="flex items-center gap-1"><span className="text-amber-800 font-bold">⚡ Moved</span> = any line movement</span>
           <span className="flex items-center gap-1"><Users size={9} /> = % of bets (public tickets)</span>
           <span className="flex items-center gap-1"><DollarSign size={9} /> = % of money (sharp signal)</span>
-          <span className="flex items-center gap-1"><span className="text-green-400">Green $</span> = 65%+ sharp money on that side</span>
+          <span className="flex items-center gap-1"><span className="text-green-800">Green $</span> = 65%+ sharp money on that side</span>
           <CheatSheetButton initialSection="universal" variant="ghost" label="Full Cheat Sheet →" />
         </div>
       )}

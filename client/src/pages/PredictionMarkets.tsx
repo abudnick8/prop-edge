@@ -287,7 +287,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                               : "bg-red-500/5 border-red-500/20"
                           }`}>
                             <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
-                              isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
+                              isYes ? "bg-green-500/25 text-green-800" : "bg-red-500/25 text-red-700"
                             }`}>
                               {isYes ? "YES" : "NO"}
                             </span>
@@ -296,7 +296,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                                 {legText}
                               </span>
                               {isBareTotal && !legText.includes("(") && (
-                                <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
+                                <p className="text-[10px] text-amber-800/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
                               )}
                             </div>
                           </div>
@@ -375,7 +375,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
                 histData.hasRealData
                   ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
-                  : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                  : "bg-yellow-500/10 text-amber-800 border-yellow-500/20"
               }`}>
                 {histData.hasRealData ? "Live CLOB Data" : histData.isSynthetic ? "Est. (no public history)" : "Est. from price changes"}
               </span>
@@ -426,7 +426,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
           {[
             { label: "Current",  val: fmtCents(m.yesPrice),   color: "text-foreground" },
             { label: "Fair Value", val: fmtCents(m.fairValue), color: "text-cyan-400"   },
-            { label: m.priceRating === "overpriced" ? "NO Entry" : "Entry",  val: fmtCents(m.entryPrice), color: m.priceRating === "overpriced" ? "text-red-400" : "text-yellow-400" },
+            { label: m.priceRating === "overpriced" ? "NO Entry" : "Entry",  val: fmtCents(m.entryPrice), color: m.priceRating === "overpriced" ? "text-red-700" : "text-amber-800" },
             { label: m.priceRating === "overpriced" ? "NO Target" : "Target", val: fmtCents(m.exitTarget), color: "" },
           ].map(item => (
             <div key={item.label} className="text-center bg-background/40 rounded-lg py-2 px-1 border border-border">
@@ -458,14 +458,14 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               </div>
               <div>
                 <p className="text-[9px] text-muted-foreground uppercase">Delta</p>
-                <p className={`font-mono font-bold ${m.crossDelta !== null && m.crossDelta > 3 ? "text-red-400" : "text-green-400"}`}>
+                <p className={`font-mono font-bold ${m.crossDelta !== null && m.crossDelta > 3 ? "text-red-700" : "text-green-800"}`}>
                   {m.crossDelta}¢ {m.crossDelta !== null && m.crossDelta > 5 ? "⚠️ Discrepancy" : ""}
                 </p>
               </div>
               {m.crossDelta !== null && m.crossDelta > 5 && (
                 <div>
                   <p className="text-[9px] text-muted-foreground uppercase">Arb Signal</p>
-                  <p className="font-bold text-yellow-400">Buy cheaper side</p>
+                  <p className="font-bold text-amber-800">Buy cheaper side</p>
                 </div>
               )}
             </div>
@@ -561,8 +561,8 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                 {m.sport}
               </span>
             )}
-            {isToday && <span className="text-[10px] font-bold text-yellow-400">⚡ TODAY</span>}
-            {countdown && <span className="text-[10px] font-semibold text-orange-400">⏰ {countdown}</span>}
+            {isToday && <span className="text-[10px] font-bold text-amber-800">⚡ TODAY</span>}
+            {countdown && <span className="text-[10px] font-semibold text-orange-700">⏰ {countdown}</span>}
           </div>
           {(() => {
             const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
@@ -584,14 +584,14 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                       return (
                         <div key={i} className="flex items-start gap-1.5 text-[11px]">
                           <span className={`shrink-0 font-black text-[9px] px-1.5 py-0.5 rounded mt-0.5 tracking-wide ${
-                            isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                            isYes ? "bg-green-500/20 text-green-800" : "bg-red-500/20 text-red-700"
                           }`}>
                             {isYes ? "YES" : "NO"}
                           </span>
                           <div className="flex-1 min-w-0">
                             <span className={`leading-tight ${isYes ? "text-foreground font-medium" : "text-muted-foreground"}`}>{legText}</span>
                             {isBareTotal && !legText.includes("(") && (
-                              <span className="block text-[9px] text-amber-400/70 mt-0.5">⚠ game total — tap to see matchup</span>
+                              <span className="block text-[9px] text-amber-800/70 mt-0.5">⚠ game total — tap to see matchup</span>
                             )}
                           </div>
                         </div>
@@ -778,7 +778,7 @@ export default function PredictionMarkets() {
             <span className="ml-2 text-cyan-400">· {crossValidated} cross-validated</span>
           )}
           {priceMismatch > 0 && (
-            <span className="ml-2 text-red-400">· {priceMismatch} price discrepancies</span>
+            <span className="ml-2 text-red-700">· {priceMismatch} price discrepancies</span>
           )}
         </p>
       </div>
@@ -842,18 +842,18 @@ export default function PredictionMarkets() {
               <div>
                 <p className="text-[11px] font-black text-cyan-400 uppercase tracking-wide mb-0.5">Fair Value</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Our consensus estimate of what the YES price <em>should</em> be, based on signals from Polymarket, Kalshi, and Manifold. If Fair Value is higher than YES Price → the market is <span className="text-green-400 font-semibold">underpriced — buy YES</span>. If lower → <span className="text-red-400 font-semibold">overpriced — buy NO instead</span>.
+                  Our consensus estimate of what the YES price <em>should</em> be, based on signals from Polymarket, Kalshi, and Manifold. If Fair Value is higher than YES Price → the market is <span className="text-green-800 font-semibold">underpriced — buy YES</span>. If lower → <span className="text-red-700 font-semibold">overpriced — buy NO instead</span>.
                 </p>
               </div>
             </div>
 
             {/* Entry / Target */}
             <div className="flex gap-3">
-              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-[10px] font-black text-yellow-400">→</div>
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-[10px] font-black text-amber-800">→</div>
               <div>
-                <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">Entry → Target</p>
+                <p className="text-[11px] font-black text-amber-800 uppercase tracking-wide mb-0.5">Entry → Target</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <span className="text-foreground font-semibold">Entry</span> = current market price (live). <span className="text-foreground font-semibold">Target</span> = minimum <span className="text-yellow-300 font-semibold">10% ROI</span> on the contract price, scaling up with confluence: whale alert, cross-validation, and strong edge each add +5%, up to <span className="text-yellow-300 font-semibold">30% ROI</span>. For <span className="text-red-400 font-semibold">Overpriced</span> markets, the recommendation flips to buying the <span className="text-foreground font-semibold">NO contract</span> — Entry and Target show as <span className="text-red-400 font-semibold">NO Entry / NO Target</span> with the same ROI logic applied to the NO price.
+                  <span className="text-foreground font-semibold">Entry</span> = current market price (live). <span className="text-foreground font-semibold">Target</span> = minimum <span className="text-yellow-300 font-semibold">10% ROI</span> on the contract price, scaling up with confluence: whale alert, cross-validation, and strong edge each add +5%, up to <span className="text-yellow-300 font-semibold">30% ROI</span>. For <span className="text-red-700 font-semibold">Overpriced</span> markets, the recommendation flips to buying the <span className="text-foreground font-semibold">NO contract</span> — Entry and Target show as <span className="text-red-700 font-semibold">NO Entry / NO Target</span> with the same ROI logic applied to the NO price.
                 </p>
               </div>
             </div>
@@ -862,9 +862,9 @@ export default function PredictionMarkets() {
             <div className="flex gap-3">
               <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-base">🔥</div>
               <div>
-                <p className="text-[11px] font-black text-green-400 uppercase tracking-wide mb-0.5">Great Buy / Good Buy / Fair / Overpriced</p>
+                <p className="text-[11px] font-black text-green-800 uppercase tracking-wide mb-0.5">Great Buy / Good Buy / Fair / Overpriced</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Rating based on the gap between YES Price and Fair Value. <span className="text-green-400 font-semibold">Great Buy</span> = 8%+ edge. <span className="text-green-300 font-semibold">Good Buy</span> = 3–8% edge. <span className="text-muted-foreground font-semibold">Fair</span> = within 3%. <span className="text-red-400 font-semibold">Overpriced</span> = market is pricing too high.
+                  Rating based on the gap between YES Price and Fair Value. <span className="text-green-800 font-semibold">Great Buy</span> = 8%+ edge. <span className="text-green-300 font-semibold">Good Buy</span> = 3–8% edge. <span className="text-muted-foreground font-semibold">Fair</span> = within 3%. <span className="text-red-700 font-semibold">Overpriced</span> = market is pricing too high.
                 </p>
               </div>
             </div>
@@ -884,16 +884,16 @@ export default function PredictionMarkets() {
             <div className="flex gap-3">
               <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-base">⚡</div>
               <div>
-                <p className="text-[11px] font-black text-yellow-400 uppercase tracking-wide mb-0.5">⚡ TODAY</p>
+                <p className="text-[11px] font-black text-amber-800 uppercase tracking-wide mb-0.5">⚡ TODAY</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  This market closes within 24 hours — it's an active in-play or same-day event. These appear at the top of every list. Use the <span className="text-yellow-400 font-semibold">⚡ Today</span> filter to see only these.
+                  This market closes within 24 hours — it's an active in-play or same-day event. These appear at the top of every list. Use the <span className="text-amber-800 font-semibold">⚡ Today</span> filter to see only these.
                 </p>
               </div>
             </div>
 
             {/* Spread / Vol */}
             <div className="flex gap-3">
-              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center text-[10px] font-black text-slate-400">$</div>
+              <div className="shrink-0 mt-0.5 w-7 h-7 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center text-[10px] font-black text-slate-600">$</div>
               <div>
                 <p className="text-[11px] font-black text-foreground uppercase tracking-wide mb-0.5">Spread · Vol · 1d %</p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -1033,8 +1033,8 @@ export default function PredictionMarkets() {
             }`}
           >
             {tab.emoji} {tab.label}
-            {tab.id === "whale"    && whaleCount > 0     && <span className="ml-1.5 text-orange-400">{whaleCount}</span>}
-            {tab.id === "great_buy" && greatBuyCount > 0 && <span className="ml-1.5 text-green-400">{greatBuyCount}</span>}
+            {tab.id === "whale"    && whaleCount > 0     && <span className="ml-1.5 text-orange-700">{whaleCount}</span>}
+            {tab.id === "great_buy" && greatBuyCount > 0 && <span className="ml-1.5 text-green-800">{greatBuyCount}</span>}
           </button>
         ))}
       </div>

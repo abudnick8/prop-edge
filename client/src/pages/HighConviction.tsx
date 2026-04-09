@@ -827,12 +827,12 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
           {/* Clubhouse IQ model data */}
           {play.bet && (
             <div className="rounded-lg p-3 space-y-1.5 border border-yellow-500/15" style={{ background: "rgba(250,204,21,0.04)" }}>
-              <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Zap size={10} /> Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                 <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
-                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-yellow-400">{play.bet.confidenceScore}/100</span></div>
+                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-800">{play.bet.confidenceScore}/100</span></div>
                 {play.bet.grade && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.grade}</span></div>}
                 {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
               </div>
@@ -936,12 +936,12 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             {/* Signal count badge + sport */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               {allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/35">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-500/20 text-red-700 border border-red-500/35">
                   🔥 ALL 3 SIGNALS
                 </span>
               )}
               {!allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-yellow-500/15 text-amber-800 border border-yellow-500/30">
                   ⚡ {signalCount} SIGNALS
                 </span>
               )}
@@ -1031,12 +1031,12 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           {/* Clubhouse IQ model detail */}
           {play.bet && (
             <div className="rounded-lg p-3 space-y-2 border border-yellow-500/20" style={{ background: "rgba(250,204,21,0.05)" }}>
-              <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Zap size={10} /> Clubhouse IQ Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                 <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
-                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-yellow-400">{play.bet.confidenceScore}/100</span></div>
+                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-800">{play.bet.confidenceScore}/100</span></div>
                 {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
                 {play.bet.grade && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.grade}</span></div>}
                 {play.bet.overOdds != null && <div><span className="text-muted-foreground">Over: </span><span className="font-semibold font-mono">{fmtOdds(play.bet.overOdds)}</span></div>}
@@ -1054,7 +1054,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           {/* Line movement detail */}
           {play.gameLine && (
             <div className="rounded-lg p-3 space-y-2 border border-red-500/20" style={{ background: "rgba(248,113,113,0.05)" }}>
-              <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-red-700 uppercase tracking-wider flex items-center gap-1.5">
                 <TrendingUp size={10} /> Line Movement Data
               </p>
               <div className="grid grid-cols-3 gap-3 text-[11px]">
@@ -1066,7 +1066,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                       <span className="text-muted-foreground mx-1">→</span>
                       {fmtLine(play.gameLine.spread.current)}
                       {play.gameLine.spread.move !== 0 && play.gameLine.spread.move != null && (
-                        <span className={`ml-1 ${Math.abs(play.gameLine.spread.move) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                        <span className={`ml-1 ${Math.abs(play.gameLine.spread.move) >= 3 ? "text-red-700" : "text-amber-800"}`}>
                           ({play.gameLine.spread.move > 0 ? "+" : ""}{play.gameLine.spread.move})
                         </span>
                       )}
@@ -1081,7 +1081,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                       <span className="text-muted-foreground mx-1">→</span>
                       {play.gameLine.total.current}
                       {play.gameLine.total.move !== 0 && play.gameLine.total.move != null && (
-                        <span className={`ml-1 ${Math.abs(play.gameLine.total.move) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                        <span className={`ml-1 ${Math.abs(play.gameLine.total.move) >= 3 ? "text-red-700" : "text-amber-800"}`}>
                           ({play.gameLine.total.move > 0 ? "+" : ""}{play.gameLine.total.move})
                         </span>
                       )}
@@ -1103,14 +1103,14 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           {/* Prediction market whale detail */}
           {play.market && (
             <div className="rounded-lg p-3 space-y-2 border border-green-500/20" style={{ background: "rgba(52,211,153,0.05)" }}>
-              <p className="text-[10px] font-bold text-green-400 uppercase tracking-wider flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-green-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Fish size={10} /> Whale Market Signal
               </p>
               <p className="text-xs font-semibold text-foreground/90">{play.market.title}</p>
               <div className="grid grid-cols-3 gap-3 text-[11px]">
                 <div>
                   <p className="text-muted-foreground text-[9px] uppercase mb-0.5">Yes Price</p>
-                  <p className="font-mono font-bold text-green-400">{Math.round(play.market.yesPrice * 100)}¢</p>
+                  <p className="font-mono font-bold text-green-800">{Math.round(play.market.yesPrice * 100)}¢</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-[9px] uppercase mb-0.5">24h Volume</p>
@@ -1118,7 +1118,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                 </div>
                 <div>
                   <p className="text-muted-foreground text-[9px] uppercase mb-0.5">Price Move</p>
-                  <p className="font-semibold text-green-400">
+                  <p className="font-semibold text-green-800">
                     +{play.market.whalePriceMovePct.toFixed(1)}%
                   </p>
                 </div>
@@ -1128,7 +1128,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                   href={play.market.polyUrl ?? play.market.kalshiUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[10px] text-green-400 hover:underline"
+                  className="text-[10px] text-green-800 hover:underline"
                   onClick={e => e.stopPropagation()}
                 >
                   View on {play.market.source === "polymarket" ? "Polymarket" : "Kalshi"} →

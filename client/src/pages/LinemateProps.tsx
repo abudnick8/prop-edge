@@ -126,7 +126,7 @@ function fmtMarket(name: string): string {
 const GROUP_CONFIG = {
   "100_CLUB": {
     label: "100% Club",
-    icon:  <Star size={13} className="text-yellow-400" />,
+    icon:  <Star size={13} className="text-amber-800" />,
     color: "#facc15",
     bg:    "rgba(250,204,21,0.08)",
     border:"rgba(250,204,21,0.25)",
@@ -134,7 +134,7 @@ const GROUP_CONFIG = {
   },
   SAFE: {
     label: "Safe Picks",
-    icon:  <Shield size={13} className="text-green-400" />,
+    icon:  <Shield size={13} className="text-green-800" />,
     color: "#22c55e",
     bg:    "rgba(34,197,94,0.08)",
     border:"rgba(34,197,94,0.25)",
@@ -142,7 +142,7 @@ const GROUP_CONFIG = {
   },
   RISKY: {
     label: "Risky Picks",
-    icon:  <AlertTriangle size={13} className="text-orange-400" />,
+    icon:  <AlertTriangle size={13} className="text-orange-700" />,
     color: "#fb923c",
     bg:    "rgba(251,146,60,0.08)",
     border:"rgba(251,146,60,0.25)",
@@ -241,7 +241,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
                 </span>
               )}
               {prop.impactingInjuries?.length > 0 && (
-                <span className="text-[9px] font-bold text-red-400">⚠ Injury Alert</span>
+                <span className="text-[9px] font-bold text-red-700">⚠ Injury Alert</span>
               )}
             </div>
 
@@ -311,7 +311,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
               <p className="text-[10px] text-muted-foreground mt-1.5">
                 Recent form avg: <span className="font-black text-foreground">{prop.avgRecentForm.toFixed(1)}</span>
                 {prop.consensusLine != null && (
-                  <span className={`ml-1.5 font-black ${prop.avgRecentForm >= prop.consensusLine ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`ml-1.5 font-black ${prop.avgRecentForm >= prop.consensusLine ? "text-green-800" : "text-red-700"}`}>
                     ({prop.avgRecentForm >= (prop.consensusLine ?? 0) ? "+" : ""}{(prop.avgRecentForm - (prop.consensusLine ?? 0)).toFixed(1)} vs line)
                   </span>
                 )}
@@ -348,7 +348,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           {/* Injury alerts */}
           {prop.impactingInjuries?.length > 0 && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/05 px-3 py-2">
-              <p className="text-[10px] font-bold text-red-400 mb-1 flex items-center gap-1">⚠ Impacting Injuries</p>
+              <p className="text-[10px] font-bold text-red-700 mb-1 flex items-center gap-1">⚠ Impacting Injuries</p>
               {prop.impactingInjuries.map((inj: any, i: number) => (
                 <p key={i} className="text-[10px] text-muted-foreground">
                   {inj.player?.fullName ?? ""} — {inj.status ?? "injured"}
@@ -478,7 +478,7 @@ export default function LinemateProps() {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <Zap size={18} className="text-yellow-400 flex-shrink-0" />
+              <Zap size={18} className="text-amber-800 flex-shrink-0" />
               <h1 className="text-xl font-black text-foreground tracking-tight">Props Hub</h1>
               <span className="text-[10px] font-bold text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-400/30 bg-indigo-400/10 whitespace-nowrap">
                 Linemate + PrizePicks
@@ -502,15 +502,15 @@ export default function LinemateProps() {
         {!isLoading && data && (
           <div className="flex flex-wrap gap-2 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-              <Star size={11} className="text-yellow-400" />
+              <Star size={11} className="text-amber-800" />
               <span className="font-bold text-yellow-300">{club100Count} × 100% Club</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
-              <Shield size={11} className="text-green-400" />
+              <Shield size={11} className="text-green-800" />
               <span className="font-bold text-green-300">{safeCount} Safe</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs">
-              <AlertTriangle size={11} className="text-orange-400" />
+              <AlertTriangle size={11} className="text-orange-700" />
               <span className="font-bold text-orange-300">{riskyCount} Risky</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
