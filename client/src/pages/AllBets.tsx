@@ -133,7 +133,7 @@ function MarketCard({ m }: { m: PredMkt }) {
           </span>
           {m.isWhaleAlert && (
             <span className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse">
-              🐋 Whale
+              🐋 Whale{m.smartScore > 0 ? ` · ${m.smartScore}` : ""}
             </span>
           )}
         </div>
