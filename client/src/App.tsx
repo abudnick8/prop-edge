@@ -19,7 +19,7 @@ import Fantasy from "@/pages/Fantasy";
 import HighConviction from "@/pages/HighConviction";
 import LinemateProps from "@/pages/LinemateProps";
 import NotFound from "@/pages/not-found";
-import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
+import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -29,26 +29,36 @@ function AppInner() {
 
   return (
     <WouterRouter hook={useHashLocation}>
-      <div className="flex bg-background overflow-hidden" style={{height: '100dvh', minHeight: '-webkit-fill-available', paddingTop: 'env(safe-area-inset-top, 0px)'}}>
-        {/* Desktop: left sidebar — inside Router so Links have context */}
+      <div
+        className="flex overflow-hidden"
+        style={{
+          height: "100dvh",
+          minHeight: "-webkit-fill-available",
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          background: "#F6F1E7",
+        }}
+      >
+        {/* Desktop: left sidebar */}
         <DesktopSidebar />
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto">
-          {/* Top bar — bg extends behind status bar via negative margin trick */}
-          <div className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border flex items-center justify-between px-4 md:px-6 py-3" style={{ borderBottomColor: "rgba(251,158,30,0.18)" }}>
-            {/* Mobile: show logo in top bar */}
-            <div className="flex md:hidden items-center gap-2">
-              <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-label="Clubhouse IQ">
-                <rect width="32" height="32" rx="8" fill="hsl(38 95% 52% / 0.15)" />
-                <path d="M8 22 C8 13.2 24 13.2 24 22" stroke="hsl(38 95% 52% / 0.3)" strokeWidth="1.2" fill="none" strokeLinecap="round" />
-                <path d="M20 11 C17.5 9.5 12 9.5 10 14 C8.5 17 9 21 12 23 C14.5 24.5 18.5 24.5 21 23" stroke="hsl(38 95% 52%)" strokeWidth="2.4" fill="none" strokeLinecap="round" />
-                <circle cx="23" cy="11" r="1.4" fill="hsl(38 95% 52%)" />
-                <line x1="22" y1="13" x2="24" y2="16" stroke="hsl(38 95% 52%)" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              <span className="font-bold text-sm text-foreground tracking-wide">Clubhouse IQ</span>
+        <main className="flex-1 overflow-y-auto" style={{ background: "#F6F1E7" }}>
+          {/* Top bar — navy on mobile, cream on desktop */}
+          <div
+            className="sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 py-3"
+            style={{
+              background: "#13233A",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            {/* Mobile: show full wordmark */}
+            <div className="flex md:hidden items-center">
+              <CiqLogo size="sm" />
             </div>
+            {/* Desktop: empty left side (sidebar has logo) */}
             <div className="hidden md:block" />
+
+            {/* Right controls */}
             <div className="flex items-center gap-3">
               {/* Live feed indicator */}
               <div className="flex items-center gap-1.5">
@@ -57,15 +67,21 @@ function AppInner() {
                   title={isConnected ? "Live feed connected" : "Live feed reconnecting..."}
                 >
                   {isConnected && (
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: "#4ade80" }} />
+                    <span
+                      className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
+                      style={{ background: "#3F6B4B" }}
+                    />
                   )}
                   <span
                     className="relative inline-flex rounded-full h-2 w-2"
-                    style={{ background: isConnected ? "#4ade80" : "#6b7280" }}
+                    style={{ background: isConnected ? "#3F6B4B" : "#4A5568" }}
                   />
                 </span>
-                <span className="hidden md:inline text-[10px] font-semibold" style={{ color: isConnected ? "#4ade80" : "rgba(255,255,255,0.3)" }}>
-                  {isConnected ? "LIVE" : "..."}
+                <span
+                  className="hidden md:inline text-[10px] font-semibold tracking-widest uppercase"
+                  style={{ color: isConnected ? "rgba(63,107,75,0.9)" : "rgba(216,204,184,0.3)" }}
+                >
+                  {isConnected ? "Live" : "···"}
                 </span>
               </div>
               <AskDrawer />
@@ -73,7 +89,7 @@ function AppInner() {
             </div>
           </div>
 
-          {/* Page content — extra bottom padding on mobile for tab bar */}
+          {/* Page content */}
           <div className="p-4 md:p-6 pb-28 md:pb-6">
             <Switch>
               <Route path="/" component={Dashboard} />
@@ -97,9 +113,8 @@ function AppInner() {
         </main>
       </div>
 
-      {/* Mobile: bottom tab bar — inside Router so Links have context */}
+      {/* Mobile bottom tab bar */}
       <MobileTabBar />
-
       <Toaster />
     </WouterRouter>
   );
@@ -107,9 +122,7 @@ function AppInner() {
 
 function App() {
   const { unlocked, unlock } = useLockScreen();
-
   if (!unlocked) return <LockScreen onUnlock={unlock} />;
-
   return (
     <QueryClientProvider client={queryClient}>
       <AppInner />

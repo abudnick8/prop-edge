@@ -2,74 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Clubhouse IQ Design System ─────────────────────────────────────────────
+   Palette: Deep Navy · Warm Cream · Cardinal Red · Field Green · Tan Border
+   Philosophy: MLB front-office software blended with a vintage scorecard.
+   Calm, sharp, premium, trustworthy, data-rich.
+   ──────────────────────────────────────────────────────────────────────────── */
+
 @layer base {
   :root {
-    /* Clubhouse IQ — Stadium Night: deep navy-slate bg + amber-gold accent + field green undertones */
-    --background: 220 28% 7%;
-    --foreground: 38 80% 94%;
+    /* ── Core palette (light / cream mode — the canonical theme) ── */
 
-    --card: 220 24% 10%;
-    --card-foreground: 38 80% 94%;
+    /* Background: warm cream parchment — scorecard paper */
+    --background: 37 33% 95%;          /* #F6F1E7 */
+    --foreground: 221 25% 17%;         /* #1E2430 charcoal */
 
-    --popover: 220 24% 10%;
-    --popover-foreground: 38 80% 94%;
+    /* Cards: off-white — clean scorecard surface */
+    --card: 38 40% 97%;                /* #FBF8F2 */
+    --card-foreground: 221 25% 17%;
 
-    /* Amber-gold primary — picks, CTAs, highlights */
-    --primary: 38 95% 52%;
-    --primary-foreground: 220 28% 7%;
+    --popover: 38 40% 97%;
+    --popover-foreground: 221 25% 17%;
 
-    --secondary: 220 20% 16%;
-    --secondary-foreground: 38 50% 72%;
+    /* Primary: deep navy — the brand anchor */
+    --primary: 210 49% 15%;            /* #13233A */
+    --primary-foreground: 37 33% 95%; /* cream text on navy */
 
-    --muted: 220 22% 13%;
-    --muted-foreground: 220 12% 50%;
+    /* Secondary: lighter navy — hover states, subtle fills */
+    --secondary: 210 30% 22%;
+    --secondary-foreground: 38 40% 92%;
 
-    --accent: 220 20% 17%;
-    --accent-foreground: 38 80% 90%;
+    /* Muted: mid-tan — section fills, table rows */
+    --muted: 37 20% 91%;               /* warm light tan */
+    --muted-foreground: 213 10% 44%;   /* #6E7683 slate */
 
-    /* Risk signal */
-    --destructive: 0 82% 58%;
-    --destructive-foreground: 220 28% 7%;
+    /* Accent: soft tan — badges, subtle highlights */
+    --accent: 35 25% 88%;              /* warm tan */
+    --accent-foreground: 210 49% 15%;  /* navy */
 
-    --border: 220 18% 17%;
-    --input: 220 18% 14%;
-    --ring: 38 95% 52%;
+    /* Destructive: cardinal red */
+    --destructive: 4 53% 42%;          /* #A23B32 */
+    --destructive-foreground: 38 40% 97%;
 
-    --radius: 0.5rem;
+    /* Borders: soft tan — refined, not harsh */
+    --border: 36 25% 82%;              /* #D8CCB8 */
+    --input: 36 25% 88%;
+    --ring: 210 49% 15%;               /* navy focus ring */
 
-    /* Custom tokens */
-    --high-conf: 38 95% 52%;
-    --medium-conf: 173 80% 48%;
-    --low-conf: 0 82% 58%;
-    --kalshi: 173 80% 48%;
-    --polymarket: 258 55% 65%;
-    --draftkings: 210 95% 58%;
-    --underdog: 28 92% 54%;
+    --radius: 0.375rem;               /* moderate radius — not bubbly */
 
-    --font-body: 'General Sans', 'Inter', sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    /* ── Custom semantic tokens ── */
+    --navy:        #13233A;
+    --cream:       #F6F1E7;
+    --surface:     #FBF8F2;
+    --cardinal:    #A23B32;
+    --field-green: #3F6B4B;
+    --tan:         #D8CCB8;
+    --text-main:   #1E2430;
+    --text-muted:  #6E7683;
+    --text-on-navy: #F0EAD9;
+
+    /* ── Typography ── */
+    --font-body:   'DM Sans', 'Inter', system-ui, sans-serif;
+    --font-display: 'Playfair Display', Georgia, serif;  /* italic for wordmark moments */
+    --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+
+    /* ── Confidence signal colors (restrained) ── */
+    --conf-high:   #3F6B4B;   /* field green — value / favorable */
+    --conf-mid:    #8B6914;   /* warm gold — moderate signal */
+    --conf-low:    #A23B32;   /* cardinal — caution */
   }
 
+  /* ── Dark mode — same navy palette, darker bg ── */
   .dark {
-    --background: 220 28% 7%;
-    --foreground: 38 80% 94%;
-    --card: 220 24% 10%;
-    --card-foreground: 38 80% 94%;
-    --popover: 220 24% 10%;
-    --popover-foreground: 38 80% 94%;
-    --primary: 38 95% 52%;
-    --primary-foreground: 220 28% 7%;
-    --secondary: 220 20% 16%;
-    --secondary-foreground: 38 50% 72%;
-    --muted: 220 22% 13%;
-    --muted-foreground: 220 12% 50%;
-    --accent: 220 20% 17%;
-    --accent-foreground: 38 80% 90%;
-    --destructive: 0 82% 58%;
-    --destructive-foreground: 220 28% 7%;
-    --border: 220 18% 17%;
-    --input: 220 18% 14%;
-    --ring: 38 95% 52%;
+    --background: 210 49% 8%;
+    --foreground: 37 30% 90%;
+    --card: 210 40% 11%;
+    --card-foreground: 37 30% 90%;
+    --popover: 210 40% 11%;
+    --popover-foreground: 37 30% 90%;
+    --primary: 37 80% 72%;            /* amber-cream on dark */
+    --primary-foreground: 210 49% 8%;
+    --secondary: 210 35% 18%;
+    --secondary-foreground: 37 50% 80%;
+    --muted: 210 38% 15%;
+    --muted-foreground: 213 15% 52%;
+    --accent: 210 35% 18%;
+    --accent-foreground: 37 50% 80%;
+    --destructive: 4 60% 50%;
+    --destructive-foreground: 37 30% 95%;
+    --border: 210 30% 20%;
+    --input: 210 35% 16%;
+    --ring: 37 80% 72%;
   }
 }
 
@@ -84,7 +107,6 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     scroll-behavior: smooth;
-    /* Prevent content from sitting under iPhone status bar */
     height: 100%;
   }
 
@@ -95,128 +117,144 @@
     line-height: 1.6;
     min-height: 100vh;
     min-height: -webkit-fill-available;
-    /* Cosmic space background */
-    /* Stadium lights: warm amber glow from top corners, deep field-green center undertone */
-    background: radial-gradient(ellipse at 15% 0%, rgba(251,158,30,0.10) 0%, transparent 45%),
-                radial-gradient(ellipse at 85% 0%, rgba(251,158,30,0.08) 0%, transparent 45%),
-                radial-gradient(ellipse at 50% 110%, rgba(34,120,60,0.07) 0%, transparent 50%),
-                hsl(220 28% 7%);
+    /* Subtle parchment texture suggestion — very faint grain */
+    background-color: #F6F1E7;
   }
 
   .font-mono {
     font-family: var(--font-mono) !important;
   }
+
+  /* ── Clubhouse IQ wordmark treatment ── */
+  /* Used ONLY in logo/brand lockup, never in UI labels */
+  .ciq-wordmark-script {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #F0EAD9;
+    line-height: 1;
+  }
+  .ciq-wordmark-iq {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #A23B32;
+    line-height: 1;
+  }
 }
 
-/* Confidence score ring — gold for high, cyan for mid */
-@keyframes pulse-glow-gold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(251,158,30,0.3); }
-  50%       { box-shadow: 0 0 0 8px rgba(251,158,30,0); }
-}
-@keyframes pulse-glow-teal {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(20,184,166,0.25); }
-  50%       { box-shadow: 0 0 0 6px rgba(20,184,166,0); }
-}
-
-.high-conf-pulse {
-  animation: pulse-glow-gold 2.5s ease-in-out infinite;
-}
-
-/* Score arc gradient */
-.score-high   { color: hsl(38 95% 52%); }
-.score-medium { color: hsl(173 80% 48%); }
-.score-low    { color: hsl(0 82% 58%); }
-
-/* ── Source badges ───────────────────────────────────────────────────────── */
-.source-kalshi        { background: rgba(20,184,166,0.1);  color: #14b8a6; border-color: rgba(20,184,166,0.25); }
-.source-polymarket    { background: rgba(167,139,250,0.1); color: #a78bfa; border-color: rgba(167,139,250,0.25); }
-.source-draftkings    { background: rgba(96,165,250,0.1);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
-.source-underdog      { background: rgba(251,146,60,0.1);  color: #fb923c; border-color: rgba(251,146,60,0.25); }
-.source-sportsgameodds { background: rgba(251,158,30,0.1); color: #fb9e1e; border-color: rgba(251,158,30,0.25); }
-.source-actionnetwork  { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
+/* ── Source badges — editorial, restrained ──────────────────────────────── */
+.source-kalshi        { background: rgba(63,107,75,0.1);   color: #3F6B4B; border-color: rgba(63,107,75,0.25); }
+.source-polymarket    { background: rgba(139,105,20,0.1);  color: #8B6914; border-color: rgba(139,105,20,0.25); }
+.source-draftkings    { background: rgba(19,35,58,0.1);    color: #13233A; border-color: rgba(19,35,58,0.25); }
+.source-underdog      { background: rgba(162,59,50,0.1);   color: #A23B32; border-color: rgba(162,59,50,0.25); }
+.source-sportsgameodds { background: rgba(19,35,58,0.08);  color: #3A567A; border-color: rgba(19,35,58,0.2); }
+.source-actionnetwork  { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
 
 /* ── Sport badges ────────────────────────────────────────────────────────── */
-.sport-nfl   { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
-.sport-nba   { background: rgba(251,146,60,0.1);  color: #fb923c; border-color: rgba(251,146,60,0.25); }
-.sport-mlb   { background: rgba(96,165,250,0.1);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
-.sport-nhl   { background: rgba(20,184,166,0.1);  color: #14b8a6; border-color: rgba(20,184,166,0.25); }
-.sport-ncaab { background: rgba(167,139,250,0.1); color: #a78bfa; border-color: rgba(167,139,250,0.25); }
-.sport-golf  { background: rgba(74,222,128,0.1);  color: #4ade80; border-color: rgba(74,222,128,0.25); }
+.sport-nfl   { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
+.sport-nba   { background: rgba(139,105,20,0.1); color: #8B6914; border-color: rgba(139,105,20,0.25); }
+.sport-mlb   { background: rgba(19,35,58,0.1);   color: #13233A; border-color: rgba(19,35,58,0.25); }
+.sport-nhl   { background: rgba(63,107,75,0.1);  color: #3F6B4B; border-color: rgba(63,107,75,0.25); }
+.sport-ncaab { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
+.sport-golf  { background: rgba(63,107,75,0.12); color: #3F6B4B; border-color: rgba(63,107,75,0.3); }
 
-/* ── Pick banners (shimmer sweep) ────────────────────────────────────────── */
-@keyframes shimmer-sweep {
-  0%   { transform: translateX(-100%); opacity: 0; }
-  2%   { opacity: 1; }
-  18%  { transform: translateX(200%); opacity: 0; }
-  100% { transform: translateX(200%); opacity: 0; }
-}
-
+/* ── Pick direction banners ──────────────────────────────────────────────── */
 .pick-over {
-  background: linear-gradient(135deg, rgba(251,158,30,0.18) 0%, rgba(180,83,9,0.12) 100%);
-  color: #fbbf24;
-  border: 1px solid rgba(251,158,30,0.35);
+  background: rgba(63,107,75,0.08);
+  color: #3F6B4B;
+  border: 1px solid rgba(63,107,75,0.25);
 }
 .pick-under {
-  background: linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(91,33,182,0.12) 100%);
-  color: #a78bfa;
-  border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(162,59,50,0.08);
+  color: #A23B32;
+  border: 1px solid rgba(162,59,50,0.25);
 }
 
-.pick-shimmer {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%);
-  animation: shimmer-sweep 5s ease-in-out infinite;
-  pointer-events: none;
-}
+/* ── Status badges ───────────────────────────────────────────────────────── */
+.status-active  { background: rgba(139,105,20,0.12); color: #8B6914; border-color: rgba(139,105,20,0.3); }
+.status-hit     { background: rgba(63,107,75,0.12);  color: #3F6B4B; border-color: rgba(63,107,75,0.3); }
+.status-missed  { background: rgba(162,59,50,0.12);  color: #A23B32; border-color: rgba(162,59,50,0.3); }
+.status-expired { background: rgba(110,118,131,0.1); color: #6E7683; border-color: rgba(110,118,131,0.2); }
 
-/* ── Hot pick badge ──────────────────────────────────────────────────────── */
+/* ── Confidence coloring ─────────────────────────────────────────────────── */
+.score-high   { color: var(--conf-high); }
+.score-medium { color: var(--conf-mid); }
+.score-low    { color: var(--conf-low); }
+
+/* ── Hot / LIVE / NEW badges — restrained editorial style ────────────────── */
 .hot-pick-badge {
-  background: rgba(251,158,30,0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251,158,30,0.35);
+  background: rgba(162,59,50,0.10);
+  color: #A23B32;
+  border: 1px solid rgba(162,59,50,0.28);
+}
+.badge-live {
+  background: rgba(162,59,50,0.12);
+  color: #A23B32;
+  border: 1px solid rgba(162,59,50,0.3);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.badge-hot {
+  background: rgba(139,105,20,0.10);
+  color: #8B6914;
+  border: 1px solid rgba(139,105,20,0.28);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.badge-new {
+  background: rgba(19,35,58,0.08);
+  color: #3A567A;
+  border: 1px solid rgba(19,35,58,0.2);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
 }
 
-/* ── Card hover ──────────────────────────────────────────────────────────── */
+/* ── Card hover — subtle lift, navy shadow ───────────────────────────────── */
 .bet-card {
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, outline-color 0.18s ease;
-  outline: 1.5px solid transparent;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .bet-card:hover {
-  transform: translateY(-2px);
-  outline: 1.5px solid rgba(251,158,30,0.45);
-  box-shadow: 0 8px 32px rgba(251,158,30,0.18), 0 2px 8px rgba(0,0,0,0.45);
+  transform: translateY(-1px);
+  border-color: rgba(19,35,58,0.35);
+  box-shadow: 0 4px 18px rgba(19,35,58,0.12), 0 1px 4px rgba(19,35,58,0.08);
 }
 .bet-card:active {
-  transform: translateY(0px) scale(0.99);
-}
-.bet-card-hot:hover {
-  outline: 1.5px solid rgba(251,158,30,0.55);
-  box-shadow: 0 8px 40px rgba(251,158,30,0.28), 0 2px 8px rgba(0,0,0,0.4);
+  transform: translateY(0px) scale(0.995);
 }
 
-/* ── Clickable link cards (picks, lotto) ─────────────────────────────────── */
+/* ── Pick card link ──────────────────────────────────────────────────────── */
 .pick-card-link {
   display: block;
   cursor: pointer;
-  border-radius: 0.75rem;
+  border-radius: 0.375rem;
   outline: 1.5px solid transparent;
   transition: outline-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   text-decoration: none;
 }
 .pick-card-link:hover {
-  outline: 1.5px solid rgba(139,92,246,0.5);
-  box-shadow: 0 6px 24px rgba(139,92,246,0.2);
+  outline: 1.5px solid rgba(19,35,58,0.3);
+  box-shadow: 0 4px 16px rgba(19,35,58,0.1);
   transform: translateY(-1px);
-}
-.pick-card-link:active {
-  transform: scale(0.99);
 }
 
 /* ── Confidence bar ──────────────────────────────────────────────────────── */
 .confidence-bar {
-  background: linear-gradient(90deg, hsl(265 60% 55%), hsl(188 100% 50%) 50%, hsl(43 100% 50%));
+  background: linear-gradient(90deg, #A23B32 0%, #8B6914 50%, #3F6B4B 100%);
   border-radius: 9999px;
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -237,24 +275,18 @@
 }
 .bell-ring { animation: bell-shake 0.8s ease-in-out; }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: hsl(265 35% 8%); }
-::-webkit-scrollbar-thumb { background: hsl(265 20% 22%); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(43 80% 45%); }
+/* ── Scrollbar — cream/tan style ─────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #EDE8DF; }
+::-webkit-scrollbar-thumb { background: #C4B99A; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #13233A; }
 
-/* ── Cosmic star particle effect (subtle) ────────────────────────────────── */
-@keyframes twinkle {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50%       { opacity: 1;   transform: scale(1.4); }
-}
-
-/* ── Stats slide-down animation ─────────────────────────────────────────── */
+/* ── Animations ──────────────────────────────────────────────────────────── */
 @keyframes stats-slide-down {
   from {
     opacity: 0;
     max-height: 0;
-    transform: translateY(-6px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
@@ -262,13 +294,11 @@
     transform: translateY(0);
   }
 }
-
 .stats-slide-down {
-  animation: stats-slide-down 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: stats-slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   overflow: hidden;
 }
 
-/* ── Stat bar fill animation ─────────────────────────────────────────────── */
 @keyframes stat-bar-fill {
   from { width: 0%; }
 }
@@ -276,7 +306,6 @@
   animation: stat-bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* ── Tracker progress ring fill ─────────────────────────────────────────── */
 @keyframes ring-fill {
   from { stroke-dashoffset: var(--ring-start, 150); }
 }
@@ -284,27 +313,105 @@
   animation: ring-fill 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* ── Bounce-in for new prop cards ───────────────────────────────────────── */
 @keyframes bounce-in {
-  0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
-  60%  { transform: scale(1.02) translateY(-2px); }
+  0%   { opacity: 0; transform: scale(0.94) translateY(6px); }
+  60%  { transform: scale(1.01) translateY(-1px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 .prop-card-enter {
-  animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: bounce-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* ── Status glow badges ─────────────────────────────────────────────────── */
-.status-active  { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
-.status-hit     { background: rgba(74,222,128,0.12);  color: #4ade80; border-color: rgba(74,222,128,0.3); }
-.status-missed  { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.3); }
-.status-expired { background: rgba(148,163,184,0.1);  color: #94a3b8; border-color: rgba(148,163,184,0.2); }
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  2%   { opacity: 1; }
+  18%  { transform: translateX(200%); opacity: 0; }
+  100% { transform: translateX(200%); opacity: 0; }
+}
+.pick-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+  animation: shimmer-sweep 6s ease-in-out infinite;
+  pointer-events: none;
+}
 
-/* ── Mobile tab bar scrollbar hide ─────────────────────────────────────── */
+/* ── High confidence pulse — navy glow, not neon ────────────────────────── */
+@keyframes pulse-glow-navy {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(19,35,58,0.2); }
+  50%       { box-shadow: 0 0 0 6px rgba(19,35,58,0); }
+}
+.high-conf-pulse {
+  animation: pulse-glow-navy 2.5s ease-in-out infinite;
+}
+
+/* ── Mobile tab bar scrollbar hide ──────────────────────────────────────── */
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* ── Stitching accent — decorative only, very subtle ─────────────────────── */
+.stitch-divider {
+  border-top: 1px dashed rgba(19,35,58,0.12);
+  margin: 0;
+}
+
+/* ── Premium card surface ────────────────────────────────────────────────── */
+.ciq-card {
+  background: #FBF8F2;
+  border: 1px solid #D8CCB8;
+  border-radius: 0.375rem;
+}
+.ciq-card-navy {
+  background: #13233A;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 0.375rem;
+  color: #F0EAD9;
+}
+
+/* ── Navy primary button ─────────────────────────────────────────────────── */
+.btn-primary {
+  background: #13233A;
+  color: #F0EAD9;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-primary:hover {
+  background: #1C324F;
+  box-shadow: 0 2px 10px rgba(19,35,58,0.2);
+}
+.btn-primary:active {
+  background: #0F1B2D;
+}
+
+/* ── Cardinal accent button ──────────────────────────────────────────────── */
+.btn-cardinal {
+  background: #A23B32;
+  color: #FBF8F2;
+  border-radius: 0.375rem;
+  font-weight: 600;
+}
+
+/* ── Table row styling ───────────────────────────────────────────────────── */
+.ciq-table-row {
+  border-bottom: 1px solid #E8E2D6;
+  transition: background 0.12s ease;
+}
+.ciq-table-row:hover {
+  background: rgba(19,35,58,0.03);
+}
+
+/* ── Live dot — cardinal pulsing ─────────────────────────────────────────── */
+@keyframes cardinal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(162,59,50,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(162,59,50,0); }
+}
+.live-dot {
+  animation: cardinal-pulse 2s ease-in-out infinite;
 }

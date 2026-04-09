@@ -176,7 +176,7 @@ export default function AskDrawer() {
         {/* AI badge dot */}
         <span
           className="absolute -top-0.5 -right-0.5 w-[14px] h-[14px] rounded-full flex items-center justify-center text-[7px] font-black"
-          style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", color: "#1a0d00" }}
+          style={{ background: "#A23B32", color: "#FBF8F2" }}
         >
           AI
         </span>
@@ -211,7 +211,7 @@ export default function AskDrawer() {
           <div className="flex items-center gap-2">
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, hsl(265 35% 16%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}
+              style={{ background: "#13233A", border: "1px solid rgba(216,204,184,0.2)" }}
             >
               <Sparkles size={13} className="text-primary" />
             </div>
@@ -277,8 +277,8 @@ export default function AskDrawer() {
                 <div
                   className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tr-sm text-sm text-foreground"
                   style={{
-                    background: "linear-gradient(135deg, hsl(43 100% 50% / 0.15), hsl(43 100% 50% / 0.08))",
-                    border: "1px solid hsl(43 100% 50% / 0.25)",
+                    background: "rgba(19,35,58,0.07)",
+                    border: "1px solid rgba(19,35,58,0.18)",
                   }}
                 >
                   {item.q}
@@ -289,7 +289,7 @@ export default function AskDrawer() {
               <div className="flex justify-start gap-2">
                 <div
                   className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
-                  style={{ background: "linear-gradient(135deg, hsl(265 35% 16%), hsl(265 35% 22%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}
+                  style={{ background: "#13233A", border: "1px solid rgba(216,204,184,0.2)" }}
                 >
                   <Sparkles size={11} className="text-primary" />
                 </div>
@@ -325,7 +325,7 @@ export default function AskDrawer() {
             <div className="flex items-center gap-2">
               <div
                 className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg, hsl(265 35% 16%), hsl(265 35% 22%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}
+                style={{ background: "#13233A", border: "1px solid rgba(216,204,184,0.2)" }}
               >
                 <Sparkles size={11} className="text-primary animate-pulse" />
               </div>
@@ -368,11 +368,11 @@ export default function AskDrawer() {
               data-testid="ask-drawer-submit"
               className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
               style={{
-                background: "linear-gradient(135deg, #b45309, #f59e0b)",
-                boxShadow: question.trim() ? "0 0 14px rgba(245,158,11,0.4)" : "none",
+                background: "#13233A",
+                boxShadow: question.trim() ? "0 2px 10px rgba(19,35,58,0.3)" : "none",
               }}
             >
-              <Send size={14} style={{ color: "#1a0d00" }} />
+              <Send size={14} style={{ color: "#F0EAD9" }} />
             </button>
           </div>
           <p className="text-[9px] text-muted-foreground mt-1.5">
