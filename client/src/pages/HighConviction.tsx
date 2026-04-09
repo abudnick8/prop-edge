@@ -818,7 +818,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
                       PENDING
                     </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed">{m.hint}</p>
+                  <p className="text-[11px] text-foreground/65 leading-relaxed">{m.hint}</p>
                 </div>
               ))}
             </div>
@@ -839,7 +839,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
             </div>
           )}
 
-          <p className="text-[9px] text-muted-foreground/35">
+          <p className="text-[9px] text-foreground/50">
             Watching plays haven't met full confluence yet. Auto-promotes to Top Plays once all required signals align.
           </p>
         </div>
@@ -1138,7 +1138,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           )}
 
           {/* Disclaimer */}
-          <p className="text-[9px] text-muted-foreground/40">
+          <p className="text-[9px] text-foreground/50">
             Confluence plays require ≥2 aligned signals. Not financial advice. Always manage bankroll responsibly.
           </p>
         </div>
@@ -1330,7 +1330,7 @@ export default function HighConviction() {
                 <div className="flex items-center gap-2 px-1">
                   <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#facc15" }}>Team Bets</span>
                   <div className="flex-1 h-px" style={{ background: "rgba(250,204,21,0.15)" }} />
-                  <span className="text-[9px] text-muted-foreground/50">{teamFired.length}</span>
+                  <span className="text-[9px] text-foreground/55">{teamFired.length}</span>
                 </div>
                 {teamFired.map(play => <ConvictionCard key={play.id} play={play} />)}
               </>
@@ -1340,7 +1340,7 @@ export default function HighConviction() {
                 <div className="flex items-center gap-2 px-1 mt-1">
                   <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
                   <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
-                  <span className="text-[9px] text-muted-foreground/50">{propFired.length}/3</span>
+                  <span className="text-[9px] text-foreground/55">{propFired.length}/3</span>
                 </div>
                 {propFired.map(play => <ConvictionCard key={play.id} play={play} />)}
               </>
@@ -1377,7 +1377,7 @@ export default function HighConviction() {
               >
                 {watchingPlays.length} / 8
               </span>
-              <span className="text-[9px] text-muted-foreground/50 pr-1">5 team · 3 props</span>
+              <span className="text-[9px] text-foreground/55 pr-1">5 team · 3 props</span>
             </div>
           </div>
 
@@ -1391,7 +1391,7 @@ export default function HighConviction() {
                     <div className="flex items-center gap-2 px-1">
                       <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#fbbf24" }}>Team Bets</span>
                       <div className="flex-1 h-px" style={{ background: "rgba(251,191,36,0.15)" }} />
-                      <span className="text-[9px] text-muted-foreground/50">{teamW.length}/5</span>
+                      <span className="text-[9px] text-foreground/55">{teamW.length}/5</span>
                     </div>
                     {teamW.map(play => <WatchingCard key={play.id} play={play} />)}
                   </>
@@ -1401,7 +1401,7 @@ export default function HighConviction() {
                     <div className="flex items-center gap-2 px-1 mt-1">
                       <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
                       <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
-                      <span className="text-[9px] text-muted-foreground/50">{propW.length}/3</span>
+                      <span className="text-[9px] text-foreground/55">{propW.length}/3</span>
                     </div>
                     {propW.map(play => <WatchingCard key={play.id} play={play} />)}
                   </>
@@ -1413,9 +1413,9 @@ export default function HighConviction() {
               className="rounded-xl border px-4 py-6 flex flex-col items-center text-center gap-2"
               style={{ background: "rgba(255,255,255,0.01)", borderColor: "rgba(255,255,255,0.06)" }}
             >
-              <Eye size={22} className="text-muted-foreground/30" />
-              <p className="text-sm font-semibold text-muted-foreground/60">Nothing on the watchlist</p>
-              <p className="text-[11px] text-muted-foreground/40 max-w-xs">
+              <Eye size={22} className="text-foreground/45" />
+              <p className="text-sm font-semibold text-foreground/60">Nothing on the watchlist</p>
+              <p className="text-[11px] text-foreground/50 max-w-xs">
                 Plays appear here when the Clubhouse IQ model likes them but they're still waiting on a line movement or whale signal.
               </p>
             </div>

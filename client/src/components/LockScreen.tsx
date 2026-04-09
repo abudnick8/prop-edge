@@ -105,7 +105,7 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           Unlock
         </button>
 
-        <p className="text-[10px] text-muted-foreground/50">Clubhouse IQ · Private Access</p>
+        <p className="text-[10px] text-foreground/55">Clubhouse IQ · Private Access</p>
       </div>
 
       <style>{`

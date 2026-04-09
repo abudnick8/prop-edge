@@ -312,7 +312,7 @@ function TeamSwapper({
             </div>
             <p className="text-[10px] text-muted-foreground">{t.record}</p>
           </div>
-          <Lock size={11} className="text-muted-foreground/50 shrink-0" />
+          <Lock size={11} className="text-foreground/55 shrink-0" />
         </div>
       );
     }
@@ -351,7 +351,7 @@ function TeamSwapper({
             <span className="text-[8px] text-primary-foreground font-black">✓</span>
           </span>
         ) : (
-          <ChevronRight size={13} className="text-muted-foreground/50 shrink-0" />
+          <ChevronRight size={13} className="text-foreground/55 shrink-0" />
         )}
       </button>
     );

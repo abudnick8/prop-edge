@@ -164,7 +164,7 @@ function HitRateBar({ label, value, highlight }: { label: string; value: number 
   return (
     <div className={`rounded-lg border px-2 py-1.5 ${highlight ? "ring-1 ring-yellow-400/30" : ""}`}
       style={{ background: hrBg(value), borderColor: hrColor(value) + "40" }}>
-      <p className="text-[9px] text-muted-foreground/70 font-semibold uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-1">{label}</p>
       <div className="flex items-center gap-1.5">
         <div className="flex-1 h-1 bg-muted/40 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: hrColor(value) }} />
@@ -191,7 +191,7 @@ function BookLinesRow({ bookLines, consensusLine }: { bookLines: Record<string, 
               : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             <span className="uppercase tracking-wide">{book.slice(0, 6)}</span>
             <span className="font-mono">{bl.line}</span>
-            {bl.overOdds != null && <span className="text-muted-foreground/60">({fmtOdds(bl.overOdds)})</span>}
+            {bl.overOdds != null && <span className="text-foreground/60">({fmtOdds(bl.overOdds)})</span>}
           </div>
         );
       })}
@@ -248,7 +248,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
             {/* Game + time */}
             <p className="text-[10px] text-muted-foreground mb-1.5">
               {prop.teamCode} {prop.isHome === true ? "vs" : prop.isHome === false ? "@" : "vs"} {prop.opponent}
-              {prop.gameTime && <span className="ml-1.5 text-muted-foreground/60">{fmtTime(prop.gameTime)}</span>}
+              {prop.gameTime && <span className="ml-1.5 text-foreground/60">{fmtTime(prop.gameTime)}</span>}
             </p>
 
             {/* Market + line + outcome */}
@@ -277,7 +277,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
               { label: "L10", value: prop.hitRateL10 },
             ].map(w => (
               <div key={w.label} className="flex items-center gap-1.5">
-                <span className="text-[9px] text-muted-foreground/60 w-6 text-right">{w.label}</span>
+                <span className="text-[9px] text-foreground/60 w-6 text-right">{w.label}</span>
                 <span className="text-[10px] font-black w-10 text-right" style={{ color: hrColor(w.value) }}>{fmtHR(w.value)}</span>
               </div>
             ))}
@@ -294,7 +294,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
 
           {/* Hit rate grid */}
           <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-foreground/60 mb-2 flex items-center gap-1">
               <Activity size={9} /> Hit Rates vs {prop.consensusLine} line
             </p>
             <div className="grid grid-cols-3 gap-1.5">
@@ -322,7 +322,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           {/* Lines across books */}
           {Object.keys(prop.bookLines).length > 0 && (
             <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1 flex items-center gap-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-foreground/60 mb-1 flex items-center gap-1">
                 <BarChart2 size={9} /> Lines by Book
               </p>
               <BookLinesRow bookLines={prop.bookLines} consensusLine={prop.consensusLine} />
@@ -341,7 +341,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           {prop.description && (
             <div className="rounded-lg border border-border/30 bg-background/30 px-3 py-2">
               <p className="text-[10px] font-bold text-muted-foreground mb-0.5 flex items-center gap-1"><Info size={9} /> Why this pick</p>
-              <p className="text-[10px] text-muted-foreground/80 leading-relaxed">{prop.description}</p>
+              <p className="text-[10px] text-foreground/70 leading-relaxed">{prop.description}</p>
             </div>
           )}
 
@@ -402,7 +402,7 @@ function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search player..."
-          className="px-3 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 w-36"
+          className="px-3 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground placeholder:text-foreground/55 focus:outline-none focus:border-primary/50 w-36"
         />
         <select value={filterMarket} onChange={e => setFilter(e.target.value)}
           className="px-2 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground focus:outline-none appearance-none pr-6"
@@ -428,7 +428,7 @@ function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
         </div>
       </div>
 
-      <p className="text-[10px] text-muted-foreground/60 mb-3">{filtered.length} props shown</p>
+      <p className="text-[10px] text-foreground/60 mb-3">{filtered.length} props shown</p>
 
       <div className="flex flex-col gap-2">
         {filtered.slice(0, 80).map((p, i) => (
@@ -623,7 +623,7 @@ export default function LinemateProps() {
       {/* Today's games */}
       {!isLoading && data && data.games.length > 0 && (
         <div className="mt-6 pt-4 border-t border-border/40">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-2">Today's Games</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-foreground/60 mb-2">Today's Games</p>
           <div className="flex flex-wrap gap-2">
             {data.games.map(g => (
               <div key={g.gameId} className="px-3 py-1.5 rounded-lg border border-border/40 bg-muted/10 text-xs font-bold text-foreground">

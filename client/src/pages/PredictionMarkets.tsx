@@ -342,7 +342,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               Purchase pattern:
               <PurchaseTypeBadge vol24h={m.vol24h} source={m.source} smartScore={m.smartScore ?? 0} />
               {txData?.source === "clob" && txData.txCount > 0 && (
-                <span className="text-[9px] text-muted-foreground/60">({txData.txCount}× via CLOB)</span>
+                <span className="text-[9px] text-foreground/60">({txData.txCount}× via CLOB)</span>
               )}
             </span>
           )}
@@ -547,7 +547,7 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
         <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, #facc15, #fbbf24, #facc15)" }} />
       )}
       {/* Click hint */}
-      <div className="absolute top-2 right-2 text-[9px] text-muted-foreground/50 font-medium">tap for chart ›</div>
+      <div className="absolute top-2 right-2 text-[9px] text-foreground/55 font-medium">tap for chart ›</div>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2 pr-12">
@@ -598,7 +598,7 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
                       );
                     })}
                     {hidden > 0 && (
-                      <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-5">+{hidden} more legs · tap to see all</p>
+                      <p className="text-[10px] text-foreground/60 mt-0.5 pl-5">+{hidden} more legs · tap to see all</p>
                     )}
                   </div>
                 </div>
@@ -683,7 +683,7 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
         </div>
         {m.isWhaleAlert && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground/60">Purchase pattern:</span>
+            <span className="text-[9px] text-foreground/60">Purchase pattern:</span>
             <PurchaseTypeBadge vol24h={m.vol24h} source={m.source} smartScore={m.smartScore ?? 0} />
           </div>
         )}
@@ -942,7 +942,7 @@ export default function PredictionMarkets() {
 
               </div>
               <div className="px-3 pb-3">
-                <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+                <p className="text-[10px] text-foreground/65 leading-relaxed">
                   <span className="font-semibold text-muted-foreground">How to use it:</span> A <span style={{ color: "#34d399" }}>Building</span> pattern on a whale alert means the smart money isn't done — expect continued pressure on the YES price. A <span style={{ color: "#60a5fa" }}>Single Buy</span> at massive scale is often a one-shot conviction bet from a known sharp. <span style={{ color: "#c084fc" }}>Multi-Entry</span> suggests they are patiently accumulating a specific price range.
                 </p>
               </div>

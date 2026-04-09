@@ -416,7 +416,7 @@ function HowToReadSection() {
             <p><span className="text-indigo-400 font-bold">Polymarket:</span> SmartScore ≥80 → Building, ≥40 → Multi-Entry, &lt;40 → Single Buy</p>
             <p><span className="text-cyan-400 font-bold">Kalshi:</span> Vol ≥$20K → Building, ≥$8K → Multi-Entry, &lt;$8K → Single Buy</p>
           </div>
-          <p className="text-[9px] text-muted-foreground/60 mt-1">
+          <p className="text-[9px] text-foreground/60 mt-1">
             On the Top Traders page, patterns are derived from the actual on-chain transaction count for that wallet's position, not volume estimates.
           </p>
         </div>

@@ -130,11 +130,11 @@ export function BookErrorCard({ error }: { error: BookError }) {
               <span className="text-xs font-bold text-foreground truncate">
                 {error.gameName}
               </span>
-              <span className="text-[10px] text-muted-foreground/50">
+              <span className="text-[10px] text-foreground/55">
                 {error.sport}
               </span>
               {error.gameTime && (
-                <span className="text-[10px] text-muted-foreground/40">
+                <span className="text-[10px] text-foreground/50">
                   {fmtTime(error.gameTime)}
                 </span>
               )}
@@ -146,7 +146,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
                 {errIcon}
                 <span>{ERROR_TYPE_LABELS[error.errorType]}</span>
               </Badge>
-              <span className="text-[10px] text-muted-foreground/70">
+              <span className="text-[10px] text-foreground/65">
                 {error.betType}
               </span>
             </div>
@@ -154,7 +154,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="text-right hidden sm:block">
-            <p className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
+            <p className="text-[9px] text-foreground/55 uppercase tracking-wide">
               Confidence
             </p>
             <p
@@ -185,7 +185,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
             <p className="text-xs font-mono font-bold text-foreground">
               {error.actualLine}
             </p>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-[11px] text-foreground/60">
               {error.betType}
             </p>
           </div>
@@ -223,7 +223,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-1 border-t border-border/40">
-            <p className="text-[9px] text-muted-foreground/40">
+            <p className="text-[9px] text-foreground/50">
               Confidence:{" "}
               <span
                 style={{ color: confColor }}
@@ -263,13 +263,13 @@ export function BookErrorsSection({ errors }: { errors: BookError[] }) {
       </div>
 
       {/* Disclaimer */}
-      <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-[11px] text-muted-foreground/70 flex items-start gap-2">
+      <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-[11px] text-foreground/65 flex items-start gap-2">
         <AlertTriangle size={11} className="text-orange-700 mt-0.5 flex-shrink-0" />
         <span>
           These signals are detected from sharp vs. public splits, reverse line
           movement, and cross-market inconsistencies. Always verify the current
           line at DraftKings, FanDuel, or BetMGM before placing.{" "}
-          <span className="text-muted-foreground/50">Not financial advice.</span>
+          <span className="text-foreground/55">Not financial advice.</span>
         </span>
       </div>
 
@@ -278,12 +278,12 @@ export function BookErrorsSection({ errors }: { errors: BookError[] }) {
         <div className="text-center py-10 border border-dashed border-border rounded-xl">
           <AlertCircle
             size={28}
-            className="mx-auto text-muted-foreground/30 mb-2"
+            className="mx-auto text-foreground/45 mb-2"
           />
           <p className="text-sm text-muted-foreground">
             No book errors detected right now
           </p>
-          <p className="text-xs text-muted-foreground/60 mt-1">
+          <p className="text-xs text-foreground/60 mt-1">
             Errors appear when sharp/public data diverges significantly. Try
             refreshing.
           </p>

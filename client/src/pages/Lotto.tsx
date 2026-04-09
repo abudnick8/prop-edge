@@ -255,7 +255,7 @@ export default function Lotto() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {totalLotto} picks across {activeSports.length} sport{activeSports.length !== 1 ? "s" : ""} · 5–20 per sport
             {lastUpdated && (
-              <span className="ml-2 text-muted-foreground/60">· updated {lastUpdated}</span>
+              <span className="ml-2 text-foreground/60">· updated {lastUpdated}</span>
             )}
           </p>
         </div>

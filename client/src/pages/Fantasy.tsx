@@ -1089,9 +1089,9 @@ function CompareTool({players,onClose}:{players:PlayerCard[];onClose:()=>void}) 
     const tie   = aNum === bNum;
     return (
       <div key={label} className="grid grid-cols-3 gap-2 items-center py-1.5 border-b border-border/10 last:border-0">
-        <span className={`text-xs font-bold text-right ${!tie&&aWins?"text-foreground":"text-muted-foreground/60"}`}>{aVal}</span>
+        <span className={`text-xs font-bold text-right ${!tie&&aWins?"text-foreground":"text-foreground/60"}`}>{aVal}</span>
         <span className="text-[10px] text-center text-muted-foreground">{label}</span>
-        <span className={`text-xs font-bold text-left ${!tie&&!aWins?"text-foreground":"text-muted-foreground/60"}`}>{bVal}</span>
+        <span className={`text-xs font-bold text-left ${!tie&&!aWins?"text-foreground":"text-foreground/60"}`}>{bVal}</span>
       </div>
     );
   }
