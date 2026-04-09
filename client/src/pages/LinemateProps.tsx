@@ -188,7 +188,7 @@ function BookLinesRow({ bookLines, consensusLine }: { bookLines: Record<string, 
             className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] ${isConsensus ? "font-black" : "font-medium opacity-70"}`}
             style={isConsensus
               ? { background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.35)", color: "#a5b4fc" }
-              : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.10)", color: "#94a3b8" }}>
+              : { background: "rgba(19,35,58,0.06)", borderColor: "rgba(19,35,58,0.14)", color: "#94a3b8" }}>
             <span className="uppercase tracking-wide">{book.slice(0, 6)}</span>
             <span className="font-mono">{bl.line}</span>
             {bl.overOdds != null && <span className="text-foreground/70">({fmtOdds(bl.overOdds)})</span>}
@@ -212,14 +212,14 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
 
   return (
     <div className="rounded-xl border overflow-hidden transition-all hover:bg-white/[0.02]"
-      style={{ borderColor: grpCfg ? grpCfg.border : "rgba(255,255,255,0.10)", background: grpCfg ? grpCfg.bg : "rgba(255,255,255,0.02)" }}>
+      style={{ borderColor: grpCfg ? grpCfg.border : "rgba(19,35,58,0.14)", background: grpCfg ? grpCfg.bg : "rgba(19,35,58,0.03)" }}>
 
       {/* Header */}
       <button onClick={() => setExpanded(v => !v)} className="w-full text-left">
         <div className="flex items-start gap-3 px-4 py-3">
           {/* Player initials */}
           <div className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-black border"
-            style={{ borderColor: grpCfg?.color + "50" ?? "rgba(255,255,255,0.1)", background: grpCfg?.bg ?? "rgba(255,255,255,0.04)", color: grpCfg?.color ?? "#94a3b8" }}>
+            style={{ borderColor: grpCfg?.color + "50" ?? "rgba(19,35,58,0.14)", background: grpCfg?.bg ?? "rgba(19,35,58,0.06)", color: grpCfg?.color ?? "#94a3b8" }}>
             {prop.playerName.split(" ").map(w => w[0]).join("").slice(0, 2)}
           </div>
 

@@ -134,7 +134,7 @@ export default function ParlaySlip() {
                   <div
                     key={leg.betId}
                     className="flex items-start gap-2 rounded-lg px-3 py-2"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+                    style={{ background: "rgba(19,35,58,0.06)", border: "1px solid rgba(19,35,58,0.1)" }}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold truncate" style={{ color: "hsl(45 100% 90%)" }}>
@@ -147,7 +147,7 @@ export default function ParlaySlip() {
                           </span>
                         )}
                         {leg.betPickSide && (
-                          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          <span className="text-[10px]" style={{ color: "rgba(19,35,58,0.56)" }}>
                             {leg.betPickSide}{leg.betLine != null ? ` ${leg.betLine}` : ""}
                           </span>
                         )}
@@ -189,7 +189,7 @@ export default function ParlaySlip() {
                   value={name}
                   onChange={e => setName(e.target.value)}
                   className="h-8 text-xs"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)" }}
                   data-testid="parlay-name-input"
                 />
                 <Input
@@ -198,7 +198,7 @@ export default function ParlaySlip() {
                   value={stake}
                   onChange={e => setStake(e.target.value)}
                   className="h-8 text-xs"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)" }}
                   data-testid="parlay-stake-input"
                 />
                 {payout && (

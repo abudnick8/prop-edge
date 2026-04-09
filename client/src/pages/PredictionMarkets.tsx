@@ -400,11 +400,11 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                     <stop offset="95%" stopColor={chartColor} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(19,35,58,0.07)" />
                 <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 9 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: "#64748b", fontSize: 9 }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}¢`} />
                 <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 11 }}
+                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(19,35,58,0.14)", borderRadius: 8, fontSize: 11 }}
                   formatter={(v: number) => [`${v}¢`, "Price"]}
                   labelStyle={{ color: "#94a3b8" }}
                 />
@@ -985,10 +985,10 @@ export default function PredictionMarkets() {
                 sourceFilter === s ? "text-white" : "text-muted-foreground hover:text-foreground"
               }`}
               style={sourceFilter === s ? {
-                background: s === "kalshi" ? "rgba(245,158,11,0.25)" : s === "polymarket" ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.1)",
-                borderColor: s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#6366f1" : "rgba(255,255,255,0.2)",
+                background: s === "kalshi" ? "rgba(245,158,11,0.25)" : s === "polymarket" ? "rgba(99,102,241,0.25)" : "rgba(19,35,58,0.14)",
+                borderColor: s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#6366f1" : "rgba(19,35,58,0.28)",
                 color:       s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#818cf8" : "#fff",
-              } : { borderColor: "rgba(255,255,255,0.1)", background: "transparent" }}
+              } : { borderColor: "rgba(19,35,58,0.14)", background: "transparent" }}
             >
               {s === "all" ? "All Sources" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
@@ -1001,7 +1001,7 @@ export default function PredictionMarkets() {
               background: "rgba(250,204,21,0.20)",
               borderColor: "#facc15",
               color: "#facc15",
-            } : { borderColor: "rgba(255,255,255,0.1)", background: "transparent", color: "" }}
+            } : { borderColor: "rgba(19,35,58,0.14)", background: "transparent", color: "" }}
           >
             ⚡ Today
             {todayCount > 0 && (

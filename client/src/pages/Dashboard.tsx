@@ -730,7 +730,7 @@ function HowToRead() {
                     { tier: "A+", color: "#4ade80", bg: "rgba(34,197,94,0.08)",   border: "rgba(34,197,94,0.25)",   rule: "Edge ≥15% + Confidence ≥82",  note: "Book significantly behind model. High conviction play." },
                     { tier: "A",  color: "#facc15", bg: "rgba(250,204,21,0.08)",  border: "rgba(250,204,21,0.25)",  rule: "Edge ≥10% + Confidence ≥75",  note: "Meaningful gap vs market. Strong play." },
                     { tier: "B",  color: "#93c5fd", bg: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.25)",  rule: "Edge ≥5% + Confidence ≥65",   note: "Moderate edge. Good play, look for a confirming signal." },
-                    { tier: "C",  color: "rgba(255,255,255,0.35)", bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.12)", rule: "Edge <5% or Confidence <65", note: "No badge shown — edge too small to surface. Use other signals." },
+                    { tier: "C",  color: "rgba(19,35,58,0.49)", bg: "rgba(19,35,58,0.04)", border: "rgba(19,35,58,0.17)", rule: "Edge <5% or Confidence <65", note: "No badge shown — edge too small to surface. Use other signals." },
                   ].map(t => (
                     <div key={t.tier} className="flex items-start gap-3 p-2.5 rounded-lg border" style={{ background: t.bg, borderColor: t.border }}>
                       <span className="text-xs font-black shrink-0 w-6 text-center pt-0.5" style={{ color: t.color }}>📊{t.tier}</span>

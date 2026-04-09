@@ -35,9 +35,9 @@ function OddsBar({ overOdds, underOdds, pickSide }: { overOdds: number | null; u
   const isPickOver = pickSide?.toUpperCase() === "OVER";
   const isPickUnder = pickSide?.toUpperCase() === "UNDER";
   return (
-    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.5)" }}>Market Odds Split</span>
+        <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Market Odds Split</span>
         {pickSide && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
             style={{ background: isPickOver ? "rgba(74,222,128,0.15)" : "rgba(96,165,250,0.15)", color: isPickOver ? "#4ade80" : "#60a5fa", border: `1px solid ${isPickOver ? "rgba(74,222,128,0.3)" : "rgba(96,165,250,0.3)"}` }}>
@@ -48,15 +48,15 @@ function OddsBar({ overOdds, underOdds, pickSide }: { overOdds: number | null; u
       <div className="flex items-center gap-3">
         <div className="flex-1 text-center">
           <div className="text-sm font-black font-mono" style={{ color: isPickOver ? "#4ade80" : "hsl(45 100% 90%)" }}>{formatOdds(overOdds)}</div>
-          <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>OVER · {overProb.toFixed(0)}%</div>
+          <div className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>OVER · {overProb.toFixed(0)}%</div>
         </div>
-        <div className="flex-[2] h-4 rounded-full overflow-hidden flex" style={{ background: "rgba(255,255,255,0.06)" }}>
-          <div className="h-full rounded-l-full" style={{ width: `${overPct}%`, background: isPickOver ? "linear-gradient(90deg,#4ade80,#22c55e)" : "rgba(255,255,255,0.2)" }} />
-          <div className="h-full rounded-r-full" style={{ width: `${100 - overPct}%`, background: isPickUnder ? "linear-gradient(90deg,#60a5fa,#3b82f6)" : "rgba(255,255,255,0.1)" }} />
+        <div className="flex-[2] h-4 rounded-full overflow-hidden flex" style={{ background: "rgba(19,35,58,0.08)" }}>
+          <div className="h-full rounded-l-full" style={{ width: `${overPct}%`, background: isPickOver ? "linear-gradient(90deg,#4ade80,#22c55e)" : "rgba(19,35,58,0.28)" }} />
+          <div className="h-full rounded-r-full" style={{ width: `${100 - overPct}%`, background: isPickUnder ? "linear-gradient(90deg,#60a5fa,#3b82f6)" : "rgba(19,35,58,0.14)" }} />
         </div>
         <div className="flex-1 text-center">
           <div className="text-sm font-black font-mono" style={{ color: isPickUnder ? "#60a5fa" : "hsl(45 100% 90%)" }}>{formatOdds(underOdds)}</div>
-          <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>UNDER · {underProb.toFixed(0)}%</div>
+          <div className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>UNDER · {underProb.toFixed(0)}%</div>
         </div>
       </div>
     </div>
@@ -85,7 +85,7 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
     "A+": { color: "#4ade80", bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.35)",   label: "Book significantly behind model" },
     "A":  { color: "#facc15", bg: "rgba(250,204,21,0.12)",  border: "rgba(250,204,21,0.35)",  label: "Meaningful gap vs market price" },
     "B":  { color: "#93c5fd", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.35)",  label: "Moderate edge — look for confirming signal" },
-    "C":  { color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)", label: "Edge below threshold" },
+    "C":  { color: "rgba(19,35,58,0.56)", bg: "rgba(19,35,58,0.06)", border: "rgba(19,35,58,0.17)", label: "Edge below threshold" },
   };
   const tierStyle = (edgeTier && TIER_STYLE[edgeTier]) ?? TIER_STYLE["C"];
 
@@ -103,11 +103,11 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
   const hitRateHits  = hitRate != null ? Math.round(hitRate * hitRateTotal) : null;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.09)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.13)" }}>
       {/* Header */}
-      <div className="px-4 py-3 flex items-center gap-3" style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="px-4 py-3 flex items-center gap-3" style={{ background: "rgba(19,35,58,0.06)", borderBottom: "1px solid rgba(19,35,58,0.1)" }}>
         <Activity size={13} style={{ color: scoreColor }} />
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.7)" }}>Why this score?</span>
+        <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Why this score?</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[10px] font-semibold" style={{ color: scoreColor }}>{scoreLabel}</span>
           <span className="text-sm font-black font-mono" style={{ color: scoreColor }}>{score}/100</span>
@@ -119,17 +119,17 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
         {/* ── Score bar ── */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[10px]">
-            <span style={{ color: "rgba(255,255,255,0.4)" }}>Confidence score</span>
+            <span style={{ color: "rgba(19,35,58,0.56)" }}>Confidence score</span>
             <span className="font-mono font-bold" style={{ color: scoreColor }}>{score}/100</span>
           </div>
-          <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
             <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, background: `linear-gradient(90deg, ${scoreColor}99, ${scoreColor})` }} />
           </div>
           <div className="grid grid-cols-3 gap-1 text-center pt-0.5">
             {[{ r: "<70", l: "Low", c: "#f97316" }, { r: "70–84", l: "Moderate", c: "#eab308" }, { r: "85+", l: "HIGH", c: "#22c55e" }].map(t => (
               <div key={t.r} className="rounded px-1.5 py-1" style={{ background: t.c + "14", border: `1px solid ${t.c}30` }}>
                 <p className="text-[9px] font-black font-mono" style={{ color: t.c }}>{t.r}</p>
-                <p className="text-[8px]" style={{ color: "rgba(255,255,255,0.4)" }}>{t.l}</p>
+                <p className="text-[8px]" style={{ color: "rgba(19,35,58,0.56)" }}>{t.l}</p>
               </div>
             ))}
           </div>
@@ -145,16 +145,16 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
               {edgePct != null && (
                 <span className="text-xs font-black font-mono" style={{ color: tierStyle.color }}>+{edgePct.toFixed(1)}%</span>
               )}
-              <span className="text-[10px] ml-1" style={{ color: "rgba(255,255,255,0.5)" }}>{tierStyle.label}</span>
+              <span className="text-[10px] ml-1" style={{ color: "rgba(19,35,58,0.7)" }}>{tierStyle.label}</span>
             </div>
-            <div className="text-[10px] space-y-1" style={{ color: "rgba(255,255,255,0.6)" }}>
+            <div className="text-[10px] space-y-1" style={{ color: "rgba(19,35,58,0.7)" }}>
               <p>The model's fair value <span className="font-semibold text-foreground">minus</span> the book's implied probability = the edge gap.</p>
               {edgePct != null && (
                 <p>
                   This pick has a <span className="font-bold" style={{ color: tierStyle.color }}>+{edgePct.toFixed(1)}% edge</span> — the book is pricing this {edgePct.toFixed(1)}% below what the model sees as fair value.
                 </p>
               )}
-              <div className="mt-1.5 text-[9px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <div className="mt-1.5 text-[9px]" style={{ color: "rgba(19,35,58,0.56)" }}>
                 <span>A+ requires ≥15% edge + conf ≥82 &nbsp;·&nbsp; A ≥10% + conf ≥75 &nbsp;·&nbsp; B ≥5% + conf ≥65</span>
               </div>
             </div>
@@ -178,20 +178,20 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
             {recentAvg != null && line != null && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px]">
-                  <span style={{ color: "rgba(255,255,255,0.5)" }}>L5 avg{statName ? ` (${statName})` : ""}</span>
+                  <span style={{ color: "rgba(19,35,58,0.7)" }}>L5 avg{statName ? ` (${statName})` : ""}</span>
                   <span className="font-mono font-bold" style={{ color: (formEdge ?? 0) > 0 ? "#4ade80" : "#f87171" }}>
                     {recentAvg.toFixed(1)} vs {line} line
                   </span>
                 </div>
-                <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
                   <div className="h-full rounded-full" style={{
                     width: `${Math.min((recentAvg / (line * 1.5)) * 100, 100)}%`,
                     background: (formEdge ?? 0) > 0 ? "linear-gradient(90deg,#4ade80,#22c55e)" : "linear-gradient(90deg,#f87171,#ef4444)"
                   }} />
                   {/* Line marker */}
-                  <div className="absolute top-0 bottom-0 w-0.5" style={{ left: `${Math.min((line / (line * 1.5)) * 100, 99)}%`, background: "rgba(255,255,255,0.6)" }} />
+                  <div className="absolute top-0 bottom-0 w-0.5" style={{ left: `${Math.min((line / (line * 1.5)) * 100, 99)}%`, background: "rgba(19,35,58,0.7)" }} />
                 </div>
-                <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.63)" }}>
                   {(formEdge ?? 0) > 0
                     ? `Player's L5 average is ${recentAvg.toFixed(1)} — ${Math.abs(formEdge ?? 0).toFixed(1)}% above the ${line} line`
                     : `Player's L5 average is ${recentAvg.toFixed(1)} — ${Math.abs(formEdge ?? 0).toFixed(1)}% below the ${line} line`
@@ -203,12 +203,12 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
               <div className="flex items-center gap-3 pt-1">
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center justify-between text-[10px]">
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>Hit rate (last {hitRateTotal} games)</span>
+                    <span style={{ color: "rgba(19,35,58,0.56)" }}>Hit rate (last {hitRateTotal} games)</span>
                     <span className="font-mono font-bold" style={{ color: hitRatePct >= 60 ? "#4ade80" : hitRatePct >= 40 ? "#fbbf24" : "#f87171" }}>
                       {hitRateHits}/{hitRateTotal} ({hitRatePct}%)
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
                     <div className="h-full rounded-full" style={{
                       width: `${hitRatePct}%`,
                       background: hitRatePct >= 60 ? "#4ade80" : hitRatePct >= 40 ? "#fbbf24" : "#f87171"
@@ -223,15 +223,15 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
         {/* ── Scoring reasons (real keyFactors from model) ── */}
         {factors.length > 0 && (
           <div className="space-y-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.35)" }}>Scoring reasons ({factors.length})</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.49)" }}>Scoring reasons ({factors.length})</p>
             <div className="space-y-1.5">
               {factors.map((f, i) => {
                 const tone = factorTone(f);
                 const styles = {
-                  positive: { bg: "rgba(74,222,128,0.05)",  border: "rgba(74,222,128,0.18)",  icon: <CheckCircle  size={11} color="#4ade80" />,             text: "rgba(255,255,255,0.8)" },
-                  caution:  { bg: "rgba(251,191,36,0.05)",  border: "rgba(251,191,36,0.18)",  icon: <AlertTriangle size={11} color="#fbbf24" />,            text: "rgba(255,255,255,0.7)" },
-                  negative: { bg: "rgba(248,113,113,0.05)", border: "rgba(248,113,113,0.18)", icon: <AlertTriangle size={11} color="#f87171" />,            text: "rgba(255,255,255,0.65)" },
-                  neutral:  { bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)", icon: <Info          size={11} color="rgba(255,255,255,0.3)" />, text: "rgba(255,255,255,0.6)" },
+                  positive: { bg: "rgba(74,222,128,0.05)",  border: "rgba(74,222,128,0.18)",  icon: <CheckCircle  size={11} color="#4ade80" />,             text: "rgba(19,35,58,0.7)" },
+                  caution:  { bg: "rgba(251,191,36,0.05)",  border: "rgba(251,191,36,0.18)",  icon: <AlertTriangle size={11} color="#fbbf24" />,            text: "rgba(19,35,58,0.7)" },
+                  negative: { bg: "rgba(248,113,113,0.05)", border: "rgba(248,113,113,0.18)", icon: <AlertTriangle size={11} color="#f87171" />,            text: "rgba(19,35,58,0.7)" },
+                  neutral:  { bg: "rgba(19,35,58,0.04)", border: "rgba(19,35,58,0.11)", icon: <Info          size={11} color="rgba(19,35,58,0.42)" />, text: "rgba(19,35,58,0.7)" },
                 }[tone];
                 return (
                   <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg" style={{ background: styles.bg, border: `1px solid ${styles.border}` }}>
@@ -246,7 +246,7 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
 
         {/* Fallback if no factors */}
         {factors.length === 0 && (
-          <p className="text-[11px] text-center py-2" style={{ color: "rgba(255,255,255,0.3)" }}>Scoring detail not available for this pick.</p>
+          <p className="text-[11px] text-center py-2" style={{ color: "rgba(19,35,58,0.42)" }}>Scoring detail not available for this pick.</p>
         )}
 
       </div>
@@ -297,7 +297,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "rgba(19,35,58,0.56)" }}>
           Last {games.length} Games
         </span>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
@@ -305,10 +305,10 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
           ★ {focusStatLabel}
         </span>
       </div>
-      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid rgba(19,35,58,0.11)" }}>
         <table className="w-full text-[11px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <tr style={{ background: "rgba(19,35,58,0.07)", borderBottom: "1px solid rgba(19,35,58,0.11)" }}>
               {cols.map(col => {
                 const isFocus = col.key === focusStatKey ||
                   (focusStatKey === "trb" && col.key === "trb") ||
@@ -317,7 +317,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                   (isCombo && col.key === "trb" && comboKeys?.includes("trb"));
                 return (
                   <th key={col.key} className="px-2 py-2 text-center font-bold uppercase"
-                    style={{ color: isFocus ? "#f59e0b" : "rgba(255,255,255,0.35)", background: isFocus ? "rgba(245,158,11,0.06)" : "transparent", fontSize: "9px", whiteSpace: "nowrap" }}>
+                    style={{ color: isFocus ? "#f59e0b" : "rgba(19,35,58,0.49)", background: isFocus ? "rgba(245,158,11,0.06)" : "transparent", fontSize: "9px", whiteSpace: "nowrap" }}>
                     {isFocus ? `★ ${col.label}` : col.label}
                   </th>
                 );
@@ -331,7 +331,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                 : (parseFloat(g[focusStatKey] ?? g["trb"] ?? "0") || 0);
               const hitLine = propLine != null && (isUnder ? focusVal < propLine : focusVal >= propLine);
               return (
-                <tr key={rowIdx} style={{ background: hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                <tr key={rowIdx} style={{ background: hitLine ? "rgba(74,222,128,0.04)" : rowIdx % 2 === 0 ? "rgba(19,35,58,0.03)" : "transparent", borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
                   {cols.map(col => {
                     const isFocus = col.key === focusStatKey ||
                       (focusStatKey === "trb" && col.key === "trb") ||
@@ -366,7 +366,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                       const isWin = rawVal?.startsWith("W");
                       const isLoss = rawVal?.startsWith("L");
                       displayVal = (
-                        <span style={{ color: isWin ? "#4ade80" : isLoss ? "#f87171" : "rgba(255,255,255,0.45)", fontWeight: isWin || isLoss ? 700 : 400, fontSize: "10px" }}>
+                        <span style={{ color: isWin ? "#4ade80" : isLoss ? "#f87171" : "rgba(19,35,58,0.63)", fontWeight: isWin || isLoss ? 700 : 400, fontSize: "10px" }}>
                           {rawVal || "—"}
                         </span>
                       );
@@ -375,7 +375,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                       <td key={col.key} className="px-2 py-2 text-center font-mono"
                         style={{
                           background: isFocus ? (cellHit ? "rgba(74,222,128,0.1)" : cellMiss ? "rgba(248,113,113,0.08)" : "rgba(245,158,11,0.04)") : "transparent",
-                          color: isFocus ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b") : col.key === "date_game" || col.key === "opp_id" || col.key === "opp" ? "rgba(255,255,255,0.4)" : col.key === "result" ? "transparent" : "rgba(255,255,255,0.7)",
+                          color: isFocus ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b") : col.key === "date_game" || col.key === "opp_id" || col.key === "opp" ? "rgba(19,35,58,0.56)" : col.key === "result" ? "transparent" : "rgba(19,35,58,0.7)",
                           fontWeight: isFocus ? "900" : "500",
                           fontSize: isFocus ? "12px" : "11px",
                           whiteSpace: col.key === "result" ? "nowrap" : "nowrap",
@@ -394,11 +394,11 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(74,222,128,0.3)" }} />
-            <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Hit ≥ {propLine}</span>
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Hit ≥ {propLine}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(248,113,113,0.3)" }} />
-            <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.35)" }}>Miss &lt; {propLine}</span>
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Miss &lt; {propLine}</span>
           </div>
         </div>
       )}
@@ -415,7 +415,7 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>{label} — Last {games.length} Games</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>{label} — Last {games.length} Games</span>
         {propLine != null && <span className="text-[10px] font-mono font-bold" style={{ color: "#f59e0b" }}>Line: {propLine}</span>}
       </div>
       <div className="flex items-end gap-1.5" style={{ height: 52 }}>
@@ -424,7 +424,7 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
           const hitLine = propLine != null && (isUnder ? v < propLine : v >= propLine);
           return (
             <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
-              <span className="text-[9px] font-mono font-bold leading-none" style={{ color: hitLine ? "#4ade80" : "rgba(255,255,255,0.5)" }}>{v || "—"}</span>
+              <span className="text-[9px] font-mono font-bold leading-none" style={{ color: hitLine ? "#4ade80" : "rgba(19,35,58,0.7)" }}>{v || "—"}</span>
               <div className="w-full rounded-t-sm" style={{ height: `${Math.max(pct, 4)}%`, background: hitLine ? "linear-gradient(0deg,#4ade80,#22d3ee)" : "linear-gradient(0deg,#f59e0b,#fbbf24)", opacity: 0.85, minHeight: 4 }} />
             </div>
           );
@@ -433,7 +433,7 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
       <div className="flex items-center gap-1.5">
         {games.map((g, i) => (
           <div key={i} className="flex-1 text-center">
-            <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.25)" }}>{g.opp_id || g.opp || `G${i + 1}`}</span>
+            <span className="text-[8px]" style={{ color: "rgba(19,35,58,0.35)" }}>{g.opp_id || g.opp || `G${i + 1}`}</span>
           </div>
         ))}
       </div>
@@ -449,15 +449,15 @@ function StatVsLine({ statLabel, statValue, propLine, isL5, pickSide }: { statLa
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[10px]">
-        <span style={{ color: "rgba(255,255,255,0.5)" }}>{statLabel} {isL5 ? "L5 avg" : "season avg"}</span>
+        <span style={{ color: "rgba(19,35,58,0.7)" }}>{statLabel} {isL5 ? "L5 avg" : "season avg"}</span>
         <span className="font-mono font-bold" style={{ color: hitLine ? "#4ade80" : "#f59e0b" }}>{statValue} vs {propLine} line</span>
       </div>
-      <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+      <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
         <div className="h-full rounded-full transition-all duration-700"
           style={{ width: `${Math.min(pct, 100)}%`, background: hitLine ? "linear-gradient(90deg,#4ade80,#22c55e)" : "linear-gradient(90deg,#f59e0b,#fbbf24)" }} />
-        <div className="absolute top-0 bottom-0 w-0.5" style={{ left: "66.7%", background: "rgba(255,255,255,0.5)" }} />
+        <div className="absolute top-0 bottom-0 w-0.5" style={{ left: "66.7%", background: "rgba(19,35,58,0.7)" }} />
       </div>
-      <p className="text-[9px] text-right" style={{ color: hitLine ? "#4ade80" : "rgba(255,255,255,0.3)" }}>
+      <p className="text-[9px] text-right" style={{ color: hitLine ? "#4ade80" : "rgba(19,35,58,0.42)" }}>
         {isUnder
           ? (hitLine ? `✓ Avg is ${(propLine - statValue).toFixed(1)} below line` : `${(statValue - propLine).toFixed(1)} above line — over lean`)
           : (hitLine ? `✓ Avg ${(statValue - propLine).toFixed(1)} above line` : `${(propLine - statValue).toFixed(1)} below line — under lean`)}
@@ -662,10 +662,10 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
   if (!canFetch) return null;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "rgba(19,35,58,0.1)" }}>
         <BarChart2 size={13} style={{ color: "#f59e0b" }} />
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Player Stats</span>
+        <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Player Stats</span>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}>
           👤 {bet.playerName}
         </span>
@@ -679,7 +679,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
       </div>
       <div className="p-4 space-y-5">
         {isLoading && (
-          <div className="flex items-center justify-center gap-2 py-6 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <div className="flex items-center justify-center gap-2 py-6 text-xs" style={{ color: "rgba(19,35,58,0.56)" }}>
             <Loader2 size={14} className="animate-spin" />
             Loading stats for {bet.playerName}...
           </div>
@@ -689,7 +689,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
             {/* Season averages grid */}
             {data.season && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color: "rgba(19,35,58,0.49)" }}>
                   {data.seasonLabel ?? "2024-25 Season Averages"}
                 </p>
                 <div className="grid grid-cols-4 gap-2">
@@ -704,16 +704,16 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                       : (statKey.key === k || (statKey.key === "trb" && k === "reb"));
                     return (
                       <div key={k} className="text-center py-2 px-1 rounded-lg"
-                        style={{ background: isRelevant ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${isRelevant ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}` }}>
+                        style={{ background: isRelevant ? "rgba(245,158,11,0.1)" : "rgba(19,35,58,0.06)", border: `1px solid ${isRelevant ? "rgba(245,158,11,0.3)" : "rgba(19,35,58,0.1)"}` }}>
                         <p className="text-base font-black font-mono leading-none" style={{ color: isRelevant ? "#f59e0b" : "hsl(45 100% 90%)" }}>{val}</p>
-                        <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(255,255,255,0.35)" }}>{l}</p>
+                        <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(19,35,58,0.49)" }}>{l}</p>
                       </div>
                     );
                   })}
                   {sport === "NFL" && Object.entries(data.season ?? {}).slice(0, 8).map(([k, v]) => (
-                    <div key={k} className="text-center py-2 px-1 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <div key={k} className="text-center py-2 px-1 rounded-lg" style={{ background: "rgba(19,35,58,0.06)", border: "1px solid rgba(19,35,58,0.1)" }}>
                       <p className="text-base font-black font-mono leading-none" style={{ color: "hsl(45 100% 90%)" }}>{String(v || "—")}</p>
-                      <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(255,255,255,0.35)" }}>{k.replace(/_/g, " ")}</p>
+                      <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(19,35,58,0.49)" }}>{k.replace(/_/g, " ")}</p>
                     </div>
                   ))}
                 </div>
@@ -759,13 +759,13 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
               return (
                 <div className="pt-1 space-y-3">
                   {/* Sample window summary */}
-                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <div className="px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.11)" }}>
+                    <div className="px-3 py-2" style={{ background: "rgba(19,35,58,0.06)", borderBottom: "1px solid rgba(19,35,58,0.1)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>
                         Sample analysis — {statKey.label} vs {bet.line} line
                       </p>
                     </div>
-                    <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                    <div className="divide-y" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
                       {windows.map(({ label, stats, color, note }) => {
                         if (!stats) return null;
                         const overLine = stats.avg >= bet.line!;
@@ -775,29 +775,29 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                             {/* Window label */}
                             <div className="w-28 shrink-0">
                               <p className="text-[10px] font-bold" style={{ color }}>{label}</p>
-                              <p className="text-[9px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{note}</p>
+                              <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.42)" }}>{note}</p>
                             </div>
                             {/* Avg vs line bar */}
                             <div className="flex-1 space-y-1">
                               <div className="flex items-center justify-between text-[10px]">
-                                <span style={{ color: "rgba(255,255,255,0.45)" }}>avg {stats.avg}</span>
+                                <span style={{ color: "rgba(19,35,58,0.63)" }}>avg {stats.avg}</span>
                                 <span className="font-mono font-bold" style={{ color: overLine === !isUnder ? "#4ade80" : "#f87171" }}>
                                   {overLine ? `+${(stats.avg - bet.line!).toFixed(1)}` : `${(stats.avg - bet.line!).toFixed(1)}`} vs line
                                 </span>
                               </div>
-                              <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                              <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
                                 <div className="h-full rounded-full" style={{
                                   width: `${Math.min((stats.avg / (bet.line! * 1.6)) * 100, 100)}%`,
                                   background: overLine === !isUnder ? "#4ade80" : "#f87171",
                                 }} />
                                 {/* Line marker */}
-                                <div className="absolute top-0 bottom-0 w-px" style={{ left: `${Math.min((bet.line! / (bet.line! * 1.6)) * 100, 98)}%`, background: "rgba(255,255,255,0.5)" }} />
+                                <div className="absolute top-0 bottom-0 w-px" style={{ left: `${Math.min((bet.line! / (bet.line! * 1.6)) * 100, 98)}%`, background: "rgba(19,35,58,0.7)" }} />
                               </div>
                             </div>
                             {/* Hit rate */}
                             <div className="w-16 text-right shrink-0">
                               <p className="text-xs font-black font-mono" style={{ color: hitColor }}>{stats.hitPct}%</p>
-                              <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>{stats.hits}/{stats.total} hit</p>
+                              <p className="text-[9px]" style={{ color: "rgba(19,35,58,0.42)" }}>{stats.hits}/{stats.total} hit</p>
                             </div>
                           </div>
                         );
@@ -839,8 +839,8 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
         )}
         {!isLoading && (isError || !data) && (
           <div className="flex flex-col items-center gap-2 py-6">
-            <p className="text-xs text-center" style={{ color: "rgba(255,255,255,0.4)" }}>Stats unavailable for {bet.playerName} right now.</p>
-            <p className="text-[10px] text-center" style={{ color: "rgba(255,255,255,0.25)" }}>Try closing and reopening the drawer</p>
+            <p className="text-xs text-center" style={{ color: "rgba(19,35,58,0.56)" }}>Stats unavailable for {bet.playerName} right now.</p>
+            <p className="text-[10px] text-center" style={{ color: "rgba(19,35,58,0.35)" }}>Try closing and reopening the drawer</p>
           </div>
         )}
       </div>
@@ -863,14 +863,14 @@ function SimilarBets({ bet, onSelectBet }: { bet: Bet; onSelectBet: (b: Bet) => 
   if (!similar.length) return null;
   const accent = SPORT_ACCENT[bet.sport?.toUpperCase()] ?? "#f59e0b";
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "rgba(19,35,58,0.1)" }}>
         <TrendingUp size={13} style={{ color: accent }} />
-        <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Similar Bets</span>
+        <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Similar Bets</span>
         <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
           style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}30` }}>{similar.length}</span>
       </div>
-      <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+      <div className="divide-y" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
         {similar.map((b) => {
           const conf = b.confidenceScore ?? 0;
           const confColor = conf >= 85 ? "#4ade80" : conf >= 70 ? "#fbbf24" : "#f87171";
@@ -884,9 +884,9 @@ function SimilarBets({ bet, onSelectBet }: { bet: Bet; onSelectBet: (b: Bet) => 
                 <p className="text-xs font-semibold leading-tight line-clamp-1" style={{ color: "hsl(45 100% 90%)" }}>
                   {b.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
                 </p>
-                {b.playerName && <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>👤 {b.playerName}</p>}
+                {b.playerName && <p className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>👤 {b.playerName}</p>}
               </div>
-              <ChevronRight size={13} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+              <ChevronRight size={13} style={{ color: "rgba(19,35,58,0.35)", flexShrink: 0 }} />
             </button>
           );
         })}
@@ -906,8 +906,8 @@ function TrackResult({ bet }: { bet: Bet }) {
     },
   });
   return (
-    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <p className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.5)" }}>Track Result</p>
+    <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
+      <p className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Track Result</p>
       <div className="flex gap-2">
         <button onClick={() => mutation.mutate("won")} disabled={mutation.isPending}
           className="flex-1 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-90"
@@ -922,7 +922,7 @@ function TrackResult({ bet }: { bet: Bet }) {
         {bet.status !== "open" && (
           <button onClick={() => mutation.mutate("open")} disabled={mutation.isPending}
             className="flex-1 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-90"
-            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.12)" }}>
+            style={{ background: "rgba(19,35,58,0.08)", color: "rgba(19,35,58,0.7)", border: "1px solid rgba(19,35,58,0.17)" }}>
             Reset
           </button>
         )}
@@ -970,13 +970,13 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
         {/* Header — fixed, never scrolls */}
         <div className="flex-shrink-0">
           {/* Drag handle */}
-          <div className="mx-auto mt-3 mb-2 h-1 w-12 rounded-full" style={{ background: "rgba(255,255,255,0.18)" }} />
+          <div className="mx-auto mt-3 mb-2 h-1 w-12 rounded-full" style={{ background: "rgba(19,35,58,0.25)" }} />
 
-          <div className="flex items-start gap-3 px-4 pt-1 pb-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          <div className="flex items-start gap-3 px-4 pt-1 pb-3 border-b" style={{ borderColor: "rgba(19,35,58,0.11)" }}>
             {/* Confidence ring */}
             <div className="relative flex-shrink-0" style={{ width: 52, height: 52 }}>
               <svg width={52} height={52} viewBox="0 0 52 52">
-                <circle cx={26} cy={26} r={21} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+                <circle cx={26} cy={26} r={21} fill="none" stroke="rgba(19,35,58,0.08)" strokeWidth="4" />
                 <circle cx={26} cy={26} r={21} fill="none" stroke={scoreColor} strokeWidth="4"
                   strokeDasharray={2 * Math.PI * 21} strokeDashoffset={2 * Math.PI * 21 * (1 - score / 100)}
                   strokeLinecap="round" transform="rotate(-90 26 26)"
@@ -997,17 +997,17 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
               <p className="text-sm font-bold leading-tight" style={{ color: "hsl(45 100% 92%)" }}>
                 {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
               </p>
-              {bet.playerName && <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>👤 {bet.playerName}</p>}
-              {bet.homeTeam && <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>{bet.awayTeam} @ {bet.homeTeam}</p>}
-              {bet.gameTime && <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}</p>}
+              {bet.playerName && <p className="text-[11px] mt-0.5" style={{ color: "rgba(19,35,58,0.7)" }}>👤 {bet.playerName}</p>}
+              {bet.homeTeam && <p className="text-[11px]" style={{ color: "rgba(19,35,58,0.56)" }}>{bet.awayTeam} @ {bet.homeTeam}</p>}
+              {bet.gameTime && <p className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.49)" }}>{formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}</p>}
             </div>
 
             <DrawerClose asChild>
               <button
                 className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
-                style={{ background: "rgba(255,255,255,0.08)", WebkitTapHighlightColor: "transparent" }}
+                style={{ background: "rgba(19,35,58,0.11)", WebkitTapHighlightColor: "transparent" }}
               >
-                <X size={15} style={{ color: "rgba(255,255,255,0.7)" }} />
+                <X size={15} style={{ color: "rgba(19,35,58,0.7)" }} />
               </button>
             </DrawerClose>
           </div>
@@ -1042,12 +1042,12 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
 
             {/* Research summary */}
             {bet.researchSummary && (
-              <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="rounded-xl p-4" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
                 <div className="flex items-center gap-2 mb-2">
                   <BookOpen size={13} style={{ color: "#a78bfa" }} />
-                  <span className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.6)" }}>Analysis</span>
+                  <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Analysis</span>
                 </div>
-                <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>{bet.researchSummary}</p>
+                <p className="text-xs leading-relaxed" style={{ color: "rgba(19,35,58,0.7)" }}>{bet.researchSummary}</p>
               </div>
             )}
 

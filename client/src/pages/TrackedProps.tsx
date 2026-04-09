@@ -284,7 +284,7 @@ function PlayerAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       <div className="relative">
-        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(255,255,255,0.3)" }} />
+        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(19,35,58,0.42)" }} />
         <input
           value={value}
           onChange={(e) => { onChange(e.target.value); setOpen(true); }}
@@ -292,7 +292,7 @@ function PlayerAutocomplete({
           placeholder="e.g. LeBron James"
           autoComplete="off"
           className="w-full pl-8 pr-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-          style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }}
+          style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }}
         />
       </div>
       {open && suggestions.length > 0 && (
@@ -306,9 +306,9 @@ function PlayerAutocomplete({
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(p); }}
               className="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors hover:bg-yellow-500/10"
-              style={{ borderBottom: i < suggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+              style={{ borderBottom: i < suggestions.length - 1 ? "1px solid rgba(19,35,58,0.08)" : "none" }}
             >
-              <span className="font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>{p.name}</span>
+              <span className="font-medium" style={{ color: "rgba(19,35,58,0.7)" }}>{p.name}</span>
               {p.team && (
                 <span className="text-[11px] px-2 py-0.5 rounded-full font-mono" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
                   {p.team}
@@ -318,9 +318,9 @@ function PlayerAutocomplete({
           ))}
           {/* Live indicator if some suggestions came from live bets */}
           {liveForSport.some((lp) => suggestions.some((s) => s.name === lp.name)) && (
-            <div className="px-3 py-1.5 flex items-center gap-1.5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+            <div className="px-3 py-1.5 flex items-center gap-1.5" style={{ borderTop: "1px solid rgba(19,35,58,0.08)", background: "rgba(0,0,0,0.2)" }}>
               <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>Includes players from live props</span>
+              <span className="text-[10px]" style={{ color: "rgba(19,35,58,0.42)" }}>Includes players from live props</span>
             </div>
           )}
         </div>
@@ -375,7 +375,7 @@ function PropModal({
               <input value={form.teamName} onChange={e => set("teamName", e.target.value)}
                 placeholder="e.g. Lakers"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+                style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
             </div>
           </div>
 
@@ -385,7 +385,7 @@ function PropModal({
               <label className="text-xs font-semibold text-foreground/75 mb-1 block">Sport *</label>
               <select value={form.sport} onChange={e => { set("sport", e.target.value); set("statCategory", SPORT_STATS[e.target.value]?.[0]?.label ?? ""); }}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
-                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
+                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(19,35,58,0.17)" }}>
                 {["NBA","NFL","MLB","NHL"].map(s => <option key={s} value={s}>{SPORT_EMOJI[s]} {s}</option>)}
               </select>
             </div>
@@ -393,7 +393,7 @@ function PropModal({
               <label className="text-xs font-semibold text-foreground/75 mb-1 block">Prop Type *</label>
               <select value={form.propType} onChange={e => set("propType", e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
-                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
+                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(19,35,58,0.17)" }}>
                 <option value="season_long">📅 Season Long</option>
                 <option value="game">🎮 Single Game</option>
               </select>
@@ -405,7 +405,7 @@ function PropModal({
             <label className="text-xs font-semibold text-foreground/75 mb-1 block">Stat Category *</label>
             <select value={form.statCategory} onChange={e => set("statCategory", e.target.value)}
               className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
-              style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
+              style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(19,35,58,0.17)" }}>
               {stats.map(s => <option key={s.label} value={s.label}>{s.emoji} {s.label}</option>)}
             </select>
           </div>
@@ -417,7 +417,7 @@ function PropModal({
               <input value={form.targetLine} onChange={e => set("targetLine", e.target.value)}
                 type="number" step="0.5" placeholder="e.g. 1500"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+                style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
             </div>
             <div>
               <label className="text-xs font-semibold text-foreground/75 mb-1 block">Direction *</label>
@@ -427,7 +427,7 @@ function PropModal({
                     className="flex-1 py-2 rounded-lg text-sm font-bold border transition-all"
                     style={form.direction === d
                       ? { background: d === "over" ? "rgba(245,158,11,0.25)" : "rgba(167,139,250,0.25)", color: d === "over" ? "#fbbf24" : "#a78bfa", borderColor: d === "over" ? "rgba(245,158,11,0.5)" : "rgba(167,139,250,0.5)" }
-                      : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }}>
+                      : { background: "rgba(19,35,58,0.06)", color: "rgba(19,35,58,0.56)", borderColor: "rgba(19,35,58,0.14)" }}>
                     {d === "over" ? "🔺 Over" : "🔻 Under"}
                   </button>
                 ))}
@@ -442,14 +442,14 @@ function PropModal({
               <input value={form.currentValue} onChange={e => set("currentValue", e.target.value)}
                 type="number" step="0.1" placeholder="e.g. 823"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+                style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
             </div>
             <div>
               <label className="text-xs font-semibold text-foreground/75 mb-1 block">Games Played</label>
               <input value={form.gamesPlayed} onChange={e => set("gamesPlayed", e.target.value)}
                 type="number" placeholder="e.g. 48"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+                style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
             </div>
           </div>
 
@@ -460,13 +460,13 @@ function PropModal({
               <input value={form.season} onChange={e => set("season", e.target.value)}
                 placeholder="2025-26"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none"
-                style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+                style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
             </div>
             <div>
               <label className="text-xs font-semibold text-foreground/75 mb-1 block">Status</label>
               <select value={form.status} onChange={e => set("status", e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
-                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
+                style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(19,35,58,0.17)" }}>
                 <option value="active">🔥 Active</option>
                 <option value="hit">✅ Hit</option>
                 <option value="missed">❌ Missed</option>
@@ -481,14 +481,14 @@ function PropModal({
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
               rows={2} placeholder="Any context about this bet..."
               className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none resize-none"
-              style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
+              style={{ background: "rgba(19,35,58,0.07)", borderColor: "rgba(19,35,58,0.17)" }} />
           </div>
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button onClick={onClose}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-colors"
-              style={{ borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>
+              style={{ borderColor: "rgba(19,35,58,0.14)", color: "rgba(19,35,58,0.7)" }}>
               Cancel
             </button>
             <button
@@ -546,14 +546,14 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
                 {prop.playerName}
               </span>
               {prop.teamName && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(19,35,58,0.08)", color: "rgba(19,35,58,0.7)" }}>
                   {prop.teamName}
                 </span>
               )}
               {hit && <span className="text-sm animate-bounce">🏆</span>}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.65)" }}>
+              <span className="text-sm font-semibold" style={{ color: "rgba(19,35,58,0.7)" }}>
                 {statEmoji} {prop.statCategory}
               </span>
               <span className="text-xs px-2 py-0.5 rounded-md font-bold border"
@@ -561,13 +561,13 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
                 {statusCfg.emoji} {statusCfg.label}
               </span>
               <span className="text-xs px-2 py-0.5 rounded-md font-semibold"
-                style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>
+                style={{ background: "rgba(19,35,58,0.07)", color: "rgba(19,35,58,0.56)" }}>
                 {prop.propType === "season_long" ? "📅 Season" : "🎮 Game"}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: "rgba(19,35,58,0.56)" }}>
               <Pencil size={13} />
             </button>
             <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors" style={{ color: "rgba(248,113,113,0.5)" }}>
@@ -579,7 +579,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
         {/* Big numbers row */}
         <div className="flex items-end justify-between gap-4 mb-4">
           <div>
-            <div className="text-xs font-semibold mb-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <div className="text-xs font-semibold mb-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>
               {prop.direction === "over" ? "🔺 OVER" : "🔻 UNDER"} TARGET
             </div>
             <div className="text-3xl font-black font-mono" style={{ color: "#f59e0b" }}>
@@ -589,7 +589,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
 
           {/* Current value — tap to edit */}
           <div className="text-right">
-            <div className="text-xs font-semibold mb-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>CURRENT</div>
+            <div className="text-xs font-semibold mb-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>CURRENT</div>
             {editing ? (
               <div className="flex items-center gap-1">
                 <input
@@ -599,7 +599,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
                   onKeyDown={e => { if (e.key === "Enter") { setEditing(false); const v = parseFloat(editVal); if (!isNaN(v)) onUpdate({ currentValue: v }); }}}
                   autoFocus
                   className="w-24 text-right text-xl font-black font-mono rounded px-2 py-0.5 border outline-none"
-                  style={{ background: "rgba(255,255,255,0.08)", borderColor: "#f59e0b", color: "#fbbf24" }} />
+                  style={{ background: "rgba(19,35,58,0.11)", borderColor: "#f59e0b", color: "#fbbf24" }} />
               </div>
             ) : (
               <button onClick={() => { setEditing(true); setEditVal(String(prop.currentValue ?? "")); }}
@@ -614,7 +614,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
           {/* Progress ring */}
           <div className="relative flex-shrink-0" style={{ width: 56, height: 56 }}>
             <svg width={56} height={56} viewBox="0 0 56 56">
-              <circle cx={28} cy={28} r={22} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={4} />
+              <circle cx={28} cy={28} r={22} fill="none" stroke="rgba(19,35,58,0.08)" strokeWidth={4} />
               <circle cx={28} cy={28} r={22} fill="none"
                 stroke={hit ? "#4ade80" : "#f59e0b"}
                 strokeWidth={4}
@@ -632,7 +632,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
 
         {/* Progress bar */}
         <div className="mb-3">
-          <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+          <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
             <div className="h-full rounded-full transition-all duration-700"
               style={{
                 width: `${progress}%`,
@@ -646,15 +646,15 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
               }} />
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>0</span>
-            <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>
+            <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.49)" }}>0</span>
+            <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.49)" }}>
               {!hit && prop.currentValue != null ? (
                 prop.direction === "over"
                   ? `${parseFloat(remaining) > 0 ? parseFloat(remaining).toLocaleString() : "0"} to go 🎯`
                   : `${parseFloat(remaining) < 0 ? Math.abs(parseFloat(remaining)).toLocaleString() + " over ⚠️" : parseFloat(remaining).toLocaleString() + " buffer 🛡️"}`
               ) : hit ? "🏆 Target hit!" : "No data yet"}
             </span>
-            <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.35)" }}>{prop.targetLine.toLocaleString()}</span>
+            <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.49)" }}>{prop.targetLine.toLocaleString()}</span>
           </div>
         </div>
 
@@ -674,14 +674,14 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
               </div>
             )}
             {prop.season && (
-              <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{prop.season}</span>
+              <span className="text-xs" style={{ color: "rgba(19,35,58,0.42)" }}>{prop.season}</span>
             )}
           </div>
         )}
 
         {/* Notes */}
         {prop.notes && (
-          <div className="px-3 py-2 rounded-lg text-xs mb-3" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)", borderLeft: "3px solid rgba(245,158,11,0.4)" }}>
+          <div className="px-3 py-2 rounded-lg text-xs mb-3" style={{ background: "rgba(19,35,58,0.06)", color: "rgba(19,35,58,0.7)", borderLeft: "3px solid rgba(245,158,11,0.4)" }}>
             📝 {prop.notes}
           </div>
         )}
@@ -689,30 +689,30 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
         {/* Expand toggle */}
         <button onClick={() => setExpanded(!expanded)}
           className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-white/5"
-          style={{ color: "rgba(255,255,255,0.3)" }}>
+          style={{ color: "rgba(19,35,58,0.42)" }}>
           {expanded ? <><ChevronUp size={12} /> Hide details</> : <><ChevronDown size={12} /> More details</>}
         </button>
 
         {/* Expanded detail */}
         {expanded && (
-          <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+          <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: "rgba(19,35,58,0.1)" }}>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-                <div style={{ color: "rgba(255,255,255,0.4)" }}>Direction</div>
+              <div className="p-2 rounded-lg" style={{ background: "rgba(19,35,58,0.06)" }}>
+                <div style={{ color: "rgba(19,35,58,0.56)" }}>Direction</div>
                 <div className="font-bold mt-0.5" style={{ color: prop.direction === "over" ? "#fbbf24" : "#a78bfa" }}>
                   {prop.direction === "over" ? "🔺 OVER" : "🔻 UNDER"} {prop.targetLine}
                 </div>
               </div>
-              <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-                <div style={{ color: "rgba(255,255,255,0.4)" }}>Type</div>
+              <div className="p-2 rounded-lg" style={{ background: "rgba(19,35,58,0.06)" }}>
+                <div style={{ color: "rgba(19,35,58,0.56)" }}>Type</div>
                 <div className="font-bold mt-0.5 text-white">{prop.propType === "season_long" ? "📅 Season Long" : "🎮 Single Game"}</div>
               </div>
-              <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-                <div style={{ color: "rgba(255,255,255,0.4)" }}>Progress</div>
+              <div className="p-2 rounded-lg" style={{ background: "rgba(19,35,58,0.06)" }}>
+                <div style={{ color: "rgba(19,35,58,0.56)" }}>Progress</div>
                 <div className="font-bold font-mono mt-0.5" style={{ color: "#f59e0b" }}>{Math.round(progress)}%</div>
               </div>
-              <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-                <div style={{ color: "rgba(255,255,255,0.4)" }}>Added</div>
+              <div className="p-2 rounded-lg" style={{ background: "rgba(19,35,58,0.06)" }}>
+                <div style={{ color: "rgba(19,35,58,0.56)" }}>Added</div>
                 <div className="font-semibold mt-0.5 text-foreground/80">{prop.createdAt ? formatDistanceToNow(new Date(prop.createdAt), { addSuffix: true }) : "—"}</div>
               </div>
             </div>
@@ -724,7 +724,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
                   Stats auto-fetched — {prop.notes.includes("ESPN") ? "ESPN" : "Baseball Reference"}
                 </span>
                 {prop.updatedAt && (
-                  <span className="ml-auto text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  <span className="ml-auto text-[10px]" style={{ color: "rgba(19,35,58,0.42)" }}>
                     {formatDistanceToNow(new Date(prop.updatedAt), { addSuffix: true })}
                   </span>
                 )}
@@ -882,7 +882,7 @@ export default function TrackedProps() {
           <h1 className="text-xl font-bold" style={{ color: "hsl(45 100% 92%)" }}>
             📊 Prop Tracker
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <p className="text-xs mt-0.5" style={{ color: "rgba(19,35,58,0.56)" }}>
             Track season-long and game props — stats auto-fetched from ESPN &amp; Baseball Reference
           </p>
           {lastRefresh && (
@@ -894,7 +894,7 @@ export default function TrackedProps() {
                 <button
                   onClick={() => setShowRefreshDetails(!showRefreshDetails)}
                   className="text-[10px] underline"
-                  style={{ color: "rgba(255,255,255,0.3)" }}>
+                  style={{ color: "rgba(19,35,58,0.42)" }}>
                   {showRefreshDetails ? "hide" : "details"}
                 </button>
               )}
@@ -932,26 +932,26 @@ export default function TrackedProps() {
           <div className="flex items-center gap-2 mb-3">
             <Database size={13} style={{ color: "#22d3ee" }} />
             <span className="text-xs font-bold" style={{ color: "#22d3ee" }}>Last Refresh Details</span>
-            <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>{new Date(refreshDetails.refreshedAt).toLocaleTimeString()}</span>
+            <span className="text-[10px]" style={{ color: "rgba(19,35,58,0.42)" }}>{new Date(refreshDetails.refreshedAt).toLocaleTimeString()}</span>
           </div>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {refreshDetails.results.map((r, i) => (
-              <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.06)" }}>
                 <div className="flex items-center gap-2">
                   <span>{SPORT_EMOJI[r.sport]}</span>
-                  <span className="font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>{r.playerName}</span>
-                  <span style={{ color: "rgba(255,255,255,0.4)" }}>{r.statCategory}</span>
+                  <span className="font-semibold" style={{ color: "rgba(19,35,58,0.7)" }}>{r.playerName}</span>
+                  <span style={{ color: "rgba(19,35,58,0.56)" }}>{r.statCategory}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {r.newValue !== null ? (
                     <>
                       {r.oldValue !== null && r.oldValue !== r.newValue && (
-                        <span className="font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>{r.oldValue} →</span>
+                        <span className="font-mono" style={{ color: "rgba(19,35,58,0.49)" }}>{r.oldValue} →</span>
                       )}
                       <span className="font-mono font-bold" style={{ color: "#4ade80" }}>{r.newValue}</span>
                     </>
                   ) : (
-                    <span style={{ color: "rgba(255,255,255,0.3)" }}>no data</span>
+                    <span style={{ color: "rgba(19,35,58,0.42)" }}>no data</span>
                   )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: r.source === "not found" ? "rgba(248,113,113,0.1)" : "rgba(34,211,238,0.1)", color: r.source === "not found" ? "#f87171" : "#22d3ee" }}>
                     {r.source === "not found" ? "not found" : r.source}
@@ -973,9 +973,9 @@ export default function TrackedProps() {
             { label: "Avg Progress", value: `${avgProgress}%`, emoji: "📈", color: "#22d3ee" },
           ].map(s => (
             <div key={s.label} className="rounded-xl border p-4"
-              style={{ background: "linear-gradient(145deg,hsl(265 30% 10%),hsl(265 28% 12%))", borderColor: "rgba(255,255,255,0.08)" }}>
+              style={{ background: "linear-gradient(145deg,hsl(265 30% 10%),hsl(265 28% 12%))", borderColor: "rgba(19,35,58,0.11)" }}>
               <div className="flex items-center justify-between mb-1">
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>{s.label}</p>
+                <p className="text-xs" style={{ color: "rgba(19,35,58,0.63)" }}>{s.label}</p>
                 <span className="text-base">{s.emoji}</span>
               </div>
               <p className="text-2xl font-bold font-mono" style={{ color: s.color }}>{s.value}</p>
@@ -987,13 +987,13 @@ export default function TrackedProps() {
       {/* Filter tabs */}
       {props.length > 0 && (
         <div className="flex items-center gap-2 p-1 rounded-xl border w-fit"
-          style={{ background: "rgba(0,0,0,0.2)", borderColor: "rgba(255,255,255,0.07)" }}>
+          style={{ background: "rgba(0,0,0,0.2)", borderColor: "rgba(19,35,58,0.1)" }}>
           {(["all","active","hit","missed"] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
               className="px-4 py-1.5 rounded-lg text-xs font-bold transition-all"
               style={filter === f
                 ? { background: "linear-gradient(135deg,#b45309,#f59e0b)", color: "#1a0d00" }
-                : { color: "rgba(255,255,255,0.45)" }}>
+                : { color: "rgba(19,35,58,0.63)" }}>
               {f === "all" ? "All" : f === "active" ? "🔥 Active" : f === "hit" ? "✅ Hit" : "❌ Missed"}
             </button>
           ))}
@@ -1012,7 +1012,7 @@ export default function TrackedProps() {
           <p className="text-base font-bold mb-1" style={{ color: "hsl(45 100% 92%)" }}>
             {props.length === 0 ? "No props tracked yet" : `No ${filter} props`}
           </p>
-          <p className="text-sm mb-5" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <p className="text-sm mb-5" style={{ color: "rgba(19,35,58,0.56)" }}>
             {props.length === 0
               ? "Add season-long or game props to track progress in real-time"
               : "Try a different filter"}

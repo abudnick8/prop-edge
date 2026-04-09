@@ -185,7 +185,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
               {sports.map(s => (
                 <button key={s} onClick={()=>setFilterSport(s)}
                   className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
-                  style={{ background:filterSport===s?"var(--primary)":"rgba(255,255,255,0.04)", color:filterSport===s?"#000":"var(--muted-foreground)", border:filterSport===s?"1px solid transparent":"1px solid rgba(255,255,255,0.08)" }}>
+                  style={{ background:filterSport===s?"var(--primary)":"rgba(19,35,58,0.06)", color:filterSport===s?"#000":"var(--muted-foreground)", border:filterSport===s?"1px solid transparent":"1px solid rgba(19,35,58,0.11)" }}>
                   {s === "all" ? "All" : `${SPORT_EMOJI[s]} ${s}`}
                 </button>
               ))}
@@ -197,7 +197,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
                 return (
                   <button key={c} onClick={()=>setFilterCat(c)}
                     className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
-                    style={{ background:filterCat===c?(cc?.text??"var(--primary)"):"rgba(255,255,255,0.04)", color:filterCat===c?"#000":"var(--muted-foreground)", border:filterCat===c?"1px solid transparent":"1px solid rgba(255,255,255,0.08)" }}>
+                    style={{ background:filterCat===c?(cc?.text??"var(--primary)"):"rgba(19,35,58,0.06)", color:filterCat===c?"#000":"var(--muted-foreground)", border:filterCat===c?"1px solid transparent":"1px solid rgba(19,35,58,0.11)" }}>
                     {c === "all" ? "All Types" : (cc?.label ?? c)}
                   </button>
                 );
@@ -240,7 +240,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
                     onClick={() => toggleAlert(trigger.id)}
                     title={alertOn ? "Disable notification" : "Enable notification"}
                     className="flex-shrink-0 p-1.5 rounded-lg transition-all"
-                    style={{ background: alertOn ? `${cat.text}20` : "rgba(255,255,255,0.04)", color: alertOn ? cat.text : "var(--muted-foreground)", border: `1px solid ${alertOn ? cat.text+"40" : "rgba(255,255,255,0.08)"}` }}
+                    style={{ background: alertOn ? `${cat.text}20` : "rgba(19,35,58,0.06)", color: alertOn ? cat.text : "var(--muted-foreground)", border: `1px solid ${alertOn ? cat.text+"40" : "rgba(19,35,58,0.11)"}` }}
                   >
                     {alertOn ? <Bell size={12} /> : <BellOff size={12} />}
                   </button>
@@ -317,7 +317,7 @@ function moveBadge(move: number | null | undefined) {
   const abs = Math.abs(move);
   if (abs >= 3) return { label: `${move > 0 ? "+" : ""}${move}`, color: "#f87171", bg: "rgba(248,113,113,0.12)", icon: "🔥 Steam" };
   if (abs >= 1.5) return { label: `${move > 0 ? "+" : ""}${move}`, color: "#f59e0b", bg: "rgba(245,158,11,0.12)", icon: "⚡ Significant" };
-  return { label: `${move > 0 ? "+" : ""}${move}`, color: "rgba(255,255,255,0.5)", bg: "rgba(255,255,255,0.06)", icon: "Minor" };
+  return { label: `${move > 0 ? "+" : ""}${move}`, color: "rgba(19,35,58,0.7)", bg: "rgba(19,35,58,0.08)", icon: "Minor" };
 }
 
 function sharpSignal(moneyPct: number | null | undefined, publicPct: number | null | undefined): { label: string; color: string } | null {
@@ -379,7 +379,7 @@ function PublicBar({ label, publicPct, moneyPct }: { label: string; publicPct: n
           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
             <div className="h-full rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 65 ? "rgba(74,222,128,0.7)" : "rgba(245,158,11,0.5)" }} />
           </div>
-          <span className="text-[10px] font-mono w-7 text-right" style={{ color: moneyPct >= 65 ? "#4ade80" : moneyPct >= 55 ? "#f59e0b" : "rgba(255,255,255,0.4)" }}>{moneyPct}%</span>
+          <span className="text-[10px] font-mono w-7 text-right" style={{ color: moneyPct >= 65 ? "#4ade80" : moneyPct >= 55 ? "#f59e0b" : "rgba(19,35,58,0.56)" }}>{moneyPct}%</span>
         </div>
       )}
     </div>
@@ -785,10 +785,10 @@ function RecCard({ rec }: { rec: BetRec }) {
       </div>
 
       {/* WHY section */}
-      <div className="px-4 py-3 space-y-2" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <div className="px-4 py-3 space-y-2" style={{ background: "rgba(19,35,58,0.02)" }}>
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Why this play</p>
         <p className="text-xs font-semibold text-foreground/90 leading-relaxed">{rec.why}</p>
-        <div className="rounded-lg p-3 text-[11px] text-muted-foreground leading-relaxed" style={{ background: "rgba(255,255,255,0.025)" }}>
+        <div className="rounded-lg p-3 text-[11px] text-muted-foreground leading-relaxed" style={{ background: "rgba(19,35,58,0.03)" }}>
           {rec.detail}
         </div>
       </div>
@@ -1104,8 +1104,8 @@ export default function LineMovement() {
             title={triggerAlerts.size > 0 ? `${triggerAlerts.size} trigger alert${triggerAlerts.size !== 1 ? "s" : ""} active` : "Sharp trigger alerts"}
             className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
             style={{
-              background: triggerAlerts.size > 0 ? "rgba(250,204,21,0.12)" : "rgba(255,255,255,0.04)",
-              border: triggerAlerts.size > 0 ? "1px solid rgba(250,204,21,0.45)" : "1px solid rgba(255,255,255,0.12)",
+              background: triggerAlerts.size > 0 ? "rgba(250,204,21,0.12)" : "rgba(19,35,58,0.06)",
+              border: triggerAlerts.size > 0 ? "1px solid rgba(250,204,21,0.45)" : "1px solid rgba(19,35,58,0.17)",
               color: triggerAlerts.size > 0 ? "#facc15" : "var(--muted-foreground)",
               boxShadow: triggerAlerts.size > 0 ? "0 0 10px rgba(250,204,21,0.3)" : "none",
             }}
@@ -1145,11 +1145,11 @@ export default function LineMovement() {
           </div>
           <div className="bg-card border border-red-500/20 rounded-xl px-4 py-3">
             <p className="text-xs text-muted-foreground">Steam Moves <span className="text-[10px]">(≥3pts)</span></p>
-            <p className="text-2xl font-bold mt-0.5" style={{ color: steamCount > 0 ? "#f87171" : "rgba(255,255,255,0.3)" }}>{steamCount}</p>
+            <p className="text-2xl font-bold mt-0.5" style={{ color: steamCount > 0 ? "#f87171" : "rgba(19,35,58,0.42)" }}>{steamCount}</p>
           </div>
           <div className="bg-card border border-amber-500/20 rounded-xl px-4 py-3">
             <p className="text-xs text-muted-foreground">Lines Moved</p>
-            <p className="text-2xl font-bold mt-0.5" style={{ color: movedCount > 0 ? "#f59e0b" : "rgba(255,255,255,0.3)" }}>{movedCount}</p>
+            <p className="text-2xl font-bold mt-0.5" style={{ color: movedCount > 0 ? "#f59e0b" : "rgba(19,35,58,0.42)" }}>{movedCount}</p>
           </div>
           <div
             className="bg-card border border-orange-500/30 rounded-xl px-4 py-3 cursor-pointer hover:bg-orange-500/5 transition-colors"
@@ -1158,7 +1158,7 @@ export default function LineMovement() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <AlertCircle size={10} className="text-orange-400" /> Book Errors
             </p>
-            <p className="text-2xl font-bold mt-0.5" style={{ color: (bookErrors as BookError[]).length > 0 ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
+            <p className="text-2xl font-bold mt-0.5" style={{ color: (bookErrors as BookError[]).length > 0 ? "#fb923c" : "rgba(19,35,58,0.42)" }}>
               {(bookErrors as BookError[]).length}
             </p>
           </div>

@@ -320,7 +320,7 @@ function PositionDetailDrawer({
 
         {/* ── Position Stats Bar ── */}
         <div className="grid grid-cols-4 gap-px border-b border-border/30"
-          style={{ background: "rgba(255,255,255,0.03)" }}>
+          style={{ background: "rgba(19,35,58,0.04)" }}>
           {[
             { label: "Value",    value: fmtMoney(pos.currentValue), color: "#facc15" },
             { label: "Avg Buy",  value: fmtCents(pos.avgPrice),     color: "inherit" },
@@ -396,7 +396,7 @@ function PositionDetailDrawer({
                         className="flex-1 min-w-[80px] rounded-xl border px-3 py-2.5 text-center"
                         style={isThisOutcome
                           ? { borderColor: isYes ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)", background: isYes ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)" }
-                          : { borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
+                          : { borderColor: "rgba(19,35,58,0.11)", background: "rgba(19,35,58,0.03)" }}
                       >
                         <p className="text-[9px] text-foreground/70 uppercase tracking-wide font-semibold mb-0.5">{o}</p>
                         <p className="text-sm font-black" style={{ color: isThisOutcome ? (isYes ? "#22c55e" : "#ef4444") : "#94a3b8" }}>
@@ -605,8 +605,8 @@ function TraderCard({ trader, rank }: { trader: Trader; rank: number }) {
   return (
     <div className="rounded-xl border overflow-hidden transition-all"
       style={{
-        background:  isTop3 ? "rgba(250,204,21,0.04)" : "rgba(255,255,255,0.03)",
-        borderColor: isTop3 ? "rgba(250,204,21,0.25)"  : "rgba(255,255,255,0.10)",
+        background:  isTop3 ? "rgba(250,204,21,0.04)" : "rgba(19,35,58,0.04)",
+        borderColor: isTop3 ? "rgba(250,204,21,0.25)"  : "rgba(19,35,58,0.14)",
       }}>
       <button
         onClick={() => trader.trades.length > 0 && setExpanded(v => !v)}
@@ -617,7 +617,7 @@ function TraderCard({ trader, rank }: { trader: Trader; rank: number }) {
                  : <span className="text-sm font-black text-muted-foreground">#{rank}</span>}
         </div>
         <div className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-black overflow-hidden border"
-          style={{ borderColor: isTop3 ? "rgba(250,204,21,0.4)" : "rgba(255,255,255,0.1)" }}>
+          style={{ borderColor: isTop3 ? "rgba(250,204,21,0.4)" : "rgba(19,35,58,0.14)" }}>
           {trader.profileImage
             ? <img src={trader.profileImage} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
             : <span style={{ color: isTop3 ? "#facc15" : "#94a3b8" }}>{trader.displayName.charAt(0).toUpperCase()}</span>}
@@ -714,7 +714,7 @@ function PositionCard({ pos, idx, onOpen }: { pos: Position; idx: number; onOpen
     <button
       onClick={() => onOpen(pos)}
       className="w-full text-left rounded-xl border overflow-hidden hover:bg-white/[0.04] active:scale-[0.99] transition-all cursor-pointer group"
-      style={{ borderColor: "rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}
+      style={{ borderColor: "rgba(19,35,58,0.14)", background: "rgba(19,35,58,0.04)" }}
     >
       <div className="flex items-start gap-3 px-4 py-3">
         {/* Icon */}

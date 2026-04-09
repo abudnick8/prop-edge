@@ -316,10 +316,10 @@ function PredictionMarketsPanel() {
                 sourceFilter === s ? "text-white" : "text-muted-foreground hover:text-foreground"
               }`}
               style={sourceFilter === s ? {
-                background: s === "kalshi" ? "rgba(245,158,11,0.25)" : s === "polymarket" ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.1)",
-                borderColor: s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#6366f1" : "rgba(255,255,255,0.2)",
+                background: s === "kalshi" ? "rgba(245,158,11,0.25)" : s === "polymarket" ? "rgba(99,102,241,0.25)" : "rgba(19,35,58,0.14)",
+                borderColor: s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#6366f1" : "rgba(19,35,58,0.28)",
                 color: s === "kalshi" ? "#f59e0b" : s === "polymarket" ? "#818cf8" : "#fff",
-              } : { borderColor: "rgba(255,255,255,0.1)", background: "transparent" }}
+              } : { borderColor: "rgba(19,35,58,0.14)", background: "transparent" }}
             >
               {s === "all" ? "All Sources" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>

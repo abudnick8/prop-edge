@@ -254,7 +254,7 @@ function ConfidenceRing({ score }: { score: number }) {
             </feMerge>
           </filter>
         </defs>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(19,35,58,0.08)" strokeWidth="3.5" />
         <circle
           cx={size/2} cy={size/2} r={r}
           fill="none"
@@ -274,7 +274,7 @@ function ConfidenceRing({ score }: { score: number }) {
         <span className="text-sm font-black font-mono leading-none" style={{ color }}>
           {score}
         </span>
-        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.35)" }}>
+        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "rgba(19,35,58,0.49)" }}>
           conf
         </span>
       </div>
@@ -392,21 +392,21 @@ function MultiSourceOddsStrip({ allSources, pickSide }: { allSources: SourceEntr
     <div
       className="flex flex-wrap gap-1.5 mb-3"
       style={{
-        background: "rgba(255,255,255,0.02)",
+        background: "rgba(19,35,58,0.03)",
         borderRadius: "8px",
         padding: "6px 8px",
-        border: "1px solid rgba(255,255,255,0.06)",
+        border: "1px solid rgba(19,35,58,0.08)",
       }}
     >
-      <span className="text-[9px] font-bold uppercase tracking-widest self-center mr-1" style={{ color: "rgba(255,255,255,0.35)" }}>
+      <span className="text-[9px] font-bold uppercase tracking-widest self-center mr-1" style={{ color: "rgba(19,35,58,0.49)" }}>
         Lines
       </span>
       {allSources.map((s, i) => {
         const cfg = SOURCE_CONFIG[s.source.toLowerCase()] ?? {
           label: s.source,
           color: "#e2e8f0",
-          bg: "rgba(255,255,255,0.08)",
-          border: "rgba(255,255,255,0.15)",
+          bg: "rgba(19,35,58,0.11)",
+          border: "rgba(19,35,58,0.21)",
         };
         // pick over or under odds based on pick side
         const relevantOdds = pickSide === "OVER" ? s.overOdds : pickSide === "UNDER" ? s.underOdds : (s.overOdds ?? s.underOdds);
@@ -426,7 +426,7 @@ function MultiSourceOddsStrip({ allSources, pickSide }: { allSources: SourceEntr
               {cfg.label}
             </span>
             {lineStr && (
-              <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.65)" }}>
+              <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.7)" }}>
                 {lineStr}
               </span>
             )}
@@ -439,7 +439,7 @@ function MultiSourceOddsStrip({ allSources, pickSide }: { allSources: SourceEntr
               </span>
             )}
             {!oddsStr && implied && (
-              <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.5)" }}>
+              <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.7)" }}>
                 {implied}
               </span>
             )}
@@ -597,7 +597,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 ) : (homeLogoUrl || awayLogoUrl) ? (
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {awayLogoUrl && <img src={awayLogoUrl} alt={bet.awayTeam ?? ""} width={24} height={24} className="object-contain" style={{ opacity: 0.85, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.5))" }} onError={(e) => (e.currentTarget.style.display = "none")} />}
-                    {homeLogoUrl && awayLogoUrl && <span className="text-[8px] font-bold" style={{ color: "rgba(255,255,255,0.3)" }}>@</span>}
+                    {homeLogoUrl && awayLogoUrl && <span className="text-[8px] font-bold" style={{ color: "rgba(19,35,58,0.42)" }}>@</span>}
                     {homeLogoUrl && <img src={homeLogoUrl} alt={bet.homeTeam ?? ""} width={24} height={24} className="object-contain" style={{ opacity: 0.85, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.5))" }} onError={(e) => (e.currentTarget.style.display = "none")} />}
                   </div>
                 ) : null}
@@ -768,20 +768,20 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       {(bet as any).mispricingDirection === "underpriced" ? "⚡ UNDERPRICED" : "⚠️ OVERPRICED"}
                       {" "}— {(bet as any).mispricingEdge !== null ? `${Math.abs(Math.round((bet as any).mispricingEdge * 100))}% edge` : ""}
                     </span>
-                    <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.49)" }}>
                       fair {Math.round(((bet as any).fairValue ?? 0) * 100)}¢
                     </span>
                   </div>
                   <div className="flex items-center gap-4">
                     <div>
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Entry Price</p>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>Entry Price</p>
                       <p className="font-mono font-black text-sm" style={{ color: "#facc15" }}>
                         {Math.round(((bet as any).entryPrice ?? 0) * 100)}¢
                       </p>
                     </div>
                     <div className="text-muted-foreground text-xs">→</div>
                     <div>
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Exit Target</p>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>Exit Target</p>
                       <p className="font-mono font-black text-sm" style={{
                         color: (bet as any).mispricingDirection === "underpriced" ? "#22c55e" : "#ef4444"
                       }}>
@@ -789,7 +789,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       </p>
                     </div>
                     <div className="ml-auto text-right">
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Potential</p>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>Potential</p>
                       <p className="font-mono font-bold text-xs" style={{ color: "#a3e635" }}>
                         {(() => {
                           const entry = (bet as any).entryPrice ?? 0;
@@ -811,11 +811,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>
                       ⚡ ARB WINDOW — {(bet as any).arbSpreadPct?.toFixed(1)}% spread
                     </span>
-                    <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.35)" }}>cross-market</span>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.49)" }}>cross-market</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <div>
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>
                         Buy on {((bet as any).arbBuySide as string)?.toUpperCase()}
                       </p>
                       <p className="font-mono font-black text-sm" style={{ color: "#facc15" }}>
@@ -824,7 +824,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     </div>
                     <div className="text-muted-foreground text-xs">→</div>
                     <div>
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>
                         Sell on {((bet as any).arbSellSide as string)?.toUpperCase()}
                       </p>
                       <p className="font-mono font-black text-sm" style={{ color: "#22d3ee" }}>
@@ -832,7 +832,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       </p>
                     </div>
                     <div className="ml-auto text-right">
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>Locked Profit</p>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>Locked Profit</p>
                       <p className="font-mono font-bold text-xs" style={{ color: "#a3e635" }}>
                         {(() => {
                           const buy  = (bet as any).arbBuyPrice  ?? 0;
@@ -852,7 +852,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Money Detected</span>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.35)" }}>Signal Strength</p>
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.49)" }}>Signal Strength</p>
                       <p className="font-mono font-bold text-xs" style={{ color: "#c4b5fd" }}>{Math.round((bet as any).sharpMoneyScore)}/100</p>
                     </div>
                     <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -869,13 +869,13 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 <div className="flex items-center gap-3 text-xs">
                   {bet.impliedProbability !== null && (
                     <div className="text-right">
-                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Implied</p>
+                      <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.56)" }}>Implied</p>
                       <p className="font-mono font-bold" style={{ color: "#22d3ee" }}>{Math.round(bet.impliedProbability * 100)}%</p>
                     </div>
                   )}
                   {bet.line !== null && (
                     <div className="text-right">
-                      <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>Line</p>
+                      <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.56)" }}>Line</p>
                       <p className="font-mono font-bold" style={{ color: "hsl(45 100% 90%)" }}>{bet.line}</p>
                     </div>
                   )}

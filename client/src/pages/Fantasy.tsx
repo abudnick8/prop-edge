@@ -1196,7 +1196,7 @@ function PlayerCard({p, view, onSelect, onCompare, inCompare}:{
       <div className="flex items-center gap-3 p-3">
         {/* Rank */}
         <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[11px] font-black"
-             style={{background:"rgba(255,255,255,0.05)",color:"var(--muted-foreground)"}}>
+             style={{background:"rgba(19,35,58,0.07)",color:"var(--muted-foreground)"}}>
           {view==="draft"?`R${p.roundEst}`:`#${p.modelRank}`}
         </div>
 
@@ -1210,7 +1210,7 @@ function PlayerCard({p, view, onSelect, onCompare, inCompare}:{
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className="text-[11px] text-muted-foreground">{p.team}</span>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{background:"rgba(255,255,255,0.05)",color:"var(--muted-foreground)"}}>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{background:"rgba(19,35,58,0.07)",color:"var(--muted-foreground)"}}>
               {p.position}
             </span>
             {view==="draft"&&p.steal&&<span className="text-[9px] font-bold text-green-400 bg-green-400/10 border border-green-400/30 px-1 rounded">STEAL</span>}
@@ -1266,9 +1266,9 @@ function SortControl({sort,setSort,count,label}:{sort:SortKey;setSort:(s:SortKey
           <button key={o.key} onClick={()=>setSort(o.key)}
             className="px-2 py-0.5 rounded text-[10px] font-semibold transition-all"
             style={{
-              background:sort===o.key?"#facc15":"rgba(255,255,255,0.04)",
+              background:sort===o.key?"#facc15":"rgba(19,35,58,0.06)",
               color:sort===o.key?"#1a1a1a":"var(--muted-foreground)",
-              border:sort===o.key?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",
+              border:sort===o.key?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)",
               boxShadow:sort===o.key?"0 0 8px #facc1580":"none",
             }}>
             {o.label}
@@ -1383,7 +1383,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {(["standard","ppr","half_ppr","superflex","dynasty","bestball"] as FormatTab[]).map(f=>(
                 <button key={f} onClick={()=>setFormat(f)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
-                  style={{background:format===f?"#facc15":"rgba(255,255,255,0.04)",color:format===f?"#1a1a1a":"var(--muted-foreground)",border:format===f?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:format===f?"#facc15":"rgba(19,35,58,0.06)",color:format===f?"#1a1a1a":"var(--muted-foreground)",border:format===f?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                   {({standard:"Standard",ppr:"PPR",half_ppr:"Half-PPR",superflex:"Superflex",dynasty:"Dynasty",bestball:"Best Ball"})[f]}
                 </button>
               ))}
@@ -1400,7 +1400,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                   {opts.map(n=>(
                     <button key={n} onClick={()=>set(n)}
                       className="px-2 py-0.5 rounded text-[11px] font-semibold transition-all"
-                      style={{background:val===n?"#facc15":"rgba(255,255,255,0.04)",color:val===n?"#1a1a1a":"var(--muted-foreground)",border:val===n?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                      style={{background:val===n?"#facc15":"rgba(19,35,58,0.06)",color:val===n?"#1a1a1a":"var(--muted-foreground)",border:val===n?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                       {n}
                     </button>
                   ))}
@@ -1413,7 +1413,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
                 {Array.from({length:numTeams},(_,i)=>i+1).map(n=>(
                   <button key={n} onClick={()=>setUserSlot(n)}
                     className="px-2 py-0.5 rounded text-[11px] font-semibold transition-all"
-                    style={{background:userSlot===n?"#facc15":"rgba(255,255,255,0.04)",color:userSlot===n?"#1a1a1a":"var(--muted-foreground)",border:userSlot===n?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                    style={{background:userSlot===n?"#facc15":"rgba(19,35,58,0.06)",color:userSlot===n?"#1a1a1a":"var(--muted-foreground)",border:userSlot===n?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                     {n}
                   </button>
                 ))}
@@ -1426,7 +1426,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {(["adp","best_available","positional_need","bpa_plus_news"] as CpuStrategy[]).map(s=>(
                 <button key={s} onClick={()=>setCpuStrategy(s)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
-                  style={{background:cpuStrategy===s?"#facc15":"rgba(255,255,255,0.04)",color:cpuStrategy===s?"#1a1a1a":"var(--muted-foreground)",border:cpuStrategy===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:cpuStrategy===s?"#facc15":"rgba(19,35,58,0.06)",color:cpuStrategy===s?"#1a1a1a":"var(--muted-foreground)",border:cpuStrategy===s?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                   {({adp:"ADP Order",best_available:"Best Available",positional_need:"Positional Need",bpa_plus_news:"BPA + News-Aware"})[s]}
                 </button>
               ))}
@@ -1467,7 +1467,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
         </div>
 
         {/* Platform Rankings — ESPN / Yahoo / Sleeper */}
-        <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(255,255,255,0.01)" }}>
+        <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(19,35,58,0.01)" }}>
           <PlatformRankings players={players} />
         </div>
 
@@ -1551,7 +1551,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
               {positions.map(pos=>(
                 <button key={pos} onClick={()=>setPosFilter(pos)}
                   className="px-1.5 py-0.5 rounded text-[10px] font-bold"
-                  style={{background:posFilter===pos?"#facc15":"rgba(255,255,255,0.04)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:posFilter===pos?"#facc15":"rgba(19,35,58,0.06)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                   {pos}
                 </button>
               ))}
@@ -1687,8 +1687,8 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
             <button key={pk} onClick={() => setPlatform(pk)}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
               style={{
-                background: platform === pk ? PLATFORM_META[pk].bg : "rgba(255,255,255,0.03)",
-                border: platform === pk ? `1px solid ${PLATFORM_META[pk].color}60` : "1px solid rgba(255,255,255,0.08)",
+                background: platform === pk ? PLATFORM_META[pk].bg : "rgba(19,35,58,0.04)",
+                border: platform === pk ? `1px solid ${PLATFORM_META[pk].color}60` : "1px solid rgba(19,35,58,0.11)",
                 color: platform === pk ? PLATFORM_META[pk].color : "var(--muted-foreground)",
                 boxShadow: platform === pk ? `0 0 10px ${PLATFORM_META[pk].color}30` : "none",
               }}>
@@ -1746,9 +1746,9 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
           <button key={pos} onClick={() => setPosFilter(pos)}
             className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
             style={{
-              background: posFilter === pos ? "#facc15" : "rgba(255,255,255,0.04)",
+              background: posFilter === pos ? "#facc15" : "rgba(19,35,58,0.06)",
               color: posFilter === pos ? "#1a1a1a" : "var(--muted-foreground)",
-              border: posFilter === pos ? "1px solid #facc15" : "1px solid rgba(255,255,255,0.08)",
+              border: posFilter === pos ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
               boxShadow: posFilter === pos ? "0 0 8px #facc1580" : "none",
             }}>
             {pos}
@@ -1760,7 +1760,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
       <div className="rounded-xl overflow-hidden border border-border/30">
         {/* Table header */}
         <div className="grid grid-cols-[28px_1fr_60px_60px_60px_90px] gap-2 px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase"
-          style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          style={{ background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)" }}>
           <span>#</span>
           <span>Player</span>
           <span className="text-right" style={{ color: meta.color }}>{meta.label}</span>
@@ -1774,7 +1774,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
           return (
             <div key={p.id}
               className="grid grid-cols-[28px_1fr_60px_60px_60px_90px] gap-2 px-3 py-2 items-center text-xs transition-colors hover:bg-white/[0.02]"
-              style={{ borderBottom: i < display.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+              style={{ borderBottom: i < display.length - 1 ? "1px solid rgba(19,35,58,0.06)" : "none" }}>
               <span className="text-[10px] font-black text-muted-foreground">{i + 1}</span>
               <div className="min-w-0">
                 <p className="font-semibold truncate">{p.name}</p>
@@ -1796,7 +1796,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
         {ranked.length > 20 && (
           <button onClick={() => setShowAll(s => !s)}
             className="w-full py-2 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            style={{ borderTop: "1px solid rgba(19,35,58,0.08)" }}>
             {showAll ? "▲ Show fewer" : `▼ Show all ${ranked.length} players`}
           </button>
         )}
@@ -1870,7 +1870,7 @@ function PreseasonLabView({players,onSelect,onCompare,compareSet}:{
       </div>
 
       {/* Platform Rankings — ESPN / Yahoo / Sleeper comparison */}
-      <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(255,255,255,0.01)" }}>
+      <div className="border border-border/30 rounded-xl p-3" style={{ background: "rgba(19,35,58,0.01)" }}>
         <PlatformRankings players={players} />
       </div>
 
@@ -1945,7 +1945,7 @@ function InSeasonView({players,onSelect,onCompare,compareSet}:{
         {tabs.map(t=>(
           <button key={t.key} onClick={()=>setMode(t.key)}
             className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-            style={{background:mode===t.key?"#facc15":"rgba(255,255,255,0.04)",color:mode===t.key?"#1a1a1a":"var(--muted-foreground)",border:mode===t.key?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+            style={{background:mode===t.key?"#facc15":"rgba(19,35,58,0.06)",color:mode===t.key?"#1a1a1a":"var(--muted-foreground)",border:mode===t.key?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
             {t.label}
           </button>
         ))}
@@ -2201,7 +2201,7 @@ export default function Fantasy() {
                 return (
                   <button key={s} onClick={()=>setSport(s)}
                     className="px-2.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1"
-                    style={{background:sport===s?"#facc15":"rgba(255,255,255,0.04)",color:sport===s?"#1a1a1a":"var(--muted-foreground)",border:sport===s?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)",boxShadow:sport===s?"0 0 8px #facc1580":"none"}}>
+                    style={{background:sport===s?"#facc15":"rgba(19,35,58,0.06)",color:sport===s?"#1a1a1a":"var(--muted-foreground)",border:sport===s?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)",boxShadow:sport===s?"0 0 8px #facc1580":"none"}}>
                     {s}
                     {badge&&s!=="ALL"&&(
                       <span className="text-[8px] font-black px-1 rounded" style={{background:`${badge.color}25`,color:badge.color}}>{badge.label}</span>
@@ -2219,7 +2219,7 @@ export default function Fantasy() {
               {positions.map(pos=>(
                 <button key={pos} onClick={()=>setPosFilter(pos as PositionF)}
                   className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
-                  style={{background:posFilter===pos?"#facc15":"rgba(255,255,255,0.04)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(255,255,255,0.08)"}}>
+                  style={{background:posFilter===pos?"#facc15":"rgba(19,35,58,0.06)",color:posFilter===pos?"#1a1a1a":"var(--muted-foreground)",border:posFilter===pos?"1px solid #facc15":"1px solid rgba(19,35,58,0.11)"}}>
                   {pos}
                 </button>
               ))}
@@ -2239,8 +2239,8 @@ export default function Fantasy() {
             <button key={sv.id} onClick={()=>setSubView(sv.id)}
               className="rounded-xl p-2.5 text-left transition-all"
               style={{
-                background:subView===sv.id?"rgba(250,204,21,0.10)":"rgba(255,255,255,0.02)",
-                border:subView===sv.id?"1px solid rgba(250,204,21,0.50)":"1px solid rgba(255,255,255,0.06)",
+                background:subView===sv.id?"rgba(250,204,21,0.10)":"rgba(19,35,58,0.03)",
+                border:subView===sv.id?"1px solid rgba(250,204,21,0.50)":"1px solid rgba(19,35,58,0.08)",
                 boxShadow:subView===sv.id?"0 0 14px rgba(250,204,21,0.22)":"none",
               }}>
               <div className="flex items-center gap-1.5 mb-0.5">

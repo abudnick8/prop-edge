@@ -93,7 +93,7 @@ export function BookErrorCard({ error }: { error: BookError }) {
       ? "#4ade80"
       : error.confidence >= 65
       ? "#f59e0b"
-      : "rgba(255,255,255,0.4)";
+      : "rgba(19,35,58,0.56)";
 
   const errIcon =
     error.errorType === "reverse_line_movement" ? (

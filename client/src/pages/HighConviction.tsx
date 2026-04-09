@@ -675,7 +675,7 @@ function ProximityMeter({ proximity }: { proximity: number }) {
   const color = proximity >= 85 ? "#f59e0b" : proximity >= 65 ? "#a78bfa" : "#60a5fa";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
         <div
           className="h-full rounded-full transition-all"
           style={{
@@ -757,7 +757,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
 
       {/* Collapsed: what's confirmed vs missing */}
       {!expanded && (
-        <div className="px-4 py-2 flex items-center gap-1.5 flex-wrap border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+        <div className="px-4 py-2 flex items-center gap-1.5 flex-wrap border-t" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
           {play.confirmedSignals.map((s, i) => (
             <span
               key={i}
@@ -771,7 +771,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
             <span
               key={i}
               className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
-              style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.30)", borderColor: "rgba(255,255,255,0.10)", textDecoration: "none" }}
+              style={{ background: "rgba(19,35,58,0.06)", color: "rgba(19,35,58,0.42)", borderColor: "rgba(19,35,58,0.14)", textDecoration: "none" }}
             >
               ○ {m.type === "model" ? "Model" : m.type === "line_movement" ? "Line Mvmt" : "Whale"}
             </span>
@@ -782,7 +782,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
 
       {/* Expanded */}
       {expanded && (
-        <div className="border-t px-4 py-4 space-y-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="border-t px-4 py-4 space-y-3" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
 
           {/* Confirmed signals */}
           {play.confirmedSignals.length > 0 && (
@@ -806,14 +806,14 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
                 <div
                   key={i}
                   className="rounded-lg border px-3 py-2.5"
-                  style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.10)" }}
+                  style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.14)" }}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm leading-none">{m.icon}</span>
                     <p className="text-xs font-bold text-muted-foreground">{m.label}</p>
                     <span
                       className="text-[9px] font-black px-1.5 py-0.5 rounded-full ml-auto"
-                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}
+                      style={{ background: "rgba(19,35,58,0.08)", color: "rgba(19,35,58,0.49)" }}
                     >
                       PENDING
                     </span>
@@ -1162,7 +1162,7 @@ function EmptyState() {
           This tab only surfaces plays where the Clubhouse IQ model, line movement, AND a prediction market whale signal all point the same direction. Check back closer to game time.
         </p>
       </div>
-      <div className="rounded-xl p-4 text-left max-w-sm border border-border/40 space-y-2" style={{ background: "rgba(255,255,255,0.02)" }}>
+      <div className="rounded-xl p-4 text-left max-w-sm border border-border/40 space-y-2" style={{ background: "rgba(19,35,58,0.03)" }}>
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">What triggers a play?</p>
         <div className="space-y-1.5">
           {[
@@ -1265,7 +1265,7 @@ export default function HighConviction() {
           ].map(k => (
             <div key={k.label} className="rounded-xl p-3 border border-white/8" style={{ background: k.bg }}>
               <p className="text-[10px] text-muted-foreground flex items-center gap-1">{k.icon} {k.label}</p>
-              <p className="text-2xl font-black mt-0.5" style={{ color: k.value > 0 ? k.color : "rgba(255,255,255,0.2)" }}>{k.value}</p>
+              <p className="text-2xl font-black mt-0.5" style={{ color: k.value > 0 ? k.color : "rgba(19,35,58,0.28)" }}>{k.value}</p>
             </div>
           ))}
         </div>
@@ -1279,9 +1279,9 @@ export default function HighConviction() {
             <button key={s} onClick={() => setSportFilter(s)}
               className="px-2.5 py-1 rounded-full text-xs font-bold transition-all"
               style={{
-                background: sportFilter === s ? "#facc15" : "rgba(255,255,255,0.04)",
+                background: sportFilter === s ? "#facc15" : "rgba(19,35,58,0.06)",
                 color: sportFilter === s ? "#1a1a1a" : "var(--muted-foreground)",
-                border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(255,255,255,0.08)",
+                border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
                 boxShadow: sportFilter === s ? "0 0 8px #facc1580" : "none",
               }}>
               {s}
@@ -1299,9 +1299,9 @@ export default function HighConviction() {
             <button key={f.val} onClick={() => setSignalFilter(f.val)}
               className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
               style={{
-                background: signalFilter === f.val ? "#facc15" : "rgba(255,255,255,0.04)",
+                background: signalFilter === f.val ? "#facc15" : "rgba(19,35,58,0.06)",
                 color: signalFilter === f.val ? "#1a1a1a" : "var(--muted-foreground)",
-                border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(255,255,255,0.08)",
+                border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
                 boxShadow: signalFilter === f.val ? "0 0 8px #facc1580" : "none",
               }}>
               {f.label}
@@ -1411,7 +1411,7 @@ export default function HighConviction() {
           })() : (
             <div
               className="rounded-xl border px-4 py-6 flex flex-col items-center text-center gap-2"
-              style={{ background: "rgba(255,255,255,0.01)", borderColor: "rgba(255,255,255,0.06)" }}
+              style={{ background: "rgba(19,35,58,0.01)", borderColor: "rgba(19,35,58,0.08)" }}
             >
               <Eye size={22} className="text-foreground/70" />
               <p className="text-sm font-semibold text-foreground/70">Nothing on the watchlist</p>
@@ -1424,7 +1424,7 @@ export default function HighConviction() {
       )}
 
       {/* How it works */}
-      <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(255,255,255,0.01)" }}>
+      <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(19,35,58,0.01)" }}>
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <AlertCircle size={10} /> How Confluence Works
         </p>

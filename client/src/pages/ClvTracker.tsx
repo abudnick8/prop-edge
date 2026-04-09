@@ -40,7 +40,7 @@ function sharpnessBadge(score: number | null | undefined) {
   if (score == null) return null;
   if (score >= 75) return { label: "Sharp", color: "#4ade80" };
   if (score >= 50) return { label: "Moderate", color: "#f59e0b" };
-  if (score >= 25) return { label: "Neutral", color: "rgba(255,255,255,0.4)" };
+  if (score >= 25) return { label: "Neutral", color: "rgba(19,35,58,0.56)" };
   return { label: "Square", color: "#f87171" };
 }
 
@@ -100,10 +100,10 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
             <div>
               <Label className="text-xs text-foreground/75 mb-1 block">Sport</Label>
               <Select value={form.sport} onValueChange={v => setForm(f => ({ ...f, sport: v }))}>
-                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
+                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(19,35,58,0.14)" }}>
                   {["NBA","NFL","MLB","NHL"].map(s => <SelectItem key={s} value={s} className="text-white">{s}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -111,10 +111,10 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
             <div>
               <Label className="text-xs text-foreground/75 mb-1 block">Bet Type</Label>
               <Select value={form.betType} onValueChange={v => setForm(f => ({ ...f, betType: v, marketKey: betTypeOptions[v]?.[0] ?? v }))}>
-                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
+                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(19,35,58,0.14)" }}>
                   {["player_prop","spread","total","moneyline"].map(t => <SelectItem key={t} value={t} className="text-white capitalize">{t.replace("_"," ")}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -125,7 +125,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
             <Label className="text-xs text-foreground/75 mb-1 block">Event (e.g. Lakers vs Celtics)</Label>
             <Input value={form.eventDescription} onChange={e => setForm(f => ({ ...f, eventDescription: e.target.value }))}
               placeholder="Lakers vs Celtics · Mar 20" className="h-8 text-xs"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+              style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
           </div>
 
           {form.betType === "player_prop" && (
@@ -133,17 +133,17 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
               <Label className="text-xs text-foreground/75 mb-1 block">Player Name</Label>
               <Input value={form.playerName} onChange={e => setForm(f => ({ ...f, playerName: e.target.value }))}
                 placeholder="LeBron James" className="h-8 text-xs"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+                style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
             </div>
           )}
 
           <div>
             <Label className="text-xs text-foreground/75 mb-1 block">Market / Stat</Label>
             <Select value={form.marketKey} onValueChange={v => setForm(f => ({ ...f, marketKey: v }))}>
-              <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
+              <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }}>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(19,35,58,0.14)" }}>
                 {(betTypeOptions[form.betType] ?? [form.marketKey]).map(m => (
                   <SelectItem key={m} value={m} className="text-white">{m.replace(/_/g," ")}</SelectItem>
                 ))}
@@ -155,7 +155,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
             <Label className="text-xs text-foreground/75 mb-1 block">Outcome Label (e.g. LeBron Over 27.5 pts)</Label>
             <Input value={form.outcomeLabel} onChange={e => setForm(f => ({ ...f, outcomeLabel: e.target.value }))}
               placeholder="LeBron James Over 27.5 pts" className="h-8 text-xs"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+              style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
           </div>
 
           <div className="grid grid-cols-3 gap-2">
@@ -163,21 +163,21 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
               <Label className="text-xs text-foreground/75 mb-1 block">Opening Line</Label>
               <Input value={form.openingLine} onChange={e => setForm(f => ({ ...f, openingLine: e.target.value }))}
                 placeholder="27.5" className="h-8 text-xs"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+                style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
             </div>
             <div>
               <Label className="text-xs text-foreground/75 mb-1 block">Opening Odds</Label>
               <Input value={form.openingOdds} onChange={e => setForm(f => ({ ...f, openingOdds: e.target.value }))}
                 placeholder="-110" className="h-8 text-xs"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+                style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
             </div>
             <div>
               <Label className="text-xs text-foreground/75 mb-1 block">Book</Label>
               <Select value={form.book} onValueChange={v => setForm(f => ({ ...f, book: v }))}>
-                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
+                <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(19,35,58,0.14)" }}>
                   {["draftkings","fanduel","betmgm","caesars","pointsbet","barstool","bet365","pinnacle"].map(b =>
                     <SelectItem key={b} value={b} className="text-white capitalize">{b}</SelectItem>)}
                 </SelectContent>
@@ -189,7 +189,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
             <Label className="text-xs text-foreground/75 mb-1 block">Game Time (optional)</Label>
             <Input type="datetime-local" value={form.gameTime} onChange={e => setForm(f => ({ ...f, gameTime: e.target.value }))}
               className="h-8 text-xs"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+              style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
           </div>
 
           <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
@@ -204,7 +204,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
               {["both","favor","against"].map(d => (
                 <button key={d} onClick={() => setForm(f => ({ ...f, alertDirection: d }))}
                   className="text-xs px-2 py-1 rounded capitalize transition-all"
-                  style={{ background: form.alertDirection === d ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.05)", color: form.alertDirection === d ? "#a78bfa" : "rgba(255,255,255,0.5)", border: `1px solid ${form.alertDirection === d ? "rgba(124,58,237,0.5)" : "rgba(255,255,255,0.1)"}` }}>
+                  style={{ background: form.alertDirection === d ? "rgba(124,58,237,0.4)" : "rgba(19,35,58,0.07)", color: form.alertDirection === d ? "#a78bfa" : "rgba(19,35,58,0.7)", border: `1px solid ${form.alertDirection === d ? "rgba(124,58,237,0.5)" : "rgba(19,35,58,0.14)"}` }}>
                   {d === "favor" ? "In my favor" : d === "against" ? "Against me" : "Any move"}
                 </button>
               ))}
@@ -265,7 +265,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
     ? line.currentOdds - line.openingOdds : null;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
       {/* Header */}
       <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpanded(e => !e)}>
         {/* Sport badge */}
@@ -284,7 +284,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
             )}
             {isClosed && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.35)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                style={{ background: "rgba(19,35,58,0.07)", color: "rgba(19,35,58,0.49)", border: "1px solid rgba(19,35,58,0.14)" }}>
                 CLOSED
               </span>
             )}
@@ -299,7 +299,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
               </div>
             </div>
             {/* Arrow */}
-            <div style={{ color: move > 0 ? "#4ade80" : move < 0 ? "#f87171" : "rgba(255,255,255,0.2)" }}>
+            <div style={{ color: move > 0 ? "#4ade80" : move < 0 ? "#f87171" : "rgba(19,35,58,0.28)" }}>
               {move > 0 ? <TrendingUp size={12} /> : move < 0 ? <TrendingDown size={12} /> : <Minus size={12} />}
             </div>
             {/* Current */}
@@ -326,21 +326,21 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
               ? <CheckCircle size={14} style={{ color: "#4ade80" }} />
               : <X size={14} style={{ color: "#f87171" }} />
           )}
-          {expanded ? <ChevronUp size={14} style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.3)" }} />}
+          {expanded ? <ChevronUp size={14} style={{ color: "rgba(19,35,58,0.42)" }} /> : <ChevronDown size={14} style={{ color: "rgba(19,35,58,0.42)" }} />}
         </div>
       </div>
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-4 pb-4 border-t space-y-3" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+        <div className="px-4 pb-4 border-t space-y-3" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
           {/* Sharpness bar */}
           {line.sharpnessScore != null && (
             <div className="mt-3">
-              <div className="flex justify-between text-[10px] mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <div className="flex justify-between text-[10px] mb-1" style={{ color: "rgba(19,35,58,0.56)" }}>
                 <span>Sharpness Score</span>
                 <span className="font-bold" style={{ color: sharpness?.color ?? "#fff" }}>{line.sharpnessScore.toFixed(0)}/100</span>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.11)" }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${line.sharpnessScore}%`, background: `linear-gradient(90deg, ${sharpness?.color ?? "#7c3aed"}, ${sharpness?.color ?? "#4f46e5"})` }} />
               </div>
             </div>
@@ -359,7 +359,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
           {/* Alert settings inline edit */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <Bell size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
+              <Bell size={11} style={{ color: "rgba(19,35,58,0.49)" }} />
               <span className="text-[10px] text-foreground/65">Alert at</span>
               <span className="text-[10px] font-bold text-foreground/85">{line.alertThreshold}%</span>
               <span className="text-[10px] text-foreground/55">move</span>
@@ -368,7 +368,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
               {["both","favor","against"].map(d => (
                 <button key={d} onClick={() => updateMutation.mutate({ alertDirection: d })}
                   className="text-[9px] px-1.5 py-0.5 rounded capitalize"
-                  style={{ background: line.alertDirection === d ? "rgba(124,58,237,0.3)" : "rgba(255,255,255,0.04)", color: line.alertDirection === d ? "#a78bfa" : "rgba(255,255,255,0.35)", border: `1px solid ${line.alertDirection === d ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.08)"}` }}>
+                  style={{ background: line.alertDirection === d ? "rgba(124,58,237,0.3)" : "rgba(19,35,58,0.06)", color: line.alertDirection === d ? "#a78bfa" : "rgba(19,35,58,0.49)", border: `1px solid ${line.alertDirection === d ? "rgba(124,58,237,0.4)" : "rgba(19,35,58,0.11)"}` }}>
                   {d}
                 </button>
               ))}
@@ -382,7 +382,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {snapshots.slice().reverse().map((s, i) => (
                   <div key={s.id} className="flex items-center justify-between text-[10px]"
-                    style={{ color: "rgba(255,255,255,0.5)" }}>
+                    style={{ color: "rgba(19,35,58,0.7)" }}>
                     <span>{new Date(s.recordedAt!).toLocaleDateString()} {new Date(s.recordedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     <span className="font-mono font-bold text-foreground/90">{s.line} <span className="text-foreground/65">{formatOdds(s.odds)}</span></span>
                   </div>
@@ -399,7 +399,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
             </Button>
             {!isClosed && (
               <Button size="sm" variant="ghost" onClick={() => updateMutation.mutate({ status: "closed" })}
-                className="text-xs gap-1 h-7" style={{ color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                className="text-xs gap-1 h-7" style={{ color: "rgba(19,35,58,0.7)", background: "rgba(19,35,58,0.06)", border: "1px solid rgba(19,35,58,0.14)" }}>
                 <Clock size={11} /> Mark Closed
               </Button>
             )}
@@ -446,12 +446,12 @@ function UpdateLineDialog({ line, onUpdated }: { line: ClvLine; onUpdated: () =>
             <div>
               <Label className="text-xs text-foreground/65 mb-1 block">Current Line</Label>
               <Input value={currentLine} onChange={e => setCurrentLine(e.target.value)}
-                className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+                className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
             </div>
             <div>
               <Label className="text-xs text-foreground/65 mb-1 block">Current Odds</Label>
               <Input value={currentOdds} onChange={e => setCurrentOdds(e.target.value)}
-                className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
+                className="h-8 text-xs" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "#fff" }} />
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -523,13 +523,13 @@ function SummaryStats({ lines }: { lines: ClvLine[] }) {
       {[
         { label: "Tracking", value: tracking, sub: "active lines", color: "#a78bfa" },
         { label: "CLV Beat Rate", value: clvRate != null ? `${clvRate}%` : "—", sub: `${clvBeatCount}/${closed.length} closed`, color: clvRate != null && clvRate >= 55 ? "#4ade80" : "#f87171" },
-        { label: "Avg CLV Delta", value: avgDelta != null ? `${avgDelta > 0 ? "+" : ""}${avgDelta.toFixed(2)}` : "—", sub: "avg line move favor", color: avgDelta != null && avgDelta > 0 ? "#4ade80" : avgDelta != null ? "#f87171" : "rgba(255,255,255,0.4)" },
-        { label: "Avg Sharpness", value: avgSharp != null ? `${avgSharp.toFixed(0)}/100` : "—", sub: sharpnessBadge(avgSharp)?.label ?? "", color: sharpnessBadge(avgSharp)?.color ?? "rgba(255,255,255,0.4)" },
+        { label: "Avg CLV Delta", value: avgDelta != null ? `${avgDelta > 0 ? "+" : ""}${avgDelta.toFixed(2)}` : "—", sub: "avg line move favor", color: avgDelta != null && avgDelta > 0 ? "#4ade80" : avgDelta != null ? "#f87171" : "rgba(19,35,58,0.56)" },
+        { label: "Avg Sharpness", value: avgSharp != null ? `${avgSharp.toFixed(0)}/100` : "—", sub: sharpnessBadge(avgSharp)?.label ?? "", color: sharpnessBadge(avgSharp)?.color ?? "rgba(19,35,58,0.56)" },
       ].map(({ label, value, sub, color }) => (
-        <div key={label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="text-[10px] uppercase tracking-wider font-bold mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</div>
+        <div key={label} className="rounded-xl p-3" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+          <div className="text-[10px] uppercase tracking-wider font-bold mb-1" style={{ color: "rgba(19,35,58,0.49)" }}>{label}</div>
           <div className="text-xl font-black" style={{ color }}>{value}</div>
-          <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{sub}</div>
+          <div className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.42)" }}>{sub}</div>
         </div>
       ))}
     </div>
@@ -602,7 +602,7 @@ export default function ClvTracker() {
           <h1 className="text-lg font-black tracking-tight" style={{ background: "linear-gradient(135deg,#a78bfa,#60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             CLV Line Tracker
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+          <p className="text-xs mt-0.5" style={{ color: "rgba(19,35,58,0.49)" }}>
             Closing Line Value · Sharpness Scores · Movement Alerts
           </p>
         </div>
@@ -621,7 +621,7 @@ export default function ClvTracker() {
       <SummaryStats lines={lines as ClvLine[]} />
 
       <Tabs defaultValue="lines">
-        <TabsList className="mb-4 h-8" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <TabsList className="mb-4 h-8" style={{ background: "rgba(19,35,58,0.06)", border: "1px solid rgba(19,35,58,0.11)" }}>
           <TabsTrigger value="lines" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">Lines</TabsTrigger>
           <TabsTrigger value="alerts" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">
             Alerts {activeAlerts.length > 0 && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">{activeAlerts.length}</span>}
@@ -633,7 +633,7 @@ export default function ClvTracker() {
         <TabsContent value="lines" className="space-y-3">
           {/* Filters */}
           <div className="flex gap-2 flex-wrap items-center">
-            <Filter size={12} style={{ color: "rgba(255,255,255,0.3)" }} />
+            <Filter size={12} style={{ color: "rgba(19,35,58,0.42)" }} />
             {[
               { value: filterSport, set: setFilterSport, options: ["all","NBA","NFL","MLB","NHL"], label: "Sport" },
               { value: filterBook, set: setFilterBook, options: ["all",...books], label: "Book" },
@@ -641,10 +641,10 @@ export default function ClvTracker() {
               { value: filterStatus, set: setFilterStatus, options: ["all","tracking","closed"], label: "Status" },
             ].map(({ value, set, options, label }) => (
               <Select key={label} value={value} onValueChange={set}>
-                <SelectTrigger className="h-7 text-[10px] w-auto min-w-[80px]" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>
+                <SelectTrigger className="h-7 text-[10px] w-auto min-w-[80px]" style={{ background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.14)", color: "rgba(19,35,58,0.7)" }}>
                   <SelectValue placeholder={label} />
                 </SelectTrigger>
-                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <SelectContent style={{ background: "#1a1a2e", border: "1px solid rgba(19,35,58,0.14)" }}>
                   {options.map(o => <SelectItem key={o} value={o} className="text-white text-xs capitalize">{o === "all" ? `All ${label}s` : o.replace("_"," ")}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -653,7 +653,7 @@ export default function ClvTracker() {
               {(["move","sharpness","recent"] as const).map(s => (
                 <button key={s} onClick={() => setSortBy(s)}
                   className="text-[9px] px-2 py-1 rounded capitalize"
-                  style={{ background: sortBy === s ? "rgba(124,58,237,0.3)" : "rgba(255,255,255,0.04)", color: sortBy === s ? "#a78bfa" : "rgba(255,255,255,0.35)", border: `1px solid ${sortBy === s ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.08)"}` }}>
+                  style={{ background: sortBy === s ? "rgba(124,58,237,0.3)" : "rgba(19,35,58,0.06)", color: sortBy === s ? "#a78bfa" : "rgba(19,35,58,0.49)", border: `1px solid ${sortBy === s ? "rgba(124,58,237,0.4)" : "rgba(19,35,58,0.11)"}` }}>
                   {s === "move" ? "Most Moved" : s === "sharpness" ? "Sharpest" : "Newest"}
                 </button>
               ))}
@@ -662,9 +662,9 @@ export default function ClvTracker() {
 
           {filtered.length === 0 ? (
             <div className="text-center py-16 space-y-2">
-              <Activity size={32} style={{ color: "rgba(255,255,255,0.1)", margin: "0 auto" }} />
-              <p className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.2)" }}>No lines tracked yet</p>
-              <p className="text-xs" style={{ color: "rgba(255,255,255,0.12)" }}>Click "Track Line" to start monitoring opening vs closing line value</p>
+              <Activity size={32} style={{ color: "rgba(19,35,58,0.14)", margin: "0 auto" }} />
+              <p className="text-sm font-bold" style={{ color: "rgba(19,35,58,0.28)" }}>No lines tracked yet</p>
+              <p className="text-xs" style={{ color: "rgba(19,35,58,0.17)" }}>Click "Track Line" to start monitoring opening vs closing line value</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -684,8 +684,8 @@ export default function ClvTracker() {
         <TabsContent value="alerts" className="space-y-2">
           {activeAlerts.length === 0 ? (
             <div className="text-center py-16">
-              <BellOff size={32} style={{ color: "rgba(255,255,255,0.1)", margin: "0 auto 8px" }} />
-              <p className="text-sm" style={{ color: "rgba(255,255,255,0.2)" }}>No active alerts</p>
+              <BellOff size={32} style={{ color: "rgba(19,35,58,0.14)", margin: "0 auto 8px" }} />
+              <p className="text-sm" style={{ color: "rgba(19,35,58,0.28)" }}>No active alerts</p>
             </div>
           ) : (
             activeAlerts.map((a: ClvAlert) => <AlertItem key={a.id} alert={a} onDismiss={() => refetchAlerts()} />)
@@ -695,7 +695,7 @@ export default function ClvTracker() {
               <div className="text-[9px] uppercase tracking-wider text-foreground/60 mb-2">Dismissed</div>
               <div className="space-y-1 opacity-40">
                 {(alerts as ClvAlert[]).filter((a: ClvAlert) => a.dismissed).slice(0,5).map((a: ClvAlert) => (
-                  <div key={a.id} className="text-xs p-2 rounded" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <div key={a.id} className="text-xs p-2 rounded" style={{ background: "rgba(19,35,58,0.03)" }}>
                     {a.message}
                   </div>
                 ))}
@@ -707,7 +707,7 @@ export default function ClvTracker() {
         {/* ── Analytics tab ── */}
         <TabsContent value="analytics" className="space-y-4">
           {/* By Book */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="rounded-xl p-4" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
             <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Book</div>
             {Object.keys(byBook).length === 0 ? (
               <p className="text-xs text-foreground/60">No closed lines yet</p>
@@ -719,7 +719,7 @@ export default function ClvTracker() {
                   return (
                     <div key={book} className="flex items-center gap-3">
                       <div className="w-24 text-xs capitalize font-bold text-foreground/85">{book}</div>
-                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
                         <div className="h-full rounded-full" style={{ width: `${rate}%`, background: rate >= 55 ? "#4ade80" : "#f87171" }} />
                       </div>
                       <div className="text-xs font-black w-10 text-right" style={{ color: rate >= 55 ? "#4ade80" : "#f87171" }}>{rate}%</div>
@@ -735,7 +735,7 @@ export default function ClvTracker() {
           </div>
 
           {/* By Sport */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="rounded-xl p-4" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
             <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Sport</div>
             {Object.keys(bySport).length === 0 ? (
               <p className="text-xs text-foreground/60">No closed lines yet</p>
@@ -744,7 +744,7 @@ export default function ClvTracker() {
                 {Object.entries(bySport).map(([sport, stats]) => {
                   const rate = Math.round((stats.beat / stats.total) * 100);
                   return (
-                    <div key={sport} className="rounded-lg p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div key={sport} className="rounded-lg p-3 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
                       <div className="text-xs font-black text-foreground/75 mb-1">{sport}</div>
                       <div className="text-2xl font-black" style={{ color: rate >= 55 ? "#4ade80" : "#f87171" }}>{rate}%</div>
                       <div className="text-[9px] text-foreground/55">{stats.beat}/{stats.total} beats</div>
@@ -756,7 +756,7 @@ export default function ClvTracker() {
           </div>
 
           {/* By Bet Type */}
-          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="rounded-xl p-4" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
             <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Bet Type</div>
             {(() => {
               const byType: Record<string, { total: number; beat: number }> = {};
@@ -774,7 +774,7 @@ export default function ClvTracker() {
                     return (
                       <div key={type} className="flex items-center gap-3">
                         <div className="w-28 text-xs capitalize font-bold text-foreground/85">{type.replace("_"," ")}</div>
-                        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
                           <div className="h-full rounded-full" style={{ width: `${rate}%`, background: rate >= 55 ? "#4ade80" : "#f87171" }} />
                         </div>
                         <div className="text-xs font-black w-10 text-right" style={{ color: rate >= 55 ? "#4ade80" : "#f87171" }}>{rate}%</div>

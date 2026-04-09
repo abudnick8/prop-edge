@@ -105,7 +105,7 @@ function SignalExample({
   const colors = {
     sharp: { text: "#4ade80", bg: "rgba(74,222,128,0.08)", border: "rgba(74,222,128,0.2)", icon: <TrendingUp size={11} /> },
     fade:  { text: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.2)", icon: <TrendingDown size={11} /> },
-    neutral: { text: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.1)", icon: <Minus size={11} /> },
+    neutral: { text: "rgba(19,35,58,0.45)", bg: "rgba(19,35,58,0.04)", border: "rgba(19,35,58,0.12)", icon: <Minus size={11} /> },
   }[direction];
 
   return (
@@ -278,9 +278,9 @@ function HowToReadSection() {
             },
             {
               tier: "C",
-              color: "rgba(255,255,255,0.35)",
-              bg: "rgba(255,255,255,0.03)",
-              border: "rgba(255,255,255,0.1)",
+              color: "rgba(19,35,58,0.4)",
+              bg: "rgba(19,35,58,0.03)",
+              border: "rgba(19,35,58,0.1)",
               rule: "Edge <5% or Conf <65",
               meaning: "Edge not strong enough to surface a badge. Use other signals.",
             },
@@ -514,9 +514,9 @@ function UniversalSection() {
         {[
           { rule: "Smart money", detail: "% money much higher than % bets", color: "#4ade80" },
           { rule: "Public side", detail: "% bets much higher than % money", color: "#f87171" },
-          { rule: "Neutral", detail: "Numbers close together", color: "rgba(255,255,255,0.4)" },
+          { rule: "Neutral", detail: "Numbers close together", color: "rgba(19,35,58,0.5)" },
           { rule: "Strong signal", detail: "Line moved toward the money side", color: "#f59e0b" },
-          { rule: "Weak signal", detail: "Line moved against the money side", color: "rgba(255,255,255,0.3)" },
+          { rule: "Weak signal", detail: "Line moved against the money side", color: "rgba(19,35,58,0.45)" },
         ].map(item => (
           <div key={item.rule} className="flex items-start gap-3 p-2.5 bg-muted/20 border border-border rounded-lg">
             <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: item.color }} />
@@ -748,7 +748,7 @@ export function CheatSheetDrawer({
               style={
                 activeSection === s.id
                   ? { background: `${s.color}20`, borderColor: `${s.color}50`, color: s.color }
-                  : { background: "transparent", borderColor: "transparent", color: "rgba(255,255,255,0.45)" }
+                  : { background: "transparent", borderColor: "transparent", color: "rgba(19,35,58,0.45)" }
               }
             >
               <span>{s.emoji}</span>
