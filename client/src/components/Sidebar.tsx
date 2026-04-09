@@ -27,128 +27,162 @@ const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/fantasy":    { label: "NEW",  style: "badge-new" },
 };
 
-// ── Clubhouse IQ Logo — 2×2 sport grid with CH overlay + wordmark ──────────
-// Matches the brand mark: baseball / basketball / billiards / football tiles
-// with a bold "CH" letterform centred over the grid.
+// ── Clubhouse IQ Logo — exact brand mark recreation ─────────────────────
+// 2×2 sport tile grid with large serif/block "CH" monogram overlay
+// Tiles: baseball (cream) | basketball (navy) | golf green (navy) | football (tan-brown)
 export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  // Grid icon dimensions
-  const gridSize  = size === "sm" ? 28 : size === "lg" ? 46 : 36;
-  const scriptSz  = size === "sm" ? 15 : size === "lg" ? 23 : 18;
-  const iqSz      = size === "sm" ? 13 : size === "lg" ? 21 : 16;
-  const subSz     = size === "sm" ?  9 : size === "lg" ? 12 : 10;
-  const showSub   = size !== "sm";
-  const gap       = Math.round(gridSize * 0.055); // gap between tiles
-  const tile      = (gridSize - gap) / 2;          // individual tile size
-  const r         = Math.round(tile * 0.22);        // tile corner radius
-  const chSz      = Math.round(gridSize * 0.48);    // CH letter size
+  // All layout is relative to G (grid pixel size)
+  const G        = size === "sm" ? 30 : size === "lg" ? 48 : 38;
+  const scriptSz = size === "sm" ? 15 : size === "lg" ? 23 : 18;
+  const iqSz     = size === "sm" ? 13 : size === "lg" ? 21 : 16;
+  const subSz    = size === "sm" ?  9 : size === "lg" ? 12 : 10;
+  const showSub  = size !== "sm";
+
+  const gap  = G * 0.06;             // thin gap between tiles
+  const T    = (G - gap) / 2;       // tile side length
+  const R    = T * 0.18;            // tile corner radius
+
+  // Tile top-left corners
+  const TL = { x: 0,     y: 0     };
+  const TR = { x: T+gap, y: 0     };
+  const BL = { x: 0,     y: T+gap };
+  const BR = { x: T+gap, y: T+gap };
+
+  // Tile centres
+  const C_TL = { x: T/2,       y: T/2       };
+  const C_TR = { x: T+gap+T/2, y: T/2       };
+  const C_BL = { x: T/2,       y: T+gap+T/2 };
+  const C_BR = { x: T+gap+T/2, y: T+gap+T/2 };
+
+  // CH monogram sizing — spans full grid, large block letters
+  const CH_SIZE  = G * 0.58;   // font size
+  const CH_CX    = G / 2;      // horizontal centre
+  const CH_CY    = G / 2 + CH_SIZE * 0.34; // vertical baseline centre
 
   return (
     <div className="flex items-center gap-2.5" style={{ userSelect: "none" }}>
-      {/* ── 2×2 sport grid icon ── */}
+      {/* ── Grid mark ── */}
       <svg
-        width={gridSize}
-        height={gridSize}
-        viewBox={`0 0 ${gridSize} ${gridSize}`}
+        width={G}
+        height={G}
+        viewBox={`0 0 ${G} ${G}`}
         fill="none"
-        aria-label="Clubhouse IQ logo"
+        aria-label="Clubhouse IQ"
         style={{ flexShrink: 0 }}
       >
-        {/* ── Tile backgrounds ── */}
-        {/* Top-left: cream/tan (baseball) */}
-        <rect x="0" y="0" width={tile} height={tile} rx={r} fill="#D4C5A3" />
-        {/* Top-right: dark navy (basketball) */}
-        <rect x={tile + gap} y="0" width={tile} height={tile} rx={r} fill="#1A2F4A" />
-        {/* Bottom-left: dark navy (billiards/golf) */}
-        <rect x="0" y={tile + gap} width={tile} height={tile} rx={r} fill="#1A2F4A" />
-        {/* Bottom-right: cardinal red (football) */}
-        <rect x={tile + gap} y={tile + gap} width={tile} height={tile} rx={r} fill="#A23B32" />
+        {/* ─── TILE BACKGROUNDS ─── */}
+        {/* TL: warm cream — baseball */}
+        <rect x={TL.x} y={TL.y} width={T} height={T} rx={R} fill="#D6C9A8" />
+        {/* TR: deep navy — basketball */}
+        <rect x={TR.x} y={TR.y} width={T} height={T} rx={R} fill="#1B2E45" />
+        {/* BL: deep navy — golf green */}
+        <rect x={BL.x} y={BL.y} width={T} height={T} rx={R} fill="#1B2E45" />
+        {/* BR: warm tan/brown — football */}
+        <rect x={BR.x} y={BR.y} width={T} height={T} rx={R} fill="#8B6240" />
 
-        {/* ── Baseball (top-left tile) ── */}
-        {(() => {
-          const cx = tile / 2;
-          const cy = tile / 2;
-          const br = tile * 0.34;
+        {/* ─── BASEBALL (top-left) ─── */}
+        {(()=>{
+          const { x: cx, y: cy } = C_TL;
+          const br = T * 0.32;
+          const sw = T * 0.065;
           return (
             <g>
-              <circle cx={cx} cy={cy} r={br} fill="#F0EAD9" stroke="#8B7355" strokeWidth={tile * 0.045} />
-              {/* seam arcs */}
-              <path
-                d={`M${cx - br * 0.35} ${cy - br * 0.7} C${cx - br * 0.6} ${cy - br * 0.2} ${cx - br * 0.6} ${cy + br * 0.2} ${cx - br * 0.35} ${cy + br * 0.7}`}
-                stroke="#A23B32" strokeWidth={tile * 0.07} fill="none" strokeLinecap="round"
-              />
-              <path
-                d={`M${cx + br * 0.35} ${cy - br * 0.7} C${cx + br * 0.6} ${cy - br * 0.2} ${cx + br * 0.6} ${cy + br * 0.2} ${cx + br * 0.35} ${cy + br * 0.7}`}
-                stroke="#A23B32" strokeWidth={tile * 0.07} fill="none" strokeLinecap="round"
-              />
+              <circle cx={cx} cy={cy} r={br} fill="#F5EFE0" stroke="#9C8860" strokeWidth={T*0.04} />
+              {/* left seam S-curve */}
+              <path d={`M${cx-br*0.28} ${cy-br*0.85} C${cx-br*0.65} ${cy-br*0.3} ${cx-br*0.65} ${cy+br*0.3} ${cx-br*0.28} ${cy+br*0.85}`}
+                stroke="#B03030" strokeWidth={sw} fill="none" strokeLinecap="round" />
+              {/* right seam S-curve */}
+              <path d={`M${cx+br*0.28} ${cy-br*0.85} C${cx+br*0.65} ${cy-br*0.3} ${cx+br*0.65} ${cy+br*0.3} ${cx+br*0.28} ${cy+br*0.85}`}
+                stroke="#B03030" strokeWidth={sw} fill="none" strokeLinecap="round" />
+              {/* left stitch ticks */}
+              <line x1={cx-br*0.6} y1={cy-br*0.18} x2={cx-br*0.3} y2={cy-br*0.1} stroke="#B03030" strokeWidth={sw*0.6} strokeLinecap="round"/>
+              <line x1={cx-br*0.6} y1={cy+br*0.18} x2={cx-br*0.3} y2={cy+br*0.1} stroke="#B03030" strokeWidth={sw*0.6} strokeLinecap="round"/>
+              {/* right stitch ticks */}
+              <line x1={cx+br*0.6} y1={cy-br*0.18} x2={cx+br*0.3} y2={cy-br*0.1} stroke="#B03030" strokeWidth={sw*0.6} strokeLinecap="round"/>
+              <line x1={cx+br*0.6} y1={cy+br*0.18} x2={cx+br*0.3} y2={cy+br*0.1} stroke="#B03030" strokeWidth={sw*0.6} strokeLinecap="round"/>
             </g>
           );
         })()}
 
-        {/* ── Basketball (top-right tile) ── */}
-        {(() => {
-          const cx = tile + gap + tile / 2;
-          const cy = tile / 2;
-          const br = tile * 0.33;
-          const sw = tile * 0.055;
+        {/* ─── BASKETBALL (top-right) ─── */}
+        {(()=>{
+          const { x: cx, y: cy } = C_TR;
+          const br = T * 0.32;
+          const sw = T * 0.055;
           return (
             <g>
-              <circle cx={cx} cy={cy} r={br} fill="#C85A1A" />
-              {/* horizontal seam */}
-              <path d={`M${cx - br} ${cy} Q${cx} ${cy - br * 0.5} ${cx + br} ${cy}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
-              <path d={`M${cx - br} ${cy} Q${cx} ${cy + br * 0.5} ${cx + br} ${cy}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
-              {/* vertical seam */}
-              <path d={`M${cx} ${cy - br} Q${cx + br * 0.5} ${cy} ${cx} ${cy + br}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
+              {/* ball */}
+              <circle cx={cx} cy={cy} r={br} fill="#C85A18" />
+              {/* clip to ball */}
+              <clipPath id="bb-clip">
+                <circle cx={cx} cy={cy} r={br} />
+              </clipPath>
+              <g clipPath="url(#bb-clip)">
+                {/* horizontal equator */}
+                <path d={`M${cx-br} ${cy} Q${cx} ${cy-br*0.55} ${cx+br} ${cy}`} stroke="#111" strokeWidth={sw} fill="none"/>
+                <path d={`M${cx-br} ${cy} Q${cx} ${cy+br*0.55} ${cx+br} ${cy}`} stroke="#111" strokeWidth={sw} fill="none"/>
+                {/* vertical meridian */}
+                <path d={`M${cx} ${cy-br} Q${cx+br*0.42} ${cy} ${cx} ${cy+br}`} stroke="#111" strokeWidth={sw} fill="none"/>
+              </g>
             </g>
           );
         })()}
 
-        {/* ── Billiard/8-ball (bottom-left tile) ── */}
-        {(() => {
-          const cx = tile / 2;
-          const cy = tile + gap + tile / 2;
-          const br = tile * 0.33;
+        {/* ─── GOLF GREEN / POOL TABLE (bottom-left) ─── */}
+        {(()=>{
+          const { x: cx, y: cy } = C_BL;
+          const pr = T * 0.3;   // pool table felt circle
+          const hr = T * 0.1;   // hole/cup radius
           return (
             <g>
-              <circle cx={cx} cy={cy} r={br} fill="#1A1A1A" />
-              <circle cx={cx} cy={cy} r={br * 0.42} fill="#F0EAD9" />
-              <circle cx={cx} cy={cy} r={br * 0.22} fill="#1A1A1A" />
+              {/* green felt base */}
+              <circle cx={cx} cy={cy} r={pr} fill="#2E6B3E" stroke="#1A4A2A" strokeWidth={T*0.04} />
+              {/* corner pocket holes */}
+              <circle cx={cx-pr*0.6} cy={cy-pr*0.6} r={hr} fill="#111" />
+              <circle cx={cx+pr*0.6} cy={cy-pr*0.6} r={hr} fill="#111" />
+              <circle cx={cx-pr*0.6} cy={cy+pr*0.6} r={hr} fill="#111" />
+              <circle cx={cx+pr*0.6} cy={cy+pr*0.6} r={hr} fill="#111" />
+              {/* cue ball */}
+              <circle cx={cx} cy={cy} r={hr*0.95} fill="#F5EFE0" />
             </g>
           );
         })()}
 
-        {/* ── Football (bottom-right tile) ── */}
-        {(() => {
-          const cx = tile + gap + tile / 2;
-          const cy = tile + gap + tile / 2;
-          const fw = tile * 0.64;
-          const fh = tile * 0.44;
-          const sw = tile * 0.055;
+        {/* ─── FOOTBALL (bottom-right) ─── */}
+        {(()=>{
+          const { x: cx, y: cy } = C_BR;
+          const fw = T * 0.68;
+          const fh = T * 0.46;
+          const sw = T * 0.055;
           return (
             <g>
-              {/* ball body */}
-              <ellipse cx={cx} cy={cy} rx={fw / 2} ry={fh / 2} fill="#7B4A2D" stroke="#C4A882" strokeWidth={sw * 0.8} />
+              <ellipse cx={cx} cy={cy} rx={fw/2} ry={fh/2} fill="#6B3A1F" stroke="#C4A06A" strokeWidth={sw*0.7} />
+              {/* white stripe across middle */}
+              <line x1={cx-fw*0.22} y1={cy} x2={cx+fw*0.22} y2={cy} stroke="#F5EFE0" strokeWidth={sw*1.8} strokeLinecap="round"/>
               {/* laces */}
-              <line x1={cx} y1={cy - fh * 0.28} x2={cx} y2={cy + fh * 0.28} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
-              <line x1={cx - fw * 0.12} y1={cy - fh * 0.14} x2={cx + fw * 0.12} y2={cy - fh * 0.14} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
-              <line x1={cx - fw * 0.12} y1={cy} x2={cx + fw * 0.12} y2={cy} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
-              <line x1={cx - fw * 0.12} y1={cy + fh * 0.14} x2={cx + fw * 0.12} y2={cy + fh * 0.14} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
+              <line x1={cx} y1={cy-fh*0.3} x2={cx} y2={cy+fh*0.3} stroke="#F5EFE0" strokeWidth={sw*0.9} strokeLinecap="round"/>
+              <line x1={cx-fw*0.11} y1={cy-fh*0.16} x2={cx+fw*0.11} y2={cy-fh*0.16} stroke="#F5EFE0" strokeWidth={sw*0.75} strokeLinecap="round"/>
+              <line x1={cx-fw*0.11} y1={cy+fh*0.16} x2={cx+fw*0.11} y2={cy+fh*0.16} stroke="#F5EFE0" strokeWidth={sw*0.75} strokeLinecap="round"/>
             </g>
           );
         })()}
 
-        {/* ── "CH" letterform overlay — centred over entire grid ── */}
+        {/* ─── "CH" MONOGRAM OVERLAY ───
+             Large block serif letters spanning the full grid.
+             White fill + dark outline so they read over any tile colour.
+             The C sits left-of-centre, H sits right-of-centre. */}
         <text
-          x={gridSize / 2}
-          y={gridSize / 2 + chSz * 0.35}
+          x={CH_CX}
+          y={CH_CY}
           textAnchor="middle"
-          fontSize={chSz}
+          fontSize={CH_SIZE}
           fontWeight="900"
-          fontFamily="'DM Sans', 'Arial Black', sans-serif"
-          fill="rgba(255,255,255,0.92)"
-          stroke="rgba(0,0,0,0.45)"
-          strokeWidth={chSz * 0.055}
+          fontFamily="Georgia, 'Times New Roman', serif"
+          fill="#FFFFFF"
+          stroke="#13233A"
+          strokeWidth={CH_SIZE * 0.07}
           paintOrder="stroke fill"
-          letterSpacing="-1"
+          letterSpacing={CH_SIZE * -0.04}
         >
           CH
         </text>
@@ -157,47 +191,35 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
       {/* ── Wordmark ── */}
       <div className="leading-none">
         <div className="flex items-baseline gap-1">
-          <span
-            style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              fontStyle: "italic",
-              fontWeight: 700,
-              fontSize: scriptSz,
-              color: "#F0EAD9",
-              letterSpacing: "-0.01em",
-              lineHeight: 1,
-            }}
-          >
-            Clubhouse
-          </span>
-          <span
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 800,
-              fontSize: iqSz,
-              color: "#A23B32",
-              letterSpacing: "0.06em",
-              lineHeight: 1,
-            }}
-          >
-            IQ
-          </span>
+          <span style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontStyle: "italic",
+            fontWeight: 700,
+            fontSize: scriptSz,
+            color: "#F0EAD9",
+            letterSpacing: "-0.01em",
+            lineHeight: 1,
+          }}>Clubhouse</span>
+          <span style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontWeight: 800,
+            fontSize: iqSz,
+            color: "#A23B32",
+            letterSpacing: "0.06em",
+            lineHeight: 1,
+          }}>IQ</span>
         </div>
         {showSub && (
-          <p
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: subSz,
-              color: "rgba(216,204,184,0.55)",
-              fontWeight: 500,
-              letterSpacing: "0.13em",
-              textTransform: "uppercase",
-              marginTop: 3,
-              lineHeight: 1,
-            }}
-          >
-            Sports Intelligence
-          </p>
+          <p style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: subSz,
+            color: "rgba(216,204,184,0.55)",
+            fontWeight: 500,
+            letterSpacing: "0.13em",
+            textTransform: "uppercase",
+            marginTop: 3,
+            lineHeight: 1,
+          }}>Sports Intelligence</p>
         )}
       </div>
     </div>
