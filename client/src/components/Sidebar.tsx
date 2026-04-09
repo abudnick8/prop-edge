@@ -28,17 +28,59 @@ const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/fantasy":    { label: "NEW",  style: "badge-new" },
 };
 
-// ── Clubhouse IQ Logo — uses the exact brand image ───────────────────────
+// ── Clubhouse IQ Logo — exact brand image + cursive wordmark ─────────────
 export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const imgSize = size === "sm" ? 30 : size === "lg" ? 48 : 38;
+  const imgSize  = size === "sm" ? 30 : size === "lg" ? 48 : 38;
+  const scriptSz = size === "sm" ? 15 : size === "lg" ? 23 : 18;
+  const iqSz     = size === "sm" ? 13 : size === "lg" ? 21 : 16;
+  const subSz    = size === "sm" ?  9 : size === "lg" ? 12 : 10;
+  const showSub  = size !== "sm";
+
   return (
-    <img
-      src={chLogoSrc}
-      alt="Clubhouse IQ"
-      width={imgSize}
-      height={imgSize}
-      style={{ borderRadius: 6, flexShrink: 0, objectFit: "contain" }}
-    />
+    <div className="flex items-center gap-2.5" style={{ userSelect: "none" }}>
+      {/* Exact brand image */}
+      <img
+        src={chLogoSrc}
+        alt="Clubhouse IQ"
+        width={imgSize}
+        height={imgSize}
+        style={{ borderRadius: 6, flexShrink: 0, objectFit: "contain" }}
+      />
+      {/* Cursive wordmark */}
+      <div className="leading-none">
+        <div className="flex items-baseline gap-1">
+          <span style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontStyle: "italic",
+            fontWeight: 700,
+            fontSize: scriptSz,
+            color: "#F0EAD9",
+            letterSpacing: "-0.01em",
+            lineHeight: 1,
+          }}>Clubhouse</span>
+          <span style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontWeight: 800,
+            fontSize: iqSz,
+            color: "#A23B32",
+            letterSpacing: "0.06em",
+            lineHeight: 1,
+          }}>IQ</span>
+        </div>
+        {showSub && (
+          <p style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: subSz,
+            color: "rgba(216,204,184,0.55)",
+            fontWeight: 500,
+            letterSpacing: "0.13em",
+            textTransform: "uppercase",
+            marginTop: 3,
+            lineHeight: 1,
+          }}>Sports Intelligence</p>
+        )}
+      </div>
+    </div>
   );
 }
 
