@@ -173,7 +173,7 @@ export function buildLivePlayoffTeams(
   confNames.forEach(confName => {
     const confTeams = data.playoffTeamsByConf[confName] ?? [];
     const topTeams = confTeams
-      .filter(t => t.seed > 0 && t.seed <= playoffSpots)
+      .filter(t => t.seed > 0 && t.seed <= playoffSpots && t.clinchStatus !== "eliminated")
       .sort((a, b) => a.seed - b.seed);
 
     topTeams.forEach(t => {
@@ -238,28 +238,37 @@ export function buildLivePlayoffTeams(
 
 // ── Cache helper ───────────────────────────────────────────────────────────
 const STANDINGS_CACHE_KEY = (sport: string) => `clubhouseiq_standings_${sport}`;
-const STANDINGS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const STANDINGS_CACHE_TTL = 60 * 60 * 1000; // 1 hour — refresh clinch statuses regularly
 
-export async function fetchLiveStandings(sport: string): Promise<LiveStandingsData | null> {
-  try {
-    // Check sessionStorage cache
-    const cacheKey = STANDINGS_CACHE_KEY(sport);
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Date.now() - parsed._fetchedAt < STANDINGS_CACHE_TTL) {
-        return parsed as LiveStandingsData;
+export async function fetchLiveStandings(sport: string, forceFetch = false): Promise<LiveStandingsData | null> {
+  const cacheKey = STANDINGS_CACHE_KEY(sport);
+
+  if (!forceFetch) {
+    try {
+      // Check sessionStorage cache
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Date.now() - parsed._fetchedAt < STANDINGS_CACHE_TTL) {
+          return parsed as LiveStandingsData;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  } else {
+    // Clear stale cache before force-fetching
+    try { sessionStorage.removeItem(cacheKey); } catch {}
+  }
 
   try {
-    const res = await fetch(`/api/live-standings?sport=${sport}`);
+    const url = forceFetch
+      ? `/api/live-standings?sport=${sport}&bust=${Date.now()}`
+      : `/api/live-standings?sport=${sport}`;
+    const res = await fetch(url);
     if (!res.ok) return null;
     const data: LiveStandingsData = await res.json();
     // Cache in sessionStorage
     try {
-      sessionStorage.setItem(STANDINGS_CACHE_KEY(sport), JSON.stringify({ ...data, _fetchedAt: Date.now() }));
+      sessionStorage.setItem(cacheKey, JSON.stringify({ ...data, _fetchedAt: Date.now() }));
     } catch {}
     return data;
   } catch {

@@ -812,7 +812,7 @@ export default function Bracket() {
   );
 
   // Fetch live standings for the current tournament if it's a live-seeding league
-  const loadLiveStandings = useCallback(async (tournament: Tournament | null | undefined) => {
+  const loadLiveStandings = useCallback(async (tournament: Tournament | null | undefined, force = false) => {
     if (!tournament?.liveStandingsSport) {
       setLiveStandings(null);
       setStandingsError(null);
@@ -821,7 +821,7 @@ export default function Bracket() {
     setStandingsLoading(true);
     setStandingsError(null);
     try {
-      const data = await fetchLiveStandings(tournament.liveStandingsSport);
+      const data = await fetchLiveStandings(tournament.liveStandingsSport, force);
       setLiveStandings(data);
     } catch (e: any) {
       setStandingsError("Could not load live standings");
@@ -830,6 +830,10 @@ export default function Bracket() {
       setStandingsLoading(false);
     }
   }, []);
+
+  const handleRefreshStandings = useCallback(() => {
+    loadLiveStandings(selectedTournament, true);
+  }, [selectedTournament, loadLiveStandings]);
 
   // Load on mount and whenever tournament changes
   useEffect(() => {
@@ -1715,7 +1719,15 @@ export default function Bracket() {
                   <RotateCcw size={10} /> Reset
                 </button>
               )}
-              <p className="text-[10px] text-foreground/70">Tap any projected seed to swap</p>
+              <button
+                onClick={handleRefreshStandings}
+                disabled={standingsLoading}
+                className="flex items-center gap-1 px-2.5 py-1 bg-card border border-border text-foreground/70 rounded-lg text-[10px] font-semibold hover:border-primary/40 hover:text-foreground transition-all disabled:opacity-50"
+                title="Refresh live standings"
+              >
+                <RefreshCw size={9} className={standingsLoading ? "animate-spin" : ""} /> Refresh
+              </button>
+              <p className="text-[10px] text-foreground/70">Tap projected seed to swap</p>
             </div>
           </div>
 

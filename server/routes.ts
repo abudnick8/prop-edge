@@ -2278,7 +2278,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const fullConfTeams: Record<string, any[]> = {};
       conferences.forEach((teams, confName) => {
         const sorted = [...teams].sort((a, b) => (a.seed || 99) - (b.seed || 99));
-        playoffTeamsByConf[confName] = sorted.slice(0, playoffSpots);
+        // Exclude eliminated teams (clinchCode=4) from the bracket seedings
+        const nonEliminated = sorted.filter(t => t.clinchCode !== 4);
+        playoffTeamsByConf[confName] = nonEliminated.slice(0, playoffSpots);
         // Full list excludes eliminated teams (clinchCode=4)
         fullConfTeams[confName] = sorted.filter(t => t.clinchCode !== 4);
       });
