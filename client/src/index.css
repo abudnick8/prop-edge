@@ -84,6 +84,8 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     scroll-behavior: smooth;
+    /* Prevent content from sitting under iPhone status bar */
+    height: 100%;
   }
 
   body {

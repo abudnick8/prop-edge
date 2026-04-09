@@ -29,14 +29,14 @@ function AppInner() {
 
   return (
     <WouterRouter hook={useHashLocation}>
-      <div className="flex bg-background overflow-hidden" style={{height: '100vh', minHeight: '-webkit-fill-available'}}>
+      <div className="flex bg-background overflow-hidden" style={{height: '100dvh', minHeight: '-webkit-fill-available', paddingTop: 'env(safe-area-inset-top, 0px)'}}>
         {/* Desktop: left sidebar — inside Router so Links have context */}
         <DesktopSidebar />
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto">
-          {/* Top bar */}
-          <div className="sticky top-0 z-30 bg-background/80 backdrop-blur border-b border-border flex items-center justify-between px-4 md:px-6 py-3">
+          {/* Top bar — bg extends behind status bar via negative margin trick */}
+          <div className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border flex items-center justify-between px-4 md:px-6 py-3">
             {/* Mobile: show logo in top bar */}
             <div className="flex md:hidden items-center gap-2">
               <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-label="PropEdge">
