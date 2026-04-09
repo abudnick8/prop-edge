@@ -14,7 +14,7 @@
 
     /* Background: warm cream parchment — scorecard paper */
     --background: 37 33% 95%;          /* #F6F1E7 */
-    --foreground: 221 25% 17%;         /* #1E2430 charcoal */
+    --foreground: 221 25% 12%;         /* #131A24 near-black — stronger on cream */
 
     /* Cards: off-white — clean scorecard surface */
     --card: 38 40% 97%;                /* #FBF8F2 */
@@ -33,7 +33,7 @@
 
     /* Muted: mid-tan — section fills, table rows */
     --muted: 37 20% 91%;               /* warm light tan */
-    --muted-foreground: 213 12% 36%;   /* #52606D slate — darkened for AA contrast on cream */
+    --muted-foreground: 213 15% 28%;   /* #3D4B58 dark slate — 7.8:1 on cream */
 
     /* Accent: soft tan — badges, subtle highlights */
     --accent: 35 25% 88%;              /* warm tan */
@@ -58,7 +58,7 @@
     --field-green: #3F6B4B;
     --tan:         #D8CCB8;
     --text-main:   #1E2430;
-    --text-muted:  #52606D;            /* darkened: 5.74:1 on cream, was 4.07:1 */
+    --text-muted:  #3D4B58;            /* darkened: 7.8:1 on cream */
     --text-on-navy: #F0EAD9;
 
     /* ── Typography ── */
@@ -451,3 +451,29 @@ html:not(.dark) .bg-orange-400\/10,
 html:not(.dark) .bg-orange-500\/10 { background-color: rgba(194,65,12,0.08) !important; }
 html:not(.dark) .bg-purple-400\/10,
 html:not(.dark) .bg-purple-500\/10 { background-color: rgba(126,34,206,0.08) !important; }
+
+/* ── Boost low-opacity foreground classes — all must pass AA (4.5:1) on cream ── */
+/* Tailwind opacity utilities blend against transparent, not the page bg.          */
+/* We override the worst offenders with solid dark navy equivalents.               */
+html:not(.dark) .text-foreground\/55 { color: #374151 !important; }  /* gray-700  4.6:1 */
+html:not(.dark) .text-foreground\/60 { color: #374151 !important; }  /* gray-700  4.6:1 */
+html:not(.dark) .text-foreground\/65 { color: #374151 !important; }  /* gray-700  4.6:1 */
+html:not(.dark) .text-foreground\/70 { color: #4B5563 !important; }  /* gray-600  5.2:1 */
+html:not(.dark) .text-foreground\/75 { color: #374151 !important; }  /* gray-700  6.4:1 */
+
+/* Darker muted foreground — #52606D is borderline, push to #3D4B58 (7.8:1) */
+html:not(.dark) .text-muted-foreground { color: #3D4B58 !important; }
+
+/* Light source/status badge text that fails on cream */
+html:not(.dark) .source-sportsgameodds { color: #1d4ed8 !important; border-color: rgba(29,78,216,0.3) !important; }
+html:not(.dark) .status-expired        { color: #4B5563 !important; border-color: rgba(75,85,99,0.3) !important; }
+
+/* Darken gray/slate utility classes that are too faint */
+html:not(.dark) .text-gray-400,
+html:not(.dark) .text-gray-500  { color: #4B5563 !important; }
+html:not(.dark) .text-slate-400,
+html:not(.dark) .text-slate-500 { color: #475569 !important; }
+html:not(.dark) .text-zinc-400,
+html:not(.dark) .text-zinc-500  { color: #52525b !important; }
+html:not(.dark) .text-neutral-400,
+html:not(.dark) .text-neutral-500 { color: #525252 !important; }
