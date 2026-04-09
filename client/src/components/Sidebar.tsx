@@ -27,55 +27,134 @@ const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/fantasy":    { label: "NEW",  style: "badge-new" },
 };
 
-// ── Clubhouse IQ Logo Wordmark ────────────────────────────────────────────
-// SVG baseball icon + "Clubhouse" in Playfair italic script + "IQ" in DM Sans bold
+// ── Clubhouse IQ Logo — 2×2 sport grid with CH overlay + wordmark ──────────
+// Matches the brand mark: baseball / basketball / billiards / football tiles
+// with a bold "CH" letterform centred over the grid.
 export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const iconSize = size === "sm" ? 22 : size === "lg" ? 38 : 28;
-  const scriptSize = size === "sm" ? 16 : size === "lg" ? 24 : 19;
-  const iqSize = size === "sm" ? 14 : size === "lg" ? 22 : 17;
-  const subSize = size === "sm" ? 9 : size === "lg" ? 12 : 10;
-  const showSub = size !== "sm";
+  // Grid icon dimensions
+  const gridSize  = size === "sm" ? 28 : size === "lg" ? 46 : 36;
+  const scriptSz  = size === "sm" ? 15 : size === "lg" ? 23 : 18;
+  const iqSz      = size === "sm" ? 13 : size === "lg" ? 21 : 16;
+  const subSz     = size === "sm" ?  9 : size === "lg" ? 12 : 10;
+  const showSub   = size !== "sm";
+  const gap       = Math.round(gridSize * 0.055); // gap between tiles
+  const tile      = (gridSize - gap) / 2;          // individual tile size
+  const r         = Math.round(tile * 0.22);        // tile corner radius
+  const chSz      = Math.round(gridSize * 0.48);    // CH letter size
 
   return (
-    <div className="flex items-center gap-2.5">
-      {/* Baseball icon — clean SVG, works at all sizes */}
+    <div className="flex items-center gap-2.5" style={{ userSelect: "none" }}>
+      {/* ── 2×2 sport grid icon ── */}
       <svg
-        width={iconSize}
-        height={iconSize}
-        viewBox="0 0 32 32"
+        width={gridSize}
+        height={gridSize}
+        viewBox={`0 0 ${gridSize} ${gridSize}`}
         fill="none"
-        aria-hidden="true"
+        aria-label="Clubhouse IQ logo"
         style={{ flexShrink: 0 }}
       >
-        {/* Ball circle */}
-        <circle cx="16" cy="16" r="13.5" fill="rgba(255,255,255,0.06)" stroke="#C4B99A" strokeWidth="1.2" />
-        {/* Left seam arc */}
-        <path
-          d="M9.5 6.5 C6 9.5 5.5 13 6.5 16 C7.5 19 9.5 21.5 9.5 25"
-          stroke="#A23B32"
-          strokeWidth="1.6"
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* Right seam arc */}
-        <path
-          d="M22.5 7 C26 10 26.5 13.5 25.5 16.5 C24.5 19.5 22.5 22 22.5 25.5"
-          stroke="#A23B32"
-          strokeWidth="1.6"
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* Left stitching ticks */}
-        <path d="M8.2 10.5 L10.8 11.2" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M7.4 14.5 L10.2 15.0" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M8.2 18.5 L10.8 17.8" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
-        {/* Right stitching ticks */}
-        <path d="M23.8 10.8 L21.2 11.5" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M24.6 15.0 L21.8 15.5" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
-        <path d="M23.8 19.2 L21.2 18.5" stroke="#A23B32" strokeWidth="1.2" strokeLinecap="round" />
+        {/* ── Tile backgrounds ── */}
+        {/* Top-left: cream/tan (baseball) */}
+        <rect x="0" y="0" width={tile} height={tile} rx={r} fill="#D4C5A3" />
+        {/* Top-right: dark navy (basketball) */}
+        <rect x={tile + gap} y="0" width={tile} height={tile} rx={r} fill="#1A2F4A" />
+        {/* Bottom-left: dark navy (billiards/golf) */}
+        <rect x="0" y={tile + gap} width={tile} height={tile} rx={r} fill="#1A2F4A" />
+        {/* Bottom-right: cardinal red (football) */}
+        <rect x={tile + gap} y={tile + gap} width={tile} height={tile} rx={r} fill="#A23B32" />
+
+        {/* ── Baseball (top-left tile) ── */}
+        {(() => {
+          const cx = tile / 2;
+          const cy = tile / 2;
+          const br = tile * 0.34;
+          return (
+            <g>
+              <circle cx={cx} cy={cy} r={br} fill="#F0EAD9" stroke="#8B7355" strokeWidth={tile * 0.045} />
+              {/* seam arcs */}
+              <path
+                d={`M${cx - br * 0.35} ${cy - br * 0.7} C${cx - br * 0.6} ${cy - br * 0.2} ${cx - br * 0.6} ${cy + br * 0.2} ${cx - br * 0.35} ${cy + br * 0.7}`}
+                stroke="#A23B32" strokeWidth={tile * 0.07} fill="none" strokeLinecap="round"
+              />
+              <path
+                d={`M${cx + br * 0.35} ${cy - br * 0.7} C${cx + br * 0.6} ${cy - br * 0.2} ${cx + br * 0.6} ${cy + br * 0.2} ${cx + br * 0.35} ${cy + br * 0.7}`}
+                stroke="#A23B32" strokeWidth={tile * 0.07} fill="none" strokeLinecap="round"
+              />
+            </g>
+          );
+        })()}
+
+        {/* ── Basketball (top-right tile) ── */}
+        {(() => {
+          const cx = tile + gap + tile / 2;
+          const cy = tile / 2;
+          const br = tile * 0.33;
+          const sw = tile * 0.055;
+          return (
+            <g>
+              <circle cx={cx} cy={cy} r={br} fill="#C85A1A" />
+              {/* horizontal seam */}
+              <path d={`M${cx - br} ${cy} Q${cx} ${cy - br * 0.5} ${cx + br} ${cy}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
+              <path d={`M${cx - br} ${cy} Q${cx} ${cy + br * 0.5} ${cx + br} ${cy}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
+              {/* vertical seam */}
+              <path d={`M${cx} ${cy - br} Q${cx + br * 0.5} ${cy} ${cx} ${cy + br}`} stroke="#1A1A1A" strokeWidth={sw} fill="none" />
+            </g>
+          );
+        })()}
+
+        {/* ── Billiard/8-ball (bottom-left tile) ── */}
+        {(() => {
+          const cx = tile / 2;
+          const cy = tile + gap + tile / 2;
+          const br = tile * 0.33;
+          return (
+            <g>
+              <circle cx={cx} cy={cy} r={br} fill="#1A1A1A" />
+              <circle cx={cx} cy={cy} r={br * 0.42} fill="#F0EAD9" />
+              <circle cx={cx} cy={cy} r={br * 0.22} fill="#1A1A1A" />
+            </g>
+          );
+        })()}
+
+        {/* ── Football (bottom-right tile) ── */}
+        {(() => {
+          const cx = tile + gap + tile / 2;
+          const cy = tile + gap + tile / 2;
+          const fw = tile * 0.64;
+          const fh = tile * 0.44;
+          const sw = tile * 0.055;
+          return (
+            <g>
+              {/* ball body */}
+              <ellipse cx={cx} cy={cy} rx={fw / 2} ry={fh / 2} fill="#7B4A2D" stroke="#C4A882" strokeWidth={sw * 0.8} />
+              {/* laces */}
+              <line x1={cx} y1={cy - fh * 0.28} x2={cx} y2={cy + fh * 0.28} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
+              <line x1={cx - fw * 0.12} y1={cy - fh * 0.14} x2={cx + fw * 0.12} y2={cy - fh * 0.14} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
+              <line x1={cx - fw * 0.12} y1={cy} x2={cx + fw * 0.12} y2={cy} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
+              <line x1={cx - fw * 0.12} y1={cy + fh * 0.14} x2={cx + fw * 0.12} y2={cy + fh * 0.14} stroke="#F0EAD9" strokeWidth={sw} strokeLinecap="round" />
+            </g>
+          );
+        })()}
+
+        {/* ── "CH" letterform overlay — centred over entire grid ── */}
+        <text
+          x={gridSize / 2}
+          y={gridSize / 2 + chSz * 0.35}
+          textAnchor="middle"
+          fontSize={chSz}
+          fontWeight="900"
+          fontFamily="'DM Sans', 'Arial Black', sans-serif"
+          fill="rgba(255,255,255,0.92)"
+          stroke="rgba(0,0,0,0.45)"
+          strokeWidth={chSz * 0.055}
+          paintOrder="stroke fill"
+          letterSpacing="-1"
+        >
+          CH
+        </text>
       </svg>
 
-      {/* Wordmark */}
+      {/* ── Wordmark ── */}
       <div className="leading-none">
         <div className="flex items-baseline gap-1">
           <span
@@ -83,7 +162,7 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
               fontFamily: "'Playfair Display', Georgia, serif",
               fontStyle: "italic",
               fontWeight: 700,
-              fontSize: scriptSize,
+              fontSize: scriptSz,
               color: "#F0EAD9",
               letterSpacing: "-0.01em",
               lineHeight: 1,
@@ -94,8 +173,8 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
           <span
             style={{
               fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: iqSize,
+              fontWeight: 800,
+              fontSize: iqSz,
               color: "#A23B32",
               letterSpacing: "0.06em",
               lineHeight: 1,
@@ -108,12 +187,12 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
           <p
             style={{
               fontFamily: "'DM Sans', sans-serif",
-              fontSize: subSize,
+              fontSize: subSz,
               color: "rgba(216,204,184,0.55)",
               fontWeight: 500,
-              letterSpacing: "0.12em",
+              letterSpacing: "0.13em",
               textTransform: "uppercase",
-              marginTop: 2,
+              marginTop: 3,
               lineHeight: 1,
             }}
           >

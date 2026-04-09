@@ -118,8 +118,8 @@
     line-height: 1.6;
     min-height: 100vh;
     min-height: -webkit-fill-available;
-    /* Subtle parchment texture suggestion — very faint grain */
-    background-color: #F6F1E7;
+    /* Always dark mode — use CSS variable, never hardcoded cream */
+    background-color: #0a141e;
   }
 
   .font-mono {
