@@ -52,6 +52,7 @@ interface PredMkt {
   isWhaleAlert: boolean;
   whaleDirection: "yes" | "no" | null;
   whalePriceMovePct: number;
+  smartScore: number;
   gameTime: string | null;
   polyUrl?: string;
   kalshiUrl?: string;
@@ -141,7 +142,24 @@ function MarketCard({ m }: { m: PredMkt }) {
       {/* Whale smart money */}
       {m.isWhaleAlert && (
         <div className="rounded-lg px-3 py-2 border" style={{ background: "rgba(245,158,11,0.08)", borderColor: "rgba(245,158,11,0.35)" }}>
-          <p className="text-[10px] font-black uppercase tracking-widest text-orange-300 mb-1">🐋 Smart Money Signal</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-orange-300">🐋 Smart Money Signal</p>
+            {m.smartScore > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-muted-foreground uppercase tracking-wide">Whale Score</span>
+                <span
+                  className="text-sm font-black font-mono px-2 py-0.5 rounded-md"
+                  style={{
+                    color: m.smartScore >= 70 ? "#f97316" : m.smartScore >= 40 ? "#f59e0b" : "#fbbf24",
+                    background: "rgba(249,115,22,0.15)",
+                    border: "1px solid rgba(249,115,22,0.35)",
+                  }}
+                >
+                  {m.smartScore}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-4 text-xs">
             <div>
               <p className="text-[9px] text-muted-foreground uppercase">Direction</p>
