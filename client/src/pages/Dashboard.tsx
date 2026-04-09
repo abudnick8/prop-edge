@@ -193,7 +193,7 @@ export default function Dashboard() {
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-foreground">🏆 Dashboard</h1>
           <p className="text-xs text-foreground/70 mt-0.5 leading-snug">
-            Kalshi · Polymarket · ActionNetwork · Underdog
+            Kalshi · Polymarket · ActionNetwork · Underdog · DraftKings · SportsGameOdds
             <span className="hidden sm:inline"> · 🏈 NFL · 🏀 NBA · ⚾ MLB · 🏒 NHL</span>
           </p>
         </div>

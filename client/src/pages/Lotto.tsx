@@ -45,7 +45,7 @@ const LOTTO_SPORTS = ["NBA", "MLB", "NHL", "NFL"] as const;
 const LOTTO_MIN = 5;
 const LOTTO_MAX = 20;
 
-const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog"];
+const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog", "sportsgameodds"];
 
 function isTodayOrNoDate(gameTime: string | null | undefined): boolean {
   if (!gameTime) return true;

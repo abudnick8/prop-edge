@@ -23,7 +23,7 @@ import { CheatSheetButton } from "@/components/CheatSheet";
 
 const SPORTS = ["All", "NFL", "NBA", "MLB", "NHL", "MMA", "Boxing", "NCAAB", "NCAAF", "Golf"];
 const BET_TYPES = ["All", "player_prop", "spread", "total", "moneyline"];
-const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog"];
+const SOURCES = ["All", "kalshi", "polymarket", "actionnetwork", "draftkings", "underdog", "sportsgameodds"];
 
 type MainTab = "daily" | "season" | "markets";
 
