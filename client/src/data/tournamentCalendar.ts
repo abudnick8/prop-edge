@@ -1,5 +1,5 @@
 /**
- * PropEdge Tournament Calendar
+ * Clubhouse IQ Tournament Calendar
  *
  * Defines every major bracket-style tournament by sport, with real start/end dates.
  * Status is computed dynamically based on the current date — no manual updates needed.

@@ -1470,7 +1470,7 @@ async function fetchUnderdogProps(enabledSports?: string[]): Promise<InsertBet[]
     // Workaround: a GitHub Actions workflow fetches data every 30 min from a GH runner
     // (not CF-blocked) and commits it to the `cache` branch of this repo.
     // Railway reads the cached JSON via raw.githubusercontent.com — no IP block.
-    const CACHE_BASE = "https://raw.githubusercontent.com/abudnick8/prop-edge/cache/data/underdog-cache";
+    const CACHE_BASE = "https://raw.githubusercontent.com/abudnick8/clubhouse-iq/cache/data/underdog-cache";
     const UNDERDOG_SPORTS = ["NBA", "NHL", "MLB", "NFL"];
 
     const sportResponses = await Promise.allSettled(

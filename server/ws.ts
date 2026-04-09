@@ -1,5 +1,5 @@
 /**
- * PropEdge WebSocket server
+ * Clubhouse IQ WebSocket server
  *
  * Attach to the existing http.Server and export broadcast() so any part
  * of the server (routes, scanner callbacks, etc.) can push events to all
@@ -30,7 +30,7 @@ export function initWebSocketServer(httpServer: HttpServer): WebSocketServer {
     console.log(`[WS] client connected (${clients.size} total)`);
 
     // Send a welcome ping so the client knows connection is live
-    safeSend(ws, { event: "connected", data: { message: "PropEdge live feed connected" }, ts: Date.now() });
+    safeSend(ws, { event: "connected", data: { message: "Clubhouse IQ live feed connected" }, ts: Date.now() });
 
     ws.on("message", (raw) => {
       try {

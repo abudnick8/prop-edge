@@ -117,7 +117,7 @@ function marketAlignsBet(mkt: PredMkt, bet: Bet): boolean {
   const title = mkt.title.toLowerCase();
   const betTeam = (bet.homeTeam ?? bet.awayTeam ?? "").toLowerCase();
 
-  // Must whale-buy YES (same direction as the PropEdge pick)
+  // Must whale-buy YES (same direction as the Clubhouse IQ pick)
   if (mkt.whaleDirection !== "yes") return false;
 
   // Check betType alignment
@@ -136,7 +136,7 @@ function marketAlignsBet(mkt: PredMkt, bet: Bet): boolean {
   return false;
 }
 
-// Check if line movement direction aligns with the PropEdge bet
+// Check if line movement direction aligns with the Clubhouse IQ bet
 function lineAlignsBet(game: GameLine, bet: Bet): { aligns: boolean; signal: ConvictionSignal | null } {
   const spreadMove = game.spread.move ?? 0;
   const totalMove  = game.total.move ?? 0;
@@ -317,7 +317,7 @@ function buildConvictionPlays(
 ): ConvictionPlay[] {
   const plays: ConvictionPlay[] = [];
 
-  // Only high-confidence PropEdge picks
+  // Only high-confidence Clubhouse IQ picks
   const highConfBets = bets.filter(b =>
     (b.confidenceScore ?? 0) >= 82 &&
     b.status === "open" &&
@@ -328,11 +328,11 @@ function buildConvictionPlays(
   for (const bet of highConfBets) {
     const signals: ConvictionSignal[] = [];
 
-    // ── Signal 1: PropEdge Model ───────────────────────────────────────────
+    // ── Signal 1: Clubhouse IQ Model ───────────────────────────────────────────
     const conf = bet.confidenceScore ?? 0;
     signals.push({
       type: "model",
-      label: `PropEdge Model — ${conf}/100 Confidence`,
+      label: `Clubhouse IQ Model — ${conf}/100 Confidence`,
       detail: `${bet.pick ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Model grade: ${bet.grade ?? "A"}. This pick crosses the high-confidence threshold (≥82).`,
       strength: conf >= 90 ? "strong" : "moderate",
       color: "#facc15",
@@ -479,7 +479,7 @@ function buildWatchingPlays(
     // ── Confirmed: model ────────────────────────────────────────────────────
     confirmedSignals.push({
       type: "model",
-      label: `PropEdge Model — ${conf}/100 Confidence`,
+      label: `Clubhouse IQ Model — ${conf}/100 Confidence`,
       detail: `${bet.pick ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Grade: ${bet.grade ?? "A"}.`,
       strength: conf >= 80 ? "moderate" : "moderate",
       color: "#facc15",
@@ -824,7 +824,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
             </div>
           )}
 
-          {/* PropEdge model data */}
+          {/* Clubhouse IQ model data */}
           {play.bet && (
             <div className="rounded-lg p-3 space-y-1.5 border border-yellow-500/15" style={{ background: "rgba(250,204,21,0.04)" }}>
               <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1007,7 +1007,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
               className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
               style={{ background: s.bg, color: s.color, borderColor: `${s.color}35` }}
             >
-              {s.icon} {s.type === "model" ? "PropEdge Model" : s.type === "line_movement" ? "Line Movement" : "Whale Buy"}
+              {s.icon} {s.type === "model" ? "Clubhouse IQ Model" : s.type === "line_movement" ? "Line Movement" : "Whale Buy"}
             </span>
           ))}
           <span className="text-[9px] text-muted-foreground ml-auto">tap to expand →</span>
@@ -1028,11 +1028,11 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             ))}
           </div>
 
-          {/* PropEdge model detail */}
+          {/* Clubhouse IQ model detail */}
           {play.bet && (
             <div className="rounded-lg p-3 space-y-2 border border-yellow-500/20" style={{ background: "rgba(250,204,21,0.05)" }}>
               <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Zap size={10} /> PropEdge Model Data
+                <Zap size={10} /> Clubhouse IQ Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                 <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
@@ -1159,14 +1159,14 @@ function EmptyState() {
       <div>
         <p className="font-bold text-foreground">No High Conviction Plays Right Now</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-          This tab only surfaces plays where the PropEdge model, line movement, AND a prediction market whale signal all point the same direction. Check back closer to game time.
+          This tab only surfaces plays where the Clubhouse IQ model, line movement, AND a prediction market whale signal all point the same direction. Check back closer to game time.
         </p>
       </div>
       <div className="rounded-xl p-4 text-left max-w-sm border border-border/40 space-y-2" style={{ background: "rgba(255,255,255,0.02)" }}>
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">What triggers a play?</p>
         <div className="space-y-1.5">
           {[
-            { icon: "⭐", text: "PropEdge model ≥82/100 confidence" },
+            { icon: "⭐", text: "Clubhouse IQ model ≥82/100 confidence" },
             { icon: "🔥", text: "Line movement aligned (steam or RLM)" },
             { icon: "🐋", text: "Prediction market whale buying same side" },
           ].map((item, i) => (
@@ -1246,7 +1246,7 @@ export default function HighConviction() {
             <h1 className="text-xl font-black text-foreground">High Conviction Plays</h1>
           </div>
           <p className="text-xs text-muted-foreground max-w-md">
-            Only shows plays where PropEdge model, line movement, AND prediction market whale signals all align. Minimum 2 of 3 signals required.
+            Only shows plays where Clubhouse IQ model, line movement, AND prediction market whale signals all align. Minimum 2 of 3 signals required.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refetchAll} className="gap-1.5 flex-shrink-0">
@@ -1416,7 +1416,7 @@ export default function HighConviction() {
               <Eye size={22} className="text-muted-foreground/30" />
               <p className="text-sm font-semibold text-muted-foreground/60">Nothing on the watchlist</p>
               <p className="text-[11px] text-muted-foreground/40 max-w-xs">
-                Plays appear here when the PropEdge model likes them but they're still waiting on a line movement or whale signal.
+                Plays appear here when the Clubhouse IQ model likes them but they're still waiting on a line movement or whale signal.
               </p>
             </div>
           )}
@@ -1430,7 +1430,7 @@ export default function HighConviction() {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
           {[
-            { icon: "⭐", title: "PropEdge Model", desc: "Must score ≥82/100. The model factors in recent stats, opponent matchup, line value, and historical trends." },
+            { icon: "⭐", title: "Clubhouse IQ Model", desc: "Must score ≥82/100. The model factors in recent stats, opponent matchup, line value, and historical trends." },
             { icon: "🔥", title: "Line Movement", desc: "Spread or total must move ≥1.5 pts in the same direction as the pick, OR reverse line movement detected." },
             { icon: "🐋", title: "Whale Signal", desc: "A prediction market (Kalshi or Polymarket) must show a whale buying YES on the same outcome — $100K+ size or 5¢+ price move." },
           ].map((item, i) => (

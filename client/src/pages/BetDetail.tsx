@@ -160,7 +160,7 @@ const SCORE_DESCRIPTIONS: Record<string, { max: number; color: string; what: str
   },
   "Base Model": {
     max: 30, color: "#f59e0b",
-    what: "PropEdge's core probability model score. Based on historical hit rates for this bet type, sport, and line relative to the player's average output.",
+    what: "Clubhouse IQ's core probability model score. Based on historical hit rates for this bet type, sport, and line relative to the player's average output.",
     high: "The base model strongly favors this line — historically, similar setups have hit at a high rate for this player and bet type.",
     low: "The base model is neutral or cautious. Consider this a softer edge — the historical pattern is less decisive.",
   },

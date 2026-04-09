@@ -154,7 +154,7 @@ export default function Ask() {
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <MessageCircleQuestion size={20} className="text-primary" />
-            Ask PropEdge
+            Ask Clubhouse IQ
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">AI</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">

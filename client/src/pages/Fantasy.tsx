@@ -1,5 +1,5 @@
 /**
- * PropEdge Fantasy Decision Engine — v3
+ * Clubhouse IQ Fantasy Decision Engine — v3
  *
  * UX principles from feedback:
  *  - One active mode at a time (preseason / draft / inseason)
@@ -960,7 +960,7 @@ function PlayerDrawer({player,onClose}:{player:PlayerCard;onClose:()=>void}) {
                 </div>
                 <span className="text-sm font-black" style={{color:ac.text}}>{player.actionScore}/100</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">PropEdge confidence</p>
+              <p className="text-[10px] text-muted-foreground">Clubhouse IQ confidence</p>
             </div>
           </div>
 
@@ -1001,7 +1001,7 @@ function PlayerDrawer({player,onClose}:{player:PlayerCard;onClose:()=>void}) {
             <div className="grid grid-cols-3 gap-2">
               {[
                 {label:"Consensus",  value:`#${player.consensusRank}`, note:"Expert/ADP rank"},
-                {label:"Model",      value:`#${player.modelRank}`,     note:"PropEdge rank"},
+                {label:"Model",      value:`#${player.modelRank}`,     note:"Clubhouse IQ rank"},
                 {label:"ADP",        value:player.adp.toFixed(1),      note:"Avg draft pos"},
               ].map(s=>(
                 <div key={s.label} className="bg-white/[0.03] rounded-lg p-2 text-center">
@@ -1162,11 +1162,11 @@ function CompareTool({players,onClose}:{players:PlayerCard[];onClose:()=>void}) 
               </div>
               {/* Verdict */}
               <div className="bg-white/[0.04] rounded-xl p-3">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">PropEdge Verdict</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Clubhouse IQ Verdict</p>
                 <p className="text-xs text-foreground/90 leading-relaxed">
                   {a.actionScore > b.actionScore
-                    ? `${a.name} scores higher on PropEdge's model (${a.actionScore} vs ${b.actionScore}). ${a.reason}`
-                    : `${b.name} scores higher on PropEdge's model (${b.actionScore} vs ${a.actionScore}). ${b.reason}`}
+                    ? `${a.name} scores higher on Clubhouse IQ's model (${a.actionScore} vs ${b.actionScore}). ${a.reason}`
+                    : `${b.name} scores higher on Clubhouse IQ's model (${b.actionScore} vs ${a.actionScore}). ${b.reason}`}
                 </p>
               </div>
             </div>
@@ -1472,7 +1472,7 @@ function DraftRoomView({players}:{players:PlayerCard[]}) {
         </div>
 
         {/* Full pre-draft board */}
-        <SortControl sort={sortKey} setSort={setSortKey} count={players.length} label="players sorted by PropEdge model"/>
+        <SortControl sort={sortKey} setSort={setSortKey} count={players.length} label="players sorted by Clubhouse IQ model"/>
         <div className="space-y-1.5">
           {sortPlayers(players,sortKey).map(p=>(
             <PlayerCard key={p.id} p={p} view="draft" onSelect={setSelectedPlayer} onCompare={()=>{}} inCompare={false}/>
@@ -1680,7 +1680,7 @@ function PlatformRankings({ players }: { players: PlayerCard[] }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-xs font-bold text-foreground">Platform Rankings</p>
-          <p className="text-[10px] text-muted-foreground">Compare ESPN, Yahoo & Sleeper ADP vs. PropEdge model rank</p>
+          <p className="text-[10px] text-muted-foreground">Compare ESPN, Yahoo & Sleeper ADP vs. Clubhouse IQ model rank</p>
         </div>
         <div className="flex gap-1.5">
           {(Object.keys(PLATFORM_META) as PlatformKey[]).map(pk => (

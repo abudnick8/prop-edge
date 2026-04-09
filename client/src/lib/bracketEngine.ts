@@ -1,5 +1,5 @@
 /**
- * PropEdge March Madness Bracket Engine v3
+ * Clubhouse IQ March Madness Bracket Engine v3
  *
  * Win probability model — 5 components + historically-calibrated probabilistic draws
  *

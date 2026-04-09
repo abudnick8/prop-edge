@@ -28,7 +28,7 @@ const NBA_ODDS: Record<string, number> = {
   DET: 1400, NYK: 900, HOU: 2800, MIA: 3500, MIL: 2800, PHX: 4000,
   MIN: 3200, DAL: 2400, MEM: 5000, SAC: 6000, ATL: 4500, PHI: 5000,
   GSW: 5000, CHI: 8000, NOP: 9000, BKN: 9000, TOR: 10000, IND: 7000,
-  ORL: 5000, WAS: 15000, CHA: 15000, POR: 12000, UTA: 10000, DET: 1400,
+  ORL: 5000, WAS: 15000, CHA: 15000, POR: 12000, UTA: 10000,
 };
 const NHL_ODDS: Record<string, number> = {
   COL: 320, CAR: 500, TBL: 600, DAL: 750, SAS: 380, BOS: 1800,
@@ -205,7 +205,7 @@ export function buildLivePlayoffTeams(
 }
 
 // ── Cache helper ───────────────────────────────────────────────────────────
-const STANDINGS_CACHE_KEY = (sport: string) => `propedge_standings_${sport}`;
+const STANDINGS_CACHE_KEY = (sport: string) => `clubhouseiq_standings_${sport}`;
 const STANDINGS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function fetchLiveStandings(sport: string): Promise<LiveStandingsData | null> {

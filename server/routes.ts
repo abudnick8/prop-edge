@@ -534,7 +534,7 @@ async function fetchBBRStats(playerName: string): Promise<any> {
   const url = `https://www.basketball-reference.com/players/${letter}/${slug}.html`;
   try {
     const resp = await axios.get(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PropEdge/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Clubhouse IQ/1.0)" },
       timeout: 8000,
     });
     const $ = cheerio.load(resp.data);
@@ -588,7 +588,7 @@ async function fetchPFRStats(playerName: string): Promise<any> {
   const url = `https://www.pro-football-reference.com/players/${slug[0]}/${slug}.htm`;
   try {
     const resp = await axios.get(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PropEdge/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Clubhouse IQ/1.0)" },
       timeout: 8000,
     });
     const $ = cheerio.load(resp.data);
@@ -1974,7 +1974,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     "Accept":  "application/json",
   };
 
-  // Normalise a Linemate pick/market into a consistent shape PropEdge can use
+  // Normalise a Linemate pick/market into a consistent shape Clubhouse IQ can use
   function normalisePick(p: any, group: string, sport: string) {
     const player     = p.player ?? {};
     const market     = p.market ?? {};
@@ -2856,7 +2856,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/debug/nhl", async (req, res) => {
     try {
       const axios = (await import("axios")).default;
-      const cacheResp = await axios.get("https://raw.githubusercontent.com/abudnick8/prop-edge/cache/data/underdog-cache/underdog_NHL.json", { timeout: 10000 });
+      const cacheResp = await axios.get("https://raw.githubusercontent.com/abudnick8/clubhouse-iq/cache/data/underdog-cache/underdog_NHL.json", { timeout: 10000 });
       const cacheData = cacheResp.data;
       const lines: any[] = cacheData.over_under_lines ?? [];
       const goalLines = lines.filter((l: any) => {
@@ -3325,7 +3325,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
         if (openaiKey) {
           const axiosLib = (await import("axios")).default;
-          const systemPrompt = `You are PropEdge, an expert sports betting analyst with access to live odds from DraftKings, FanDuel, BetMGM, and William Hill. Answer the user's EXACT question using the provided live bet data. Be direct and specific. If they ask about a specific player/team/bet, analyze exactly that. If they ask for a list or recommendations, provide that specific number. Always cite confidence scores and key factors.`;
+          const systemPrompt = `You are Clubhouse IQ, an expert sports betting analyst with access to live odds from DraftKings, FanDuel, BetMGM, and William Hill. Answer the user's EXACT question using the provided live bet data. Be direct and specific. If they ask about a specific player/team/bet, analyze exactly that. If they ask for a list or recommendations, provide that specific number. Always cite confidence scores and key factors.`;
           const userPrompt = `Live database: ${totalBets} bets, ${propCount} player props, ${highConfCount} high-confidence (80+/100).
 
 Relevant bets from live data:
@@ -5375,7 +5375,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   app.post("/api/portfolio/grade-all", async (req, res) => {
     try {
       const secret = req.headers["x-cron-secret"] as string;
-      if (secret !== (process.env.CRON_SECRET ?? "propedge-midnight-grade")) {
+      if (secret !== (process.env.CRON_SECRET ?? "clubhouseiq-midnight-grade")) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 

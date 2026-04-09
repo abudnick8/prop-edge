@@ -216,7 +216,7 @@ export default function AskDrawer() {
               <Sparkles size={13} className="text-primary" />
             </div>
             <div>
-              <p className="text-sm font-bold text-foreground leading-tight">Ask PropEdge</p>
+              <p className="text-sm font-bold text-foreground leading-tight">Ask Clubhouse IQ</p>
               <p className="text-[10px] text-muted-foreground leading-tight">Live odds · confidence scores · stats</p>
             </div>
           </div>

@@ -17,15 +17,16 @@ const navItems = [
 
 const Logo = () => (
   <div className="flex items-center gap-3">
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="PropEdge">
-      <rect width="32" height="32" rx="8" fill="rgba(245,158,11,0.12)" />
-      <path d="M8 24 L16 8 L24 24" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <circle cx="16" cy="8" r="2.5" fill="#f59e0b" />
-      <line x1="10" y1="20" x2="22" y2="20" stroke="rgba(245,158,11,0.45)" strokeWidth="1.5" strokeLinecap="round" />
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="Clubhouse IQ">
+      <rect width="32" height="32" rx="8" fill="rgba(251,158,30,0.12)" />
+      <path d="M8 22 C8 13.2 24 13.2 24 22" stroke="rgba(251,158,30,0.3)" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      <path d="M20 11 C17.5 9.5 12 9.5 10 14 C8.5 17 9 21 12 23 C14.5 24.5 18.5 24.5 21 23" stroke="#fb9e1e" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <circle cx="23" cy="11" r="1.4" fill="#fb9e1e" />
+      <line x1="22" y1="13" x2="24" y2="16" stroke="#fb9e1e" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
     <div>
-      <p className="font-bold text-foreground text-sm leading-tight">PropEdge</p>
-      <p className="text-xs text-muted-foreground leading-tight">Prediction Bot</p>
+      <p className="font-bold text-foreground text-sm leading-tight">Clubhouse IQ</p>
+      <p className="text-xs text-muted-foreground leading-tight">Sports Intelligence</p>
     </div>
   </div>
 );

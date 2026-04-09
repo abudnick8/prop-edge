@@ -1,5 +1,5 @@
 /**
- * PropEdge Cheat Sheet
+ * Clubhouse IQ Cheat Sheet
  *
  * A slide-up drawer containing the full smart money reading guide.
  * Drop <CheatSheetButton /> anywhere — it opens the shared drawer.
@@ -729,7 +729,7 @@ export function CheatSheetDrawer({
               <BookOpen size={14} className="text-primary" />
             </div>
             <div>
-              <p className="font-bold text-foreground text-sm">PropEdge Cheat Sheet</p>
+              <p className="font-bold text-foreground text-sm">Clubhouse IQ Cheat Sheet</p>
               <p className="text-[10px] text-muted-foreground">How to read smart money signals</p>
             </div>
           </div>

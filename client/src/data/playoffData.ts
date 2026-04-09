@@ -1,5 +1,5 @@
 /**
- * PropEdge Playoff Team Data
+ * Clubhouse IQ Playoff Team Data
  *
  * NBA Playoffs 2026 & NHL Stanley Cup Playoffs 2026 — real seedings and stats.
  * Uses the same NCAATeam interface so the existing bracketEngine works unchanged.

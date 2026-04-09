@@ -1,6 +1,6 @@
 /**
  * Auth page — Login + Register in a tabbed modal-style card.
- * Uses PropEdge dark theme — no external deps beyond what's already installed.
+ * Uses Clubhouse IQ dark theme — no external deps beyond what's already installed.
  */
 
 import { useState } from "react";
@@ -76,7 +76,7 @@ export default function Auth() {
             style={{ background: "linear-gradient(135deg, #7c3aed, #a855f7)" }}>
             <span className="text-white font-black text-sm">P</span>
           </div>
-          <span className="font-black text-lg tracking-tight text-white">PropEdge</span>
+          <span className="font-black text-lg tracking-wide text-white">Clubhouse IQ</span>
         </div>
 
         {/* Card */}

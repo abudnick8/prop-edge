@@ -543,6 +543,11 @@ export default function Bracket() {
     [visibleTournaments, selectedTournamentId]
   );
 
+  // Live standings state — must come before currentTeams memo
+  const [liveStandings, setLiveStandings] = useState<LiveStandingsData | null>(null);
+  const [standingsLoading, setStandingsLoading] = useState(false);
+  const [standingsError, setStandingsError] = useState<string | null>(null);
+
   // Teams for the selected tournament — uses live standings when available
   const { teams: currentTeams, regions: currentRegions } = useMemo(
     () => (selectedTournament
@@ -550,11 +555,6 @@ export default function Bracket() {
       : { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] }),
     [selectedTournament, liveStandings]
   );
-
-  // Live standings state
-  const [liveStandings, setLiveStandings] = useState<LiveStandingsData | null>(null);
-  const [standingsLoading, setStandingsLoading] = useState(false);
-  const [standingsError, setStandingsError] = useState<string | null>(null);
 
   // Fetch live standings for the current tournament if it's a live-seeding league
   const loadLiveStandings = useCallback(async (tournament: Tournament | null | undefined) => {

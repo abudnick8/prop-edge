@@ -1,5 +1,5 @@
 /**
- * PropEdge — March Madness 2026 Bracket PDF Generator
+ * Clubhouse IQ — March Madness 2026 Bracket PDF Generator
  *
  * Reproduces the exact structure of the official NCAA MARCH-MAD.pdf bracket,
  * then overlays the AI-predicted winners into every blank slot.
@@ -18,7 +18,7 @@ import jsPDF from "jspdf";
 import { FullBracket } from "./bracketEngine";
 import { NCAATeam } from "../data/bracketData";
 
-// ── Palette — matches the dark PropEdge theme ──────────────────────────────
+// ── Palette — matches the dark Clubhouse IQ theme ──────────────────────────────
 const C = {
   bg:       [10,  12,  20] as [number,number,number],
   surface:  [16,  20,  34] as [number,number,number],
@@ -305,7 +305,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
 
   // ── Header ────────────────────────────────────────────────────────────────
   rect(doc, 0, 0, PW, 13, 0, C.card);
-  t(doc, "PropEdge · 2026 NCAA DIVISION I MEN'S BASKETBALL CHAMPIONSHIP",
+  t(doc, "Clubhouse IQ · 2026 NCAA DIVISION I MEN'S BASKETBALL CHAMPIONSHIP",
     PW/2, 5.5, C.gold, 6.5, true, "center");
   t(doc, "AI-Predicted Bracket", PW/2, 10.5, C.muted, 3.5, false, "center");
   t(doc, `Champion: ${bracket.champion.name}`, 4, 5.5, C.gold, 4.5, true);
@@ -431,7 +431,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   doc.line(sfX+sfW/2, sf2TopY,         sfX+sfW/2, champY+24);
 
   // ── Page footer ────────────────────────────────────────────────────────
-  t(doc, "Created with Perplexity Computer · prop-edge.up.railway.app  |  Odds: DraftKings  |  For entertainment only — not financial advice",
+  t(doc, "Created with Perplexity Computer · clubhouse-iq.up.railway.app  |  Odds: DraftKings  |  For entertainment only — not financial advice",
     PW/2, PH-2, C.muted, 2.8, false, "center");
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -440,7 +440,7 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   doc.addPage();
   fill(doc, C.bg); doc.rect(0,0,PW,PH,"F");
   rect(doc, 0,0,PW,13,0,C.card);
-  t(doc,"PropEdge — March Madness 2026 Analytics Report",PW/2,9,C.gold,8,true,"center");
+  t(doc,"Clubhouse IQ — March Madness 2026 Analytics Report",PW/2,9,C.gold,8,true,"center");
 
   let cy = 19;
 
@@ -519,13 +519,13 @@ export async function downloadBracketPDF(bracket: FullBracket): Promise<void> {
   }
 
   // Footer
-  t(doc,"Created with Perplexity Computer · perplexity.ai/computer  |  PropEdge · prop-edge.up.railway.app  |  Odds: DraftKings  |  Not financial advice",
+  t(doc,"Created with Perplexity Computer · perplexity.ai/computer  |  Clubhouse IQ · clubhouse-iq.up.railway.app  |  Odds: DraftKings  |  Not financial advice",
     PW/2,PH-5,C.muted,2.8,false,"center");
 
   doc.setPage(1);
-  t(doc,"Created with Perplexity Computer · prop-edge.up.railway.app",
+  t(doc,"Created with Perplexity Computer · clubhouse-iq.up.railway.app",
     PW/2,PH-2,C.muted,2.8,false,"center");
 
   // Save
-  doc.save(`PropEdge-Bracket-2026-${new Date().toISOString().slice(0,10)}.pdf`);
+  doc.save(`Clubhouse IQ-Bracket-2026-${new Date().toISOString().slice(0,10)}.pdf`);
 }

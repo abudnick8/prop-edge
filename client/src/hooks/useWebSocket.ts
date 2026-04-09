@@ -1,5 +1,5 @@
 /**
- * useWebSocket — auto-reconnecting WebSocket hook for PropEdge live feed.
+ * useWebSocket — auto-reconnecting WebSocket hook for Clubhouse IQ live feed.
  *
  * On bets:updated  → invalidate /api/bets so every page refetches silently
  * On bets:highconf → store latest high-confidence alert for NotificationCenter

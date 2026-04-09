@@ -626,7 +626,7 @@ function HowToRead() {
             {/* Full Guide CTA */}
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-bold text-foreground flex items-center gap-2">⚡ PropEdge Smart Money Guide</p>
+                <p className="text-xs font-bold text-foreground flex items-center gap-2">⚡ Clubhouse IQ Smart Money Guide</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">9 sections — spread signals, totals by sport, moneyline, universal rules, and more</p>
               </div>
               <button
@@ -877,7 +877,7 @@ function AskSection() {
         </div>
         <div>
           <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-            Ask PropEdge
+            Ask Clubhouse IQ
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">AI</span>
           </h2>
           <p className="text-xs text-muted-foreground">Ask about any bet — get analysis using live odds & stats</p>

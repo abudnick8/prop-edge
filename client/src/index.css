@@ -4,72 +4,72 @@
 
 @layer base {
   :root {
-    /* PropEdge — Cosmic Gold: deep space purple bg + gold accent + cyan confidence */
-    --background: 265 35% 7%;
-    --foreground: 45 100% 95%;
+    /* Clubhouse IQ — Stadium Night: deep navy-slate bg + amber-gold accent + field green undertones */
+    --background: 220 28% 7%;
+    --foreground: 38 80% 94%;
 
-    --card: 265 30% 10%;
-    --card-foreground: 45 100% 95%;
+    --card: 220 24% 10%;
+    --card-foreground: 38 80% 94%;
 
-    --popover: 265 30% 10%;
-    --popover-foreground: 45 100% 95%;
+    --popover: 220 24% 10%;
+    --popover-foreground: 38 80% 94%;
 
-    /* Gold primary — picks, CTAs, highlights */
-    --primary: 43 100% 50%;
-    --primary-foreground: 265 35% 7%;
+    /* Amber-gold primary — picks, CTAs, highlights */
+    --primary: 38 95% 52%;
+    --primary-foreground: 220 28% 7%;
 
-    --secondary: 265 25% 16%;
-    --secondary-foreground: 45 60% 75%;
+    --secondary: 220 20% 16%;
+    --secondary-foreground: 38 50% 72%;
 
-    --muted: 265 25% 13%;
-    --muted-foreground: 265 15% 52%;
+    --muted: 220 22% 13%;
+    --muted-foreground: 220 12% 50%;
 
-    --accent: 265 25% 18%;
-    --accent-foreground: 45 100% 90%;
+    --accent: 220 20% 17%;
+    --accent-foreground: 38 80% 90%;
 
     /* Risk signal */
-    --destructive: 0 85% 60%;
-    --destructive-foreground: 265 35% 7%;
+    --destructive: 0 82% 58%;
+    --destructive-foreground: 220 28% 7%;
 
-    --border: 265 20% 18%;
-    --input: 265 20% 15%;
-    --ring: 43 100% 50%;
+    --border: 220 18% 17%;
+    --input: 220 18% 14%;
+    --ring: 38 95% 52%;
 
     --radius: 0.5rem;
 
     /* Custom tokens */
-    --high-conf: 43 100% 50%;
-    --medium-conf: 188 100% 50%;
-    --low-conf: 0 85% 60%;
-    --kalshi: 188 100% 50%;
-    --polymarket: 270 60% 65%;
-    --draftkings: 214 100% 60%;
-    --underdog: 32 95% 55%;
+    --high-conf: 38 95% 52%;
+    --medium-conf: 173 80% 48%;
+    --low-conf: 0 82% 58%;
+    --kalshi: 173 80% 48%;
+    --polymarket: 258 55% 65%;
+    --draftkings: 210 95% 58%;
+    --underdog: 28 92% 54%;
 
     --font-body: 'General Sans', 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
   .dark {
-    --background: 265 35% 7%;
-    --foreground: 45 100% 95%;
-    --card: 265 30% 10%;
-    --card-foreground: 45 100% 95%;
-    --popover: 265 30% 10%;
-    --popover-foreground: 45 100% 95%;
-    --primary: 43 100% 50%;
-    --primary-foreground: 265 35% 7%;
-    --secondary: 265 25% 16%;
-    --secondary-foreground: 45 60% 75%;
-    --muted: 265 25% 13%;
-    --muted-foreground: 265 15% 52%;
-    --accent: 265 25% 18%;
-    --accent-foreground: 45 100% 90%;
-    --destructive: 0 85% 60%;
-    --destructive-foreground: 265 35% 7%;
-    --border: 265 20% 18%;
-    --input: 265 20% 15%;
-    --ring: 43 100% 50%;
+    --background: 220 28% 7%;
+    --foreground: 38 80% 94%;
+    --card: 220 24% 10%;
+    --card-foreground: 38 80% 94%;
+    --popover: 220 24% 10%;
+    --popover-foreground: 38 80% 94%;
+    --primary: 38 95% 52%;
+    --primary-foreground: 220 28% 7%;
+    --secondary: 220 20% 16%;
+    --secondary-foreground: 38 50% 72%;
+    --muted: 220 22% 13%;
+    --muted-foreground: 220 12% 50%;
+    --accent: 220 20% 17%;
+    --accent-foreground: 38 80% 90%;
+    --destructive: 0 82% 58%;
+    --destructive-foreground: 220 28% 7%;
+    --border: 220 18% 17%;
+    --input: 220 18% 14%;
+    --ring: 38 95% 52%;
   }
 }
 
@@ -96,9 +96,11 @@
     min-height: 100vh;
     min-height: -webkit-fill-available;
     /* Cosmic space background */
-    background: radial-gradient(ellipse at 20% 10%, rgba(139,92,246,0.12) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(245,158,11,0.07) 0%, transparent 50%),
-                hsl(265 35% 7%);
+    /* Stadium lights: warm amber glow from top corners, deep field-green center undertone */
+    background: radial-gradient(ellipse at 15% 0%, rgba(251,158,30,0.10) 0%, transparent 45%),
+                radial-gradient(ellipse at 85% 0%, rgba(251,158,30,0.08) 0%, transparent 45%),
+                radial-gradient(ellipse at 50% 110%, rgba(34,120,60,0.07) 0%, transparent 50%),
+                hsl(220 28% 7%);
   }
 
   .font-mono {
@@ -108,12 +110,12 @@
 
 /* Confidence score ring — gold for high, cyan for mid */
 @keyframes pulse-glow-gold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.3); }
-  50%       { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,158,30,0.3); }
+  50%       { box-shadow: 0 0 0 8px rgba(251,158,30,0); }
 }
-@keyframes pulse-glow-cyan {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.25); }
-  50%       { box-shadow: 0 0 0 6px rgba(34,211,238,0); }
+@keyframes pulse-glow-teal {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(20,184,166,0.25); }
+  50%       { box-shadow: 0 0 0 6px rgba(20,184,166,0); }
 }
 
 .high-conf-pulse {
@@ -121,23 +123,23 @@
 }
 
 /* Score arc gradient */
-.score-high   { color: hsl(43 100% 50%); }
-.score-medium { color: hsl(188 100% 50%); }
-.score-low    { color: hsl(0 85% 60%); }
+.score-high   { color: hsl(38 95% 52%); }
+.score-medium { color: hsl(173 80% 48%); }
+.score-low    { color: hsl(0 82% 58%); }
 
 /* ── Source badges ───────────────────────────────────────────────────────── */
-.source-kalshi        { background: rgba(34,211,238,0.1);  color: #22d3ee; border-color: rgba(34,211,238,0.25); }
+.source-kalshi        { background: rgba(20,184,166,0.1);  color: #14b8a6; border-color: rgba(20,184,166,0.25); }
 .source-polymarket    { background: rgba(167,139,250,0.1); color: #a78bfa; border-color: rgba(167,139,250,0.25); }
 .source-draftkings    { background: rgba(96,165,250,0.1);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
 .source-underdog      { background: rgba(251,146,60,0.1);  color: #fb923c; border-color: rgba(251,146,60,0.25); }
-.source-sportsgameodds { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.25); }
+.source-sportsgameodds { background: rgba(251,158,30,0.1); color: #fb9e1e; border-color: rgba(251,158,30,0.25); }
 .source-actionnetwork  { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
 
 /* ── Sport badges ────────────────────────────────────────────────────────── */
 .sport-nfl   { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
 .sport-nba   { background: rgba(251,146,60,0.1);  color: #fb923c; border-color: rgba(251,146,60,0.25); }
 .sport-mlb   { background: rgba(96,165,250,0.1);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
-.sport-nhl   { background: rgba(34,211,238,0.1);  color: #22d3ee; border-color: rgba(34,211,238,0.25); }
+.sport-nhl   { background: rgba(20,184,166,0.1);  color: #14b8a6; border-color: rgba(20,184,166,0.25); }
 .sport-ncaab { background: rgba(167,139,250,0.1); color: #a78bfa; border-color: rgba(167,139,250,0.25); }
 .sport-golf  { background: rgba(74,222,128,0.1);  color: #4ade80; border-color: rgba(74,222,128,0.25); }
 
@@ -150,9 +152,9 @@
 }
 
 .pick-over {
-  background: linear-gradient(135deg, rgba(245,158,11,0.18) 0%, rgba(180,83,9,0.12) 100%);
+  background: linear-gradient(135deg, rgba(251,158,30,0.18) 0%, rgba(180,83,9,0.12) 100%);
   color: #fbbf24;
-  border: 1px solid rgba(245,158,11,0.35);
+  border: 1px solid rgba(251,158,30,0.35);
 }
 .pick-under {
   background: linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(91,33,182,0.12) 100%);
@@ -170,9 +172,9 @@
 
 /* ── Hot pick badge ──────────────────────────────────────────────────────── */
 .hot-pick-badge {
-  background: rgba(245,158,11,0.15);
+  background: rgba(251,158,30,0.15);
   color: #fbbf24;
-  border: 1px solid rgba(245,158,11,0.35);
+  border: 1px solid rgba(251,158,30,0.35);
 }
 
 /* ── Card hover ──────────────────────────────────────────────────────────── */
@@ -183,15 +185,15 @@
 }
 .bet-card:hover {
   transform: translateY(-2px);
-  outline: 1.5px solid rgba(139,92,246,0.55);
-  box-shadow: 0 8px 32px rgba(139,92,246,0.3), 0 2px 8px rgba(0,0,0,0.4);
+  outline: 1.5px solid rgba(251,158,30,0.45);
+  box-shadow: 0 8px 32px rgba(251,158,30,0.18), 0 2px 8px rgba(0,0,0,0.45);
 }
 .bet-card:active {
   transform: translateY(0px) scale(0.99);
 }
 .bet-card-hot:hover {
-  outline: 1.5px solid rgba(245,158,11,0.5);
-  box-shadow: 0 8px 40px rgba(245,158,11,0.25), 0 2px 8px rgba(0,0,0,0.4);
+  outline: 1.5px solid rgba(251,158,30,0.55);
+  box-shadow: 0 8px 40px rgba(251,158,30,0.28), 0 2px 8px rgba(0,0,0,0.4);
 }
 
 /* ── Clickable link cards (picks, lotto) ─────────────────────────────────── */
