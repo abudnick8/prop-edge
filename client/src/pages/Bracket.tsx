@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2, Calendar, CheckCircle, Clock, TrendingUp, Activity } from "lucide-react";
+import { Trophy, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Zap, Search, Target, Lock, Shuffle, X, ChevronDown as ChevronDownIcon, BarChart2, Calendar, CheckCircle, Clock, TrendingUp, Activity, Pencil, RotateCcw } from "lucide-react";
 import { generateBracket, generatePlayoffBracket, calculateMatchup, getUpsetPicks, getTeamPath, FullBracket, MatchupResult, ROUND_NAMES } from "@/lib/bracketEngine";
 import { ALL_TEAMS, NCAATeam, REGIONS, Region } from "@/data/bracketData";
 import { getVisibleTournaments, Tournament } from "@/data/tournamentCalendar";
 import { PLAYOFF_TEAMS_REGISTRY } from "@/data/playoffData";
-import { fetchLiveStandings, buildLivePlayoffTeams, LiveStandingsData } from "@/data/livePlayoffTeams";
+import { fetchLiveStandings, buildLivePlayoffTeams, buildSingleLiveTeam, LiveStandingsData, LiveNCAATeam, StandingsTeam } from "@/data/livePlayoffTeams";
 
 // ── Confidence Ring ────────────────────────────────────────────────────────
 function ConfidenceRing({ score, size = 40 }: { score: number; size?: number }) {
@@ -39,6 +39,32 @@ function ProbBar({ prob, teamA, teamB }: { prob: number; teamA: string; teamB: s
       </div>
     </div>
   );
+}
+
+// ── Clinch Status Badge ────────────────────────────────────────────────────
+function ClinchBadge({ status }: { status: "clinched" | "playin" | "projected" | "eliminated" }) {
+  if (status === "clinched") {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+        <Lock size={7} /> CLINCHED
+      </span>
+    );
+  }
+  if (status === "playin") {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
+        PLAY-IN
+      </span>
+    );
+  }
+  if (status === "projected") {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/25 shrink-0">
+        PROJ
+      </span>
+    );
+  }
+  return null;
 }
 
 // ── MatchupCard ────────────────────────────────────────────────────────────
@@ -158,20 +184,51 @@ function MatchupCard({ result, showDetail = false }: { result: MatchupResult; sh
 }
 
 // ── Team Card (bracket view) ───────────────────────────────────────────────
-function TeamProfileCard({ team, onMatchup }: { team: NCAATeam; onMatchup: (t: NCAATeam) => void }) {
+function TeamProfileCard({
+  team,
+  onMatchup,
+  onSwap,
+  isLiveSeeding,
+}: {
+  team: NCAATeam;
+  onMatchup: (t: NCAATeam) => void;
+  onSwap?: (t: LiveNCAATeam) => void;
+  isLiveSeeding?: boolean;
+}) {
+  const liveTeam = team as LiveNCAATeam;
+  const clinchStatus = isLiveSeeding ? (liveTeam.clinchStatus ?? "projected") : null;
+  const canSwap = isLiveSeeding && onSwap && clinchStatus !== "clinched";
+
   return (
-    <div className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-primary/40 transition-all" onClick={() => onMatchup(team)}>
+    <div className="bg-card border border-border rounded-xl p-3 transition-all hover:border-primary/40">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="w-7 h-7 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">{team.seed}</span>
-          <div>
-            <p className="text-sm font-bold text-foreground leading-tight">{team.name}</p>
+        <div
+          className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+          onClick={() => onMatchup(team)}
+        >
+          <span className="w-7 h-7 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center shrink-0">{team.seed}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-sm font-bold text-foreground leading-tight">{team.name}</p>
+              {clinchStatus && <ClinchBadge status={clinchStatus} />}
+            </div>
             <p className="text-[10px] text-muted-foreground">{team.record} · {team.conferenceFinish}</p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-xs font-mono text-primary font-bold">+{team.championshipOdds.toLocaleString()}</p>
-          <p className="text-[9px] text-muted-foreground">{team.impliedChampionshipPct}% title</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right" onClick={() => onMatchup(team)} style={{ cursor: "pointer" }}>
+            <p className="text-xs font-mono text-primary font-bold">+{team.championshipOdds.toLocaleString()}</p>
+            <p className="text-[9px] text-muted-foreground">{team.impliedChampionshipPct}% title</p>
+          </div>
+          {canSwap && (
+            <button
+              onClick={() => onSwap!(liveTeam)}
+              className="w-7 h-7 rounded-full bg-orange-500/15 border border-orange-500/25 flex items-center justify-center hover:bg-orange-500/25 transition-all shrink-0"
+              title="Swap this seed slot"
+            >
+              <Pencil size={11} className="text-orange-400" />
+            </button>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-3 gap-1 text-[9px] mb-2">
@@ -195,6 +252,102 @@ function TeamProfileCard({ team, onMatchup }: { team: NCAATeam; onMatchup: (t: N
         {team.recentForm === "hot" && <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded-full">🔥 hot</span>}
         {team.upsetAlert && <span className="text-[9px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full">⚠ upset alert</span>}
         {team.sleeper && <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full">💤 sleeper</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── TeamSwapper Modal ──────────────────────────────────────────────────────
+// Shown when user taps the pencil icon on an unclinched/projected team card.
+// Lists all non-eliminated teams in the same conference sorted by current seed.
+// User picks a replacement; the swap is applied to seedOverrides.
+function TeamSwapper({
+  confName,
+  targetSeed,
+  currentTeamName,
+  allConfTeams,
+  onSelect,
+  onClose,
+}: {
+  confName: string;
+  targetSeed: number;
+  currentTeamName: string;
+  allConfTeams: StandingsTeam[];
+  onSelect: (team: StandingsTeam) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const sorted = useMemo(() => {
+    return allConfTeams
+      .filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.abbreviation.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => (a.seed || 99) - (b.seed || 99));
+  }, [allConfTeams, search]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm flex flex-col" style={{ maxHeight: "85vh" }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+          <div>
+            <h3 className="font-bold text-foreground text-base flex items-center gap-2">
+              <Pencil size={14} className="text-orange-400" />
+              Swap Seed #{targetSeed}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {confName} · Currently: <span className="text-foreground font-semibold">{currentTeamName}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="p-3 border-b border-border shrink-0">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search teams..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-muted border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
+            />
+          </div>
+          <p className="text-[9px] text-muted-foreground mt-2">
+            Select any team from the {confName} to project into seed #{targetSeed}
+          </p>
+        </div>
+
+        {/* Team list */}
+        <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+          {sorted.map(t => (
+            <button
+              key={t.id}
+              onClick={() => onSelect(t)}
+              className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/40 hover:border-primary/40 hover:bg-muted/70 text-left transition-all"
+            >
+              <span className="w-7 h-7 rounded-full bg-muted text-muted-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                {t.seed || "?"}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
+                  <ClinchBadge status={t.clinchStatus} />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {t.record} · #{t.seed ?? "?"} seed
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] font-mono text-primary">{(t.winPct * 100).toFixed(1)}%</p>
+                <p className="text-[9px] text-muted-foreground">win%</p>
+              </div>
+            </button>
+          ))}
+          {sorted.length === 0 && (
+            <p className="text-center text-xs text-muted-foreground py-6">No teams found</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -443,17 +596,34 @@ function TournamentCard({
 }
 
 // ── Get team data for a tournament ────────────────────────────────────────
+// seedOverrides: map of "confName|seed" -> StandingsTeam (user-swapped teams)
 function getTeamsForTournament(
   tournament: Tournament,
-  liveData?: LiveStandingsData | null
+  liveData?: LiveStandingsData | null,
+  seedOverrides?: Map<string, StandingsTeam>
 ): { teams: NCAATeam[]; regions: Region[] } {
   if (tournament.dataKey === "ncaab_2026") {
     return { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] };
   }
-  // Use live standings data if available and bracketUnlocked
+  // Use live standings data if available and season is >= 90% complete
   if (liveData && liveData.bracketUnlocked && tournament.liveStandingsSport) {
     const built = buildLivePlayoffTeams(liveData);
-    if (built.teams.length >= 4) return built;
+    if (built.teams.length >= 4) {
+      // Apply any user seed-overrides
+      if (seedOverrides && seedOverrides.size > 0) {
+        const sport = tournament.liveStandingsSport!;
+        const patched = built.teams.map(t => {
+          const key = `${(t as LiveNCAATeam).conference}|${t.seed}`;
+          const override = seedOverrides.get(key);
+          if (override) {
+            return buildSingleLiveTeam(sport, override, t.seed, (t as LiveNCAATeam).conference);
+          }
+          return t;
+        });
+        return { teams: patched, regions: built.regions };
+      }
+      return built;
+    }
   }
   // Fall back to static registry
   const playoffTeams = PLAYOFF_TEAMS_REGISTRY[tournament.dataKey] ?? [];
@@ -548,12 +718,28 @@ export default function Bracket() {
   const [standingsLoading, setStandingsLoading] = useState(false);
   const [standingsError, setStandingsError] = useState<string | null>(null);
 
+  // User seed overrides — key: "confName|seed" -> StandingsTeam replacement
+  const [seedOverrides, setSeedOverrides] = useState<Map<string, StandingsTeam>>(new Map());
+
+  // TeamSwapper state
+  const [swapperTarget, setSwapperTarget] = useState<{
+    team: LiveNCAATeam;
+    confTeams: StandingsTeam[];
+  } | null>(null);
+
   // Teams for the selected tournament — uses live standings when available
   const { teams: currentTeams, regions: currentRegions } = useMemo(
     () => (selectedTournament
-      ? getTeamsForTournament(selectedTournament, liveStandings)
+      ? getTeamsForTournament(selectedTournament, liveStandings, seedOverrides)
       : { teams: ALL_TEAMS, regions: REGIONS as unknown as Region[] }),
-    [selectedTournament, liveStandings]
+    [selectedTournament, liveStandings, seedOverrides]
+  );
+
+  // Whether this tournament uses live seedings (can be edited)
+  const isLiveSeedingTournament = !!(
+    selectedTournament?.liveStandingsSport &&
+    liveStandings?.bracketUnlocked &&
+    currentTeams.length >= 4
   );
 
   // Fetch live standings for the current tournament if it's a live-seeding league
@@ -593,7 +779,9 @@ export default function Bracket() {
     unlockThreshold != null &&
     (liveStandings.seasonPct < unlockThreshold)
   );
-  const isUpcoming = selectedTournament?.status === "upcoming" && !seasonLocked;
+
+  // Live-seeding leagues bypass the "upcoming" lock — they already have real teams
+  const isUpcoming = selectedTournament?.status === "upcoming" && !seasonLocked && !isLiveSeedingTournament;
 
   const [bracket, setBracket] = useState<FullBracket | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -609,7 +797,7 @@ export default function Bracket() {
   const [compareResult, setCompareResult] = useState<MatchupResult | null>(null);
   const [teamPathTeam, setTeamPathTeam] = useState<NCAATeam | null>(null);
 
-  // When tournament switches, clear the bracket
+  // When tournament switches, clear the bracket and overrides
   const handleSelectTournament = (id: string) => {
     setSelectedTournamentId(id);
     setBracket(null);
@@ -620,6 +808,33 @@ export default function Bracket() {
     setTeamPathTeam(null);
     setActiveView("bracket");
     setSelectedRegion("East");
+    setSeedOverrides(new Map()); // reset overrides on tournament switch
+  };
+
+  // Handle swap: open swapper for a given team
+  const handleOpenSwapper = useCallback((team: LiveNCAATeam) => {
+    if (!liveStandings) return;
+    const confTeams = liveStandings.fullConfTeams?.[team.conference] ?? [];
+    setSwapperTarget({ team, confTeams });
+  }, [liveStandings]);
+
+  // Handle swap selection: apply override
+  const handleSwapSelect = useCallback((replacement: StandingsTeam) => {
+    if (!swapperTarget) return;
+    const key = `${swapperTarget.team.conference}|${swapperTarget.team.seed}`;
+    setSeedOverrides(prev => {
+      const next = new Map(prev);
+      next.set(key, replacement);
+      return next;
+    });
+    setBracket(null); // clear bracket since lineup changed
+    setSwapperTarget(null);
+  }, [swapperTarget]);
+
+  // Reset all overrides
+  const handleResetOverrides = () => {
+    setSeedOverrides(new Map());
+    setBracket(null);
   };
 
   const runGenerate = (tournamentId: string, championId?: string) => {
@@ -632,7 +847,7 @@ export default function Bracket() {
       if (t?.dataKey === "ncaab_2026") {
         result = generateBracket(championId);
       } else {
-        const { teams } = getTeamsForTournament(t!, liveStandings);
+        const { teams } = getTeamsForTournament(t!, liveStandings, seedOverrides);
         const { round, final } = getRoundNames(t!);
         result = generatePlayoffBracket(teams, round, final, championId);
       }
@@ -727,6 +942,17 @@ export default function Bracket() {
           onBack={() => { setShowChampionPicker(false); setShowModeSelector(true); }}
         />
       )}
+      {/* TeamSwapper modal */}
+      {swapperTarget && (
+        <TeamSwapper
+          confName={swapperTarget.team.conference}
+          targetSeed={swapperTarget.team.seed}
+          currentTeamName={swapperTarget.team.name}
+          allConfTeams={swapperTarget.confTeams}
+          onSelect={handleSwapSelect}
+          onClose={() => setSwapperTarget(null)}
+        />
+      )}
 
       {/* ── Tournament Selector ── */}
       {visibleTournaments.length > 0 && (
@@ -770,6 +996,16 @@ export default function Bracket() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Reset seedings button — visible when overrides exist */}
+          {seedOverrides.size > 0 && (
+            <button
+              onClick={handleResetOverrides}
+              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg text-xs font-semibold hover:bg-orange-500/20 transition-all"
+              title="Reset to live seedings"
+            >
+              <RotateCcw size={12} /> Reset ({seedOverrides.size})
+            </button>
+          )}
           {bracket && !isLocked && (
             <button
               onClick={() => setActiveView("analytics")}
@@ -779,7 +1015,7 @@ export default function Bracket() {
               <BarChart2 size={13} /> Analytics
             </button>
           )}
-          {/* Generate button — disabled for completed/upcoming tournaments */}
+          {/* Generate button */}
           {isLocked ? (
             <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
               <Lock size={14} /> Locked
@@ -822,7 +1058,7 @@ export default function Bracket() {
             <p className="font-bold text-foreground text-sm">Tournament Complete</p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               {selectedTournament?.name} has concluded. The bracket is now locked — no new simulations can be generated.
-              {selectedTournament?.sport === "NCAAB" && " Check the NBA &amp; NHL Playoffs tabs to simulate the upcoming playoff brackets."}
+              {selectedTournament?.sport === "NCAAB" && " Check the NBA & NHL Playoffs tabs to simulate the upcoming playoff brackets."}
             </p>
           </div>
           <CheckCircle size={18} className="text-muted-foreground shrink-0 mt-0.5" />
@@ -895,17 +1131,22 @@ export default function Bracket() {
         <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
           <div className="flex-1">
-            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
               <TrendingUp size={11} className="text-green-400" />
               Live Seedings Active
               <span className="text-[9px] font-normal text-muted-foreground ml-1">
                 {liveStandings.seasonPct.toFixed(0)}% of season complete · {currentTeams.length} playoff teams · Updated daily
               </span>
+              {seedOverrides.size > 0 && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-orange-500/15 text-orange-400 rounded-full border border-orange-500/25">
+                  {seedOverrides.size} custom swap{seedOverrides.size !== 1 ? "s" : ""}
+                </span>
+              )}
             </p>
           </div>
           <button
             onClick={() => loadLiveStandings(selectedTournament)}
-            className="text-[10px] text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors"
+            className="text-[10px] text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors shrink-0"
             title="Refresh standings"
           >
             <RefreshCw size={10} />
@@ -913,7 +1154,7 @@ export default function Bracket() {
         </div>
       )}
 
-      {/* Upcoming tournament banner */}
+      {/* Upcoming tournament banner — only for non-live-seeding leagues */}
       {isUpcoming && !isLocked && !seasonLocked && (
         <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
@@ -959,6 +1200,7 @@ export default function Bracket() {
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               Our model combines sportsbook championship odds, adjusted efficiency margins, scoring differential,
               pace/style matchups, recent form, and strength of schedule to predict every game.
+              {isLiveSeedingTournament && " Tap the pencil icon on any projected team to swap seedings."}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -1174,7 +1416,13 @@ export default function Bracket() {
                 {filteredTeams
                   .filter(t => searchQuery || t.region === selectedRegion)
                   .map(t => (
-                    <TeamProfileCard key={t.id} team={t} onMatchup={handleTeamMatchup} />
+                    <TeamProfileCard
+                      key={t.id}
+                      team={t}
+                      onMatchup={handleTeamMatchup}
+                      onSwap={isLiveSeedingTournament ? handleOpenSwapper : undefined}
+                      isLiveSeeding={isLiveSeedingTournament}
+                    />
                   ))}
               </div>
             </div>
@@ -1379,6 +1627,40 @@ export default function Bracket() {
             </div>
           )}
         </>
+      )}
+
+      {/* Teams view BEFORE bracket is generated — for live seedings */}
+      {!bracket && !generating && !isLocked && !seasonLocked && isLiveSeedingTournament && currentTeams.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <TrendingUp size={11} className="text-green-400" /> Current Playoff Seedings
+            </p>
+            <p className="text-[10px] text-muted-foreground">Tap ✏ to adjust projected spots</p>
+          </div>
+          {currentRegions.map(region => {
+            const regionTeams = currentTeams
+              .filter(t => t.region === region)
+              .sort((a, b) => a.seed - b.seed);
+            if (regionTeams.length === 0) return null;
+            return (
+              <div key={region} className="space-y-1.5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide px-1">
+                  {regionLabels[region] ?? region}
+                </p>
+                {regionTeams.map(t => (
+                  <TeamProfileCard
+                    key={t.id}
+                    team={t}
+                    onMatchup={() => {}}
+                    onSwap={handleOpenSwapper}
+                    isLiveSeeding={true}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

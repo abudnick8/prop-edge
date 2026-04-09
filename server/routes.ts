@@ -2072,13 +2072,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // ── Live Standings for Bracket Tab ────────────────────────────────────────
   // Cache: 24 hours (standings update once daily)
-  const STANDINGS_TTL = 24 * 60 * 60 * 1000;
+  const STANDINGS_TTL = 24 * 60 * 60 * 1000;  // 24h — force-bust via ?bust=1
   const standingsCache = new Map<string, { ts: number; data: any }>();
 
   app.get("/api/live-standings", async (req, res) => {
     const sport = ((req.query.sport as string) ?? "mlb").toLowerCase();
+    const bust = req.query.bust === "1";
     const cached = standingsCache.get(sport);
-    if (cached && Date.now() - cached.ts < STANDINGS_TTL) return res.json(cached.data);
+    if (!bust && cached && Date.now() - cached.ts < STANDINGS_TTL) return res.json(cached.data);
 
     try {
       const ESPN_PATHS: Record<string, string> = {
@@ -2201,6 +2202,17 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const clinch = getStat(stats, "magicNumberClinch");
         const streakStat = stats.find((x: any) => x.name === "streak");
         const streak = streakStat?.displayValue ?? "";
+        // clincher: ESPN stores a numeric code when a team has clinched
+        // 1=division, 2=conference, 3=playoff berth/division leader, 4=eliminated, 5=presidents trophy, 6=play-in
+        // We treat codes 1,2,3,5 as "clinched playoff spot", 6 as "play-in", blank as "projected"
+        const clinchCode = getStat(stats, "clincher");
+        const clinchStr  = getStatStr(stats, "clincher");
+        let clinchStatus: "clinched" | "playin" | "projected" | "eliminated" = "projected";
+        if (clinchCode >= 1 && clinchCode <= 3) clinchStatus = "clinched";
+        else if (clinchCode === 5) clinchStatus = "clinched";
+        else if (clinchCode === 6) clinchStatus = "playin";
+        else if (clinchCode === 4) clinchStatus = "eliminated";
+
         return {
           id: String(team.id ?? ""),
           espnId: String(team.id ?? ""),
@@ -2219,6 +2231,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           record: `${Math.round(wins)}-${Math.round(losses)}`,
           gamesBehind: gb,
           streak: streak,
+          clinchStatus,  // "clinched" | "playin" | "projected" | "eliminated"
+          clinchCode: Math.round(clinchCode),
         };
       });
 
@@ -2260,9 +2274,13 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       const playoffTeamsByConf: Record<string, any[]> = {};
+      // fullConfTeams: ALL teams sorted by seed (used for the swapper modal)
+      const fullConfTeams: Record<string, any[]> = {};
       conferences.forEach((teams, confName) => {
         const sorted = [...teams].sort((a, b) => (a.seed || 99) - (b.seed || 99));
         playoffTeamsByConf[confName] = sorted.slice(0, playoffSpots);
+        // Full list excludes eliminated teams (clinchCode=4)
+        fullConfTeams[confName] = sorted.filter(t => t.clinchCode !== 4);
       });
 
       const result = {
@@ -2281,6 +2299,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           ])
         ),
         playoffTeamsByConf,
+        fullConfTeams,   // all non-eliminated teams per conf (for swapper)
         allTeams: teamsWithConf,
       };
 

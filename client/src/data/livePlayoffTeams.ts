@@ -118,6 +118,28 @@ function getConferenceFinish(sport: string, conference: string, seed: number): s
 }
 
 // ── Main converter ─────────────────────────────────────────────────────────
+export interface StandingsTeam {
+  id: string;
+  espnId: string;
+  name: string;
+  shortName: string;
+  abbreviation: string;
+  seed: number;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winPct: number;
+  ppg: number;
+  oppPpg: number;
+  differential: number;
+  conference: string;
+  record: string;
+  gamesBehind: string;
+  streak: string;
+  clinchStatus: "clinched" | "playin" | "projected" | "eliminated";
+  clinchCode: number;
+}
+
 export interface LiveStandingsData {
   sport: string;
   seasonYear: number;
@@ -127,14 +149,21 @@ export interface LiveStandingsData {
   bracketUnlocked: boolean;
   unlockThreshold: number;
   updatedAt: string;
-  conferences: Record<string, any[]>;
-  playoffTeamsByConf: Record<string, any[]>;
-  allTeams: any[];
+  conferences: Record<string, StandingsTeam[]>;
+  playoffTeamsByConf: Record<string, StandingsTeam[]>;
+  fullConfTeams: Record<string, StandingsTeam[]>;  // all non-eliminated teams
+  allTeams: StandingsTeam[];
+}
+
+export interface LiveNCAATeam extends NCAATeam {
+  clinchStatus: "clinched" | "playin" | "projected" | "eliminated";
+  abbreviation: string;
+  conference: string;
 }
 
 export function buildLivePlayoffTeams(
   data: LiveStandingsData
-): { teams: NCAATeam[]; regions: Region[] } {
+): { teams: LiveNCAATeam[]; regions: Region[] } {
   const sport = data.sport;
   const playoffSpots = sport === "mlb" ? 6 : sport === "nfl" ? 7 : 8;
   const teams: NCAATeam[] = [];
@@ -160,7 +189,7 @@ export function buildLivePlayoffTeams(
       const baseDef = 100 + oppPpg * 0.5 - diff * 1.5;
       const effMargin = baseOff - baseDef;
 
-      const team: NCAATeam = {
+      const team: LiveNCAATeam = {
         id: `${sport}_${t.abbreviation.toLowerCase()}_${seed}`,
         name: t.name,
         shortName: t.abbreviation || t.shortName,
@@ -187,7 +216,7 @@ export function buildLivePlayoffTeams(
         turnoversForced: 14,
         turnoverRate: 13,
         keyPlayers: [
-          { name: `${t.name}`, stat: `${t.wins}W · ${t.record}` },
+          { name: t.name, stat: `${t.wins}W · ${t.record}` },
         ],
         playStyle: getPlayStyle(sport, seed, t.winPct),
         strengthOfSchedule: 7.0 + (seed <= 3 ? 1 : 0),
@@ -196,12 +225,15 @@ export function buildLivePlayoffTeams(
         upsetAlert: seed >= 5,
         sleeper: seed >= 5 && t.winPct >= 0.52,
         analysis: getAnalysis(sport, t.name, seed, t.wins, t.losses, t.winPct),
+        clinchStatus: t.clinchStatus ?? "projected",
+        abbreviation: t.abbreviation,
+        conference: confName,
       };
       teams.push(team);
     });
   });
 
-  return { teams, regions: ["East", "West", "Midwest", "South"] };
+  return { teams, regions: ["East", "West", "Midwest", "South"] as Region[] };
 }
 
 // ── Cache helper ───────────────────────────────────────────────────────────
@@ -233,4 +265,54 @@ export async function fetchLiveStandings(sport: string): Promise<LiveStandingsDa
   } catch {
     return null;
   }
+}
+
+// ── Build a single LiveNCAATeam from a raw StandingsTeam ───────────────────
+// Used by the bracket swapper when user picks a different team for a seed slot
+export function buildSingleLiveTeam(
+  sport: string,
+  t: StandingsTeam,
+  targetSeed: number,
+  confName: string
+): LiveNCAATeam {
+  const region = assignRegion(sport, confName, targetSeed);
+  const champOdds = getChampOdds(sport, t.abbreviation);
+  const ppg = t.ppg || 0;
+  const oppPpg = t.oppPpg || 0;
+  const diff = t.differential || (ppg - oppPpg);
+  const baseOff = 100 + diff * 2 + ppg * 0.5;
+  const baseDef = 100 + oppPpg * 0.5 - diff * 1.5;
+  const effMargin = baseOff - baseDef;
+
+  return {
+    id: `${sport}_${t.abbreviation.toLowerCase()}_custom_${targetSeed}`,
+    name: t.name,
+    shortName: t.abbreviation || t.shortName,
+    seed: targetSeed,
+    region,
+    record: t.record,
+    wins: t.wins,
+    losses: t.losses,
+    championshipOdds: champOdds,
+    impliedChampionshipPct: mlToImplied(champOdds),
+    ppg: parseFloat(ppg.toFixed(1)),
+    oppPpg: parseFloat(oppPpg.toFixed(1)),
+    scoringMargin: parseFloat(diff.toFixed(1)),
+    fg2Pct: 50, fg3Pct: 35, ftPct: 77, threePointRate: 38,
+    adjOffRating: parseFloat(baseOff.toFixed(1)),
+    adjDefRating: parseFloat(baseDef.toFixed(1)),
+    adjEffMargin: parseFloat(effMargin.toFixed(1)),
+    pace: 100, orebRate: 25, drebRate: 75, turnoversForced: 14, turnoverRate: 13,
+    keyPlayers: [{ name: t.name, stat: `${t.wins}W · ${t.record}` }],
+    playStyle: getPlayStyle(sport, targetSeed, t.winPct),
+    strengthOfSchedule: 7.0 + (targetSeed <= 3 ? 1 : 0),
+    recentForm: t.winPct >= 0.6 ? "hot" : t.winPct >= 0.5 ? "average" : "cold",
+    conferenceFinish: getConferenceFinish(sport, confName, targetSeed),
+    upsetAlert: targetSeed >= 5,
+    sleeper: targetSeed >= 5 && t.winPct >= 0.52,
+    analysis: getAnalysis(sport, t.name, targetSeed, t.wins, t.losses, t.winPct),
+    clinchStatus: "projected",
+    abbreviation: t.abbreviation,
+    conference: confName,
+  };
 }
