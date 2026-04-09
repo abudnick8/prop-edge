@@ -21,6 +21,7 @@ import LinemateProps from "@/pages/LinemateProps";
 import NotFound from "@/pages/not-found";
 import { DesktopSidebar, MobileTabBar } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
+import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
 
 function AppInner() {
@@ -66,12 +67,13 @@ function AppInner() {
                   {isConnected ? "LIVE" : "..."}
                 </span>
               </div>
+              <AskDrawer />
               <NotificationCenter />
             </div>
           </div>
 
           {/* Page content — extra bottom padding on mobile for tab bar */}
-          <div className="p-4 md:p-6 pb-24 md:pb-6">
+          <div className="p-4 md:p-6 pb-28 md:pb-6">
             <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/bets" component={AllBets} />

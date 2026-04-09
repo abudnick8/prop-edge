@@ -751,21 +751,23 @@ export default function PredictionMarkets() {
     <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between gap-2 mb-1">
           <h1 className="text-xl font-black text-foreground tracking-tight">Prediction Markets</h1>
-          <div className="flex items-center gap-2">
-            <CheatSheetButton initialSection="howtoread" label="How to Read" />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <CheatSheetButton initialSection="howtoread" label="How to Read" mobileIconOnly />
             <Link
               href="/markets/top-traders"
-              className="flex items-center gap-1.5 text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 transition-colors px-2.5 py-1.5 rounded-lg"
+              className="flex items-center gap-1 text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 transition-colors px-2 py-2 rounded-lg"
+              title="Top Traders"
             >
-              <Trophy size={12} /> Top Traders
+              <Trophy size={12} /> <span className="hidden sm:inline">Top Traders</span>
             </Link>
             <button
               onClick={() => { refetch(); setLastRefresh(Date.now()); }}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2 rounded-md hover:bg-accent"
+              title="Refresh"
             >
-              <RefreshCw size={12} /> Refresh
+              <RefreshCw size={12} /> <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
         </div>

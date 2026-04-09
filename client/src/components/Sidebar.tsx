@@ -1,19 +1,18 @@
 import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LayoutDashboard, Target, Settings, MessageCircleQuestion, Trophy, Ticket, TrendingUp, BarChart2, Shuffle, Zap, LineChart } from "lucide-react";
+import { LayoutDashboard, Target, Settings, Trophy, Ticket, TrendingUp, BarChart2, Shuffle, Zap, LineChart } from "lucide-react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, emoji: "🏠" },
-  { href: "/clv", label: "Line Movement", icon: TrendingUp, emoji: "📈" },
-  { href: "/markets", label: "Pred. Markets", icon: BarChart2, emoji: "🔮" },
-  { href: "/conviction", label: "Top Plays", icon: Zap, emoji: "⚡" },
-  { href: "/bets", label: "All Picks", icon: Target, emoji: "🎯" },
-  { href: "/linemate", label: "Props Hub", icon: LineChart, emoji: "📊" },
-  { href: "/fantasy", label: "Fantasy", icon: Shuffle, emoji: "🏅" },
-  { href: "/lotto", label: "Lotto", icon: Ticket, emoji: "🎰" },
-  { href: "/ask", label: "Ask AI", icon: MessageCircleQuestion, emoji: "🤖" },
-  { href: "/bracket", label: "Bracket", icon: Trophy, emoji: "🏆" },
-  { href: "/settings", label: "Settings", icon: Settings, emoji: "⚙️" },
+  { href: "/",          label: "Dashboard",    mobileLabel: "Home",     icon: LayoutDashboard,        emoji: "🏠" },
+  { href: "/clv",       label: "Line Movement", mobileLabel: "Lines",    icon: TrendingUp,             emoji: "📈" },
+  { href: "/markets",   label: "Pred. Markets", mobileLabel: "Markets",  icon: BarChart2,              emoji: "🔮" },
+  { href: "/conviction",label: "Top Plays",     mobileLabel: "Top",      icon: Zap,                    emoji: "⚡" },
+  { href: "/bets",      label: "All Picks",     mobileLabel: "Picks",    icon: Target,                 emoji: "🎯" },
+  { href: "/linemate",  label: "Props Hub",     mobileLabel: "Props",    icon: LineChart,              emoji: "📊" },
+  { href: "/fantasy",   label: "Fantasy",       mobileLabel: "Fantasy",  icon: Shuffle,                emoji: "🏅" },
+  { href: "/lotto",     label: "Lotto",         mobileLabel: "Lotto",    icon: Ticket,                 emoji: "🎰" },
+  { href: "/bracket",   label: "Bracket",       mobileLabel: "Bracket",  icon: Trophy,                 emoji: "🏆" },
+  { href: "/settings",  label: "Settings",      mobileLabel: "Settings", icon: Settings,               emoji: "⚙️" },
 ];
 
 const Logo = () => (
@@ -110,23 +109,34 @@ export function MobileTabBar() {
   const [location] = useHashLocation();
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch safe-bottom">
-      {navItems.map(({ href, label, icon: Icon }) => {
-        const isActive = location === href || (href !== "/" && location.startsWith(href));
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-medium transition-colors ${
-              isActive ? "text-primary" : "text-muted-foreground"
-            }`}
-            data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
-          >
-            <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
-            {label}
-          </Link>
-        );
-      })}
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+    >
+      {/* Scrollable row — snaps so active tab is visible */}
+      <div className="flex items-stretch overflow-x-auto scrollbar-none">
+        {navItems.map(({ href, label, mobileLabel, icon: Icon }) => {
+          const isActive = location === href || (href !== "/" && location.startsWith(href));
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`relative flex-shrink-0 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                isActive ? "text-primary" : "text-muted-foreground"
+              }`}
+              style={{ minWidth: 56, maxWidth: 64 }}
+              data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
+            >
+              {/* Active indicator dot */}
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-primary" />
+              )}
+              <Icon size={18} strokeWidth={isActive ? 2.5 : 1.8} />
+              <span className="text-[9px] font-semibold leading-none whitespace-nowrap">{mobileLabel}</span>
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

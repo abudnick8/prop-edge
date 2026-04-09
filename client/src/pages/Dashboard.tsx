@@ -189,18 +189,19 @@ export default function Dashboard() {
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="text-xl font-bold text-foreground">🏆 Dashboard</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            📈 Kalshi · Polymarket · ActionNetwork · Underdog · 🏈 NFL · 🏀 NBA · ⚾ MLB · 🏒 NHL
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+            Kalshi · Polymarket · ActionNetwork · Underdog
+            <span className="hidden sm:inline"> · 🏈 NFL · 🏀 NBA · ⚾ MLB · 🏒 NHL</span>
           </p>
         </div>
         <button
           onClick={() => scanMutation.mutate()}
           disabled={scanMutation.isPending}
           data-testid="button-scan"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-60 transition-all"
+          className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold disabled:opacity-60 transition-all"
           style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", color: "#1a0d00", boxShadow: "0 0 20px rgba(245,158,11,0.35)" }}
         >
           <RefreshCw size={14} className={scanMutation.isPending ? "scanning" : ""} />

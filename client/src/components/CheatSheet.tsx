@@ -793,23 +793,25 @@ export function CheatSheetButton({
   initialSection,
   variant = "outline",
   label = "How to Read",
+  mobileIconOnly = false,
 }: {
   initialSection?: CheatSheetSection;
   variant?: "outline" | "ghost" | "pill";
   label?: string;
+  mobileIconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   const baseClass = {
-    outline: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all bg-card",
+    outline: "flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all bg-card",
     ghost:   "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-foreground transition-all",
     pill:    "flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border border-primary/30 text-primary bg-primary/5 hover:bg-primary/10 transition-all",
   }[variant];
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className={baseClass}>
-        <BookOpen size={12} /> {label}
+      <button onClick={() => setOpen(true)} className={baseClass} title={label}>
+        <BookOpen size={12} /> {mobileIconOnly ? <span className="hidden sm:inline">{label}</span> : label}
       </button>
       <CheatSheetDrawer
         open={open}

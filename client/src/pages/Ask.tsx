@@ -174,7 +174,7 @@ export default function Ask() {
 
       {/* Chat area */}
       <div className="border border-border rounded-xl overflow-hidden bg-card">
-        <div className="p-4 space-y-5 min-h-[300px] max-h-[70vh] overflow-y-auto">
+        <div className="p-4 space-y-5 min-h-[200px] max-h-[55vh] md:max-h-[60vh] overflow-y-auto">
 
           {/* Empty state */}
           {history.length === 0 && !isLoading && (

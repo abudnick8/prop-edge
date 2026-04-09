@@ -1084,20 +1084,20 @@ export default function LineMovement() {
   return (
     <div className="max-w-5xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <Activity size={20} className="text-primary" />
+            <Activity size={20} className="text-primary flex-shrink-0" />
             <h1 className="text-xl font-bold text-foreground">Line Movement</h1>
             {isFetching && <RefreshCw size={13} className="text-muted-foreground animate-spin" />}
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
             Opening → current lines for today's games · spread, total & moneyline · public % + sharp money
-            {lastUpdated && <span className="ml-2 text-muted-foreground/50">· updated {lastUpdated}</span>}
+            {lastUpdated && <span className="ml-1 text-muted-foreground/50">· updated {lastUpdated}</span>}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <CheatSheetButton initialSection="spread" label="How to Read" />
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <CheatSheetButton initialSection="spread" label="How to Read" mobileIconOnly />
           {/* Trigger alert bell — page-level, always visible */}
           <button
             onClick={scrollToTriggers}
@@ -1131,7 +1131,7 @@ export default function LineMovement() {
             data-testid="button-refresh-lines"
           >
             <RefreshCw size={13} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
         </div>
       </div>

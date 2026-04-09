@@ -493,7 +493,7 @@ export default function AllBets() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">All Picks</h1>
+          <h1 className="text-2xl font-bold text-foreground">All Picks</h1>
           {mainTab !== "markets" && (
             <p className="text-sm text-muted-foreground mt-0.5">
               {activeCount} of {totalCount} markets
@@ -501,17 +501,18 @@ export default function AllBets() {
           )}
         </div>
         {mainTab !== "markets" && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
                 showFilters ? "bg-primary/10 text-primary border-primary/30" : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
+              title="Filters"
             >
               <SlidersHorizontal size={14} />
-              Filters
+              <span className="hidden sm:inline">Filters</span>
             </button>
-            <CheatSheetButton initialSection="howtoread" label="How to Read" />
+            <CheatSheetButton initialSection="howtoread" label="How to Read" mobileIconOnly />
             <BookErrorsFilterButton
               active={showErrorsOnly}
               count={(bookErrors as any[]).length}

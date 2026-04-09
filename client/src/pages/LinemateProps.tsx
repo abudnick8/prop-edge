@@ -475,16 +475,16 @@ export default function LinemateProps() {
     <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-black text-foreground tracking-tight flex items-center gap-2">
-              <Zap size={20} className="text-yellow-400" />
-              Prop Lines
-              <span className="text-[11px] font-bold text-indigo-400 px-2 py-0.5 rounded border border-indigo-400/30 bg-indigo-400/10 ml-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Zap size={18} className="text-yellow-400 flex-shrink-0" />
+              <h1 className="text-xl font-black text-foreground tracking-tight">Props Hub</h1>
+              <span className="text-[10px] font-bold text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-400/30 bg-indigo-400/10 whitespace-nowrap">
                 Linemate + PrizePicks
               </span>
-            </h1>
-            <p className="text-xs text-muted-foreground mt-1">
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
               Real sportsbook lines from PrizePicks, DraftKings, Sleeper & more.
               Hit rates across L5/L10/L20/L30/Season windows.
               {dataUpdatedAt > 0 && (
@@ -493,8 +493,8 @@ export default function LinemateProps() {
             </p>
           </div>
           <button onClick={() => refetch()}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent shrink-0">
-            <RefreshCw size={12} /> Refresh
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2 rounded-md hover:bg-accent flex-shrink-0" title="Refresh">
+            <RefreshCw size={12} /> <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
 
