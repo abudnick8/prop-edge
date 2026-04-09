@@ -128,22 +128,36 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
           );
         })()}
 
-        {/* ─── GOLF GREEN / POOL TABLE (bottom-left) ─── */}
+        {/* ─── HOCKEY RINK (bottom-left) ─── */}
         {(()=>{
           const { x: cx, y: cy } = C_BL;
-          const pr = T * 0.3;   // pool table felt circle
-          const hr = T * 0.1;   // hole/cup radius
+          const rw = T * 0.72;  // rink width
+          const rh = T * 0.52;  // rink height
+          const sw = T * 0.045;
+          // puck
+          const pr = T * 0.095;
+          const px = cx + T * 0.06;
+          const py = cy + T * 0.08;
+          // stick — blade bottom-right, handle top-left
+          const bx1 = cx - T*0.28, by1 = cy + T*0.25; // blade heel
+          const bx2 = cx + T*0.02, by2 = cy + T*0.30; // blade toe
+          const hx  = cx - T*0.10, hy  = cy - T*0.30; // handle top
           return (
             <g>
-              {/* green felt base */}
-              <circle cx={cx} cy={cy} r={pr} fill="#2E6B3E" stroke="#1A4A2A" strokeWidth={T*0.04} />
-              {/* corner pocket holes */}
-              <circle cx={cx-pr*0.6} cy={cy-pr*0.6} r={hr} fill="#111" />
-              <circle cx={cx+pr*0.6} cy={cy-pr*0.6} r={hr} fill="#111" />
-              <circle cx={cx-pr*0.6} cy={cy+pr*0.6} r={hr} fill="#111" />
-              <circle cx={cx+pr*0.6} cy={cy+pr*0.6} r={hr} fill="#111" />
-              {/* cue ball */}
-              <circle cx={cx} cy={cy} r={hr*0.95} fill="#F5EFE0" />
+              {/* rink surface */}
+              <rect x={cx - rw/2} y={cy - rh/2} width={rw} height={rh} rx={rh*0.35} fill="#D8EEF5" stroke="#A0C8DC" strokeWidth={sw*0.6} />
+              {/* centre red line */}
+              <line x1={cx} y1={cy - rh/2} x2={cx} y2={cy + rh/2} stroke="#CC2222" strokeWidth={sw*0.7} />
+              {/* centre circle */}
+              <circle cx={cx} cy={cy} r={rh*0.28} fill="none" stroke="#CC2222" strokeWidth={sw*0.6} />
+              {/* centre dot */}
+              <circle cx={cx} cy={cy} r={sw*0.6} fill="#CC2222" />
+              {/* stick shaft */}
+              <line x1={hx} y1={hy} x2={bx1} y2={by1} stroke="#5C3A1A" strokeWidth={sw*1.1} strokeLinecap="round" />
+              {/* stick blade */}
+              <line x1={bx1} y1={by1} x2={bx2} y2={by2} stroke="#5C3A1A" strokeWidth={sw*1.4} strokeLinecap="round" />
+              {/* puck */}
+              <ellipse cx={px} cy={py} rx={pr} ry={pr*0.5} fill="#1A1A1A" />
             </g>
           );
         })()}
