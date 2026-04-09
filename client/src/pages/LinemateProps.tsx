@@ -480,7 +480,7 @@ export default function LinemateProps() {
             <div className="flex items-center gap-2 flex-wrap">
               <Zap size={18} className="text-amber-400 flex-shrink-0" />
               <h1 className="text-xl font-black text-foreground tracking-tight">Props Hub</h1>
-              <span className="text-[10px] font-bold text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-400/30 bg-indigo-400/10 whitespace-nowrap">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap" style={{ color: "#3730a3", borderColor: "rgba(55,48,163,0.35)", background: "rgba(55,48,163,0.08)" }}>
                 Linemate + PrizePicks
               </span>
             </div>
@@ -503,19 +503,19 @@ export default function LinemateProps() {
           <div className="flex flex-wrap gap-2 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
               <Star size={11} className="text-amber-400" />
-              <span className="font-bold text-yellow-300">{club100Count} × 100% Club</span>
+              <span className="font-bold" style={{ color: "#92400e" }}>{club100Count} × 100% Club</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
               <Shield size={11} className="text-green-400" />
-              <span className="font-bold text-green-300">{safeCount} Safe</span>
+              <span className="font-bold" style={{ color: "#166534" }}>{safeCount} Safe</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs">
               <AlertTriangle size={11} className="text-orange-400" />
-              <span className="font-bold text-orange-300">{riskyCount} Risky</span>
+              <span className="font-bold" style={{ color: "#9a3412" }}>{riskyCount} Risky</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
               <BarChart2 size={11} className="text-blue-400" />
-              <span className="font-bold text-blue-300">{(data.markets ?? []).length} player markets</span>
+              <span className="font-bold" style={{ color: "#1e40af" }}>{(data.markets ?? []).length} player markets</span>
             </div>
           </div>
         )}
@@ -540,17 +540,17 @@ export default function LinemateProps() {
         <button onClick={() => setPageTab("picks")}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
             pageTab === "picks"
-              ? "bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
-              : "text-muted-foreground hover:text-foreground hover:bg-accent"
-          }`}>
+              ? "border font-bold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}
+          style={pageTab === "picks" ? { background: "rgba(146,64,14,0.08)", borderColor: "rgba(146,64,14,0.3)", color: "#92400e" } : {}}>
           <Star size={12} /> Recommended Picks {totalPicks > 0 && `(${totalPicks})`}
         </button>
         <button onClick={() => setPageTab("markets")}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
             pageTab === "markets"
-              ? "bg-blue-500/15 text-blue-300 border border-blue-500/30"
-              : "text-muted-foreground hover:text-foreground hover:bg-accent"
-          }`}>
+              ? "border font-bold" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}
+          style={pageTab === "markets" ? { background: "rgba(30,64,175,0.08)", borderColor: "rgba(30,64,175,0.3)", color: "#1e40af" } : {}}>
           <BarChart2 size={12} /> Market Browser
         </button>
       </div>
@@ -572,10 +572,10 @@ export default function LinemateProps() {
               {/* Group filter */}
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {([
-                  { id: "ALL",      label: `All (${totalPicks})`,              color: "#94a3b8" },
-                  { id: "100_CLUB", label: `⭐ 100% Club (${club100Count})`,   color: "#facc15" },
-                  { id: "SAFE",     label: `🛡 Safe (${safeCount})`,           color: "#22c55e" },
-                  { id: "RISKY",    label: `⚡ Risky (${riskyCount})`,         color: "#fb923c" },
+                  { id: "ALL",      label: `All (${totalPicks})`,              color: "#374151" },
+                  { id: "100_CLUB", label: `⭐ 100% Club (${club100Count})`,   color: "#92400e" },
+                  { id: "SAFE",     label: `🛡 Safe (${safeCount})`,           color: "#166534" },
+                  { id: "RISKY",    label: `⚡ Risky (${riskyCount})`,         color: "#9a3412" },
                 ] as const).map(g => (
                   <button key={g.id} onClick={() => setPickGroup(g.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${

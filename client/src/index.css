@@ -477,3 +477,22 @@ html:not(.dark) .text-zinc-400,
 html:not(.dark) .text-zinc-500  { color: #52525b !important; }
 html:not(.dark) .text-neutral-400,
 html:not(.dark) .text-neutral-500 { color: #525252 !important; }
+
+/* ── 300-level color classes: too light on cream, map to 700-level ── */
+html:not(.dark) .text-yellow-300  { color: #92400e !important; }  /* amber-800 */
+html:not(.dark) .text-amber-300   { color: #92400e !important; }
+html:not(.dark) .text-green-300   { color: #166534 !important; }  /* green-800 */
+html:not(.dark) .text-emerald-300 { color: #065f46 !important; }
+html:not(.dark) .text-teal-300    { color: #115e59 !important; }
+html:not(.dark) .text-cyan-300    { color: #155e75 !important; }
+html:not(.dark) .text-sky-300     { color: #075985 !important; }
+html:not(.dark) .text-blue-300    { color: #1e40af !important; }  /* blue-800 */
+html:not(.dark) .text-indigo-300  { color: #3730a3 !important; }
+html:not(.dark) .text-violet-300  { color: #5b21b6 !important; }
+html:not(.dark) .text-purple-300  { color: #6b21a8 !important; }
+html:not(.dark) .text-fuchsia-300 { color: #86198f !important; }
+html:not(.dark) .text-pink-300    { color: #9d174d !important; }
+html:not(.dark) .text-rose-300    { color: #9f1239 !important; }
+html:not(.dark) .text-orange-300  { color: #9a3412 !important; }  /* orange-800 */
+html:not(.dark) .text-red-300     { color: #991b1b !important; }  /* red-800 */
+html:not(.dark) .text-lime-300    { color: #3f6212 !important; }
