@@ -115,7 +115,7 @@ function MarketCard({ m }: { m: PredMkt }) {
               <span className="ml-2 text-cyan-400 font-semibold">{m.signalCount} sources</span>
             )}
             {countdown && (
-              <span className="ml-2 font-semibold text-orange-700">⏰ {countdown} left</span>
+              <span className="ml-2 font-semibold text-orange-400">⏰ {countdown} left</span>
             )}
           </p>
           <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{m.title}</p>
@@ -177,7 +177,7 @@ function MarketCard({ m }: { m: PredMkt }) {
         </div>
         <div className="text-center">
           <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Entry</p>
-          <p className="font-mono font-bold text-sm text-amber-800">{fmtCents(m.entryPrice)}</p>
+          <p className="font-mono font-bold text-sm text-amber-400">{fmtCents(m.entryPrice)}</p>
         </div>
         <div className="text-center">
           <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Target</p>
@@ -347,8 +347,8 @@ function PredictionMarketsPanel() {
             }`}
           >
             {tab.emoji} {tab.label}
-            {tab.id === "whale"     && whaleCount > 0    && <span className="ml-1.5 text-orange-700">{whaleCount}</span>}
-            {tab.id === "great_buy" && greatBuyCount > 0 && <span className="ml-1.5 text-green-800">{greatBuyCount}</span>}
+            {tab.id === "whale"     && whaleCount > 0    && <span className="ml-1.5 text-orange-400">{whaleCount}</span>}
+            {tab.id === "great_buy" && greatBuyCount > 0 && <span className="ml-1.5 text-green-400">{greatBuyCount}</span>}
           </button>
         ))}
       </div>
@@ -556,7 +556,7 @@ export default function AllBets() {
           Season Bets
           {seasonBets.length > 0 && (
             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-              mainTab === "season" ? "bg-yellow-500/20 text-amber-800" : "bg-muted text-muted-foreground"
+              mainTab === "season" ? "bg-yellow-500/20 text-amber-400" : "bg-muted text-muted-foreground"
             }`}>
               {seasonBets.length}
             </span>
@@ -617,7 +617,7 @@ export default function AllBets() {
       {/* Season banner */}
       {mainTab === "season" && (
         <div className="flex items-center gap-3 px-4 py-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl">
-          <Trophy size={15} className="text-amber-800 flex-shrink-0" />
+          <Trophy size={15} className="text-amber-400 flex-shrink-0" />
           <p className="text-xs text-muted-foreground">
             Season-long futures and championship outrights. No game date — these resolve at the end of the season.
           </p>

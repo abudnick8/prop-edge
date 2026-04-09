@@ -126,7 +126,7 @@ function fmtMarket(name: string): string {
 const GROUP_CONFIG = {
   "100_CLUB": {
     label: "100% Club",
-    icon:  <Star size={13} className="text-amber-800" />,
+    icon:  <Star size={13} className="text-amber-400" />,
     color: "#facc15",
     bg:    "rgba(250,204,21,0.08)",
     border:"rgba(250,204,21,0.25)",
@@ -134,7 +134,7 @@ const GROUP_CONFIG = {
   },
   SAFE: {
     label: "Safe Picks",
-    icon:  <Shield size={13} className="text-green-800" />,
+    icon:  <Shield size={13} className="text-green-400" />,
     color: "#22c55e",
     bg:    "rgba(34,197,94,0.08)",
     border:"rgba(34,197,94,0.25)",
@@ -142,7 +142,7 @@ const GROUP_CONFIG = {
   },
   RISKY: {
     label: "Risky Picks",
-    icon:  <AlertTriangle size={13} className="text-orange-700" />,
+    icon:  <AlertTriangle size={13} className="text-orange-400" />,
     color: "#fb923c",
     bg:    "rgba(251,146,60,0.08)",
     border:"rgba(251,146,60,0.25)",
@@ -164,7 +164,7 @@ function HitRateBar({ label, value, highlight }: { label: string; value: number 
   return (
     <div className={`rounded-lg border px-2 py-1.5 ${highlight ? "ring-1 ring-yellow-400/30" : ""}`}
       style={{ background: hrBg(value), borderColor: hrColor(value) + "40" }}>
-      <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-1">{label}</p>
       <div className="flex items-center gap-1.5">
         <div className="flex-1 h-1 bg-muted/40 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: hrColor(value) }} />
@@ -191,7 +191,7 @@ function BookLinesRow({ bookLines, consensusLine }: { bookLines: Record<string, 
               : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             <span className="uppercase tracking-wide">{book.slice(0, 6)}</span>
             <span className="font-mono">{bl.line}</span>
-            {bl.overOdds != null && <span className="text-foreground/60">({fmtOdds(bl.overOdds)})</span>}
+            {bl.overOdds != null && <span className="text-foreground/70">({fmtOdds(bl.overOdds)})</span>}
           </div>
         );
       })}
@@ -241,14 +241,14 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
                 </span>
               )}
               {prop.impactingInjuries?.length > 0 && (
-                <span className="text-[9px] font-bold text-red-700">⚠ Injury Alert</span>
+                <span className="text-[9px] font-bold text-red-400">⚠ Injury Alert</span>
               )}
             </div>
 
             {/* Game + time */}
             <p className="text-[10px] text-muted-foreground mb-1.5">
               {prop.teamCode} {prop.isHome === true ? "vs" : prop.isHome === false ? "@" : "vs"} {prop.opponent}
-              {prop.gameTime && <span className="ml-1.5 text-foreground/60">{fmtTime(prop.gameTime)}</span>}
+              {prop.gameTime && <span className="ml-1.5 text-foreground/70">{fmtTime(prop.gameTime)}</span>}
             </p>
 
             {/* Market + line + outcome */}
@@ -277,7 +277,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
               { label: "L10", value: prop.hitRateL10 },
             ].map(w => (
               <div key={w.label} className="flex items-center gap-1.5">
-                <span className="text-[9px] text-foreground/60 w-6 text-right">{w.label}</span>
+                <span className="text-[9px] text-foreground/70 w-6 text-right">{w.label}</span>
                 <span className="text-[10px] font-black w-10 text-right" style={{ color: hrColor(w.value) }}>{fmtHR(w.value)}</span>
               </div>
             ))}
@@ -294,7 +294,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
 
           {/* Hit rate grid */}
           <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-foreground/60 mb-2 flex items-center gap-1">
+            <p className="text-[9px] font-black uppercase tracking-widest text-foreground/70 mb-2 flex items-center gap-1">
               <Activity size={9} /> Hit Rates vs {prop.consensusLine} line
             </p>
             <div className="grid grid-cols-3 gap-1.5">
@@ -311,7 +311,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
               <p className="text-[10px] text-muted-foreground mt-1.5">
                 Recent form avg: <span className="font-black text-foreground">{prop.avgRecentForm.toFixed(1)}</span>
                 {prop.consensusLine != null && (
-                  <span className={`ml-1.5 font-black ${prop.avgRecentForm >= prop.consensusLine ? "text-green-800" : "text-red-700"}`}>
+                  <span className={`ml-1.5 font-black ${prop.avgRecentForm >= prop.consensusLine ? "text-green-400" : "text-red-400"}`}>
                     ({prop.avgRecentForm >= (prop.consensusLine ?? 0) ? "+" : ""}{(prop.avgRecentForm - (prop.consensusLine ?? 0)).toFixed(1)} vs line)
                   </span>
                 )}
@@ -322,7 +322,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           {/* Lines across books */}
           {Object.keys(prop.bookLines).length > 0 && (
             <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-foreground/60 mb-1 flex items-center gap-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-foreground/70 mb-1 flex items-center gap-1">
                 <BarChart2 size={9} /> Lines by Book
               </p>
               <BookLinesRow bookLines={prop.bookLines} consensusLine={prop.consensusLine} />
@@ -348,7 +348,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           {/* Injury alerts */}
           {prop.impactingInjuries?.length > 0 && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/05 px-3 py-2">
-              <p className="text-[10px] font-bold text-red-700 mb-1 flex items-center gap-1">⚠ Impacting Injuries</p>
+              <p className="text-[10px] font-bold text-red-400 mb-1 flex items-center gap-1">⚠ Impacting Injuries</p>
               {prop.impactingInjuries.map((inj: any, i: number) => (
                 <p key={i} className="text-[10px] text-muted-foreground">
                   {inj.player?.fullName ?? ""} — {inj.status ?? "injured"}
@@ -402,7 +402,7 @@ function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search player..."
-          className="px-3 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground placeholder:text-foreground/55 focus:outline-none focus:border-primary/50 w-36"
+          className="px-3 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-primary/50 w-36"
         />
         <select value={filterMarket} onChange={e => setFilter(e.target.value)}
           className="px-2 py-1.5 rounded-lg border border-border bg-background/60 text-xs text-foreground focus:outline-none appearance-none pr-6"
@@ -428,7 +428,7 @@ function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
         </div>
       </div>
 
-      <p className="text-[10px] text-foreground/60 mb-3">{filtered.length} props shown</p>
+      <p className="text-[10px] text-foreground/70 mb-3">{filtered.length} props shown</p>
 
       <div className="flex flex-col gap-2">
         {filtered.slice(0, 80).map((p, i) => (
@@ -478,7 +478,7 @@ export default function LinemateProps() {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <Zap size={18} className="text-amber-800 flex-shrink-0" />
+              <Zap size={18} className="text-amber-400 flex-shrink-0" />
               <h1 className="text-xl font-black text-foreground tracking-tight">Props Hub</h1>
               <span className="text-[10px] font-bold text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-400/30 bg-indigo-400/10 whitespace-nowrap">
                 Linemate + PrizePicks
@@ -502,15 +502,15 @@ export default function LinemateProps() {
         {!isLoading && data && (
           <div className="flex flex-wrap gap-2 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-              <Star size={11} className="text-amber-800" />
+              <Star size={11} className="text-amber-400" />
               <span className="font-bold text-yellow-300">{club100Count} × 100% Club</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
-              <Shield size={11} className="text-green-800" />
+              <Shield size={11} className="text-green-400" />
               <span className="font-bold text-green-300">{safeCount} Safe</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs">
-              <AlertTriangle size={11} className="text-orange-700" />
+              <AlertTriangle size={11} className="text-orange-400" />
               <span className="font-bold text-orange-300">{riskyCount} Risky</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
@@ -623,7 +623,7 @@ export default function LinemateProps() {
       {/* Today's games */}
       {!isLoading && data && data.games.length > 0 && (
         <div className="mt-6 pt-4 border-t border-border/40">
-          <p className="text-[10px] font-black uppercase tracking-widest text-foreground/60 mb-2">Today's Games</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2">Today's Games</p>
           <div className="flex flex-wrap gap-2">
             {data.games.map(g => (
               <div key={g.gameId} className="px-3 py-1.5 rounded-lg border border-border/40 bg-muted/10 text-xs font-bold text-foreground">

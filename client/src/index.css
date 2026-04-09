@@ -74,6 +74,7 @@
 
   /* ── Dark mode — same navy palette, darker bg ── */
   .dark {
+    --text-muted:  #98a4b3;            /* light slate — 6.8:1 on dark card */
     --background: 210 49% 8%;
     --foreground: 37 30% 90%;
     --card: 210 40% 11%;
@@ -85,7 +86,7 @@
     --secondary: 210 35% 18%;
     --secondary-foreground: 37 50% 80%;
     --muted: 210 38% 15%;
-    --muted-foreground: 213 15% 52%;
+    --muted-foreground: 213 15% 62%;   /* darkened: 5.8:1 on dark card, was 4.39:1 */
     --accent: 210 35% 18%;
     --accent-foreground: 37 50% 80%;
     --destructive: 4 60% 50%;
@@ -145,38 +146,38 @@
 }
 
 /* ── Source badges — editorial, restrained ──────────────────────────────── */
-.source-kalshi        { background: rgba(46,80,56,0.1);    color: #2E5038; border-color: rgba(46,80,56,0.25); }
-.source-polymarket    { background: rgba(122,90,10,0.1);   color: #7A5A0A; border-color: rgba(122,90,10,0.25); }
-.source-draftkings    { background: rgba(19,35,58,0.1);    color: #13233A; border-color: rgba(19,35,58,0.25); }
-.source-underdog      { background: rgba(162,59,50,0.1);   color: #A23B32; border-color: rgba(162,59,50,0.25); }
-.source-sportsgameodds { background: rgba(19,35,58,0.08);  color: #3A567A; border-color: rgba(19,35,58,0.2); }
-.source-actionnetwork  { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
+.source-kalshi        { background: rgba(74,222,128,0.1);  color: #4ade80; border-color: rgba(74,222,128,0.25); }
+.source-polymarket    { background: rgba(251,191,36,0.12); color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+.source-draftkings    { background: rgba(96,165,250,0.1);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
+.source-underdog      { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
+.source-sportsgameodds { background: rgba(96,165,250,0.08); color: #93c5fd; border-color: rgba(96,165,250,0.2); }
+.source-actionnetwork  { background: rgba(248,113,113,0.1); color: #f87171; border-color: rgba(248,113,113,0.25); }
 
 /* ── Sport badges ────────────────────────────────────────────────────────── */
-.sport-nfl   { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
-.sport-nba   { background: rgba(122,90,10,0.1);  color: #7A5A0A; border-color: rgba(122,90,10,0.25); }
-.sport-mlb   { background: rgba(19,35,58,0.1);   color: #13233A; border-color: rgba(19,35,58,0.25); }
-.sport-nhl   { background: rgba(46,80,56,0.1);   color: #2E5038; border-color: rgba(46,80,56,0.25); }
-.sport-ncaab { background: rgba(162,59,50,0.1);  color: #A23B32; border-color: rgba(162,59,50,0.25); }
-.sport-golf  { background: rgba(46,80,56,0.12);  color: #2E5038; border-color: rgba(46,80,56,0.3); }
+.sport-nfl   { background: rgba(248,113,113,0.1);  color: #f87171; border-color: rgba(248,113,113,0.25); }
+.sport-nba   { background: rgba(251,191,36,0.1);   color: #fbbf24; border-color: rgba(251,191,36,0.25); }
+.sport-mlb   { background: rgba(96,165,250,0.1);   color: #60a5fa; border-color: rgba(96,165,250,0.25); }
+.sport-nhl   { background: rgba(74,222,128,0.1);   color: #4ade80; border-color: rgba(74,222,128,0.25); }
+.sport-ncaab { background: rgba(248,113,113,0.1);  color: #f87171; border-color: rgba(248,113,113,0.25); }
+.sport-golf  { background: rgba(74,222,128,0.12);  color: #4ade80; border-color: rgba(74,222,128,0.3); }
 
 /* ── Pick direction banners ──────────────────────────────────────────────── */
 .pick-over {
-  background: rgba(46,80,56,0.08);
-  color: #2E5038;
-  border: 1px solid rgba(46,80,56,0.25);
+  background: rgba(74,222,128,0.08);
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,0.22);
 }
 .pick-under {
-  background: rgba(162,59,50,0.08);
-  color: #A23B32;
-  border: 1px solid rgba(162,59,50,0.25);
+  background: rgba(248,113,113,0.08);
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.22);
 }
 
 /* ── Status badges ───────────────────────────────────────────────────────── */
-.status-active  { background: rgba(122,90,10,0.12);  color: #7A5A0A; border-color: rgba(122,90,10,0.3); }
-.status-hit     { background: rgba(46,80,56,0.12);   color: #2E5038; border-color: rgba(46,80,56,0.3); }
-.status-missed  { background: rgba(162,59,50,0.12);  color: #A23B32; border-color: rgba(162,59,50,0.3); }
-.status-expired { background: rgba(82,96,109,0.1);   color: #52606D; border-color: rgba(82,96,109,0.2); }
+.status-active  { background: rgba(251,191,36,0.12);   color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+.status-hit     { background: rgba(74,222,128,0.12);   color: #4ade80; border-color: rgba(74,222,128,0.3); }
+.status-missed  { background: rgba(248,113,113,0.12);  color: #f87171; border-color: rgba(248,113,113,0.3); }
+.status-expired { background: rgba(148,163,184,0.1);   color: #94a3b8; border-color: rgba(148,163,184,0.2); }
 
 /* ── Confidence coloring ─────────────────────────────────────────────────── */
 .score-high   { color: var(--conf-high); }
@@ -201,9 +202,9 @@
   text-transform: uppercase;
 }
 .badge-hot {
-  background: rgba(122,90,10,0.10);
-  color: #7A5A0A;
-  border: 1px solid rgba(122,90,10,0.28);
+  background: rgba(251,191,36,0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251,191,36,0.3);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -254,7 +255,7 @@
 
 /* ── Confidence bar ──────────────────────────────────────────────────────── */
 .confidence-bar {
-  background: linear-gradient(90deg, #A23B32 0%, #7A5A0A 50%, #2E5038 100%);
+  background: linear-gradient(90deg, #f87171 0%, #fbbf24 50%, #4ade80 100%);
   border-radius: 9999px;
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }

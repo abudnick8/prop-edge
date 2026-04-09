@@ -155,7 +155,7 @@ function timeAgo(ts: number): string {
 // ── Sparkline SVG ─────────────────────────────────────────────────────────────
 function PriceSparkline({ history, outcome }: { history: PricePoint[]; outcome: string }) {
   if (!history || history.length < 2) {
-    return <div className="flex items-center justify-center h-full text-[10px] text-foreground/55">No price history</div>;
+    return <div className="flex items-center justify-center h-full text-[10px] text-foreground/70">No price history</div>;
   }
 
   const W = 320; const H = 80;
@@ -328,7 +328,7 @@ function PositionDetailDrawer({
             { label: "P&L",      value: `${pnlPos ? "+" : ""}${fmtMoney(pos.cashPnl)}`, color: pnlPos ? "#22c55e" : "#ef4444" },
           ].map(s => (
             <div key={s.label} className="px-3 py-2.5 text-center">
-              <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
+              <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
               <p className="text-xs font-black" style={{ color: s.color }}>{s.value}</p>
             </div>
           ))}
@@ -367,12 +367,12 @@ function PositionDetailDrawer({
             {/* Price chart */}
             {(data?.priceHistory?.length ?? 0) > 1 && (
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/65 mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2 flex items-center gap-1.5">
                   <Activity size={10} /> 30-Day Price History
                 </p>
                 <div className="rounded-xl border border-border/30 bg-background/60 px-2 pt-2 pb-1 overflow-hidden">
                   <PriceSparkline history={data!.priceHistory} outcome={pos.outcome} />
-                  <div className="flex justify-between text-[9px] text-foreground/55 mt-0.5 px-1">
+                  <div className="flex justify-between text-[9px] text-foreground/70 mt-0.5 px-1">
                     <span>{data?.priceHistory?.[0] ? fmtDate(data.priceHistory[0].t) : ""}</span>
                     <span>Today</span>
                   </div>
@@ -383,7 +383,7 @@ function PositionDetailDrawer({
             {/* Market odds for all outcomes */}
             {mktOutcomes.length > 0 && (
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/65 mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2 flex items-center gap-1.5">
                   <BarChart2 size={10} /> Current Market Odds
                 </p>
                 <div className="flex gap-2 flex-wrap">
@@ -398,7 +398,7 @@ function PositionDetailDrawer({
                           ? { borderColor: isYes ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)", background: isYes ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)" }
                           : { borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
                       >
-                        <p className="text-[9px] text-foreground/65 uppercase tracking-wide font-semibold mb-0.5">{o}</p>
+                        <p className="text-[9px] text-foreground/70 uppercase tracking-wide font-semibold mb-0.5">{o}</p>
                         <p className="text-sm font-black" style={{ color: isThisOutcome ? (isYes ? "#22c55e" : "#ef4444") : "#94a3b8" }}>
                           {fmtCents(priceVal)}
                         </p>
@@ -420,7 +420,7 @@ function PositionDetailDrawer({
             {/* Market stats */}
             {mkt && (
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/65 mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2 flex items-center gap-1.5">
                   <TrendingUp size={10} /> Market Stats
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -433,7 +433,7 @@ function PositionDetailDrawer({
                     { label: "Expires",       value: pos.endDate || mkt.endDate?.slice(0, 10) || "—" },
                   ].map(s => (
                     <div key={s.label} className="rounded-lg border border-border/25 bg-background/40 px-3 py-2">
-                      <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
+                      <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
                       <p className="text-xs font-bold text-foreground">{s.value}</p>
                     </div>
                   ))}
@@ -444,7 +444,7 @@ function PositionDetailDrawer({
             {/* Wallet position summary */}
             {data?.summary && (
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/65 mb-2 flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2 flex items-center gap-1.5">
                   <Wallet size={10} /> This Wallet's Position
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -457,7 +457,7 @@ function PositionDetailDrawer({
                     { label: "Latest Trade",    value: data.summary.latestTradeAt ? fmtDate(data.summary.latestTradeAt) : "—" },
                   ].map(s => (
                     <div key={s.label} className="rounded-lg border border-border/25 bg-background/40 px-3 py-2">
-                      <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
+                      <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">{s.label}</p>
                       <p className="text-xs font-bold text-foreground">{s.value}</p>
                     </div>
                   ))}
@@ -470,7 +470,7 @@ function PositionDetailDrawer({
               <div>
                 <button
                   onClick={() => setDescExpanded(v => !v)}
-                  className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/65 mb-2 hover:text-muted-foreground transition-colors"
+                  className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/70 mb-2 hover:text-muted-foreground transition-colors"
                 >
                   <Info size={10} />
                   Resolution Criteria
@@ -522,7 +522,7 @@ function PositionDetailDrawer({
             ) : (
               <div className="flex flex-col gap-0 divide-y divide-border/20">
                 {/* Header */}
-                <div className="grid grid-cols-[60px_1fr_70px_70px_70px] gap-2 pb-2 text-[9px] font-black uppercase tracking-widest text-foreground/55">
+                <div className="grid grid-cols-[60px_1fr_70px_70px_70px] gap-2 pb-2 text-[9px] font-black uppercase tracking-widest text-foreground/70">
                   <span>Side</span>
                   <span>Date</span>
                   <span className="text-right">Price</span>
@@ -548,7 +548,7 @@ function PositionDetailDrawer({
                       {/* Date */}
                       <div className="min-w-0">
                         <p className="text-[10px] text-foreground font-semibold">{fmtDateTime(t.timestamp)}</p>
-                        <p className="text-[9px] text-foreground/60">{timeAgo(t.timestamp)}</p>
+                        <p className="text-[9px] text-foreground/70">{timeAgo(t.timestamp)}</p>
                       </div>
                       {/* Price */}
                       <div className="text-right">
@@ -571,7 +571,7 @@ function PositionDetailDrawer({
                             {t.txHash.slice(0, 6)}
                           </a>
                         ) : (
-                          <span className="text-[9px] text-foreground/45">—</span>
+                          <span className="text-[9px] text-foreground/70">—</span>
                         )}
                       </div>
                     </div>
@@ -585,7 +585,7 @@ function PositionDetailDrawer({
         {/* ── Footer ── */}
         {!isLoading && data && (
           <div className="px-4 pb-4 pt-1 border-t border-border/30">
-            <p className="text-[9px] text-foreground/55 text-center flex items-center justify-center gap-1">
+            <p className="text-[9px] text-foreground/70 text-center flex items-center justify-center gap-1">
               <Clock size={8} /> Position data updated every 3 minutes · Not financial advice
             </p>
           </div>
@@ -656,7 +656,7 @@ function TraderCard({ trader, rank }: { trader: Trader; rank: number }) {
 
       {expanded && trader.trades.length > 0 && (
         <div className="border-t border-border/50 bg-background/40">
-          <div className="grid grid-cols-[1fr_80px_80px_90px_70px] gap-2 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-foreground/60 border-b border-border/30">
+          <div className="grid grid-cols-[1fr_80px_80px_90px_70px] gap-2 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-foreground/70 border-b border-border/30">
             <span>Market / Outcome</span>
             <span className="text-right">Price</span>
             <span className="text-right">Spent</span>
@@ -728,7 +728,7 @@ function PositionCard({ pos, idx, onOpen }: { pos: Position; idx: number; onOpen
           {/* Title + link icon */}
           <div className="flex items-start justify-between gap-2 mb-1">
             <span className="text-xs font-semibold text-foreground leading-snug line-clamp-2 flex-1">{pos.title}</span>
-            <ExternalLink size={10} className="shrink-0 mt-0.5 text-foreground/50 group-hover:text-indigo-400 transition-colors" />
+            <ExternalLink size={10} className="shrink-0 mt-0.5 text-foreground/70 group-hover:text-indigo-400 transition-colors" />
           </div>
 
           {/* Outcome + trader */}
@@ -743,32 +743,32 @@ function PositionCard({ pos, idx, onOpen }: { pos: Position; idx: number; onOpen
               {pos.profileImage && <img src={pos.profileImage} alt="" className="w-3 h-3 rounded-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
               <span className="text-[9px] font-bold text-muted-foreground">{pos.displayName}</span>
             </div>
-            {pos.endDate && <span className="text-[9px] text-foreground/60">exp {pos.endDate}</span>}
+            {pos.endDate && <span className="text-[9px] text-foreground/70">exp {pos.endDate}</span>}
           </div>
 
           {/* Stats */}
           <div className="grid grid-cols-4 gap-2">
             <div>
-              <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">Value</p>
+              <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">Value</p>
               <p className="text-xs font-black text-yellow-300">{fmtMoney(pos.currentValue)}</p>
             </div>
             <div>
-              <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">Avg Buy</p>
+              <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">Avg Buy</p>
               <p className="text-xs font-mono text-foreground">{fmtCents(pos.avgPrice)}</p>
             </div>
             <div>
-              <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">Now</p>
+              <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">Now</p>
               <div className="flex items-center gap-1">
                 <p className="text-xs font-mono text-foreground">{fmtCents(pos.curPrice)}</p>
                 {Math.abs(pos.curPrice - pos.avgPrice) >= 0.005 && (
                   priceUp
-                    ? <TrendingUp size={9} className="text-green-800 shrink-0" />
-                    : <TrendingDown size={9} className="text-red-700 shrink-0" />
+                    ? <TrendingUp size={9} className="text-green-400 shrink-0" />
+                    : <TrendingDown size={9} className="text-red-400 shrink-0" />
                 )}
               </div>
             </div>
             <div>
-              <p className="text-[9px] text-foreground/65 font-semibold uppercase tracking-wide mb-0.5">P&L</p>
+              <p className="text-[9px] text-foreground/70 font-semibold uppercase tracking-wide mb-0.5">P&L</p>
               <p className="text-xs font-black" style={{ color: pnlPos ? "#22c55e" : "#ef4444" }}>
                 {pnlPos ? "+" : ""}{fmtMoney(pos.cashPnl)}
               </p>
@@ -779,8 +779,8 @@ function PositionCard({ pos, idx, onOpen }: { pos: Position; idx: number; onOpen
 
       {/* Tap hint */}
       <div className="px-4 pb-2.5 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-[9px] text-foreground/60">Tap for details & trade history</span>
-        <ArrowUpRight size={9} className="text-foreground/60" />
+        <span className="text-[9px] text-foreground/70">Tap for details & trade history</span>
+        <ArrowUpRight size={9} className="text-foreground/70" />
       </div>
     </button>
   );
@@ -821,7 +821,7 @@ function PositionsView({
       {/* Summary chips */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-          <Wallet size={11} className="text-amber-800" />
+          <Wallet size={11} className="text-amber-400" />
           <span className="font-bold text-yellow-300">{positions.length} open positions</span>
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
@@ -995,7 +995,7 @@ export default function TopTraders() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-black text-foreground tracking-tight flex items-center gap-2">
-              <Trophy size={20} className="text-amber-800" />
+              <Trophy size={20} className="text-amber-400" />
               Top Profitable Traders
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
@@ -1016,11 +1016,11 @@ export default function TopTraders() {
         {viewMode === "profiles" && !profilesLoading && traders.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs">
-              <Trophy size={11} className="text-amber-800" />
+              <Trophy size={11} className="text-amber-400" />
               <span className="font-bold text-yellow-300">{traders.length} traders shown</span>
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
-              <TrendingUp size={11} className="text-green-800" />
+              <TrendingUp size={11} className="text-green-400" />
               <span className="font-bold text-green-300">{traders.filter(t => t.pnl > 0).length} profitable</span>
             </div>
             <div className="px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 font-bold">
@@ -1086,7 +1086,7 @@ export default function TopTraders() {
             <span key={key} className="flex items-center gap-1">
               <span style={{ color: cfg.color }}>{cfg.icon}</span>
               <span style={{ color: cfg.color }}>{cfg.label}</span>
-              <span className="text-foreground/55">
+              <span className="text-foreground/70">
                 {key === "single" ? "(1 transaction)" : key === "multiple" ? "(2 transactions)" : "(3+ → building position)"}
               </span>
             </span>

@@ -202,7 +202,7 @@ function BetRow({ bet, token }: { bet: UserBet; token: string | null }) {
           </button>
           <button
             onClick={() => deleteMutation.mutate()}
-            className="p-1.5 rounded-lg hover:bg-red-900/30 transition-colors text-muted-foreground hover:text-red-700"
+            className="p-1.5 rounded-lg hover:bg-red-900/30 transition-colors text-muted-foreground hover:text-red-400"
             data-testid={`delete-bet-${bet.id}`}
           >
             <Trash2 size={13} />
@@ -234,7 +234,7 @@ function BetRow({ bet, token }: { bet: UserBet; token: string | null }) {
           </select>
           <button
             onClick={() => updateMutation.mutate({ stake: parseFloat(stakeInput) || null, result: resultInput })}
-            className="p-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-800"
+            className="p-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-400"
           >
             <Check size={13} />
           </button>
@@ -329,7 +329,7 @@ function ParlayCard({ parlay, token }: { parlay: Parlay; token: string | null })
           </button>
           <button
             onClick={() => deleteMutation.mutate()}
-            className="p-1.5 rounded-lg hover:bg-red-900/30 transition-colors text-muted-foreground hover:text-red-700"
+            className="p-1.5 rounded-lg hover:bg-red-900/30 transition-colors text-muted-foreground hover:text-red-400"
           >
             <Trash2 size={13} />
           </button>
@@ -360,7 +360,7 @@ function ParlayCard({ parlay, token }: { parlay: Parlay; token: string | null })
           </select>
           <button
             onClick={() => updateMutation.mutate({ stake: parseFloat(stakeInput) || null, result: resultInput })}
-            className="p-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-800"
+            className="p-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-400"
           >
             <Check size={13} />
           </button>

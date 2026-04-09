@@ -41,8 +41,8 @@ const EXAMPLE_QUESTIONS = [
 
 function ConfBadge({ score }: { score: number | null }) {
   if (score == null) return null;
-  const color = score >= 80 ? "bg-green-500/15 text-green-800 border-green-500/30"
-    : score >= 65 ? "bg-yellow-500/15 text-amber-800 border-yellow-500/30"
+  const color = score >= 80 ? "bg-green-500/15 text-green-400 border-green-500/30"
+    : score >= 65 ? "bg-yellow-500/15 text-amber-400 border-yellow-500/30"
     : "bg-muted text-muted-foreground border-border";
   return (
     <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${color}`}>
@@ -56,7 +56,7 @@ function RelatedBetCard({ bet }: { bet: RelatedBet }) {
   const matchup = bet.awayTeam && bet.homeTeam ? `${bet.awayTeam} @ ${bet.homeTeam}` : null;
   const conf = bet.confidenceScore ?? 0;
   const verdict = conf >= 85 ? "✅ Strong" : conf >= 70 ? "⚠️ Moderate" : "❌ Low";
-  const riskColor = bet.riskLevel === "low" ? "text-green-800" : bet.riskLevel === "high" ? "text-red-700" : "text-amber-800";
+  const riskColor = bet.riskLevel === "low" ? "text-green-400" : bet.riskLevel === "high" ? "text-red-400" : "text-amber-400";
 
   return (
     <Link href={`/bets/${bet.id}`}>
@@ -65,7 +65,7 @@ function RelatedBetCard({ bet }: { bet: RelatedBet }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-1 flex-wrap">
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">{bet.sport}</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-green-500/10 text-green-800 border border-green-500/20">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">
                 {bet.betType === "player_prop" ? "PROP" : bet.betType?.toUpperCase()}
               </span>
               <ConfBadge score={bet.confidenceScore} />

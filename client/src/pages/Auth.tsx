@@ -60,11 +60,11 @@ export default function Auth() {
   }
 
   const inputClass = "w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-all"
-    + " bg-white/5 border border-white/10 text-white placeholder:text-white/30"
+    + " bg-white/5 border border-white/10 text-white placeholder:text-foreground/55"
     + " focus:border-violet-500/60 focus:bg-white/8 focus:ring-2 focus:ring-violet-500/20";
 
   const tabActive = "px-4 py-2 text-sm font-bold rounded-lg transition-all bg-white/8 border border-white/12 text-white";
-  const tabInactive = "px-4 py-2 text-sm font-semibold rounded-lg transition-all text-white/40 hover:text-white/70";
+  const tabInactive = "px-4 py-2 text-sm font-semibold rounded-lg transition-all text-foreground/65 hover:text-foreground/85";
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4"
@@ -134,7 +134,7 @@ export default function Auth() {
                       required
                     />
                     <button type="button" tabIndex={-1}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/55 hover:text-foreground/80 transition-colors"
                       onClick={() => setShowLoginPw(o => !o)}>
                       {showLoginPw ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
@@ -151,7 +151,7 @@ export default function Auth() {
                 </button>
                 <p className="text-center text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
                   No account?{" "}
-                  <button type="button" className="underline hover:text-white/60 transition-colors"
+                  <button type="button" className="underline hover:text-foreground/80 transition-colors"
                     style={{ color: "rgba(255,255,255,0.5)" }}
                     onClick={() => setTab("register")}>
                     Create one
@@ -218,7 +218,7 @@ export default function Auth() {
                       minLength={6}
                     />
                     <button type="button" tabIndex={-1}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/55 hover:text-foreground/80 transition-colors"
                       onClick={() => setShowRegPw(o => !o)}>
                       {showRegPw ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
@@ -235,7 +235,7 @@ export default function Auth() {
                 </button>
                 <p className="text-center text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
                   Already have an account?{" "}
-                  <button type="button" className="underline hover:text-white/60 transition-colors"
+                  <button type="button" className="underline hover:text-foreground/80 transition-colors"
                     style={{ color: "rgba(255,255,255,0.5)" }}
                     onClick={() => setTab("login")}>
                     Sign in

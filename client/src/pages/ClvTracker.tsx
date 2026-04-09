@@ -98,7 +98,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
         <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Sport</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Sport</Label>
               <Select value={form.sport} onValueChange={v => setForm(f => ({ ...f, sport: v }))}>
                 <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
                   <SelectValue />
@@ -109,7 +109,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Bet Type</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Bet Type</Label>
               <Select value={form.betType} onValueChange={v => setForm(f => ({ ...f, betType: v, marketKey: betTypeOptions[v]?.[0] ?? v }))}>
                 <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
                   <SelectValue />
@@ -122,7 +122,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
           </div>
 
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Event (e.g. Lakers vs Celtics)</Label>
+            <Label className="text-xs text-foreground/75 mb-1 block">Event (e.g. Lakers vs Celtics)</Label>
             <Input value={form.eventDescription} onChange={e => setForm(f => ({ ...f, eventDescription: e.target.value }))}
               placeholder="Lakers vs Celtics · Mar 20" className="h-8 text-xs"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
@@ -130,7 +130,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
 
           {form.betType === "player_prop" && (
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Player Name</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Player Name</Label>
               <Input value={form.playerName} onChange={e => setForm(f => ({ ...f, playerName: e.target.value }))}
                 placeholder="LeBron James" className="h-8 text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
@@ -138,7 +138,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
           )}
 
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Market / Stat</Label>
+            <Label className="text-xs text-foreground/75 mb-1 block">Market / Stat</Label>
             <Select value={form.marketKey} onValueChange={v => setForm(f => ({ ...f, marketKey: v }))}>
               <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
                 <SelectValue />
@@ -152,7 +152,7 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
           </div>
 
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Outcome Label (e.g. LeBron Over 27.5 pts)</Label>
+            <Label className="text-xs text-foreground/75 mb-1 block">Outcome Label (e.g. LeBron Over 27.5 pts)</Label>
             <Input value={form.outcomeLabel} onChange={e => setForm(f => ({ ...f, outcomeLabel: e.target.value }))}
               placeholder="LeBron James Over 27.5 pts" className="h-8 text-xs"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
@@ -160,19 +160,19 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
 
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Opening Line</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Opening Line</Label>
               <Input value={form.openingLine} onChange={e => setForm(f => ({ ...f, openingLine: e.target.value }))}
                 placeholder="27.5" className="h-8 text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Opening Odds</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Opening Odds</Label>
               <Input value={form.openingOdds} onChange={e => setForm(f => ({ ...f, openingOdds: e.target.value }))}
                 placeholder="-110" className="h-8 text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Book</Label>
+              <Label className="text-xs text-foreground/75 mb-1 block">Book</Label>
               <Select value={form.book} onValueChange={v => setForm(f => ({ ...f, book: v }))}>
                 <SelectTrigger className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
                   <SelectValue />
@@ -186,16 +186,16 @@ function AddLineDialog({ onAdd }: { onAdd: () => void }) {
           </div>
 
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Game Time (optional)</Label>
+            <Label className="text-xs text-foreground/75 mb-1 block">Game Time (optional)</Label>
             <Input type="datetime-local" value={form.gameTime} onChange={e => setForm(f => ({ ...f, gameTime: e.target.value }))}
               className="h-8 text-xs"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
           </div>
 
           <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
-            <Label className="text-xs font-bold text-white/70 block">Alert Settings</Label>
+            <Label className="text-xs font-bold text-foreground/85 block">Alert Settings</Label>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-white/50">Alert threshold: <span className="text-white font-bold">{form.alertThreshold}%</span></span>
+              <span className="text-xs text-foreground/75">Alert threshold: <span className="text-white font-bold">{form.alertThreshold}%</span></span>
             </div>
             <Slider min={1} max={30} step={0.5} value={[parseFloat(form.alertThreshold) || 5]}
               onValueChange={([v]) => setForm(f => ({ ...f, alertThreshold: String(v) }))}
@@ -275,7 +275,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-white/90 truncate">{line.outcomeLabel}</span>
+            <span className="text-xs font-bold text-foreground/95 truncate">{line.outcomeLabel}</span>
             {sharpness && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                 style={{ background: `${sharpness.color}18`, color: sharpness.color, border: `1px solid ${sharpness.color}30` }}>
@@ -289,13 +289,13 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
               </span>
             )}
           </div>
-          <div className="text-[10px] text-white/40 mt-0.5 truncate">{line.eventDescription} · {line.book}</div>
+          <div className="text-[10px] text-foreground/65 mt-0.5 truncate">{line.eventDescription} · {line.book}</div>
           <div className="flex items-center gap-3 mt-1.5">
             {/* Opening */}
             <div className="text-center">
-              <div className="text-[9px] text-white/30 uppercase tracking-wider">Open</div>
-              <div className="text-xs font-mono font-bold text-white/60">
-                {line.openingLine ?? "—"} <span className="text-white/35">{formatOdds(line.openingOdds)}</span>
+              <div className="text-[9px] text-foreground/55 uppercase tracking-wider">Open</div>
+              <div className="text-xs font-mono font-bold text-foreground/80">
+                {line.openingLine ?? "—"} <span className="text-foreground/55">{formatOdds(line.openingOdds)}</span>
               </div>
             </div>
             {/* Arrow */}
@@ -304,9 +304,9 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
             </div>
             {/* Current */}
             <div className="text-center">
-              <div className="text-[9px] text-white/30 uppercase tracking-wider">Current</div>
-              <div className="text-xs font-mono font-bold text-white/90">
-                {line.currentLine ?? "—"} <span className="text-white/50">{formatOdds(line.currentOdds)}</span>
+              <div className="text-[9px] text-foreground/55 uppercase tracking-wider">Current</div>
+              <div className="text-xs font-mono font-bold text-foreground/95">
+                {line.currentLine ?? "—"} <span className="text-foreground/75">{formatOdds(line.currentOdds)}</span>
               </div>
             </div>
             {/* Move % */}
@@ -349,7 +349,7 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
           {/* CLV delta */}
           {line.clvDelta != null && (
             <div className="rounded-lg p-2.5 flex items-center justify-between" style={{ background: line.clvBeat ? "rgba(74,222,128,0.06)" : "rgba(248,113,113,0.06)", border: `1px solid ${line.clvBeat ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.15)"}` }}>
-              <span className="text-xs text-white/60">CLV Delta (closing vs opening)</span>
+              <span className="text-xs text-foreground/80">CLV Delta (closing vs opening)</span>
               <span className="text-sm font-black" style={{ color: line.clvBeat ? "#4ade80" : "#f87171" }}>
                 {line.clvDelta > 0 ? "+" : ""}{line.clvDelta.toFixed(2)} {line.clvBeat ? "✓ Beat closing" : "✗ Missed closing"}
               </span>
@@ -360,9 +360,9 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Bell size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
-              <span className="text-[10px] text-white/40">Alert at</span>
-              <span className="text-[10px] font-bold text-white/70">{line.alertThreshold}%</span>
-              <span className="text-[10px] text-white/30">move</span>
+              <span className="text-[10px] text-foreground/65">Alert at</span>
+              <span className="text-[10px] font-bold text-foreground/85">{line.alertThreshold}%</span>
+              <span className="text-[10px] text-foreground/55">move</span>
             </div>
             <div className="flex items-center gap-1">
               {["both","favor","against"].map(d => (
@@ -378,13 +378,13 @@ function LineCard({ line, onRefresh }: { line: ClvLine; onRefresh: () => void })
           {/* Snapshot history */}
           {snapshots && snapshots.length > 0 && (
             <div>
-              <div className="text-[9px] uppercase tracking-wider text-white/30 mb-1.5">Line History</div>
+              <div className="text-[9px] uppercase tracking-wider text-foreground/55 mb-1.5">Line History</div>
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {snapshots.slice().reverse().map((s, i) => (
                   <div key={s.id} className="flex items-center justify-between text-[10px]"
                     style={{ color: "rgba(255,255,255,0.5)" }}>
                     <span>{new Date(s.recordedAt!).toLocaleDateString()} {new Date(s.recordedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <span className="font-mono font-bold text-white/80">{s.line} <span className="text-white/40">{formatOdds(s.odds)}</span></span>
+                    <span className="font-mono font-bold text-foreground/90">{s.line} <span className="text-foreground/65">{formatOdds(s.odds)}</span></span>
                   </div>
                 ))}
               </div>
@@ -441,22 +441,22 @@ function UpdateLineDialog({ line, onUpdated }: { line: ClvLine; onUpdated: () =>
           <DialogTitle className="text-white text-sm">Update Line</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
-          <div className="text-xs text-white/50 truncate">{line.outcomeLabel}</div>
+          <div className="text-xs text-foreground/75 truncate">{line.outcomeLabel}</div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs text-white/40 mb-1 block">Current Line</Label>
+              <Label className="text-xs text-foreground/65 mb-1 block">Current Line</Label>
               <Input value={currentLine} onChange={e => setCurrentLine(e.target.value)}
                 className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
             </div>
             <div>
-              <Label className="text-xs text-white/40 mb-1 block">Current Odds</Label>
+              <Label className="text-xs text-foreground/65 mb-1 block">Current Odds</Label>
               <Input value={currentOdds} onChange={e => setCurrentOdds(e.target.value)}
                 className="h-8 text-xs" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }} />
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={closing} onCheckedChange={setClosing} />
-            <span className="text-xs text-white/50">This is the closing line</span>
+            <span className="text-xs text-foreground/75">This is the closing line</span>
           </div>
           <Button className="w-full font-bold text-xs h-8"
             onClick={() => mutation.mutate({
@@ -492,14 +492,14 @@ function AlertItem({ alert, onDismiss }: { alert: ClvAlert; onDismiss: () => voi
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs font-bold" style={{ color }}>{alert.message}</div>
-        <div className="text-[10px] text-white/35 mt-0.5">{new Date(alert.firedAt!).toLocaleString()}</div>
+        <div className="text-[10px] text-foreground/55 mt-0.5">{new Date(alert.firedAt!).toLocaleString()}</div>
         {alert.fromLine != null && alert.toLine != null && (
-          <div className="text-[10px] text-white/40 mt-0.5 font-mono">
+          <div className="text-[10px] text-foreground/65 mt-0.5 font-mono">
             {alert.fromLine} → {alert.toLine} ({alert.movePct != null ? `${alert.movePct > 0 ? "+" : ""}${alert.movePct.toFixed(1)}%` : ""})
           </div>
         )}
       </div>
-      <button onClick={() => mutation.mutate()} className="text-white/25 hover:text-white/60">
+      <button onClick={() => mutation.mutate()} className="text-foreground/60 hover:text-foreground/80">
         <X size={12} />
       </button>
     </div>
@@ -624,7 +624,7 @@ export default function ClvTracker() {
         <TabsList className="mb-4 h-8" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <TabsTrigger value="lines" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">Lines</TabsTrigger>
           <TabsTrigger value="alerts" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">
-            Alerts {activeAlerts.length > 0 && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-800 px-1 rounded">{activeAlerts.length}</span>}
+            Alerts {activeAlerts.length > 0 && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">{activeAlerts.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="analytics" className="text-xs h-6 data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">Analytics</TabsTrigger>
         </TabsList>
@@ -692,7 +692,7 @@ export default function ClvTracker() {
           )}
           {(alerts as ClvAlert[]).filter((a: ClvAlert) => a.dismissed).length > 0 && (
             <div className="mt-4">
-              <div className="text-[9px] uppercase tracking-wider text-white/25 mb-2">Dismissed</div>
+              <div className="text-[9px] uppercase tracking-wider text-foreground/60 mb-2">Dismissed</div>
               <div className="space-y-1 opacity-40">
                 {(alerts as ClvAlert[]).filter((a: ClvAlert) => a.dismissed).slice(0,5).map((a: ClvAlert) => (
                   <div key={a.id} className="text-xs p-2 rounded" style={{ background: "rgba(255,255,255,0.02)" }}>
@@ -708,9 +708,9 @@ export default function ClvTracker() {
         <TabsContent value="analytics" className="space-y-4">
           {/* By Book */}
           <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="text-xs font-bold text-white/60 mb-3 uppercase tracking-wider">CLV Beat Rate by Book</div>
+            <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Book</div>
             {Object.keys(byBook).length === 0 ? (
-              <p className="text-xs text-white/25">No closed lines yet</p>
+              <p className="text-xs text-foreground/60">No closed lines yet</p>
             ) : (
               <div className="space-y-2">
                 {Object.entries(byBook).sort((a,b) => (b[1].beat/b[1].total) - (a[1].beat/a[1].total)).map(([book, stats]) => {
@@ -718,7 +718,7 @@ export default function ClvTracker() {
                   const avgD = stats.delta / stats.total;
                   return (
                     <div key={book} className="flex items-center gap-3">
-                      <div className="w-24 text-xs capitalize font-bold text-white/70">{book}</div>
+                      <div className="w-24 text-xs capitalize font-bold text-foreground/85">{book}</div>
                       <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
                         <div className="h-full rounded-full" style={{ width: `${rate}%`, background: rate >= 55 ? "#4ade80" : "#f87171" }} />
                       </div>
@@ -726,7 +726,7 @@ export default function ClvTracker() {
                       <div className="text-[10px] w-14 text-right font-mono" style={{ color: avgD > 0 ? "#4ade80" : "#f87171" }}>
                         {avgD > 0 ? "+" : ""}{avgD.toFixed(2)} avg
                       </div>
-                      <div className="text-[10px] text-white/30">{stats.total}g</div>
+                      <div className="text-[10px] text-foreground/55">{stats.total}g</div>
                     </div>
                   );
                 })}
@@ -736,18 +736,18 @@ export default function ClvTracker() {
 
           {/* By Sport */}
           <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="text-xs font-bold text-white/60 mb-3 uppercase tracking-wider">CLV Beat Rate by Sport</div>
+            <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Sport</div>
             {Object.keys(bySport).length === 0 ? (
-              <p className="text-xs text-white/25">No closed lines yet</p>
+              <p className="text-xs text-foreground/60">No closed lines yet</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {Object.entries(bySport).map(([sport, stats]) => {
                   const rate = Math.round((stats.beat / stats.total) * 100);
                   return (
                     <div key={sport} className="rounded-lg p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                      <div className="text-xs font-black text-white/50 mb-1">{sport}</div>
+                      <div className="text-xs font-black text-foreground/75 mb-1">{sport}</div>
                       <div className="text-2xl font-black" style={{ color: rate >= 55 ? "#4ade80" : "#f87171" }}>{rate}%</div>
-                      <div className="text-[9px] text-white/30">{stats.beat}/{stats.total} beats</div>
+                      <div className="text-[9px] text-foreground/55">{stats.beat}/{stats.total} beats</div>
                     </div>
                   );
                 })}
@@ -757,7 +757,7 @@ export default function ClvTracker() {
 
           {/* By Bet Type */}
           <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="text-xs font-bold text-white/60 mb-3 uppercase tracking-wider">CLV Beat Rate by Bet Type</div>
+            <div className="text-xs font-bold text-foreground/80 mb-3 uppercase tracking-wider">CLV Beat Rate by Bet Type</div>
             {(() => {
               const byType: Record<string, { total: number; beat: number }> = {};
               (lines as ClvLine[]).filter((l: ClvLine) => l.status === "closed" && l.clvBeat != null).forEach((l: ClvLine) => {
@@ -766,19 +766,19 @@ export default function ClvTracker() {
                 if (l.clvBeat) byType[l.betType].beat++;
               });
               return Object.keys(byType).length === 0 ? (
-                <p className="text-xs text-white/25">No closed lines yet</p>
+                <p className="text-xs text-foreground/60">No closed lines yet</p>
               ) : (
                 <div className="space-y-2">
                   {Object.entries(byType).map(([type, stats]) => {
                     const rate = Math.round((stats.beat / stats.total) * 100);
                     return (
                       <div key={type} className="flex items-center gap-3">
-                        <div className="w-28 text-xs capitalize font-bold text-white/70">{type.replace("_"," ")}</div>
+                        <div className="w-28 text-xs capitalize font-bold text-foreground/85">{type.replace("_"," ")}</div>
                         <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
                           <div className="h-full rounded-full" style={{ width: `${rate}%`, background: rate >= 55 ? "#4ade80" : "#f87171" }} />
                         </div>
                         <div className="text-xs font-black w-10 text-right" style={{ color: rate >= 55 ? "#4ade80" : "#f87171" }}>{rate}%</div>
-                        <div className="text-[10px] text-white/30">{stats.total}g</div>
+                        <div className="text-[10px] text-foreground/55">{stats.total}g</div>
                       </div>
                     );
                   })}

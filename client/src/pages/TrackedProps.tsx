@@ -352,7 +352,7 @@ function PropModal({
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
       <div className="relative w-full max-w-lg rounded-2xl border p-6 max-h-[90vh] overflow-y-auto"
         style={{ background: "linear-gradient(145deg,hsl(265 30% 10%),hsl(265 28% 12%))", borderColor: "rgba(245,158,11,0.3)" }}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white"><X size={18} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-foreground/65 hover:text-white"><X size={18} /></button>
         <h2 className="text-lg font-bold mb-5" style={{ color: "#f59e0b" }}>
           {initial.playerName ? "✏️ Edit Prop" : "➕ Track New Prop"}
         </h2>
@@ -361,7 +361,7 @@ function PropModal({
           {/* Player + Team */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Player Name *</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Player Name *</label>
               <PlayerAutocomplete
                 value={form.playerName}
                 sport={form.sport}
@@ -371,7 +371,7 @@ function PropModal({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Team (optional)</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Team (optional)</label>
               <input value={form.teamName} onChange={e => set("teamName", e.target.value)}
                 placeholder="e.g. Lakers"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
@@ -382,7 +382,7 @@ function PropModal({
           {/* Sport + Prop Type */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Sport *</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Sport *</label>
               <select value={form.sport} onChange={e => { set("sport", e.target.value); set("statCategory", SPORT_STATS[e.target.value]?.[0]?.label ?? ""); }}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
                 style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
@@ -390,7 +390,7 @@ function PropModal({
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Prop Type *</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Prop Type *</label>
               <select value={form.propType} onChange={e => set("propType", e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
                 style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
@@ -402,7 +402,7 @@ function PropModal({
 
           {/* Stat Category */}
           <div>
-            <label className="text-xs font-semibold text-white/50 mb-1 block">Stat Category *</label>
+            <label className="text-xs font-semibold text-foreground/75 mb-1 block">Stat Category *</label>
             <select value={form.statCategory} onChange={e => set("statCategory", e.target.value)}
               className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
               style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
@@ -413,14 +413,14 @@ function PropModal({
           {/* Line + Direction */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Target Line *</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Target Line *</label>
               <input value={form.targetLine} onChange={e => set("targetLine", e.target.value)}
                 type="number" step="0.5" placeholder="e.g. 1500"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
                 style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Direction *</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Direction *</label>
               <div className="flex gap-2">
                 {["over","under"].map(d => (
                   <button key={d} onClick={() => set("direction", d)}
@@ -438,14 +438,14 @@ function PropModal({
           {/* Current Value + Games Played */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Current Value</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Current Value</label>
               <input value={form.currentValue} onChange={e => set("currentValue", e.target.value)}
                 type="number" step="0.1" placeholder="e.g. 823"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
                 style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Games Played</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Games Played</label>
               <input value={form.gamesPlayed} onChange={e => set("gamesPlayed", e.target.value)}
                 type="number" placeholder="e.g. 48"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none focus:border-yellow-500/60"
@@ -456,14 +456,14 @@ function PropModal({
           {/* Season + Status */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Season</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Season</label>
               <input value={form.season} onChange={e => set("season", e.target.value)}
                 placeholder="2025-26"
                 className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none"
                 style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-white/50 mb-1 block">Status</label>
+              <label className="text-xs font-semibold text-foreground/75 mb-1 block">Status</label>
               <select value={form.status} onChange={e => set("status", e.target.value)}
                 className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none"
                 style={{ background: "hsl(265 28% 14%)", borderColor: "rgba(255,255,255,0.12)" }}>
@@ -477,7 +477,7 @@ function PropModal({
 
           {/* Notes */}
           <div>
-            <label className="text-xs font-semibold text-white/50 mb-1 block">Notes (optional)</label>
+            <label className="text-xs font-semibold text-foreground/75 mb-1 block">Notes (optional)</label>
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
               rows={2} placeholder="Any context about this bet..."
               className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-white/30 border outline-none resize-none"
@@ -713,7 +713,7 @@ function PropCard({ prop, onEdit, onDelete, onUpdate }: {
               </div>
               <div className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
                 <div style={{ color: "rgba(255,255,255,0.4)" }}>Added</div>
-                <div className="font-semibold mt-0.5 text-white/60">{prop.createdAt ? formatDistanceToNow(new Date(prop.createdAt), { addSuffix: true }) : "—"}</div>
+                <div className="font-semibold mt-0.5 text-foreground/80">{prop.createdAt ? formatDistanceToNow(new Date(prop.createdAt), { addSuffix: true }) : "—"}</div>
               </div>
             </div>
             {/* Data source tag */}

@@ -39,7 +39,7 @@ export default function Account() {
           <User size={22} style={{ color: "#a78bfa" }} />
         </div>
         <div className="text-center">
-          <p className="text-sm font-semibold text-white/80">Sign in to track your bets</p>
+          <p className="text-sm font-semibold text-foreground/90">Sign in to track your bets</p>
           <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>
             Create an account to save picks and monitor results.
           </p>
@@ -286,7 +286,7 @@ export default function Account() {
                           placeholder="Stake ($)"
                           value={editStake}
                           onChange={e => setEditStake(e.target.value)}
-                          className="w-full rounded-lg px-3 py-1.5 text-xs outline-none bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:border-violet-500/50"
+                          className="w-full rounded-lg px-3 py-1.5 text-xs outline-none bg-white/5 border border-white/10 text-white placeholder:text-foreground/55 focus:border-violet-500/50"
                         />
                       </div>
                       <div className="flex-[2]">
@@ -296,7 +296,7 @@ export default function Account() {
                           placeholder="Notes..."
                           value={editNotes}
                           onChange={e => setEditNotes(e.target.value)}
-                          className="w-full rounded-lg px-3 py-1.5 text-xs outline-none bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:border-violet-500/50"
+                          className="w-full rounded-lg px-3 py-1.5 text-xs outline-none bg-white/5 border border-white/10 text-white placeholder:text-foreground/55 focus:border-violet-500/50"
                         />
                       </div>
                     </div>

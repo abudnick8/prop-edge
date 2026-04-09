@@ -143,12 +143,12 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-500/5 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <Target size={15} className="text-amber-800" />
+          <Target size={15} className="text-amber-400" />
           <div className="text-left">
             <p className="text-sm font-black text-foreground flex items-center gap-2">
               Sharp Trigger List
               {alertCount > 0 && (
-                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-800 border border-amber-400/30">
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/30">
                   {alertCount} active
                 </span>
               )}
@@ -160,7 +160,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
           {!open && (
             <div className="flex gap-1 mr-2">
               {["NBA","MLB","NHL","NFL"].map(s => (
-                <span key={s} className="text-[10px] px-1.5 py-0.5 rounded border border-border/50 text-foreground/60 font-semibold">
+                <span key={s} className="text-[10px] px-1.5 py-0.5 rounded border border-border/50 text-foreground/70 font-semibold">
                   {SPORT_EMOJI[s]}{ALL_TRIGGERS.filter(t=>t.sport===s).length}
                 </span>
               ))}
@@ -174,14 +174,14 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
         <div className="border-t border-amber-500/15 px-4 pb-4 pt-3 space-y-3">
           {/* Quick tip */}
           <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5 text-xs text-amber-200/80">
-            <span className="font-bold text-amber-800">How to use: </span>
+            <span className="font-bold text-amber-400">How to use: </span>
             These triggers fire before sportsbooks react. Toggle the bell to enable in-app notifications when a matching condition appears. Pinnacle/Circa move first — you have 30–120s before public books copy.
           </div>
 
           {/* Filters */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-bold text-foreground/60 uppercase w-10">Sport</span>
+              <span className="text-[10px] font-bold text-foreground/70 uppercase w-10">Sport</span>
               {sports.map(s => (
                 <button key={s} onClick={()=>setFilterSport(s)}
                   className="px-2 py-0.5 rounded text-[10px] font-bold transition-all"
@@ -191,7 +191,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
               ))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-bold text-foreground/60 uppercase w-10">Type</span>
+              <span className="text-[10px] font-bold text-foreground/70 uppercase w-10">Type</span>
               {cats.map(c => {
                 const cc = c === "all" ? null : TRIGGER_CATEGORY_COLOR[c];
                 return (
@@ -255,7 +255,7 @@ function TriggerList({ activeSport, alerts, toggleAlert, clearAlerts }: {
 
           {alertCount > 0 && (
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg p-2.5">
-              <p className="text-[10px] font-bold text-amber-800 flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
                 <Bell size={10} /> {alertCount} trigger{alertCount!==1?"s":""} active — you'll be notified when matching conditions appear
               </p>
               <button onClick={clearAlerts} className="text-[9px] text-muted-foreground hover:text-foreground mt-1">Clear all alerts</button>
@@ -338,8 +338,8 @@ function MovementBar({ open, current, move, label }: { open: number | null; curr
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="w-12 text-muted-foreground text-right font-medium">{label}</span>
-      <span className="font-mono text-foreground/65">{fmtLine(open)}</span>
-      <span className="text-foreground/50">→</span>
+      <span className="font-mono text-foreground/70">{fmtLine(open)}</span>
+      <span className="text-foreground/70">→</span>
       <span className={`font-mono font-bold ${moved ? "text-foreground" : "text-muted-foreground"}`}>{fmtLine(current)}</span>
       {badge && (
         <span
@@ -397,9 +397,9 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
 
   const statusColor = (s: string) => {
     const sl = s.toLowerCase();
-    if (sl.includes("out") || sl.includes("ir")) return "text-red-700";
-    if (sl.includes("doubtful")) return "text-orange-700";
-    if (sl.includes("questionable")) return "text-amber-800";
+    if (sl.includes("out") || sl.includes("ir")) return "text-red-400";
+    if (sl.includes("doubtful")) return "text-orange-400";
+    if (sl.includes("questionable")) return "text-amber-400";
     return "text-muted-foreground";
   };
 
@@ -411,12 +411,12 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           <FlaskConical size={14} className="text-primary" />
           <span className="text-xs font-bold text-primary uppercase tracking-wider">Movement Intelligence</span>
           {data?.researchedAt && (
-            <span className="text-[10px] text-foreground/55">
+            <span className="text-[10px] text-foreground/70">
               &middot; {new Date(data.researchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
             </span>
           )}
         </div>
-        <button onClick={onClose} className="text-foreground/55 hover:text-foreground transition-colors" data-testid="close-research-panel">
+        <button onClick={onClose} className="text-foreground/70 hover:text-foreground transition-colors" data-testid="close-research-panel">
           <X size={14} />
         </button>
       </div>
@@ -426,12 +426,12 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           <Skeleton className="h-4 w-full rounded" />
           <Skeleton className="h-4 w-4/5 rounded" />
           <Skeleton className="h-4 w-3/5 rounded" />
-          <p className="text-[10px] text-foreground/55 pt-1">Pulling injuries, news &amp; sharp signals&hellip;</p>
+          <p className="text-[10px] text-foreground/70 pt-1">Pulling injuries, news &amp; sharp signals&hellip;</p>
         </div>
       )}
 
       {isError && (
-        <div className="flex items-center gap-2 text-xs text-red-700">
+        <div className="flex items-center gap-2 text-xs text-red-400">
           <AlertTriangle size={13} />
           <span>{(error as any)?.message ?? "Research failed. Try refreshing the page first."}</span>
         </div>
@@ -442,7 +442,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           {data.moveSummary && (
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Zap size={10} className="text-amber-800" /> Line Movement
+                <Zap size={10} className="text-amber-400" /> Line Movement
               </p>
               <p className="text-xs text-foreground/90 leading-relaxed">{data.moveSummary}</p>
             </div>
@@ -451,7 +451,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
           {data.sharpSignals.length > 0 && (
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <DollarSign size={10} className="text-green-800" /> Sharp Money
+                <DollarSign size={10} className="text-green-400" /> Sharp Money
               </p>
               <ul className="space-y-0.5">
                 {data.sharpSignals.map((sig, i) => (
@@ -463,17 +463,17 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
 
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <AlertTriangle size={10} className="text-orange-700" /> Injury Report
+              <AlertTriangle size={10} className="text-orange-400" /> Injury Report
             </p>
             {data.injuries.length === 0 ? (
-              <p className="text-xs text-foreground/65">No significant injuries found for these teams</p>
+              <p className="text-xs text-foreground/70">No significant injuries found for these teams</p>
             ) : (
               <div className="space-y-1">
                 {data.injuries.map((inj, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className="font-medium text-foreground/90">{inj.player}</span>
-                    <span className="text-foreground/55">&mdash;</span>
-                    <span className="text-foreground/65 text-[10px]">{inj.team}</span>
+                    <span className="text-foreground/70">&mdash;</span>
+                    <span className="text-foreground/70 text-[10px]">{inj.team}</span>
                     <span className={`ml-auto font-semibold text-[10px] ${statusColor(inj.status)}`}>{inj.status}</span>
                   </div>
                 ))}
@@ -503,7 +503,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
                       {item.title}
                     </a>
                     {item.pubDate && (
-                      <span className="text-foreground/50 ml-1 text-[9px]">
+                      <span className="text-foreground/70 ml-1 text-[9px]">
                         &middot; {new Date(item.pubDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </span>
                     )}
@@ -513,7 +513,7 @@ function ResearchPanel({ gameId, onClose }: { gameId: string; onClose: () => voi
             </div>
           )}
 
-          <p className="text-[9px] text-foreground/50 pt-1 border-t border-border/50">
+          <p className="text-[9px] text-foreground/70 pt-1 border-t border-border/50">
             Data via ESPN injuries &amp; Google News &middot; Cached 30 min &middot; Always verify with official sources
           </p>
         </div>
@@ -795,7 +795,7 @@ function RecCard({ rec }: { rec: BetRec }) {
 
       {/* Footer */}
       <div className="px-4 py-2 border-t" style={{ borderColor: `${rec.color}20`, background: "rgba(0,0,0,0.15)" }}>
-        <p className="text-[9px] text-foreground/50">
+        <p className="text-[9px] text-foreground/70">
           Based on ActionNetwork line movement data. Not financial advice — sharp signals can fail. Manage bankroll responsibly.
         </p>
       </div>
@@ -848,12 +848,12 @@ function GameCard({ game }: { game: GameLine }) {
               {game.awayTeam} <span className="text-muted-foreground font-normal">@</span> {game.homeTeam}
             </p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-foreground/65">{fmtTime(game.gameTime)}</span>
+              <span className="text-[10px] text-foreground/70">{fmtTime(game.gameTime)}</span>
               {game.numBets != null && (
-                <span className="text-[10px] text-foreground/55">{game.numBets.toLocaleString()} bets</span>
+                <span className="text-[10px] text-foreground/70">{game.numBets.toLocaleString()} bets</span>
               )}
               {game.openingInserted && (
-                <span className="text-[10px] text-foreground/55">opened {fmtRelTime(game.openingInserted)}</span>
+                <span className="text-[10px] text-foreground/70">opened {fmtRelTime(game.openingInserted)}</span>
               )}
             </div>
           </div>
@@ -862,10 +862,10 @@ function GameCard({ game }: { game: GameLine }) {
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Movement summary chips */}
           {hasSteam && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-700 border-red-500/30 font-bold">🔥 STEAM</Badge>
+            <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border-red-500/30 font-bold">🔥 STEAM</Badge>
           )}
           {!hasSteam && hasSignificant && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-800 border-amber-500/20 font-bold">⚡ MOVED</Badge>
+            <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border-amber-500/20 font-bold">⚡ MOVED</Badge>
           )}
           {hasPublicData && (
             <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
@@ -893,17 +893,17 @@ function GameCard({ game }: { game: GameLine }) {
               <p className="text-[11px] font-mono text-muted-foreground">
                 {fmtLine(game.spread.current)}
                 {spreadMove != null && spreadMove !== 0 && (
-                  <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-700" : "text-amber-800"}`}>
+                  <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
                     ({spreadMove > 0 ? "+" : ""}{spreadMove})
                   </span>
                 )}
               </p>
             )}
             {game.total.current != null && (
-              <p className="text-[10px] font-mono text-foreground/65">
+              <p className="text-[10px] font-mono text-foreground/70">
                 O/U {game.total.current}
                 {totalMove != null && totalMove !== 0 && (
-                  <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-700" : "text-amber-800"}`}>
+                  <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
                     ({totalMove > 0 ? "+" : ""}{totalMove})
                   </span>
                 )}
@@ -968,8 +968,8 @@ function GameCard({ game }: { game: GameLine }) {
                 {/* Away ML */}
                 <div className="flex items-center gap-2 text-xs">
                   <span className="w-12 text-muted-foreground text-right font-medium truncate">{game.awayTeam.split(" ").pop()}</span>
-                  <span className="font-mono text-foreground/65">{fmtOdds(game.moneyline.awayOpen)}</span>
-                  <span className="text-foreground/50">→</span>
+                  <span className="font-mono text-foreground/70">{fmtOdds(game.moneyline.awayOpen)}</span>
+                  <span className="text-foreground/70">→</span>
                   <span className={`font-mono font-bold ${mlAwayMove !== 0 ? "text-foreground" : "text-muted-foreground"}`}>{fmtOdds(game.moneyline.awayCurrent)}</span>
                   {mlAwayMove != null && mlAwayMove !== 0 && (
                     <span className="text-[10px] font-semibold" style={{ color: Math.abs(mlAwayMove) >= 50 ? "#f87171" : "#f59e0b" }}>
@@ -980,8 +980,8 @@ function GameCard({ game }: { game: GameLine }) {
                 {/* Home ML */}
                 <div className="flex items-center gap-2 text-xs">
                   <span className="w-12 text-muted-foreground text-right font-medium truncate">{game.homeTeam.split(" ").pop()}</span>
-                  <span className="font-mono text-foreground/65">{fmtOdds(game.moneyline.homeOpen)}</span>
-                  <span className="text-foreground/50">→</span>
+                  <span className="font-mono text-foreground/70">{fmtOdds(game.moneyline.homeOpen)}</span>
+                  <span className="text-foreground/70">→</span>
                   <span className={`font-mono font-bold ${mlHomeMove !== 0 ? "text-foreground" : "text-muted-foreground"}`}>{fmtOdds(game.moneyline.homeCurrent)}</span>
                   {mlHomeMove != null && mlHomeMove !== 0 && (
                     <span className="text-[10px] font-semibold" style={{ color: Math.abs(mlHomeMove) >= 50 ? "#f87171" : "#f59e0b" }}>
@@ -998,7 +998,7 @@ function GameCard({ game }: { game: GameLine }) {
           </div>
 
           {/* Footer metadata */}
-          <div className="flex items-center gap-4 pt-2 border-t border-border/50 text-[10px] text-foreground/55">
+          <div className="flex items-center gap-4 pt-2 border-t border-border/50 text-[10px] text-foreground/70">
             {game.openingInserted && <span>Opened: {new Date(game.openingInserted).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>}
             {game.currentInserted && <span>Updated: {new Date(game.currentInserted).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>}
             {game.numBets != null && <span>{game.numBets.toLocaleString()} total bets tracked</span>}
@@ -1093,7 +1093,7 @@ export default function LineMovement() {
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
             Opening → current lines for today's games · spread, total & moneyline · public % + sharp money
-            {lastUpdated && <span className="ml-1 text-foreground/55">· updated {lastUpdated}</span>}
+            {lastUpdated && <span className="ml-1 text-foreground/70">· updated {lastUpdated}</span>}
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1156,7 +1156,7 @@ export default function LineMovement() {
             onClick={() => setShowErrorsOnly(!showErrorsOnly)}
           >
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <AlertCircle size={10} className="text-orange-700" /> Book Errors
+              <AlertCircle size={10} className="text-orange-400" /> Book Errors
             </p>
             <p className="text-2xl font-bold mt-0.5" style={{ color: (bookErrors as BookError[]).length > 0 ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
               {(bookErrors as BookError[]).length}
@@ -1188,20 +1188,20 @@ export default function LineMovement() {
           onClick={() => { setShowSteamOnly(!showSteamOnly); if (!showSteamOnly) setShowMovedOnly(false); }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
             showSteamOnly
-              ? "bg-red-500/10 text-red-700 border-red-500/30"
+              ? "bg-red-500/10 text-red-400 border-red-500/30"
               : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
           }`}
           data-testid="filter-steam"
         >
           🔥 Steam Only
-          {steamCount > 0 && <span className="bg-red-500/20 text-red-700 rounded-full px-1.5 py-0.5 text-[10px]">{steamCount}</span>}
+          {steamCount > 0 && <span className="bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5 text-[10px]">{steamCount}</span>}
         </button>
         {/* Moved filter */}
         <button
           onClick={() => { setShowMovedOnly(!showMovedOnly); if (!showMovedOnly) { setShowSteamOnly(false); setShowErrorsOnly(false); } }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
             showMovedOnly
-              ? "bg-amber-500/10 text-amber-800 border-amber-500/30"
+              ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
               : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
           }`}
           data-testid="filter-moved"
@@ -1243,7 +1243,7 @@ export default function LineMovement() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-border rounded-xl">
-          <Activity size={32} className="mx-auto text-foreground/45 mb-3" />
+          <Activity size={32} className="mx-auto text-foreground/70 mb-3" />
           <p className="text-sm font-medium text-foreground">
             {(games as GameLine[]).length === 0 ? "No games found for today" : "No games match the current filter"}
           </p>
@@ -1266,7 +1266,7 @@ export default function LineMovement() {
               <div className="flex items-center gap-2">
                 <span>{SPORT_EMOJI[s]}</span>
                 <h2 className="text-sm font-bold text-foreground">{s}</h2>
-                <span className="text-xs text-foreground/55 font-mono">{bySport[s].length} game{bySport[s].length !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-foreground/70 font-mono">{bySport[s].length} game{bySport[s].length !== 1 ? "s" : ""}</span>
                 <div className="flex-1 h-px bg-border" />
               </div>
               {bySport[s].map(g => <GameCard key={g.id} game={g} />)}
@@ -1277,12 +1277,12 @@ export default function LineMovement() {
 
       {/* Legend */}
       {!isLoading && filtered.length > 0 && (
-        <div className="flex flex-wrap gap-4 pt-2 text-[10px] text-foreground/55 border-t border-border">
-          <span className="flex items-center gap-1"><span className="text-red-700 font-bold">🔥 Steam</span> = line moved ≥3pts from open</span>
-          <span className="flex items-center gap-1"><span className="text-amber-800 font-bold">⚡ Moved</span> = any line movement</span>
+        <div className="flex flex-wrap gap-4 pt-2 text-[10px] text-foreground/70 border-t border-border">
+          <span className="flex items-center gap-1"><span className="text-red-400 font-bold">🔥 Steam</span> = line moved ≥3pts from open</span>
+          <span className="flex items-center gap-1"><span className="text-amber-400 font-bold">⚡ Moved</span> = any line movement</span>
           <span className="flex items-center gap-1"><Users size={9} /> = % of bets (public tickets)</span>
           <span className="flex items-center gap-1"><DollarSign size={9} /> = % of money (sharp signal)</span>
-          <span className="flex items-center gap-1"><span className="text-green-800">Green $</span> = 65%+ sharp money on that side</span>
+          <span className="flex items-center gap-1"><span className="text-green-400">Green $</span> = 65%+ sharp money on that side</span>
           <CheatSheetButton initialSection="universal" variant="ghost" label="Full Cheat Sheet →" />
         </div>
       )}

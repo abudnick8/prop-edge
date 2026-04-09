@@ -155,8 +155,8 @@ export default function Settings() {
           </div>
           <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1 border border-border">
             <p className="font-semibold text-foreground">What this includes:</p>
-            <p>• <span className="text-green-800">Player season totals</span> — MLB HR/K season O/U, NBA PTS/REB/AST season O/U, NFL passing/rushing yds season O/U</p>
-            <p>• <span className="text-amber-800">Championship outrights</span> — MLB World Series, NBA title, NHL Cup, NCAA tournament, Golf majors</p>
+            <p>• <span className="text-green-400">Player season totals</span> — MLB HR/K season O/U, NBA PTS/REB/AST season O/U, NFL passing/rushing yds season O/U</p>
+            <p>• <span className="text-amber-400">Championship outrights</span> — MLB World Series, NBA title, NHL Cup, NCAA tournament, Golf majors</p>
             <p>• <span className="text-blue-400">Pre-season value</span> — These markets open months before the season, often with better lines</p>
           </div>
         </div>
@@ -243,7 +243,7 @@ export default function Settings() {
 
           {/* Both-off warning */}
           {!(form.notificationsEnabled ?? true) && !((form as any).emailNotificationsEnabled ?? true) && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-amber-800 text-xs">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-amber-400 text-xs">
               <Bell size={13} />
               <span>All notifications are off. You won't be alerted when high-confidence picks appear.</span>
             </div>

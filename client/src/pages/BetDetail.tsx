@@ -1199,7 +1199,7 @@ export default function BetDetail() {
         </div>
         {bet.status !== "open" && (
           <p className="text-xs mt-3 font-medium capitalize">
-            Status: <span className={bet.status === "won" ? "text-green-800" : "text-red-700"}>{bet.status}</span>
+            Status: <span className={bet.status === "won" ? "text-green-400" : "text-red-400"}>{bet.status}</span>
           </p>
         )}
       </div>
