@@ -99,6 +99,7 @@ interface PredMkt {
   liquidityNum?: number;
   pw1?: number;
   legs?: string[] | null;
+  legGames?: (string | null)[] | null;
   isParlay?: boolean;
   gameTime: string | null;
   polyUrl?: string;
@@ -260,11 +261,13 @@ function parseLegDetail(leg: string, event: string, sport: string) {
   return { side, body, player, line, statType, condition, dirLabel, meaning };
 }
 
-function ExpandableLegs({ displayLegs, rawLegs, event, sport }: {
+function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, gameTime }: {
   displayLegs: string[];
   rawLegs: string[] | null;
   event: string;
   sport: string;
+  legGames?: (string | null)[] | null;
+  gameTime?: string | null;
 }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   return (
@@ -278,7 +281,8 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport }: {
           const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
           const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
           const isExpanded = expandedIdx === i;
-          const detail = parseLegDetail(leg, event, sport);
+          const legGame = legGames?.[i] ?? null;
+          const detail = parseLegDetail(leg, legGame ?? event, sport);
           return (
             <button
               key={i}
@@ -347,10 +351,16 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport }: {
                         <span className="font-semibold text-foreground">{sport}</span>
                       </>
                     )}
-                    {event && (
+                    {event && /[@vs\s]/.test(event) && !/_/.test(event) && !/^KX/i.test(event) && (
                       <>
                         <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Game</span>
                         <span className="font-semibold text-foreground leading-snug">{event}</span>
+                      </>
+                    )}
+                    {gameTime && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Game Time</span>
+                        <span className="font-semibold text-foreground">{new Date(gameTime).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
                       </>
                     )}
                   </div>
@@ -439,7 +449,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
               if (displayLegs && displayLegs.length > 0) {
                 return (
-                  <ExpandableLegs displayLegs={displayLegs} rawLegs={m.legs ?? null} event={m.event} sport={m.sport} />
+                  <ExpandableLegs displayLegs={displayLegs} rawLegs={m.legs ?? null} event={m.event} sport={m.sport} legGames={m.legGames} gameTime={m.gameTime} />
                 );
               }
               return (

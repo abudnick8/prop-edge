@@ -1712,7 +1712,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             source:           "kalshi",
             ...(() => {
               const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs, sport);
-              return { title, legs, isParlay };
+              // Resolve per-leg game matchup from mve_selected_legs event_tickers
+              const legGames: (string | null)[] = (m.mve_selected_legs ?? []).map(
+                (leg: { market_ticker: string; event_ticker: string; side: string }) =>
+                  gameFromEventTicker(leg.event_ticker, sport) ?? null
+              );
+              return { title, legs, isParlay, legGames: legGames.length > 0 ? legGames : null };
             })(),
             event:            m.event_ticker ?? m.title,
             sport,
