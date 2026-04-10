@@ -1462,6 +1462,51 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return `${dir} ${resolved}`;
       }
 
+      // ── Player → Team lookup (ESPN search, cached) ──────────────────────────
+      const playerTeamCache = new Map<string, string>();
+      async function getPlayerTeam(playerName: string, sport: string): Promise<string | null> {
+        const key = `${playerName}::${sport}`;
+        if (playerTeamCache.has(key)) return playerTeamCache.get(key)!;
+        try {
+          const sportCfg: Record<string, string> = {
+            NBA: "basketball/nba", MLB: "baseball/mlb",
+            NHL: "hockey/nhl",     NFL: "football/nfl",
+          };
+          const slug = sportCfg[sport.toUpperCase()];
+          if (!slug) return null;
+          const q = encodeURIComponent(playerName);
+          const r = await axios.get(
+            `https://site.web.api.espn.com/apis/common/v3/search?query=${q}&type=player&sport=${slug.split("/")[0]}&league=${slug.split("/")[1]}&limit=3`,
+            { timeout: 4000, headers: { "User-Agent": "Mozilla/5.0" } }
+          );
+          const hits: any[] = r.data?.items ?? r.data?.athletes ?? [];
+          for (const h of hits) {
+            const name: string = h.displayName ?? h.name ?? "";
+            // Fuzzy match — first+last name overlap
+            const nl = name.toLowerCase(); const ql = playerName.toLowerCase();
+            if (nl === ql || nl.includes(ql) || ql.includes(nl)) {
+              const team = h.team?.displayName ?? h.team?.name ?? h.teamName ?? null;
+              if (team) { playerTeamCache.set(key, team); return team; }
+            }
+          }
+          // fallback: ESPN search v2
+          const r2 = await axios.get(
+            `https://www.espn.com/search-results/search?query=${q}&type=players&sport=${slug.split("/")[0]}`,
+            { timeout: 4000, headers: { "User-Agent": "Mozilla/5.0" } }
+          );
+          const results2: any[] = r2.data?.results?.[0]?.contents ?? [];
+          for (const item of results2) {
+            const nm: string = item.name ?? "";
+            if (nm.toLowerCase().includes(playerName.toLowerCase().split(" ")[1] ?? playerName.toLowerCase())) {
+              const team = item.team ?? null;
+              if (team) { playerTeamCache.set(key, team); return team; }
+            }
+          }
+        } catch { /* silent */ }
+        playerTeamCache.set(key, "");
+        return null;
+      }
+
       // Extract a human-readable game matchup from a Kalshi event ticker.
       // Tickers look like: KXNBA-25-BOS-LAL, KXNHL-26-TOR-BOS, KXMLB-25-NYM-ATL, etc.
       function gameFromEventTicker(ticker: string, sport?: string): string | null {
@@ -1712,12 +1757,29 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             source:           "kalshi",
             ...(() => {
               const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs, sport);
-              // Resolve per-leg game matchup from mve_selected_legs event_tickers
+              // Resolve per-leg game matchup + player team from mve_selected_legs
               const legGames: (string | null)[] = (m.mve_selected_legs ?? []).map(
                 (leg: { market_ticker: string; event_ticker: string; side: string }) =>
                   gameFromEventTicker(leg.event_ticker, sport) ?? null
               );
-              return { title, legs, isParlay, legGames: legGames.length > 0 ? legGames : null };
+              // Extract player names from parsed legs for team lookup
+              const legPlayerTeams: (string | null)[] = await Promise.all(
+                (legs ?? []).map(async (legStr: string) => {
+                  // Parse player name from leg string: "YES PlayerName Line StatType"
+                  const body = legStr.replace(/^(YES|NO)\s+/i, "").trim();
+                  const propMatch = body.match(/^(.+?):\s*[\d.]+/) || body.match(/^(.+?)\s+[\d.]+[+\-]?\s+/);
+                  const playerName = propMatch?.[1]?.trim();
+                  if (!playerName || playerName.length < 4) return null;
+                  // Skip if it looks like a team condition rather than a player name
+                  if (/wins|beats|covers|over|under|advances/i.test(playerName)) return null;
+                  return getPlayerTeam(playerName, sport);
+                })
+              );
+              return {
+                title, legs, isParlay,
+                legGames: legGames.length > 0 ? legGames : null,
+                legPlayerTeams: legPlayerTeams.some(t => t) ? legPlayerTeams : null,
+              };
             })(),
             event:            m.event_ticker ?? m.title,
             sport,
