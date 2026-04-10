@@ -843,46 +843,16 @@ const CHAIN_EMOJI: Record<string, string> = {
   GOALIE_MISMATCH: "🥅", ACE_FADE: "📉",
 };
 
-function CIQPickPanel({ game }: { game: GameLine }) {
-  // Build the POST body from available LM game data
-  // NOTE: game.spread.current is the AWAY team's spread (e.g. -15.5 = away favored by 15.5)
-  const awaySpreadCurrent = game.spread.current;
-  const postBody = {
-    sport:          game.sport,
-    homeTeam:       game.homeTeam,
-    awayTeam:       game.awayTeam,
-    awaySpread:     awaySpreadCurrent,                          // away team's spread line
-    spread:         awaySpreadCurrent,                          // also pass as generic spread
-    total:          game.total.current,
-    mlHome:         game.moneyline.homeCurrent,
-    mlAway:         game.moneyline.awayCurrent,
-    spreadMove:     game.spread.move,
-    homeMoneyPct:   game.moneyline.homeMoney,
-    awayMoneyPct:   game.moneyline.awayMoney,
-    spreadAwayPct:  game.spread.awayMoney,                      // sharp money on away spread
-    spreadHomePct:  game.spread.homeMoney,                      // sharp money on home spread
-  };
-
-  const { data, isLoading, refetch, isFetching } = useQuery<any>({
-    queryKey: ["/api/line-movement/ciq", game.id],
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/line-movement/ciq", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(postBody),
-        });
-        if (!res.ok) return { available: false, reason: `Server error ${res.status}` };
-        const json = await res.json();
-        return json;
-      } catch (e: any) {
-        return { available: false, reason: e?.message ?? "Network error" };
-      }
-    },
-    staleTime: 5 * 60 * 1000,
-    retry: 2,
-    retryDelay: 1500,
-  });
+function CIQPickPanel({
+  game, ciqData: data, isLoading, isFetching, refetch,
+}: {
+  game: GameLine;
+  ciqData: any;
+  isLoading: boolean;
+  isFetching: boolean;
+  refetch: () => void;
+}) {
+  // data / isLoading / isFetching / refetch come from GameCard via props
 
   if (isLoading || isFetching && !data) {
     return (
@@ -1117,6 +1087,46 @@ function GameCard({ game }: { game: GameLine }) {
 
   const rec = buildBetRec(game);
 
+  // ── Lift CIQ query up so badge is available on collapsed card ──
+  const ciqPostBody = {
+    sport:          game.sport,
+    homeTeam:       game.homeTeam,
+    awayTeam:       game.awayTeam,
+    awaySpread:     game.spread.current,
+    spread:         game.spread.current,
+    total:          game.total.current,
+    mlHome:         game.moneyline.homeCurrent,
+    mlAway:         game.moneyline.awayCurrent,
+    spreadMove:     game.spread.move,
+    homeMoneyPct:   game.moneyline.homeMoney,
+    awayMoneyPct:   game.moneyline.awayMoney,
+    spreadAwayPct:  game.spread.awayMoney,
+    spreadHomePct:  game.spread.homeMoney,
+  };
+  const { data: ciqData, isLoading: ciqLoading, isFetching: ciqFetching, refetch: ciqRefetch } = useQuery<any>({
+    queryKey: ["/api/line-movement/ciq", game.id],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/line-movement/ciq", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ciqPostBody),
+        });
+        if (!res.ok) return { available: false, reason: `Server error ${res.status}` };
+        return await res.json();
+      } catch (e: any) {
+        return { available: false, reason: e?.message ?? "Network error" };
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1500,
+  });
+  const ciqAvailable = ciqData?.available === true;
+  const ciqGrade     = ciqAvailable ? (ciqData.grade as string) : null;
+  const ciqPickTeam  = ciqAvailable ? (ciqData.pickTeam as string | undefined) : null;
+  const ciqGradeColor = ciqGrade ? (GRADE_COLOR[ciqGrade] ?? "#94a3b8") : "#a78bfa";
+
   const spreadMove = game.spread.move;
   const totalMove = game.total.move;
   const totalAbsMove = Math.abs(spreadMove ?? 0) + Math.abs(totalMove ?? 0);
@@ -1180,18 +1190,34 @@ function GameCard({ game }: { game: GameLine }) {
           )}
           {/* Inline rec badge — always visible when there's a signal */}
           {rec && !expanded && <RecBadge rec={rec} />}
-          {/* CIQ badge — signals this game has AI analysis */}
+          {/* CIQ badge — dynamic grade + pick when loaded, static pulse when loading */}
           {!expanded && (
-            <span
-              className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
-              style={{
-                background: "rgba(139,92,246,0.10)",
-                color: "#a78bfa",
-                borderColor: "rgba(139,92,246,0.30)",
-              }}
-            >
-              🧠 CIQ
-            </span>
+            ciqLoading ? (
+              <span
+                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0 animate-pulse"
+                style={{ background: "rgba(139,92,246,0.10)", color: "#a78bfa", borderColor: "rgba(139,92,246,0.30)" }}
+              >
+                🧠 …
+              </span>
+            ) : ciqAvailable && ciqGrade ? (
+              <span
+                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
+                style={{
+                  background: `${ciqGradeColor}1A`,
+                  color: ciqGradeColor,
+                  borderColor: `${ciqGradeColor}55`,
+                }}
+              >
+                🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
+              </span>
+            ) : (
+              <span
+                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
+                style={{ background: "rgba(139,92,246,0.08)", color: "#a78bfa99", borderColor: "rgba(139,92,246,0.20)" }}
+              >
+                🧠 CIQ
+              </span>
+            )
           )}
           {/* Research/Why button — opens line intelligence panel */}
           {hasResearchWorthy && (
@@ -1261,7 +1287,7 @@ function GameCard({ game }: { game: GameLine }) {
           {rec && <RecCard rec={rec} />}
 
           {/* ★ Clubhouse IQ Pick — AI analysis from Edge Crew v3 grade engine */}
-          <CIQPickPanel game={game} />
+          <CIQPickPanel game={game} ciqData={ciqData} isLoading={ciqLoading} isFetching={ciqFetching} refetch={ciqRefetch} />
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
