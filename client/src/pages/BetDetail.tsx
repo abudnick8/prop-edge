@@ -799,23 +799,37 @@ function PublicRowLM({ label, publicPct, moneyPct, accentColor }: { label: strin
 
 function LineMovementPanel({ bet }: { bet: Bet }) {
   const [open, setOpen] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const sport = (bet.sport ?? "").toUpperCase();
   const validSports = ["NBA", "NFL", "MLB", "NHL"];
   if (!validSports.includes(sport) || (!bet.homeTeam && !bet.awayTeam)) return null;
 
-  const sportColor = SPORT_ACCENT[sport] ?? "#f59e0b";
-  const teamColor  = getTeamColor(bet.homeTeam) ?? getTeamColor(bet.awayTeam) ?? null;
+  const sportColor  = SPORT_ACCENT[sport] ?? "#f59e0b";
+  const teamColor   = getTeamColor(bet.homeTeam) ?? getTeamColor(bet.awayTeam) ?? null;
   const accentColor = teamColor ?? sportColor;
+
+  // ── CIQ grade engine data (from teamStats) ──
+  const ts          = bet.teamStats as Record<string, any> | null;
+  const ciqVars     = ts?.edgeVariables as Record<string, any> | undefined;
+  const ciqLMVar    = ciqVars?.line_movement;          // { score, note, available }
+  const ciqChains   = (ts?.edgeChains ?? []) as string[];
+  const ciqGrade    = ts?.edgeGrade as string | undefined;
+  const ciqScore    = ts?.edgeScore as number | undefined;
+
+  // Sharp-relevant chains
+  const sharpChains  = ["SHARPS_LOVE", "THE_MISPRICING", "FATIGUE_FADE"];
+  const negChains    = ["COLD_TAKE", "SCHEDULE_LOSS", "COASTING_FAV"];
+  const hasCIQSharp  = ciqChains.some(c => sharpChains.includes(c));
+  const hasCIQNeg    = ciqChains.some(c => negChains.includes(c));
 
   const { data: lmData, isLoading } = useQuery<LMGame[]>({
     queryKey: ["/api/line-movement"],
     queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
     staleTime: 3 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
-    enabled: open,  // only fetch when expanded
+    enabled: open,
   });
 
-  // Match by team name fuzzy
   const matchGame = (g: LMGame) => {
     const names = [g.awayTeam, g.homeTeam].map(n => n.toLowerCase());
     const awayLast = (bet.awayTeam ?? "").split(" ").pop()?.toLowerCase() ?? "";
@@ -827,29 +841,79 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
 
   const game = lmData?.find(g => g.sport === sport && matchGame(g)) ?? null;
 
-  // Detect what type of bet this is
-  const betType = bet.betType?.toLowerCase() ?? "";
-  const isSpread = betType.includes("spread") || betType.includes("ats");
-  const isTotal  = betType.includes("total") || betType.includes("ou") || betType.includes("over") || betType.includes("under");
-  const isML     = betType.includes("money") || betType.includes("ml") || betType.includes("moneyline");
-
-  // Overall movement signal
   const spreadMove = game?.spread.move ?? null;
   const totalMove  = game?.total.move ?? null;
-  const hasSteam = (Math.abs(spreadMove ?? 0) >= 2) || (Math.abs(totalMove ?? 0) >= 2);
-  const hasRLM = (() => {
+  const hasSteam   = (Math.abs(spreadMove ?? 0) >= 2) || (Math.abs(totalMove ?? 0) >= 2);
+  const hasRLM     = (() => {
     if (!game) return false;
     const awayPub = game.spread.awayPublic ?? 50;
-    const moved = spreadMove ?? 0;
+    const moved   = spreadMove ?? 0;
     return (awayPub >= 60 && moved > 0) || (awayPub <= 40 && moved < 0);
   })();
 
+  // ── Derive CIQ interpretation of live line data ──
+  const ciqLMScore  = ciqLMVar?.score as number | undefined;
+  const ciqLMNote   = ciqLMVar?.note  as string | undefined;
+  const ciqLMAvail  = ciqLMVar?.available !== false;
+
+  // Build a natural-language interpretation combining LM data + CIQ grade engine
+  const buildCIQInterpretation = (): { verdict: string; detail: string; color: string } | null => {
+    if (!ciqGrade) return null;
+    const gradeColor = ciqGrade.startsWith("A") ? "#22c55e" : ciqGrade.startsWith("B") ? "#fbbf24" : "#f87171";
+
+    if (hasSteam && hasCIQSharp) {
+      return {
+        verdict: `CIQ confirms steam — Grade ${ciqGrade} pick`,
+        detail: `Sharp money moved the line AND the grade engine detected professional action (SHARPS_LOVE chain). Score: ${ciqScore?.toFixed(1) ?? "—"}/10. High confidence the move is real.`,
+        color: "#22c55e",
+      };
+    }
+    if (hasSteam && ciqLMScore != null && ciqLMScore >= 7) {
+      return {
+        verdict: `CIQ rates this line move highly (${ciqLMScore.toFixed(1)}/10)`,
+        detail: ciqLMNote ?? `The grade engine scored this line movement ${ciqLMScore.toFixed(1)}/10 — a significant move that adds to the overall Grade ${ciqGrade} rating.`,
+        color: "#4ade80",
+      };
+    }
+    if (hasRLM && hasCIQSharp) {
+      return {
+        verdict: `CIQ + RLM alignment — sharp fade confirmed`,
+        detail: `Public is on one side but money moved the other way (Reverse Line Movement). The grade engine also fired a sharp money signal. Grade ${ciqGrade} — bet against the crowd.`,
+        color: "#22c55e",
+      };
+    }
+    if (hasCIQNeg) {
+      return {
+        verdict: `CIQ flags caution despite line data`,
+        detail: `The grade engine detected negative pattern chains (${ciqChains.filter(c => negChains.includes(c)).join(", ")}). Even if the line looks favorable, CIQ rates this Grade ${ciqGrade} — proceed carefully.`,
+        color: "#fbbf24",
+      };
+    }
+    if (ciqLMScore != null && ciqLMAvail) {
+      const scoreLabel = ciqLMScore >= 7 ? "favorable" : ciqLMScore >= 5 ? "neutral" : "unfavorable";
+      return {
+        verdict: `CIQ line movement score: ${ciqLMScore.toFixed(1)}/10 (${scoreLabel})`,
+        detail: ciqLMNote ?? `Grade engine line movement variable scored ${ciqLMScore.toFixed(1)}/10 — contributing to overall Grade ${ciqGrade}.`,
+        color: gradeColor,
+      };
+    }
+    if (ciqGrade) {
+      return {
+        verdict: `CIQ Grade ${ciqGrade} — line movement not a primary signal`,
+        detail: `Line movement data was neutral or unavailable when graded. The Grade ${ciqGrade} (${ciqScore?.toFixed(1) ?? "—"}/10) is driven by other factors — check the Analysis Panel above.`,
+        color: gradeColor,
+      };
+    }
+    return null;
+  };
+
+  const ciqInterp = buildCIQInterpretation();
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.1)", borderLeft: `3px solid ${accentColor}` }}>
-      {/* Accent bar */}
       <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accentColor}, ${accentColor}33)` }} />
 
-      {/* Collapsed header — always visible */}
+      {/* Collapsed header */}
       <button
         className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[#13233A]/[0.03] transition-colors"
         style={{ background: "rgba(19,35,58,0.04)" }}
@@ -858,23 +922,30 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
         <TrendingUp size={13} style={{ color: accentColor, flexShrink: 0 }} />
         <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Line Movement</span>
 
-        {/* Signal chips — visible even collapsed */}
         {hasSteam && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>🔥 Steam</span>
         )}
         {hasRLM && !hasSteam && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}>↩ RLM</span>
         )}
+        {ciqGrade && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded ml-auto mr-1"
+            style={{
+              background: ciqGrade.startsWith("A") ? "rgba(34,197,94,0.12)" : ciqGrade.startsWith("B") ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
+              color: ciqGrade.startsWith("A") ? "#22c55e" : ciqGrade.startsWith("B") ? "#fbbf24" : "#f87171",
+            }}>
+            CIQ {ciqGrade}
+          </span>
+        )}
         {!game && !isLoading && open && (
           <span className="text-[10px] text-[#3D4B58] ml-1">No data for this game</span>
         )}
 
-        <span className="ml-auto" style={{ color: "rgba(19,35,58,0.35)", transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>
+        <span style={{ color: "rgba(19,35,58,0.35)", transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>
           <ChevronRight size={13} />
         </span>
       </button>
 
-      {/* Expanded body */}
       {open && (
         <div className="px-4 pb-4 space-y-4" style={{ background: "#fff" }}>
           {isLoading && (
@@ -903,7 +974,19 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
                 </div>
               </div>
 
-              {/* ── Spread ─────────────────────────────── */}
+              {/* ── CIQ Analysis interpretation of this line data ── */}
+              {ciqInterp && (
+                <div className="rounded-lg px-3 py-2.5"
+                  style={{ background: ciqInterp.color + "0D", border: `1px solid ${ciqInterp.color}40` }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: ciqInterp.color }}>⚡ CIQ Analysis</span>
+                  </div>
+                  <p className="text-[11px] font-bold mb-0.5" style={{ color: "#131A24" }}>{ciqInterp.verdict}</p>
+                  <p className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.6)" }}>{ciqInterp.detail}</p>
+                </div>
+              )}
+
+              {/* ── Spread ── */}
               {(game.spread.open != null || game.spread.current != null) && (
                 <div className="space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Spread</div>
@@ -915,12 +998,11 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
                 </div>
               )}
 
-              {/* ── Divider ── */}
               {(game.spread.open != null) && (game.total.open != null) && (
                 <div style={{ height: 1, background: "rgba(19,35,58,0.07)" }} />
               )}
 
-              {/* ── Total ──────────────────────────────── */}
+              {/* ── Total ── */}
               {(game.total.open != null || game.total.current != null) && (
                 <div className="space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Total (O/U)</div>
@@ -932,12 +1014,11 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
                 </div>
               )}
 
-              {/* ── Divider ── */}
               {(game.total.open != null) && (game.moneyline.awayOpen != null || game.moneyline.homeOpen != null) && (
                 <div style={{ height: 1, background: "rgba(19,35,58,0.07)" }} />
               )}
 
-              {/* ── Moneyline ──────────────────────────── */}
+              {/* ── Moneyline ── */}
               {(game.moneyline.awayOpen != null || game.moneyline.homeOpen != null) && (
                 <div className="space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Moneyline</div>
@@ -966,6 +1047,113 @@ function LineMovementPanel({ bet }: { bet: Bet }) {
               )}
             </div>
           )}
+
+          {/* ── How to Read ── */}
+          <div style={{ borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+            <button
+              className="w-full flex items-center justify-between pt-3 pb-1"
+              onClick={() => setShowGuide(g => !g)}
+            >
+              <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>
+                How to Read This Analysis
+              </span>
+              <span style={{ color: "rgba(19,35,58,0.35)", transform: showGuide ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
+                <ChevronRight size={12} />
+              </span>
+            </button>
+
+            {showGuide && (
+              <div className="space-y-3 pb-1">
+
+                {/* Section: Line data */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "rgba(19,35,58,0.45)" }}>
+                    The Numbers
+                  </p>
+                  <div className="space-y-1.5">
+                    {[
+                      { label: "Open → Current", desc: "Where the line opened before tip-off vs where it sits now. A move of 1–2 pts is notable. 3+ pts is a major shift." },
+                      { label: "Public % (tickets)", desc: "What % of bets placed are on each side. This is crowd opinion — useful only when it diverges from money %." },
+                      { label: "Money % (dollars)", desc: "What % of actual dollar volume is on each side. Sharp bettors bet larger — this is the signal that matters." },
+                      { label: "Spread delta", desc: "The net change in the point spread since open. Negative = line moved toward home team. Positive = moved toward away." },
+                    ].map(row => (
+                      <div key={row.label} className="flex gap-2">
+                        <span className="text-[10px] font-bold shrink-0 w-32" style={{ color: "#131A24" }}>{row.label}</span>
+                        <span className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.55)" }}>{row.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section: Signals */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "rgba(19,35,58,0.45)" }}>
+                    Key Signals
+                  </p>
+                  <div className="space-y-1.5">
+                    {[
+                      { emoji: "🔥", label: "Steam", desc: "Line moved 2+ pts — sharp syndicates or wiseguys hit multiple books simultaneously. Follow the direction." },
+                      { emoji: "↩", label: "Reverse Line Movement (RLM)", desc: "60%+ of tickets on Team A, but the line moves toward Team A anyway. Sharps are on Team A in size — trust the money, fade the crowd." },
+                      { emoji: "⚡", label: "SHARPS_LOVE chain", desc: "CIQ grade engine detected sharp money signals in its analysis. Fired when money% diverges sharply from ticket%. Adds +0.8 to the game score." },
+                      { emoji: "💰", label: "THE_MISPRICING chain", desc: "CIQ detected a market pricing error — the line hasn't fully adjusted to new information. Adds +1.0 to game score (strongest positive chain)." },
+                    ].map(row => (
+                      <div key={row.label} className="flex gap-2">
+                        <span className="text-[10px] shrink-0">{row.emoji}</span>
+                        <div>
+                          <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>{row.label} — </span>
+                          <span className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.55)" }}>{row.desc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section: CIQ Line Movement variable */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "rgba(19,35,58,0.45)" }}>
+                    CIQ Line Movement Score (1–10)
+                  </p>
+                  <div className="space-y-1">
+                    {[
+                      { range: "9–10", label: "BIG MOVE", desc: "Spread delta ≥3 pts. Major sharp action — highest weight in the grade." },
+                      { range: "7–8",  label: "Significant",  desc: "Delta 1.5–3 pts. Meaningful professional interest." },
+                      { range: "5–6",  label: "Minor / Flat", desc: "Delta <1.5 pts. Line movement is not a differentiator for this pick." },
+                      { range: "1–4",  label: "Reverse signal", desc: "Line moved against the pick direction — a penalty applied to the score." },
+                    ].map(row => (
+                      <div key={row.range} className="flex gap-2 items-start">
+                        <span className="text-[10px] font-black tabular-nums shrink-0 w-8" style={{ color: accentColor }}>{row.range}</span>
+                        <div>
+                          <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>{row.label} — </span>
+                          <span className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.55)" }}>{row.desc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section: How to use it */}
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: "rgba(19,35,58,0.45)" }}>
+                    How to Use It
+                  </p>
+                  <div className="space-y-1.5">
+                    {[
+                      { icon: "✅", text: "Best case: Steam OR RLM aligns with CIQ Grade A/B + SHARPS_LOVE chain fired. All signals pointing the same way — highest conviction." },
+                      { icon: "⚠️", text: "Mixed signal: Line moved your direction but public % is also heavy that way. Could be steam, could be public — wait for money% to confirm." },
+                      { icon: "❌", text: "Avoid: Line moved against the pick AND CIQ grade engine scored line_movement ≤4. Sharp money disagrees with this pick direction." },
+                      { icon: "📊", text: "Totals: OVER steam (total goes up) = sharps expect high-scoring. UNDER steam (total drops) = expected low-scoring game, defenses in control." },
+                    ].map((row, i) => (
+                      <div key={i} className="flex gap-2 items-start">
+                        <span className="text-[11px] shrink-0">{row.icon}</span>
+                        <span className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.6)" }}>{row.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
