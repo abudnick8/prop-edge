@@ -151,6 +151,14 @@ interface KronosResponse {
   tossup?: boolean;
   error?: string;
   cached?: boolean;
+  // Sports pick overlay (added by Express after Python model runs)
+  pick_label?:      string;   // "BUY YES @ 42¢" | "BUY NO @ 61¢" | "PASS — No Clear Edge"
+  pick_side?:       "yes" | "no" | "pass";
+  pick_confidence?: number;
+  pick_reasoning?:  string;
+  pick_edge_cents?: number;
+  pick_roi_est?:    string;
+  pick_grade?:      "A" | "B" | "C" | "D" | "F";
 }
 type KronosFilter = "all" | "bullish" | "bearish" | "strong" | "tossup";
 type KronosSort   = "default" | "kronos_strength" | "kronos_bullish" | "kronos_bearish";
@@ -754,9 +762,96 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
 
             {!kronosLoading && kronosData && (
               <>
-                {/* Explanation */}
+                {/* ⚡ Kronos Sports Pick — shown prominently at the top */}
+                {kronosData.pick_label && (
+                  <div
+                    className="rounded-xl px-4 py-3 border"
+                    style={{
+                      background:  kronosData.pick_side === "yes"  ? "rgba(34,197,94,0.10)"
+                                 : kronosData.pick_side === "no"   ? "rgba(239,68,68,0.10)"
+                                 : "rgba(100,116,139,0.08)",
+                      borderColor: kronosData.pick_side === "yes"  ? "rgba(34,197,94,0.35)"
+                                 : kronosData.pick_side === "no"   ? "rgba(239,68,68,0.35)"
+                                 : "rgba(100,116,139,0.25)",
+                    }}
+                  >
+                    {/* Pick header row */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Kronos Pick</span>
+                      <div className="flex items-center gap-2">
+                        {kronosData.pick_grade && kronosData.pick_grade !== "F" && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                            kronosData.pick_grade === "A" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                            : kronosData.pick_grade === "B" ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                            : kronosData.pick_grade === "C" ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/40"
+                            : "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                          }`}>
+                            Grade {kronosData.pick_grade}
+                          </span>
+                        )}
+                        {kronosData.pick_roi_est && kronosData.pick_side !== "pass" && (
+                          <span className="text-[10px] font-mono font-black text-foreground">
+                            Est. ROI: {kronosData.pick_roi_est}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Pick label — big and clear */}
+                    <p className="text-sm font-black tracking-wide" style={{
+                      color: kronosData.pick_side === "yes" ? "#22c55e"
+                           : kronosData.pick_side === "no"  ? "#ef4444"
+                           : "#94a3b8"
+                    }}>
+                      {kronosData.pick_label}
+                    </p>
+
+                    {/* Confidence bar */}
+                    {kronosData.pick_confidence !== undefined && kronosData.pick_side !== "pass" && (
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-1">
+                          <span>Confidence</span>
+                          <span className="font-mono font-bold text-foreground">{kronosData.pick_confidence}/100</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${kronosData.pick_confidence}%`,
+                              background: kronosData.pick_side === "yes" ? "#22c55e" : "#ef4444"
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Edge in cents */}
+                    {kronosData.pick_edge_cents !== undefined && kronosData.pick_side !== "pass" && Math.abs(kronosData.pick_edge_cents) > 0 && (
+                      <p className="text-[10px] text-muted-foreground mt-1.5">
+                        Model edge: <span className="font-mono font-bold text-foreground">{kronosData.pick_edge_cents > 0 ? "+" : ""}{kronosData.pick_edge_cents}¢</span>
+                        {" "}({kronosData.current_cents}¢ → {kronosData.projected_cents}¢ projected)
+                      </p>
+                    )}
+
+                    {/* Full pick reasoning */}
+                    {kronosData.pick_reasoning && (
+                      <p className="text-[11px] text-foreground/75 leading-relaxed mt-2 pt-2 border-t border-white/5">
+                        {kronosData.pick_reasoning}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Price-model explanation (secondary) */}
                 {kronosData.explanation && (
-                  <p className="text-[11px] text-foreground/80 leading-relaxed">{kronosData.explanation}</p>
+                  <details className="group">
+                    <summary className="text-[9px] uppercase tracking-widest text-muted-foreground cursor-pointer select-none list-none flex items-center gap-1">
+                      <span className="group-open:hidden">▶</span>
+                      <span className="hidden group-open:inline">▼</span>
+                      Price Model Detail
+                    </summary>
+                    <p className="text-[10px] text-foreground/70 leading-relaxed mt-1.5">{kronosData.explanation}</p>
+                  </details>
                 )}
 
                 {/* Stats grid — 4 cells */}
@@ -902,6 +997,10 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                       {kronosData.r2 !== undefined && <span>Model fit R²: {kronosData.r2.toFixed(2)}</span>}
                     </div>
                   </div>
+                )}
+                {/* Data points footer */}
+                {!kronosData.pick_label && kronosData.data_points !== undefined && (
+                  <p className="text-[9px] text-muted-foreground text-right">{kronosData.data_points} price pts · R² {kronosData.r2?.toFixed(2) ?? "—"}</p>
                 )}
               </>
             )}
@@ -1065,7 +1164,17 @@ function MarketCard({ m, onClick }: { m: PredMkt; onClick: () => void }) {
             </span>
           )}
           {kronosData && kronosData.signal !== "neutral" && kronosData.strength >= 25 && (
-            <KronosSignalBadge signal={kronosData.signal} strength={kronosData.strength} />
+            <div className="flex items-center gap-1">
+              <KronosSignalBadge signal={kronosData.signal} strength={kronosData.strength} />
+              {kronosData.pick_grade && kronosData.pick_grade !== "F" && kronosData.pick_side !== "pass" && (
+                <span className={`text-[9px] font-black px-1 py-0.5 rounded border ${
+                  kronosData.pick_grade === "A" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                  : kronosData.pick_grade === "B" ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                  : kronosData.pick_grade === "C" ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/40"
+                  : "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                }`}>{kronosData.pick_grade}</span>
+              )}
+            </div>
           )}
         </div>
       </div>

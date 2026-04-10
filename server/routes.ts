@@ -2101,6 +2101,197 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   const kronosCache = new Map<string, { data: any; ts: number }>();
   const KRONOS_TTL = 5 * 60_000; // 5-min cache (price history doesn't change that fast)
 
+  // ─── Kronos Sports Pick Overlay ───────────────────────────────────────────
+  // Takes raw Kronos price-model output + the market object and generates
+  // a concrete sports pick with full reasoning (pick direction, edge, why).
+  function buildKronosPick(k: any, mkt: any): {
+    pick_label:      string;   // e.g. "BUY YES" / "BUY NO" / "PASS"
+    pick_side:       "yes" | "no" | "pass";
+    pick_confidence: number;   // 0-100
+    pick_reasoning:  string;   // full natural-language explanation
+    pick_edge_cents: number;   // current_cents vs projected_cents delta
+    pick_roi_est:    string;   // estimated ROI if pick lands
+    pick_grade:      "A" | "B" | "C" | "D" | "F";
+  } {
+    const signal   = k.signal    ?? "neutral";
+    const strength = k.strength  ?? 0;
+    const proj     = k.projected_cents ?? k.current_cents ?? 50;
+    const curr     = k.current_cents   ?? (mkt ? Math.round((mkt.yesPrice ?? 0.5) * 100) : 50);
+    const edgeCents = Math.round(proj - curr);
+
+    // Market metadata
+    const title       = mkt?.title    ?? "this market";
+    const sport       = mkt?.sport    ?? "Sports";
+    const yesPrice    = mkt?.yesPrice ?? 0.5;
+    const noPrice     = mkt ? (1 - yesPrice) : 0.5;
+    const priceRating = mkt?.priceRating ?? "fair";
+    const isWhale     = mkt?.isWhaleAlert ?? false;
+    const whaleSide   = mkt?.whaleDirection ?? null;
+    const edge        = mkt?.edge ?? 0;            // edge vs fair value in cents
+    const ph1         = mkt?.ph1 ?? 0;             // 1h price change %pts
+    const pd1         = mkt?.pd1 ?? 0;             // 1d price change %pts
+    const crossVal    = mkt?.crossValidated ?? false;
+    const crossDelta  = mkt?.crossDelta ?? null;
+    const lm          = k.line_movement ?? {};
+    const lb          = k.late_breaking ?? {};
+    const crossover   = k.crossover ?? "none";
+    const tossup      = k.tossup ?? false;
+    const r2          = k.r2 ?? 0;
+    const volRegime   = k.volatility_regime ?? "low";
+
+    // ── Decide pick direction ──
+    // Combine Kronos signal + market edge + whale flow + price rating
+    let pickedSide: "yes" | "no" | "pass" = "pass";
+
+    const yesSignals = [
+      signal === "bullish",
+      priceRating === "great_buy" || priceRating === "good_buy",
+      isWhale && whaleSide === "yes",
+      lm.bias === "sharp_yes",
+      crossover === "golden_cross",
+      lb.detected && lb.direction === "bullish",
+      ph1 > 1,
+    ].filter(Boolean).length;
+
+    const noSignals = [
+      signal === "bearish",
+      priceRating === "overpriced",
+      isWhale && whaleSide === "no",
+      lm.bias === "sharp_no",
+      crossover === "death_cross",
+      lb.detected && lb.direction === "bearish",
+      ph1 < -1,
+    ].filter(Boolean).length;
+
+    if (yesSignals >= 2 || (signal === "bullish" && strength >= 40)) {
+      pickedSide = "yes";
+    } else if (noSignals >= 2 || (signal === "bearish" && strength >= 40)) {
+      pickedSide = "no";
+    } else if (yesSignals > noSignals && strength >= 25) {
+      pickedSide = "yes";
+    } else if (noSignals > yesSignals && strength >= 25) {
+      pickedSide = "no";
+    }
+
+    // If tossup and low confidence, downgrade to pass
+    if (tossup && strength < 40) pickedSide = "pass";
+
+    // ── Confidence: blend Kronos strength + confluence bonus ──
+    const confluenceBonus =
+      (isWhale ? 8 : 0) +
+      (crossVal ? 6 : 0) +
+      (crossover === "golden_cross" || crossover === "death_cross" ? 8 : 0) +
+      (lb.detected ? 6 : 0) +
+      (lm.bias !== "neutral" ? 5 : 0) +
+      (r2 > 0.7 ? 5 : 0);
+    const pickConf = Math.min(99, Math.max(1, strength + confluenceBonus));
+
+    // ── Edge and ROI ──
+    const entryPrice = pickedSide === "yes" ? yesPrice : noPrice;
+    const roi = entryPrice > 0 ? Math.round((edgeCents / (entryPrice * 100)) * 100) : 0;
+    const roiStr = roi !== 0 ? `${roi > 0 ? "+" : ""}${roi}%` : "0%";
+
+    // ── Grade ──
+    let grade: "A" | "B" | "C" | "D" | "F" = "F";
+    if (pickConf >= 75 && pickedSide !== "pass" && Math.abs(edgeCents) >= 5) grade = "A";
+    else if (pickConf >= 60 && pickedSide !== "pass" && Math.abs(edgeCents) >= 3) grade = "B";
+    else if (pickConf >= 45 && pickedSide !== "pass") grade = "C";
+    else if (pickConf >= 30 && pickedSide !== "pass") grade = "D";
+
+    // ── Pick label ──
+    const sideLabel = pickedSide === "yes" ? "BUY YES" : pickedSide === "no" ? "BUY NO" : "PASS";
+    const priceLabel = pickedSide === "yes"
+      ? `${Math.round(yesPrice * 100)}¢`
+      : pickedSide === "no"
+        ? `${Math.round(noPrice * 100)}¢`
+        : "—";
+    const pick_label = pickedSide === "pass" ? "PASS — No Clear Edge" : `${sideLabel} @ ${priceLabel}`;
+
+    // ── Natural-language reasoning ──
+    const parts: string[] = [];
+
+    // Opening: what the pick is and why
+    if (pickedSide === "yes") {
+      parts.push(`Kronos rates this a YES contract at ${Math.round(yesPrice * 100)}¢.`);
+      if (signal === "bullish")
+        parts.push(`Price model shows upward trend — YES contract projected to reach ${proj}¢ (currently ${curr}¢, +${Math.abs(edgeCents)}¢ edge).`);
+    } else if (pickedSide === "no") {
+      parts.push(`Kronos rates this a NO contract at ${Math.round(noPrice * 100)}¢.`);
+      if (signal === "bearish")
+        parts.push(`YES price is fading — contract likely dropping to ${proj}¢ from ${curr}¢. Buying NO captures the ${Math.abs(edgeCents)}¢ move.`);
+    } else {
+      parts.push(`No clear edge detected. Market appears fairly priced or too uncertain for a confident call.`);
+    }
+
+    // Market edge signals
+    if (priceRating === "great_buy" && pickedSide === "yes")
+      parts.push(`Market pricing shows a great buy opportunity — YES is undervalued vs fair value (${Math.round(edge)}¢ edge).`);
+    else if (priceRating === "good_buy" && pickedSide === "yes")
+      parts.push(`YES appears slightly undervalued vs fair value (${Math.round(edge)}¢ edge).`);
+    else if (priceRating === "overpriced" && pickedSide === "no")
+      parts.push(`YES is overpriced vs fair value — smart money buys the NO contract instead.`);
+
+    // Whale activity
+    if (isWhale && whaleSide === pickedSide)
+      parts.push(`Whale activity confirmed on this side — large position(s) taken, aligning with Kronos direction.`);
+    else if (isWhale && whaleSide && whaleSide !== pickedSide)
+      parts.push(`Note: whale activity detected on the opposite side — factor into risk sizing.`);
+
+    // Sharp money / line movement
+    if (lm.bias === "sharp_yes" && pickedSide === "yes")
+      parts.push(`Sharp money detected: late YES buying (+${lm.short_slope}¢/step recent vs ${lm.long_slope}¢/step overall) — professional bettors loading up.`);
+    else if (lm.bias === "sharp_no" && pickedSide === "no")
+      parts.push(`Sharp money fading YES (${lm.short_slope}¢/step recent) — professional action aligns with NO.`);
+
+    // Momentum crossover
+    if (crossover === "golden_cross")
+      parts.push(`Short-term momentum crossed above long-term average (golden cross) — bullish confirmation.`);
+    else if (crossover === "death_cross")
+      parts.push(`Short-term momentum crossed below long-term average (death cross) — bearish confirmation.`);
+
+    // Late-breaking
+    if (lb.detected)
+      parts.push(`Late-breaking ${lb.direction} signal detected (${lb.magnitude}¢ move in last 3 data points) — possible injury/news catalyst.`);
+
+    // Recent price momentum
+    if (Math.abs(ph1) >= 1)
+      parts.push(`1-hour price change: ${ph1 > 0 ? "+" : ""}${ph1}% — ${ph1 > 0 ? "intraday buying pressure" : "recent selling"}.`);
+    if (Math.abs(pd1) >= 2)
+      parts.push(`24-hour move: ${pd1 > 0 ? "+" : ""}${pd1}% — market has been ${pd1 > 0 ? "strengthening" : "weakening"} over the day.`);
+
+    // Cross-validation
+    if (crossVal && crossDelta !== null && crossDelta < 5)
+      parts.push(`Cross-validated: Kalshi and Polymarket prices agree within ${crossDelta}¢ — strong consensus.`);
+    else if (crossVal && crossDelta !== null && crossDelta >= 5)
+      parts.push(`Price discrepancy between Kalshi and Polymarket (${crossDelta}¢ gap) — arbitrage opportunity may exist.`);
+
+    // Model quality
+    if (r2 > 0.7)
+      parts.push(`Model fit is strong (R²=${r2.toFixed(2)}) — Kronos has high confidence in this trend.`);
+    else if (r2 < 0.3 && pickedSide !== "pass")
+      parts.push(`Model fit is low (R²=${r2.toFixed(2)}) — noisy price history; size appropriately.`);
+
+    // Volatility
+    if (volRegime === "high")
+      parts.push(`High market volatility — active information flow. Expect wider price swings.`);
+
+    // Tossup warning
+    if (tossup)
+      parts.push(`Market is near 50¢ (genuine pick-em). Risk is elevated — bet small.`);
+
+    const pick_reasoning = parts.join(" ");
+
+    return {
+      pick_label,
+      pick_side:       pickedSide,
+      pick_confidence: pickConf,
+      pick_reasoning,
+      pick_edge_cents: edgeCents,
+      pick_roi_est:    roiStr,
+      pick_grade:      grade,
+    };
+  }
+
   // Start Kronos at server boot
   startKronos();
 
@@ -2246,8 +2437,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }, { timeout: 8_000 });
 
       const result = kronosRes.data;
-      kronosCache.set(cacheKey, { data: result, ts: Date.now() });
-      return res.json({ ...result, cached: false });
+
+      // ── Step 4: Sports Pick Overlay ────────────────────────────────────────
+      // Combine Kronos price-model output with real market metadata to generate
+      // a concrete, actionable sports pick with full reasoning.
+      const pick = buildKronosPick(result, market);
+      const enriched = { ...result, ...pick, cached: false };
+
+      kronosCache.set(cacheKey, { data: enriched, ts: Date.now() });
+      return res.json(enriched);
 
     } catch (e: any) {
       console.error("[Kronos] Endpoint error:", e.message);
