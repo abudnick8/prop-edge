@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Wifi, WifiOff, RefreshCw, Clock, Tv2, MapPin, ChevronRight, TrendingUp, Loader2, DollarSign, Users } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -195,74 +195,80 @@ interface LMTotal   { open: number|null; current: number|null; move: number|null
 interface LMML      { awayOpen: number|null; awayCurrent: number|null; homeOpen: number|null; homeCurrent: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
 interface LMGame    { id: string; sport: string; awayTeam: string; homeTeam: string; gameTime: string|null; status: string; numBets: number|null; spread: LMSpread; total: LMTotal; moneyline: LMML; }
 
-// ── LM sub-helpers ────────────────────────────────────────────────────────────
-function fmtLM(v: number | null): string {
+// ── LM helpers ────────────────────────────────────────────────────────────────
+function fmtLM(v: number | null, decimals = 1): string {
   if (v == null) return "—";
-  if (v > 0) return `+${v}`;
-  return String(v);
+  const n = typeof v === "number" ? v : parseFloat(String(v));
+  // For moneyline: no decimal. For spread/total: 1 decimal if fractional
+  const str = Number.isInteger(n) ? String(n) : n.toFixed(decimals);
+  return n > 0 ? `+${str}` : str;
 }
 
-function MoveRowLS({ label, open, current, move }: { label: string; open: number|null; current: number|null; move: number|null }) {
-  if (open == null && current == null) return null;
-  const moved  = move != null && Math.abs(move) >= 0.5;
-  const steam  = move != null && Math.abs(move) >= 3;
-  const deltaColor = !moved ? "rgba(19,35,58,0.3)" : (move! > 0 ? "#4ade80" : "#f87171");
+// Single bar row: icon + fill bar + bold pct
+function PctBar({ pct, color, icon }: { pct: number | null | undefined; color: string; icon: React.ReactNode }) {
+  if (pct == null) return null;
   return (
-    <div className="flex items-center gap-2 py-0.5">
-      <span className="text-[10px] w-16 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "rgba(19,35,58,0.45)" }}>{label}</span>
-      {/* Open */}
-      <div className="flex flex-col items-center min-w-[36px]">
-        <span className="text-[8px] uppercase font-bold" style={{ color: "rgba(19,35,58,0.3)" }}>Open</span>
-        <span className="font-mono text-[12px] font-semibold" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLM(open)}</span>
+    <div className="flex items-center gap-1.5">
+      <span className="flex-shrink-0 w-3">{icon}</span>
+      <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <ChevronRight size={9} style={{ color: "rgba(19,35,58,0.25)", flexShrink: 0 }} />
-      {/* Current — hero */}
-      <div className="flex flex-col items-center min-w-[36px]">
-        <span className="text-[8px] uppercase font-bold" style={{ color: "rgba(19,35,58,0.3)" }}>Now</span>
-        <span className="font-mono text-[15px] font-black" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLM(current)}</span>
+      <span className="text-[11px] font-black w-7 text-right" style={{ color: "rgba(19,35,58,0.7)" }}>{pct}%</span>
+    </div>
+  );
+}
+
+// One side block: label + optional sharp tag + two bars
+function SideBlock({ label, publicPct, moneyPct, accentColor, tag }: {
+  label: string; publicPct?: number|null; moneyPct?: number|null; accentColor: string; tag?: React.ReactNode;
+}) {
+  if (publicPct == null && moneyPct == null) return null;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between min-h-[14px]">
+        <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.6)" }}>{label}</span>
+        {tag}
       </div>
-      {/* Delta */}
-      {moved && move != null && (
-        <span className="text-[11px] font-black" style={{ color: deltaColor }}>
-          {move > 0 ? `▲ +${Number(move.toFixed(1))}` : `▼ ${Number(move.toFixed(1))}`}
-        </span>
-      )}
-      {steam && (
-        <span className="text-[9px] font-bold px-1 py-0.5 rounded ml-auto" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>STEAM</span>
+      <PctBar pct={publicPct} color="rgba(99,102,241,0.55)" icon={<Users size={8} style={{ color: "rgba(19,35,58,0.4)" }} />} />
+      <PctBar pct={moneyPct}  color={moneyPct != null && moneyPct >= 60 ? "#f59e0b" : accentColor + "99"} icon={<DollarSign size={8} style={{ color: "rgba(19,35,58,0.4)" }} />} />
+    </div>
+  );
+}
+
+// Line movement row: "Line  -11.5 → -15.5  -4"
+function LineRow({ open, current, move, isML = false }: {
+  open: number|null; current: number|null; move: number|null; isML?: boolean;
+}) {
+  if (open == null && current == null) return null;
+  const moved = move != null && Math.abs(move) >= (isML ? 5 : 0.4);
+  const steam = move != null && Math.abs(move) >= (isML ? 50 : 3);
+  const deltaColor = steam ? "#ef4444" : moved ? (move! > 0 ? "#22c55e" : "#ef4444") : "rgba(19,35,58,0.35)";
+  const deltaStr = move == null ? null : isML
+    ? (move > 0 ? `+${move}` : String(move))
+    : (move > 0 ? `+${Number(move.toFixed(1))}` : String(Number(move.toFixed(1))));
+
+  return (
+    <div className="flex items-baseline gap-1.5 flex-wrap">
+      <span className="text-[10px]" style={{ color: "rgba(19,35,58,0.45)" }}>Line</span>
+      <span className="font-mono text-[11px]" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLM(open, isML ? 0 : 1)}</span>
+      <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 10 }}>→</span>
+      <span className="font-mono font-black text-[14px]" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLM(current, isML ? 0 : 1)}</span>
+      {deltaStr && (
+        <span className="font-bold text-[11px] px-1 rounded" style={{
+          color: deltaColor,
+          background: steam ? "rgba(239,68,68,0.08)" : "transparent",
+        }}>{deltaStr}</span>
       )}
     </div>
   );
 }
 
-function PublicBarLS({ label, publicPct, moneyPct, accentColor }: { label: string; publicPct?: number|null; moneyPct?: number|null; accentColor: string }) {
-  if (publicPct == null && moneyPct == null) return null;
-  const sharpMoney = moneyPct != null && publicPct != null && moneyPct - publicPct >= 15 && moneyPct >= 60;
-  const fadeMoney  = moneyPct != null && publicPct != null && publicPct - moneyPct >= 15 && moneyPct <= 40;
+// One column: header + line row + side blocks
+function LMColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg px-2.5 py-2 space-y-1.5" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.07)" }}>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>{label}</span>
-        {sharpMoney && <span className="text-[9px] font-bold" style={{ color: "#4ade80" }}>Sharp ↑</span>}
-        {fadeMoney  && <span className="text-[9px] font-bold" style={{ color: "#f87171" }}>Fade ↓</span>}
-      </div>
-      {publicPct != null && (
-        <div className="flex items-center gap-1.5">
-          <Users size={8} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
-          <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
-            <div className="h-1.5 rounded-full" style={{ width: `${publicPct}%`, background: "rgba(99,102,241,0.5)" }} />
-          </div>
-          <span className="text-[11px] font-black w-8 text-right" style={{ color: "rgba(19,35,58,0.65)" }}>{publicPct}%</span>
-        </div>
-      )}
-      {moneyPct != null && (
-        <div className="flex items-center gap-1.5">
-          <DollarSign size={8} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
-          <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
-            <div className="h-1.5 rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 60 ? "#4ade80bb" : moneyPct <= 40 ? "#f87171bb" : `${accentColor}99` }} />
-          </div>
-          <span className="text-[11px] font-black w-8 text-right" style={{ color: moneyPct >= 60 ? "#4ade80" : moneyPct <= 40 ? "#f87171" : "rgba(19,35,58,0.65)" }}>{moneyPct}%</span>
-        </div>
-      )}
+    <div className="flex-1 min-w-0 space-y-2">
+      <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>{title}</div>
+      {children}
     </div>
   );
 }
@@ -276,6 +282,8 @@ function GameLineMovement({ game }: { game: LiveGame }) {
 
   const away = game.teams.find(t => t.homeAway === "away") ?? game.teams[0];
   const home = game.teams.find(t => t.homeAway === "home") ?? game.teams[1];
+  const awayName = away?.shortName ?? away?.displayName ?? away?.abbr ?? "Away";
+  const homeName = home?.shortName ?? home?.displayName ?? home?.abbr ?? "Home";
 
   const { data: lmData, isLoading } = useQuery<LMGame[]>({
     queryKey: ["/api/line-movement"],
@@ -285,16 +293,18 @@ function GameLineMovement({ game }: { game: LiveGame }) {
     enabled: open,
   });
 
-  // Fuzzy match: compare last word of team names
+  // Fuzzy match by last word of team name or abbr prefix
   const lmGame = lmData?.find(g => {
     if (g.sport !== sport) return false;
-    const lmAway = g.awayTeam.split(" ").pop()?.toLowerCase() ?? "";
-    const lmHome = g.homeTeam.split(" ").pop()?.toLowerCase() ?? "";
-    const scoreAway = (away?.displayName ?? away?.abbr ?? "").split(" ").pop()?.toLowerCase() ?? "";
-    const scoreHome = (home?.displayName ?? home?.abbr ?? "").split(" ").pop()?.toLowerCase() ?? "";
-    const awayOk = lmAway && scoreAway && (lmAway.includes(scoreAway) || scoreAway.includes(lmAway) || lmAway === scoreAway || away?.abbr?.toLowerCase() === lmAway.slice(0,3));
-    const homeOk = lmHome && scoreHome && (lmHome.includes(scoreHome) || scoreHome.includes(lmHome) || lmHome === scoreHome || home?.abbr?.toLowerCase() === lmHome.slice(0,3));
-    return awayOk || homeOk;
+    const lmAway = g.awayTeam.toLowerCase();
+    const lmHome = g.homeTeam.toLowerCase();
+    const sa = (away?.displayName ?? away?.abbr ?? "").toLowerCase();
+    const sh = (home?.displayName ?? home?.abbr ?? "").toLowerCase();
+    const awayLast = sa.split(" ").pop() ?? "";
+    const homeLast = sh.split(" ").pop() ?? "";
+    const awayOk = awayLast.length > 2 && (lmAway.includes(awayLast) || awayLast.includes(lmAway.split(" ").pop()!));
+    const homeOk = homeLast.length > 2 && (lmHome.includes(homeLast) || homeLast.includes(lmHome.split(" ").pop()!));
+    return awayOk && homeOk;
   }) ?? null;
 
   const spreadMove = lmGame?.spread.move ?? null;
@@ -303,131 +313,205 @@ function GameLineMovement({ game }: { game: LiveGame }) {
   const hasRLM   = (() => {
     if (!lmGame) return false;
     const awayPub = lmGame.spread.awayPublic ?? 50;
-    const moved = spreadMove ?? 0;
+    const moved   = spreadMove ?? 0;
     return (awayPub >= 60 && moved > 0) || (awayPub <= 40 && moved < 0);
   })();
 
+  const awayML = lmGame ? (lmGame.moneyline.awayCurrent ?? lmGame.moneyline.awayOpen) : null;
+  const homeML = lmGame ? (lmGame.moneyline.homeCurrent ?? lmGame.moneyline.homeOpen) : null;
+  const mlAwayMove = lmGame?.moneyline.awayCurrent != null && lmGame?.moneyline.awayOpen != null
+    ? lmGame.moneyline.awayCurrent - lmGame.moneyline.awayOpen : null;
+  const mlHomeMove = lmGame?.moneyline.homeCurrent != null && lmGame?.moneyline.homeOpen != null
+    ? lmGame.moneyline.homeCurrent - lmGame.moneyline.homeOpen : null;
+
+  // Sharp tag helper
+  const sharpTag = (moneyPct?: number|null, publicPct?: number|null) => {
+    if (moneyPct == null || publicPct == null) return undefined;
+    const div = moneyPct - publicPct;
+    if (moneyPct >= 60 && div >= 12) return <span className="text-[9px] font-black" style={{ color: "#22c55e" }}>SHARP</span>;
+    if (moneyPct <= 38 && div <= -12) return <span className="text-[9px] font-black" style={{ color: "#f87171" }}>FADE</span>;
+    return undefined;
+  };
+
   const hasAnyData = lmGame && (
-    lmGame.spread.open != null || lmGame.total.open != null ||
-    lmGame.moneyline.awayOpen != null
+    lmGame.spread.open != null || lmGame.total.open != null || lmGame.moneyline.awayOpen != null
   );
 
   return (
     <div className="rounded-lg overflow-hidden" style={{ border: `1px solid rgba(19,35,58,0.1)`, borderLeft: `3px solid ${accentColor}` }}>
       {/* Collapsed header */}
       <button
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
         style={{ background: "rgba(19,35,58,0.03)" }}
         onClick={() => setOpen(o => !o)}
       >
         <TrendingUp size={12} style={{ color: accentColor, flexShrink: 0 }} />
         <span className="text-[11px] font-bold" style={{ color: "rgba(19,35,58,0.65)" }}>Line Movement</span>
 
+        {/* Show summary chips on collapsed header */}
+        {lmGame && lmGame.spread.current != null && (
+          <span className="text-[10px] font-mono font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>
+            Spread {fmtLM(lmGame.spread.current, 1)}
+          </span>
+        )}
+        {lmGame && lmGame.total.current != null && (
+          <span className="text-[10px] font-mono font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>
+            O/U {fmtLM(lmGame.total.current, 1)}
+          </span>
+        )}
         {hasSteam && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>🔥 Steam</span>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>🔥 Steam</span>
         )}
         {hasRLM && !hasSteam && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}>↩ RLM</span>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}>↩ RLM</span>
         )}
         {!lmGame && !isLoading && open && (
-          <span className="text-[9px] ml-1" style={{ color: "rgba(19,35,58,0.4)" }}>No data for this game</span>
+          <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.35)" }}>No data</span>
         )}
-
-        <ChevronRight size={12} className="ml-auto transition-transform" style={{ color: "rgba(19,35,58,0.35)", transform: open ? "rotate(90deg)" : "rotate(0deg)" }} />
+        <ChevronRight size={12} className="ml-auto flex-shrink-0 transition-transform duration-200"
+          style={{ color: "rgba(19,35,58,0.3)", transform: open ? "rotate(90deg)" : "rotate(0deg)" }} />
       </button>
 
-      {/* Expanded */}
+      {/* Expanded body */}
       {open && (
-        <div className="px-3 pb-3 pt-1 bg-white space-y-3">
+        <div className="px-3 pb-4 pt-3 bg-white">
           {isLoading && (
-            <div className="flex items-center gap-2 py-2 text-[11px]" style={{ color: "rgba(19,35,58,0.45)" }}>
-              <Loader2 size={11} className="animate-spin" /> Loading…
+            <div className="flex items-center gap-2 py-3 text-[11px]" style={{ color: "rgba(19,35,58,0.4)" }}>
+              <Loader2 size={12} className="animate-spin" /> Loading betting data…
             </div>
           )}
 
           {!isLoading && !hasAnyData && (
             <p className="text-[11px] py-2 text-center" style={{ color: "rgba(19,35,58,0.4)" }}>
-              No line movement data yet for this game.
+              No line data available for this game yet.
             </p>
           )}
 
           {hasAnyData && lmGame && (
             <div className="space-y-3">
-              {/* game header */}
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>
+              {/* Game title + bets */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold" style={{ color: "#131A24" }}>
                   {lmGame.awayTeam} @ {lmGame.homeTeam}
                 </span>
                 {lmGame.numBets != null && (
                   <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.4)" }}>
-                    {lmGame.numBets.toLocaleString()} bets tracked
+                    {lmGame.numBets.toLocaleString()} bets
                   </span>
                 )}
               </div>
 
-              {/* Spread */}
-              {(lmGame.spread.open != null || lmGame.spread.current != null) && (
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Spread</div>
-                  <MoveRowLS label="ATS" open={lmGame.spread.open} current={lmGame.spread.current} move={lmGame.spread.move} />
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    <PublicBarLS label={`${lmGame.awayTeam.split(" ").pop()} ATS`} publicPct={lmGame.spread.awayPublic} moneyPct={lmGame.spread.awayMoney} accentColor={accentColor} />
-                    <PublicBarLS label={`${lmGame.homeTeam.split(" ").pop()} ATS`} publicPct={lmGame.spread.homePublic} moneyPct={lmGame.spread.homeMoney} accentColor={accentColor} />
-                  </div>
-                </div>
-              )}
+              {/* ── Three-column layout matching the reference image ── */}
+              <div className="grid grid-cols-3 gap-3 items-start">
 
-              {lmGame.spread.open != null && lmGame.total.open != null && (
-                <div style={{ height: 1, background: "rgba(19,35,58,0.06)" }} />
-              )}
+                {/* COL 1: SPREAD */}
+                {lmGame.spread.open != null || lmGame.spread.current != null ? (
+                  <LMColumn title={`Spread (${awayName})`}>
+                    <LineRow open={lmGame.spread.open} current={lmGame.spread.current} move={lmGame.spread.move} />
+                    <div className="space-y-2 pt-1">
+                      <SideBlock
+                        label={`${awayName} (away)`}
+                        publicPct={lmGame.spread.awayPublic}
+                        moneyPct={lmGame.spread.awayMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.spread.awayMoney, lmGame.spread.awayPublic)}
+                      />
+                      <SideBlock
+                        label={`${homeName} (home)`}
+                        publicPct={lmGame.spread.homePublic}
+                        moneyPct={lmGame.spread.homeMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.spread.homeMoney, lmGame.spread.homePublic)}
+                      />
+                    </div>
+                  </LMColumn>
+                ) : <div />}
 
-              {/* Total */}
-              {(lmGame.total.open != null || lmGame.total.current != null) && (
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Total (O/U)</div>
-                  <MoveRowLS label="O/U" open={lmGame.total.open} current={lmGame.total.current} move={lmGame.total.move} />
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    <PublicBarLS label="Over"  publicPct={lmGame.total.overPublic}  moneyPct={lmGame.total.overMoney}  accentColor={accentColor} />
-                    <PublicBarLS label="Under" publicPct={lmGame.total.underPublic} moneyPct={lmGame.total.underMoney} accentColor={accentColor} />
-                  </div>
-                </div>
-              )}
+                {/* COL 2: TOTAL */}
+                {lmGame.total.open != null || lmGame.total.current != null ? (
+                  <LMColumn title="Total (O/U)">
+                    <LineRow open={lmGame.total.open} current={lmGame.total.current} move={lmGame.total.move} />
+                    <div className="space-y-2 pt-1">
+                      <SideBlock
+                        label="Over"
+                        publicPct={lmGame.total.overPublic}
+                        moneyPct={lmGame.total.overMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.total.overMoney, lmGame.total.overPublic)}
+                      />
+                      <SideBlock
+                        label="Under"
+                        publicPct={lmGame.total.underPublic}
+                        moneyPct={lmGame.total.underMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.total.underMoney, lmGame.total.underPublic)}
+                      />
+                    </div>
+                  </LMColumn>
+                ) : <div />}
 
-              {lmGame.total.open != null && (lmGame.moneyline.awayOpen != null || lmGame.moneyline.homeOpen != null) && (
-                <div style={{ height: 1, background: "rgba(19,35,58,0.06)" }} />
-              )}
+                {/* COL 3: MONEYLINE */}
+                {lmGame.moneyline.awayOpen != null || lmGame.moneyline.homeOpen != null ? (
+                  <LMColumn title="Moneyline">
+                    <div className="space-y-0.5">
+                      {/* Away ML line */}
+                      <div className="flex items-baseline gap-1 flex-wrap">
+                        <span className="text-[10px] w-10 flex-shrink-0 truncate" style={{ color: "rgba(19,35,58,0.5)" }}>{awayName}</span>
+                        <span className="font-mono text-[10px]" style={{ color: "rgba(19,35,58,0.4)" }}>{fmtLM(lmGame.moneyline.awayOpen, 0)}</span>
+                        <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 9 }}>→</span>
+                        <span className="font-mono font-black text-[13px]" style={{ color: "#131A24" }}>{fmtLM(lmGame.moneyline.awayCurrent ?? lmGame.moneyline.awayOpen, 0)}</span>
+                        {mlAwayMove != null && mlAwayMove !== 0 && (
+                          <span className="text-[10px] font-bold" style={{ color: mlAwayMove > 0 ? "#22c55e" : "#ef4444" }}>
+                            ({mlAwayMove > 0 ? `+${mlAwayMove}` : mlAwayMove})
+                          </span>
+                        )}
+                      </div>
+                      {/* Home ML line */}
+                      <div className="flex items-baseline gap-1 flex-wrap">
+                        <span className="text-[10px] w-10 flex-shrink-0 truncate" style={{ color: "rgba(19,35,58,0.5)" }}>{homeName}</span>
+                        <span className="font-mono text-[10px]" style={{ color: "rgba(19,35,58,0.4)" }}>{fmtLM(lmGame.moneyline.homeOpen, 0)}</span>
+                        <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 9 }}>→</span>
+                        <span className="font-mono font-black text-[13px]" style={{ color: "#131A24" }}>{fmtLM(lmGame.moneyline.homeCurrent ?? lmGame.moneyline.homeOpen, 0)}</span>
+                        {mlHomeMove != null && mlHomeMove !== 0 && (
+                          <span className="text-[10px] font-bold" style={{ color: mlHomeMove > 0 ? "#22c55e" : "#ef4444" }}>
+                            ({mlHomeMove > 0 ? `+${mlHomeMove}` : mlHomeMove})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-1">
+                      <SideBlock
+                        label={awayName}
+                        publicPct={lmGame.moneyline.awayPublic}
+                        moneyPct={lmGame.moneyline.awayMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.moneyline.awayMoney, lmGame.moneyline.awayPublic)}
+                      />
+                      <SideBlock
+                        label={homeName}
+                        publicPct={lmGame.moneyline.homePublic}
+                        moneyPct={lmGame.moneyline.homeMoney}
+                        accentColor={accentColor}
+                        tag={sharpTag(lmGame.moneyline.homeMoney, lmGame.moneyline.homePublic)}
+                      />
+                    </div>
+                  </LMColumn>
+                ) : <div />}
 
-              {/* Moneyline */}
-              {(lmGame.moneyline.awayOpen != null || lmGame.moneyline.homeOpen != null) && (
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Moneyline</div>
-                  <MoveRowLS
-                    label={lmGame.awayTeam.split(" ").pop()!}
-                    open={lmGame.moneyline.awayOpen} current={lmGame.moneyline.awayCurrent}
-                    move={lmGame.moneyline.awayCurrent != null && lmGame.moneyline.awayOpen != null ? lmGame.moneyline.awayCurrent - lmGame.moneyline.awayOpen : null}
-                  />
-                  <MoveRowLS
-                    label={lmGame.homeTeam.split(" ").pop()!}
-                    open={lmGame.moneyline.homeOpen} current={lmGame.moneyline.homeCurrent}
-                    move={lmGame.moneyline.homeCurrent != null && lmGame.moneyline.homeOpen != null ? lmGame.moneyline.homeCurrent - lmGame.moneyline.homeOpen : null}
-                  />
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    <PublicBarLS label={`${lmGame.awayTeam.split(" ").pop()} ML`} publicPct={lmGame.moneyline.awayPublic} moneyPct={lmGame.moneyline.awayMoney} accentColor={accentColor} />
-                    <PublicBarLS label={`${lmGame.homeTeam.split(" ").pop()} ML`} publicPct={lmGame.moneyline.homePublic} moneyPct={lmGame.moneyline.homeMoney} accentColor={accentColor} />
-                  </div>
-                </div>
-              )}
+              </div>
 
-              {/* Sharp signal summary */}
+              {/* Sharp / RLM summary banner */}
               {(hasSteam || hasRLM) && (
-                <div className="rounded-lg px-3 py-2"
-                  style={{ background: hasSteam ? "rgba(248,113,113,0.06)" : "rgba(74,222,128,0.06)", border: `1px solid ${hasSteam ? "rgba(248,113,113,0.2)" : "rgba(74,222,128,0.2)"}` }}>
-                  <p className="text-[10px] font-bold" style={{ color: hasSteam ? "#f87171" : "#4ade80" }}>
+                <div className="rounded-lg px-3 py-2 mt-1" style={{
+                  background: hasSteam ? "rgba(239,68,68,0.05)" : "rgba(34,197,94,0.05)",
+                  border: `1px solid ${hasSteam ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.2)"}`,
+                }}>
+                  <p className="text-[10px] font-bold" style={{ color: hasSteam ? "#ef4444" : "#22c55e" }}>
                     {hasSteam ? "🔥 Sharp Steam Detected" : "↩ Reverse Line Movement"}
                   </p>
                   <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.55)" }}>
                     {hasSteam
-                      ? `Line moved ${Math.abs(spreadMove ?? totalMove ?? 0)} pts — pro money is behind this game.`
+                      ? `Line moved ${Math.abs(spreadMove ?? totalMove ?? 0).toFixed(1)} pts — professional money is driving this.`
                       : `Public % and line direction diverge — sharp money fading the public side.`}
                   </p>
                 </div>
