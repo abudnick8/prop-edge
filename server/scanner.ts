@@ -17,7 +17,7 @@ import path from "path";
 
 interface EdgeGradeResult {
   score:      number;       // 1–10
-  confidence: number;       // 40–95 (maps to Kronos 0–100 scale)
+  confidence: number;       // 40–95 (maps to Clubhouse IQ 0–100 scale)
   grade:      string;       // A+, A, A-, B+, B, B-, C+, C, D, F
   sizing:     string;       // 2u, 1.5u, 1u, PASS
   factors:    string[];     // human-readable variable notes
@@ -1196,7 +1196,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
               if (!seen.has(id)) {
                 seen.add(id);
                 const baseScore = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds, sharpMoneyPct: pickedSharpMoney, publicTicketPct: pickedPublicTicket });
-                // Try edge-crew grade engine first; fall back to Kronos computeConfidence
+                // Try Clubhouse IQ grade engine first; fall back to computeConfidence
                 const egPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, pickSide as "home"|"away", mlHome, mlAway, null, null);
                 const eg = await callEdgeGrade(egPayload);
                 const score = eg ? { ...edgeGradeToScore(eg, baseScore), edgeGrade: eg.grade, edgeSizing: eg.sizing, edgeScore: eg.score, edgeVariables: eg.variables, edgeEV: eg.ev } : baseScore;

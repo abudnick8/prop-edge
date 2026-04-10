@@ -66,24 +66,24 @@ function startKronos() {
   });
   kronosProc.stdout?.on("data", (d: Buffer) => {
     const msg = d.toString().trim();
-    console.log(`[Kronos] ${msg}`);
+    console.log(`[CIQ] ${msg}`);
     if (msg.includes("running on port")) kronosReady = true;
   });
   kronosProc.stderr?.on("data", (d: Buffer) => {
-    console.error(`[Kronos] ${d.toString().trim()}`);
+    console.error(`[CIQ] ${d.toString().trim()}`);
   });
   kronosProc.on("error", (err: any) => {
     if (err.code === "ENOENT") {
-      console.warn("[Kronos] python3 not found — Kronos AI will be disabled.");
+      console.warn("[CIQ] python3 not found — Kronos AI will be disabled.");
       kronosFailed = true;
     } else {
-      console.error(`[Kronos] Spawn error: ${err.message}`);
+      console.error(`[CIQ] Spawn error: ${err.message}`);
     }
     kronosProc = null;
     kronosReady = false;
   });
   kronosProc.on("exit", (code) => {
-    console.log(`[Kronos] Process exited (${code}). Will restart on next request.`);
+    console.log(`[CIQ] Process exited (${code}). Will restart on next request.`);
     kronosProc = null;
     kronosReady = false;
   });
@@ -106,7 +106,7 @@ async function ensureKronos(): Promise<boolean> {
       return true;
     } catch {}
   }
-  console.warn("[Kronos] Timed out waiting for Python service — marking as unavailable");
+  console.warn("[CIQ] Timed out waiting for Python service — marking as unavailable");
   kronosFailed = true;
   return false;
 }
@@ -2260,7 +2260,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     const volRegime   = k.volatility_regime ?? "low";
 
     // ── Decide pick direction ──
-    // Combine Kronos signal + market edge + whale flow + price rating
+    // Combine CIQ signal + market edge + whale flow + price rating
     let pickedSide: "yes" | "no" | "pass" = "pass";
 
     const yesSignals = [
@@ -2345,11 +2345,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
     // Opening: what the pick is and why
     if (pickedSide === "yes") {
-      parts.push(`Kronos rates this a YES contract at ${Math.round(yesPrice * 100)}¢.`);
+      parts.push(`Clubhouse IQ rates this a YES contract at ${Math.round(yesPrice * 100)}¢.`);
       if (signal === "bullish")
         parts.push(`Price model shows upward trend — YES contract projected to reach ${proj}¢ (currently ${curr}¢, +${Math.abs(edgeCents)}¢ edge).`);
     } else if (pickedSide === "no") {
-      parts.push(`Kronos rates this a NO contract at ${Math.round(noPrice * 100)}¢.`);
+      parts.push(`Clubhouse IQ rates this a NO contract at ${Math.round(noPrice * 100)}¢.`);
       if (signal === "bearish")
         parts.push(`YES price is fading — contract likely dropping to ${proj}¢ from ${curr}¢. Buying NO captures the ${Math.abs(edgeCents)}¢ move.`);
     } else {
@@ -2366,13 +2366,13 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
     // Whale activity
     if (isWhale && whaleSide === pickedSide)
-      parts.push(`Whale activity confirmed on this side — large position(s) taken, aligning with Kronos direction.`);
+      parts.push(`Whale activity confirmed on this side — large position(s) taken, aligning with Clubhouse IQ direction.`);
     else if (isWhale && whaleSide && whaleSide !== pickedSide)
       parts.push(`Note: whale activity detected on the opposite side — factor into risk sizing.`);
 
     // Smart wallet (top trader) positioning
     if (hasSmartMoney && swDir === pickedSide)
-      parts.push(`Smart Money confirmed: ${swCount} top-ranked Polymarket trader${swCount > 1 ? "s" : ""} holding this ${swDir?.toUpperCase()} side ($${swUSDC.toLocaleString()} USDC combined) — aligns with Kronos pick.`);
+      parts.push(`Smart Money confirmed: ${swCount} top-ranked Polymarket trader${swCount > 1 ? "s" : ""} holding this ${swDir?.toUpperCase()} side ($${swUSDC.toLocaleString()} USDC combined) — aligns with Clubhouse IQ pick.`);
     else if (hasSmartMoney && swDir === "mixed")
       parts.push(`Smart Money is split: ${swCount} top trader${swCount > 1 ? "s" : ""} hold positions on both sides ($${swUSDC.toLocaleString()} USDC) — market is contested.`);
     else if (hasSmartMoney && swDir && swDir !== pickedSide)
@@ -2408,7 +2408,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
     // Model quality
     if (r2 > 0.7)
-      parts.push(`Model fit is strong (R²=${r2.toFixed(2)}) — Kronos has high confidence in this trend.`);
+      parts.push(`Model fit is strong (R²=${r2.toFixed(2)}) — Clubhouse IQ has high confidence in this trend.`);
     else if (r2 < 0.3 && pickedSide !== "pass")
       parts.push(`Model fit is low (R²=${r2.toFixed(2)}) — noisy price history; size appropriately.`);
 
@@ -2505,7 +2505,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             history = (Array.isArray(raw) ? raw : []).map((pt: any) => ({ t: pt.t, p: pt.p }));
           }
         } catch (e: any) {
-          console.warn("[Kronos] CLOB fetch failed:", e.message);
+          console.warn("[CIQ] CLOB fetch failed:", e.message);
         }
       }
 
@@ -2570,7 +2570,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (history.length < 2) {
         return res.json({
           signal: "neutral", strength: 0, forecast: [],
-          explanation: "No market data available for Kronos analysis.",
+          explanation: "No market data available for Clubhouse IQ analysis.",
           trend_slope: 0, volatility: 0, momentum: 0,
           action: "No data.", r2: 0, volatility_regime: "low",
           line_movement: { short_slope: 0, long_slope: 0, bias: "neutral", divergence: 0 },
@@ -2586,7 +2586,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (!ready) {
         return res.status(503).json({
           signal: "neutral", strength: 0, forecast: [],
-          explanation: "Kronos AI service is starting up — try again in a moment.",
+          explanation: "Clubhouse IQ is starting up — try again in a moment.",
           error: "service_starting",
         });
       }
@@ -2600,7 +2600,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const result = kronosRes.data;
 
       // ── Step 4: Sports Pick Overlay ────────────────────────────────────────
-      // Combine Kronos price-model output with real market metadata to generate
+      // Combine CIQ price-model output with real market metadata to generate
       // a concrete, actionable sports pick with full reasoning.
       const pick = buildKronosPick(result, market);
       const enriched = { ...result, ...pick, cached: false };
@@ -2609,10 +2609,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       return res.json(enriched);
 
     } catch (e: any) {
-      console.error("[Kronos] Endpoint error:", e.message);
+      console.error("[CIQ] Endpoint error:", e.message);
       return res.json({
         signal: "neutral", strength: 0, forecast: [],
-        explanation: "Kronos analysis temporarily unavailable.",
+        explanation: "Clubhouse IQ analysis temporarily unavailable.",
         error: e.message,
       });
     }

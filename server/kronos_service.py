@@ -208,13 +208,13 @@ def kronos_forecast(history: list[dict], pred_steps: int = 12) -> dict:
     Full signal dict — see inline keys below.
     """
     if not history or len(history) < 2:
-        return _empty("Insufficient price history for Kronos Sports analysis.")
+        return _empty("Insufficient price history for Clubhouse IQ analysis.")
 
     prices_raw = np.clip([h["p"] for h in history], 0.0, 1.0).astype(float)
     latest = float(prices_raw[-1])
 
     if latest > 0.97 or latest < 0.02:
-        return _empty("Market near resolution — Kronos skips near-settled contracts.")
+        return _empty("Market near resolution — Clubhouse IQ skips near-settled contracts.")
 
     # ── 1. Decomposition (Kronos trend extraction) ──────────────────────────
     smoothed  = _smooth(prices_raw, window=min(9, max(3, len(prices_raw) // 4)))
@@ -297,11 +297,11 @@ def kronos_forecast(history: list[dict], pred_steps: int = 12) -> dict:
 
     # Primary trend
     if signal == "bullish":
-        parts.append(f"Kronos detects YES price trending up (+{abs(slope_pct)}¢/step) — mirrors a line steaming toward this outcome.")
+        parts.append(f"Clubhouse IQ detects YES price trending up (+{abs(slope_pct)}¢/step) — mirrors a line steaming toward this outcome.")
     elif signal == "bearish":
-        parts.append(f"Kronos detects YES price fading (−{abs(slope_pct)}¢/step) — mirrors a line being bet down.")
+        parts.append(f"Clubhouse IQ detects YES price fading (−{abs(slope_pct)}¢/step) — mirrors a line being bet down.")
     else:
-        parts.append("Kronos finds no strong directional edge — market is at equilibrium.")
+        parts.append("Clubhouse IQ finds no strong directional edge — market is at equilibrium.")
 
     # Sharp money signal
     if lm["bias"] == "sharp_yes":
@@ -336,9 +336,9 @@ def kronos_forecast(history: list[dict], pred_steps: int = 12) -> dict:
 
     # ── 7. Action label ──────────────────────────────────────────────────────
     if signal == "bullish" and strength >= 50:
-        action = f"Kronos favors YES (target {proj_cents}¢) — trend + line movement confirm."
+        action = f"Clubhouse IQ favors YES (target {proj_cents}¢) — trend + line movement confirm."
     elif signal == "bearish" and strength >= 50:
-        action = f"Kronos favors NO contract (YES projected to fall to {proj_cents}¢)."
+        action = f"Clubhouse IQ favors NO contract (YES projected to fall to {proj_cents}¢)."
     elif signal == "bullish":
         action = f"Weak YES lean — {proj_cents}¢ target but low conviction."
     elif signal == "bearish":
@@ -410,7 +410,7 @@ class KronosHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._json(200, {"status": "ok", "version": VERSION, "model": "kronos-sports"})
+            self._json(200, {"status": "ok", "version": VERSION, "model": "clubhouse-iq"})
             return
         self._json(404, {"error": "POST to /forecast"})
 

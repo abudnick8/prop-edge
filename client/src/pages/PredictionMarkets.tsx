@@ -737,7 +737,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
           {/* Header row */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border" style={{ background: "rgba(30,41,59,0.6)" }}>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Kronos AI Signal</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Clubhouse IQ Signal</span>
               {kronosData && kronosData.data_points && (
                 <span className="text-[9px] text-muted-foreground">{kronosData.data_points} data points</span>
               )}
@@ -761,7 +761,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
           <div className="px-4 py-3 flex flex-col gap-3" style={{ background: "rgba(19,35,58,0.25)" }}>
             {kronosLoading && (
               <div className="flex items-center justify-center h-20 text-muted-foreground text-xs animate-pulse">
-                Kronos AI is processing price history…
+                Clubhouse IQ is processing price history…
               </div>
             )}
 
@@ -782,7 +782,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                   >
                     {/* Pick header row */}
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Kronos Pick</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">CIQ Pick</span>
                       <div className="flex items-center gap-2">
                         {kronosData.pick_grade && kronosData.pick_grade !== "F" && (
                           <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
@@ -992,7 +992,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                       borderColor:  kronosData.signal === "bullish" ? "rgba(34,197,94,0.25)"  : kronosData.signal === "bearish" ? "rgba(239,68,68,0.25)"  : "rgba(100,116,139,0.25)",
                     }}
                   >
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Kronos Recommendation</p>
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">CIQ Recommendation</p>
                     <p className="text-xs font-bold" style={{ color: kronosData.signal === "bullish" ? "#22c55e" : kronosData.signal === "bearish" ? "#ef4444" : "#94a3b8" }}>
                       {kronosData.action}
                     </p>
@@ -1011,7 +1011,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
             )}
 
             {!kronosLoading && !kronosData && (
-              <p className="text-[10px] text-muted-foreground text-center py-3">Kronos signal unavailable for this market.</p>
+              <p className="text-[10px] text-muted-foreground text-center py-3">Clubhouse IQ signal unavailable for this market.</p>
             )}
           </div>
         </div>
@@ -1060,7 +1060,7 @@ function KronosSignalBadge({ signal, strength }: { signal: KronosResponse["signa
           : "bg-rose-500/15 text-rose-400 border-rose-500/30"
       }`}
     >
-      {isBull ? "▲" : "▼"} Kronos {isBull ? "Bull" : "Bear"} · {strength}
+      {isBull ? "▲" : "▼"} CIQ {isBull ? "Bull" : "Bear"} · {strength}
     </span>
   );
 }
@@ -1682,7 +1682,7 @@ export default function PredictionMarkets() {
       {/* ⚡ Kronos AI filter + sort row */}
       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 mb-5">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Kronos AI Filter</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Clubhouse IQ Filter</span>
           {kronosActive && !kronosAllLoaded && (
             <span className="text-[9px] text-cyan-400/70 animate-pulse">
               Analyzing {kronosLoadedCount}/{kronosTotalCount}…
@@ -1755,7 +1755,7 @@ export default function PredictionMarkets() {
         // Kronos filter active, nothing loaded yet at all — show initial spinner
         <div className="text-center py-16 text-muted-foreground border border-dashed border-cyan-500/20 rounded-xl">
           <p className="text-4xl mb-3 animate-pulse inline-block">⚡</p>
-          <p className="font-semibold text-cyan-400">Kronos is analyzing markets…</p>
+          <p className="font-semibold text-cyan-400">Clubhouse IQ is analyzing markets…</p>
           <p className="text-xs mt-1">Starting analysis — results will appear shortly</p>
         </div>
       ) : filtered.length === 0 ? (
