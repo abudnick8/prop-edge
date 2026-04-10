@@ -209,7 +209,63 @@ const RATING_TABS: { id: RatingFilter; label: string; emoji: string }[] = [
 ];
 
 // ── Price History Drawer ──────────────────────────────────────────────────────
-function ExpandableLegs({ displayLegs, rawLegs }: { displayLegs: string[]; rawLegs: string[] | null }) {
+// ── Parse a leg string into structured detail fields ─────────────────────────
+function parseLegDetail(leg: string, event: string, sport: string) {
+  const side = leg.match(/^(YES|NO)/i)?.[1]?.toUpperCase() ?? "YES";
+  const body = leg.replace(/^(YES|NO)\s+/i, "").trim();
+
+  // Player prop pattern: "Name Line StatType" e.g. "Carmen Mlodzinski 3+ K"
+  // or "Name: Line StatType" e.g. "Shohei Ohtani: 1.5+ Hits"
+  const propMatch = body.match(/^(.+?):\s*([\d.]+[+\-]?)\s*(.*)$/) ||
+                    body.match(/^(.+?)\s+([\d.]+[+\-]?)\s+(.+)$/);
+
+  // Team win / spread / total pattern
+  const teamWinMatch = body.match(/^(.+?)\s+(wins?|leads?|scores?|advances?|covers?|beats?|to win)/i);
+  const totalMatch   = body.match(/^(over|under)\s+([\d.]+)\s*(.*)/i);
+
+  let player: string | null = null;
+  let line: string | null = null;
+  let statType: string | null = null;
+  let condition = body;
+
+  if (propMatch) {
+    player   = propMatch[1].trim();
+    line     = propMatch[2].trim();
+    statType = propMatch[3].trim() || null;
+    condition = `${side === "YES" ? "HIT" : "MISS"} — ${player} ${line}${statType ? " " + statType : ""}`;
+  } else if (totalMatch) {
+    line      = totalMatch[2].trim();
+    statType  = (totalMatch[3] || "Points").trim();
+    condition = `${totalMatch[1].toUpperCase()} ${line} ${statType}`;
+  } else if (teamWinMatch) {
+    player    = teamWinMatch[1].trim();
+    condition = body;
+  }
+
+  // Direction label
+  const dirLabel = side === "YES" ? "✅ YES — Betting this hits" : "❌ NO — Betting this misses";
+
+  // Implied meaning
+  let meaning = "";
+  if (propMatch && player && line) {
+    const lineNum = parseFloat(line.replace(/[+\-]/, ""));
+    const isOver  = line.includes("+") || side === "YES";
+    meaning = `${player} must record ${isOver ? "at least" : "fewer than"} ${lineNum}${statType ? " " + statType : ""} in this game.`;
+  } else if (totalMatch) {
+    meaning = `The game total must go ${totalMatch[1].toLowerCase()} ${line}${statType ? " " + statType : ""}.`;
+  } else if (teamWinMatch) {
+    meaning = `${teamWinMatch[1]} must ${teamWinMatch[2].toLowerCase()} as the ${side === "YES" ? "winner" : "loser"}.`;
+  }
+
+  return { side, body, player, line, statType, condition, dirLabel, meaning };
+}
+
+function ExpandableLegs({ displayLegs, rawLegs, event, sport }: {
+  displayLegs: string[];
+  rawLegs: string[] | null;
+  event: string;
+  sport: string;
+}) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   return (
     <div className="mt-1">
@@ -222,40 +278,97 @@ function ExpandableLegs({ displayLegs, rawLegs }: { displayLegs: string[]; rawLe
           const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
           const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
           const isExpanded = expandedIdx === i;
-          // Full raw condition from server (before any client parsing)
-          const fullCondition = rawLegs?.[i]
-            ? rawLegs[i].replace(/^(YES|NO)\s+/i, "").trim()
-            : rawLegText;
-          const hasMore = fullCondition !== rawLegText && fullCondition.length > rawLegText.length;
+          const detail = parseLegDetail(leg, event, sport);
           return (
             <button
               key={i}
               onClick={() => setExpandedIdx(isExpanded ? null : i)}
-              className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-[12px] text-left w-full transition-all ${
+              className={`flex flex-col gap-0 px-3 py-2.5 rounded-lg border text-left w-full transition-all ${
                 isYes
                   ? "bg-green-500/5 border-green-500/20 hover:bg-green-500/10"
                   : "bg-red-500/5 border-red-500/20 hover:bg-red-500/10"
               }`}
             >
-              <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
-                isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
-              }`}>
-                {isYes ? "YES" : "NO"}
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
-                  {isExpanded ? fullCondition : legText}
+              {/* Collapsed row */}
+              <div className="flex items-start gap-2.5">
+                <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
+                  isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
+                }`}>
+                  {isYes ? "YES" : "NO"}
                 </span>
-                {isBareTotal && !legText.includes("(") && !isExpanded && (
-                  <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
-                )}
-                {isExpanded && fullCondition !== legText && (
-                  <p className="text-[10px] text-foreground/50 mt-1">Full condition from source</p>
-                )}
+                <div className="flex-1 min-w-0">
+                  <span className={`leading-snug font-semibold text-[12px] ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
+                    {legText}
+                  </span>
+                  {isBareTotal && !legText.includes("(") && !isExpanded && (
+                    <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
+                  )}
+                </div>
+                <span className="shrink-0 text-foreground/40 mt-1">
+                  {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </span>
               </div>
-              <span className="shrink-0 text-foreground/40 mt-0.5">
-                {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              </span>
+
+              {/* Expanded detail panel */}
+              {isExpanded && (
+                <div className="mt-2.5 pt-2.5 border-t border-white/10 flex flex-col gap-2 text-[11px]">
+                  {/* Direction */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`font-bold text-[10px] px-2 py-0.5 rounded ${
+                      isYes ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                    }`}>{detail.dirLabel}</span>
+                  </div>
+
+                  {/* Structured fields */}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {detail.player && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">
+                          {detail.line ? "Player" : "Team"}
+                        </span>
+                        <span className="font-semibold text-foreground">{detail.player}</span>
+                      </>
+                    )}
+                    {detail.line && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Line</span>
+                        <span className="font-mono font-bold text-amber-400">{detail.line}</span>
+                      </>
+                    )}
+                    {detail.statType && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Stat</span>
+                        <span className="font-semibold text-foreground">{detail.statType}</span>
+                      </>
+                    )}
+                    {sport && sport !== "Other" && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Sport</span>
+                        <span className="font-semibold text-foreground">{sport}</span>
+                      </>
+                    )}
+                    {event && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Game</span>
+                        <span className="font-semibold text-foreground leading-snug">{event}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Plain-English meaning */}
+                  {detail.meaning && (
+                    <div className="rounded-md px-2.5 py-2 text-[11px] text-foreground/80 leading-snug"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      {detail.meaning}
+                    </div>
+                  )}
+
+                  {/* Full raw condition */}
+                  <p className="text-[9px] text-foreground/35 mt-0.5 leading-snug">
+                    Raw: {leg}
+                  </p>
+                </div>
+              )}
             </button>
           );
         })}
@@ -326,7 +439,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
               if (displayLegs && displayLegs.length > 0) {
                 return (
-                  <ExpandableLegs displayLegs={displayLegs} rawLegs={m.legs ?? null} />
+                  <ExpandableLegs displayLegs={displayLegs} rawLegs={m.legs ?? null} event={m.event} sport={m.sport} />
                 );
               }
               return (
