@@ -1190,34 +1190,18 @@ function GameCard({ game }: { game: GameLine }) {
           )}
           {/* Inline rec badge — always visible when there's a signal */}
           {rec && !expanded && <RecBadge rec={rec} />}
-          {/* CIQ badge — dynamic grade + pick when loaded, static pulse when loading */}
-          {!expanded && (
-            ciqLoading ? (
-              <span
-                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0 animate-pulse"
-                style={{ background: "rgba(139,92,246,0.10)", color: "#a78bfa", borderColor: "rgba(139,92,246,0.30)" }}
-              >
-                🧠 …
-              </span>
-            ) : ciqAvailable && ciqGrade ? (
-              <span
-                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
-                style={{
-                  background: `${ciqGradeColor}1A`,
-                  color: ciqGradeColor,
-                  borderColor: `${ciqGradeColor}55`,
-                }}
-              >
-                🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
-              </span>
-            ) : (
-              <span
-                className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
-                style={{ background: "rgba(139,92,246,0.08)", color: "#a78bfa99", borderColor: "rgba(139,92,246,0.20)" }}
-              >
-                🧠 CIQ
-              </span>
-            )
+          {/* CIQ grade badge — whale-style, only shown when grade is ready */}
+          {!expanded && ciqAvailable && ciqGrade && (
+            <span
+              className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border flex-shrink-0"
+              style={{
+                background: `${ciqGradeColor}20`,
+                color: ciqGradeColor,
+                borderColor: `${ciqGradeColor}50`,
+              }}
+            >
+              🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
+            </span>
           )}
           {/* Research/Why button — opens line intelligence panel */}
           {hasResearchWorthy && (
