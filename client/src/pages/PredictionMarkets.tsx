@@ -216,29 +216,36 @@ function parseLegDetail(leg: string, event: string, sport: string) {
   const side = leg.match(/^(YES|NO)/i)?.[1]?.toUpperCase() ?? "YES";
   const body = leg.replace(/^(YES|NO)\s+/i, "").trim();
 
-  // Player prop pattern: "Name Line StatType" e.g. "Carmen Mlodzinski 3+ K"
-  // or "Name: Line StatType" e.g. "Shohei Ohtani: 1.5+ Hits"
-  const propMatch = body.match(/^(.+?):\s*([\d.]+[+\-]?)\s*(.*)$/) ||
-                    body.match(/^(.+?)\s+([\d.]+[+\-]?)\s+(.+)$/);
+  // ── Check game total FIRST (over/under X runs/points/goals)
+  // e.g. "Over 7.5 runs scored", "Under 205.5 points"
+  const totalMatch = body.match(/^(over|under)\s+([\d.]+)\s*(.*)/i);
 
-  // Team win / spread / total pattern
-  const teamWinMatch = body.match(/^(.+?)\s+(wins?|leads?|scores?|advances?|covers?|beats?|to win)/i);
-  const totalMatch   = body.match(/^(over|under)\s+([\d.]+)\s*(.*)/i);
+  // ── Team win / spread / moneyline
+  const teamWinMatch = !totalMatch && body.match(/^(.+?)\s+(wins?|leads?|scores?|advances?|covers?|beats?|to win)/i);
+
+  // ── Player prop: "Name: Line StatType" or "Name Line StatType"
+  // Only match if body does NOT start with over/under/team condition
+  const propMatch = !totalMatch && !teamWinMatch && (
+    body.match(/^(.+?):\s*([\d.]+[+\-]?)\s*(.*)$/) ||
+    body.match(/^(.+?)\s+([\d.]+[+\-]?)\s+(.+)$/)
+  );
 
   let player: string | null = null;
   let line: string | null = null;
   let statType: string | null = null;
+  let isGameTotal = false;
   let condition = body;
 
-  if (propMatch) {
+  if (totalMatch) {
+    isGameTotal = true;
+    line     = totalMatch[2].trim();
+    statType = (totalMatch[3] || "runs").trim();
+    condition = `${totalMatch[1].toUpperCase()} ${line} ${statType}`;
+  } else if (propMatch) {
     player   = propMatch[1].trim();
     line     = propMatch[2].trim();
     statType = propMatch[3].trim() || null;
     condition = `${side === "YES" ? "HIT" : "MISS"} — ${player} ${line}${statType ? " " + statType : ""}`;
-  } else if (totalMatch) {
-    line      = totalMatch[2].trim();
-    statType  = (totalMatch[3] || "Points").trim();
-    condition = `${totalMatch[1].toUpperCase()} ${line} ${statType}`;
   } else if (teamWinMatch) {
     player    = teamWinMatch[1].trim();
     condition = body;
@@ -249,17 +256,18 @@ function parseLegDetail(leg: string, event: string, sport: string) {
 
   // Implied meaning
   let meaning = "";
-  if (propMatch && player && line) {
+  if (isGameTotal && line) {
+    const gameLabel = event && /[@vs\s]/.test(event) && !/^KX/i.test(event) ? event : "this game";
+    meaning = `The combined runs/score in ${gameLabel} must go ${totalMatch![1].toLowerCase()} ${line}${statType && statType !== "runs" ? " " + statType : ""}.`;
+  } else if (propMatch && player && line) {
     const lineNum = parseFloat(line.replace(/[+\-]/, ""));
-    const isOver  = line.includes("+") || side === "YES";
-    meaning = `${player} must record ${isOver ? "at least" : "fewer than"} ${lineNum}${statType ? " " + statType : ""} in this game.`;
-  } else if (totalMatch) {
-    meaning = `The game total must go ${totalMatch[1].toLowerCase()} ${line}${statType ? " " + statType : ""}.`;
+    const dir = line.includes("+") ? "at least" : "exactly";
+    meaning = `${player} must record ${dir} ${lineNum}${statType ? " " + statType : ""} in this game.`;
   } else if (teamWinMatch) {
     meaning = `${teamWinMatch[1]} must ${teamWinMatch[2].toLowerCase()} as the ${side === "YES" ? "winner" : "loser"}.`;
   }
 
-  return { side, body, player, line, statType, condition, dirLabel, meaning };
+  return { side, body, player, line, statType, isGameTotal, condition, dirLabel, meaning };
 }
 
 function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, legPlayerTeams, gameTime }: {
@@ -328,7 +336,21 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, legPlaye
 
                   {/* Structured fields */}
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {detail.player && (
+                    {/* Game total leg — show matchup as primary field */}
+                    {detail.isGameTotal && legGame && /[@vs\s]/.test(legGame) && !/^KX/i.test(legGame) && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Matchup</span>
+                        <span className="font-semibold text-foreground leading-snug">{legGame}</span>
+                      </>
+                    )}
+                    {detail.isGameTotal && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Bet Type</span>
+                        <span className="font-semibold text-foreground">Game Total</span>
+                      </>
+                    )}
+                    {/* Player prop leg */}
+                    {!detail.isGameTotal && detail.player && (
                       <>
                         <span className="text-foreground/50 uppercase text-[9px] tracking-wide">
                           {detail.line ? "Player" : "Team"}
@@ -336,10 +358,17 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, legPlaye
                         <span className="font-semibold text-foreground">{detail.player}</span>
                       </>
                     )}
-                    {detail.player && detail.line && legPlayerTeam && (
+                    {!detail.isGameTotal && detail.player && detail.line && legPlayerTeam && (
                       <>
                         <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Team</span>
                         <span className="font-semibold text-foreground">{legPlayerTeam}</span>
+                      </>
+                    )}
+                    {/* Game for player prop (from legGames) */}
+                    {!detail.isGameTotal && legGame && /[@vs\s]/.test(legGame) && !/^KX/i.test(legGame) && (
+                      <>
+                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Game</span>
+                        <span className="font-semibold text-foreground leading-snug">{legGame}</span>
                       </>
                     )}
                     {detail.line && (
@@ -358,12 +387,6 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, legPlaye
                       <>
                         <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Sport</span>
                         <span className="font-semibold text-foreground">{sport}</span>
-                      </>
-                    )}
-                    {event && /[@vs\s]/.test(event) && !/_/.test(event) && !/^KX/i.test(event) && (
-                      <>
-                        <span className="text-foreground/50 uppercase text-[9px] tracking-wide">Game</span>
-                        <span className="font-semibold text-foreground leading-snug">{event}</span>
                       </>
                     )}
                     {gameTime && (
