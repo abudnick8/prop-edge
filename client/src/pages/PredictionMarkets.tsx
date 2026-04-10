@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, Trophy } from "lucide-react";
@@ -132,20 +132,28 @@ interface KronosForecastPoint {
 }
 interface KronosResponse {
   signal: "bullish" | "bearish" | "neutral";
-  strength: number;         // 0–100
+  strength: number;
   forecast: KronosForecastPoint[];
   explanation: string;
-  trend_slope: number;      // cents/step
-  volatility: number;       // residual std dev in cents
+  action?: string;
+  trend_slope: number;
+  volatility: number;
+  volatility_regime?: "high" | "medium" | "low";
   momentum: number;
-  sr: { support: number | null; resistance: number | null };
   r2?: number;
   data_points?: number;
   current_cents?: number;
   projected_cents?: number;
+  sr: { support: number | null; resistance: number | null };
+  line_movement?: { short_slope: number; long_slope: number; bias: string; divergence: number };
+  late_breaking?: { detected: boolean; direction: string | null; magnitude: number };
+  crossover?: string;
+  tossup?: boolean;
   error?: string;
   cached?: boolean;
 }
+type KronosFilter = "all" | "bullish" | "bearish" | "strong" | "tossup";
+type KronosSort   = "default" | "kronos_strength" | "kronos_bullish" | "kronos_bearish";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtCents(v: number) {
@@ -751,32 +759,81 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                   <p className="text-[11px] text-foreground/80 leading-relaxed">{kronosData.explanation}</p>
                 )}
 
-                {/* Stats grid */}
-                <div className="grid grid-cols-3 gap-2">
+                {/* Stats grid — 4 cells */}
+                <div className="grid grid-cols-4 gap-1.5">
                   {[
                     {
-                      label: "Trend Slope",
+                      label: "Trend",
                       val: kronosData.trend_slope !== undefined
-                        ? `${kronosData.trend_slope > 0 ? "+" : ""}${kronosData.trend_slope}¢/step`
+                        ? `${kronosData.trend_slope > 0 ? "+" : ""}${kronosData.trend_slope}¢`
                         : "—",
                       color: kronosData.trend_slope > 0 ? "#22c55e" : kronosData.trend_slope < 0 ? "#ef4444" : "#94a3b8",
                     },
                     {
                       label: "Volatility",
-                      val: kronosData.volatility !== undefined ? `${kronosData.volatility}¢ σ` : "—",
-                      color: (kronosData.volatility ?? 0) > 5 ? "#f97316" : "#94a3b8",
+                      val: kronosData.volatility !== undefined
+                        ? `${kronosData.volatility}¢ ${kronosData.volatility_regime === "high" ? "🔴" : kronosData.volatility_regime === "medium" ? "🟡" : "🟢"}`
+                        : "—",
+                      color: kronosData.volatility_regime === "high" ? "#f97316" : kronosData.volatility_regime === "medium" ? "#facc15" : "#94a3b8",
                     },
                     {
                       label: "Projected",
                       val: kronosData.projected_cents !== undefined ? `${kronosData.projected_cents}¢` : "—",
                       color: kronosData.signal === "bullish" ? "#22c55e" : kronosData.signal === "bearish" ? "#ef4444" : "#94a3b8",
                     },
+                    {
+                      label: "R² Fit",
+                      val: kronosData.r2 !== undefined ? kronosData.r2.toFixed(2) : "—",
+                      color: (kronosData.r2 ?? 0) > 0.7 ? "#22c55e" : (kronosData.r2 ?? 0) > 0.4 ? "#facc15" : "#94a3b8",
+                    },
                   ].map(item => (
                     <div key={item.label} className="text-center bg-background/30 rounded-lg py-2 px-1 border border-white/5">
                       <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{item.label}</p>
-                      <p className="font-mono font-black text-sm" style={{ color: item.color }}>{item.val}</p>
+                      <p className="font-mono font-black text-xs" style={{ color: item.color }}>{item.val}</p>
                     </div>
                   ))}
+                </div>
+
+                {/* Sports signals row */}
+                <div className="flex flex-wrap gap-1.5">
+                  {/* Line movement / sharp money */}
+                  {kronosData.line_movement && kronosData.line_movement.bias !== "neutral" && (
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
+                      kronosData.line_movement.bias === "sharp_yes"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                        : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                    }`}>
+                      {kronosData.line_movement.bias === "sharp_yes" ? "⚡ Sharp YES" : "⚡ Sharp NO"}
+                      {" "}· {kronosData.line_movement.short_slope > 0 ? "+" : ""}{kronosData.line_movement.short_slope}¢ recent
+                    </span>
+                  )}
+                  {/* Momentum crossover */}
+                  {kronosData.crossover === "golden_cross" && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                      ✨ Golden Cross
+                    </span>
+                  )}
+                  {kronosData.crossover === "death_cross" && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded border bg-rose-500/10 text-rose-400 border-rose-500/30">
+                      ☠️ Death Cross
+                    </span>
+                  )}
+                  {/* Late-breaking signal */}
+                  {kronosData.late_breaking?.detected && (
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border animate-pulse ${
+                      kronosData.late_breaking.direction === "bullish"
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        : "bg-red-500/10 text-red-400 border-red-500/30"
+                    }`}>
+                      🚨 Late Signal +{kronosData.late_breaking.magnitude}¢
+                    </span>
+                  )}
+                  {/* Toss-up */}
+                  {kronosData.tossup && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30">
+                      ⚖️ Pick-Em (near 50¢)
+                    </span>
+                  )}
                 </div>
 
                 {/* Support / Resistance */}
@@ -795,9 +852,6 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                         <span className="text-muted-foreground">Resistance</span>
                         <span className="font-mono font-bold text-foreground">{kronosData.sr.resistance}¢</span>
                       </span>
-                    )}
-                    {kronosData.r2 !== undefined && (
-                      <span className="ml-auto text-muted-foreground">R² {kronosData.r2.toFixed(2)}</span>
                     )}
                   </div>
                 )}
@@ -829,21 +883,24 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
                   </div>
                 )}
 
-                {/* Prediction market action recommendation */}
-                {kronosData.signal !== "neutral" && kronosData.strength >= 40 && (
+                {/* Action recommendation */}
+                {kronosData.action && kronosData.strength > 0 && (
                   <div
-                    className="rounded-lg px-3 py-2 border text-xs"
+                    className="rounded-lg px-3 py-2.5 border"
                     style={{
-                      background: kronosData.signal === "bullish" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
-                      borderColor: kronosData.signal === "bullish" ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)",
+                      background:   kronosData.signal === "bullish" ? "rgba(34,197,94,0.08)"  : kronosData.signal === "bearish" ? "rgba(239,68,68,0.08)"  : "rgba(100,116,139,0.08)",
+                      borderColor:  kronosData.signal === "bullish" ? "rgba(34,197,94,0.25)"  : kronosData.signal === "bearish" ? "rgba(239,68,68,0.25)"  : "rgba(100,116,139,0.25)",
                     }}
                   >
-                    <p className="font-bold mb-0.5" style={{ color: kronosData.signal === "bullish" ? "#22c55e" : "#ef4444" }}>
-                      {kronosData.signal === "bullish"
-                        ? `⚡ Kronos favors YES contract (target ${kronosData.projected_cents}¢)`
-                        : `⚡ Kronos favors NO contract (YES projected to fall to ${kronosData.projected_cents}¢)`}
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Kronos Recommendation</p>
+                    <p className="text-xs font-bold" style={{ color: kronosData.signal === "bullish" ? "#22c55e" : kronosData.signal === "bearish" ? "#ef4444" : "#94a3b8" }}>
+                      {kronosData.action}
                     </p>
-                    <p className="text-muted-foreground text-[10px]">AI confidence: {kronosData.strength}/100 · based on {kronosData.data_points ?? "—"} price points</p>
+                    <div className="flex items-center gap-3 mt-1.5 text-[9px] text-muted-foreground">
+                      <span>Confidence: <span className="font-mono font-bold text-foreground">{kronosData.strength}/100</span></span>
+                      <span>{kronosData.data_points ?? "—"} price pts analyzed</span>
+                      {kronosData.r2 !== undefined && <span>Model fit R²: {kronosData.r2.toFixed(2)}</span>}
+                    </div>
                   </div>
                 )}
               </>
@@ -1085,6 +1142,8 @@ export default function PredictionMarkets() {
   const [lastRefresh, setLastRefresh]   = useState(Date.now());
   const [selected, setSelected]         = useState<PredMkt | null>(null);
   const [legendOpen, setLegendOpen]     = useState(false);
+  const [kronosFilter, setKronosFilter] = useState<KronosFilter>("all");
+  const [kronosSort, setKronosSort]     = useState<KronosSort>("default");
 
   const { data: markets = [], isLoading, refetch } = useQuery<PredMkt[]>({
     queryKey: ["/api/prediction-markets"],
@@ -1103,11 +1162,14 @@ export default function PredictionMarkets() {
   }, [refetch]);
 
   const todayCount = markets.filter(isTodayMarket).length;
+  const qc = useQueryClient();
+
+  // Helper: get cached Kronos result for a market (populated as cards mount)
+  const getKronos = (id: string): KronosResponse | undefined =>
+    qc.getQueryData<KronosResponse>(["/api/prediction-markets/kronos", id]);
 
   const filtered = markets.filter(m => {
-    // Hide near-resolved markets (YES < 2¢ or > 98¢ = outcome essentially decided)
     if (m.yesPrice < 0.02 || m.yesPrice > 0.98) return false;
-    // Hide events that have already ended (close_time / endDate in the past)
     if (m.gameTime && new Date(m.gameTime).getTime() <= Date.now()) return false;
     if (todayOnly && !isTodayMarket(m)) return false;
     if (sportFilter !== "all" && m.sport !== sportFilter) return false;
@@ -1115,7 +1177,40 @@ export default function PredictionMarkets() {
     if (ratingFilter !== "all" && ratingFilter !== "whale" && m.priceRating !== ratingFilter) return false;
     if (sourceFilter !== "all" && m.source !== sourceFilter) return false;
     if (search && !m.title.toLowerCase().includes(search.toLowerCase()) && !m.event.toLowerCase().includes(search.toLowerCase())) return false;
+    // Kronos filter (uses cached data — works once cards have loaded)
+    if (kronosFilter !== "all") {
+      const k = getKronos(m.id);
+      if (!k) return false; // hide if not yet loaded
+      if (kronosFilter === "bullish" && k.signal !== "bullish") return false;
+      if (kronosFilter === "bearish" && k.signal !== "bearish") return false;
+      if (kronosFilter === "strong"  && k.strength < 50)        return false;
+      if (kronosFilter === "tossup"  && !k.tossup)              return false;
+    }
     return true;
+  });
+
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    if (kronosSort === "kronos_strength") {
+      const ka = getKronos(a.id)?.strength ?? 0;
+      const kb = getKronos(b.id)?.strength ?? 0;
+      return kb - ka;
+    }
+    if (kronosSort === "kronos_bullish") {
+      const ka = getKronos(a.id);
+      const kb = getKronos(b.id);
+      const sa = ka?.signal === "bullish" ? (ka.strength ?? 0) : -99;
+      const sb = kb?.signal === "bullish" ? (kb.strength ?? 0) : -99;
+      return sb - sa;
+    }
+    if (kronosSort === "kronos_bearish") {
+      const ka = getKronos(a.id);
+      const kb = getKronos(b.id);
+      const sa = ka?.signal === "bearish" ? (ka.strength ?? 0) : -99;
+      const sb = kb?.signal === "bearish" ? (kb.strength ?? 0) : -99;
+      return sb - sa;
+    }
+    return 0; // default order
   });
 
   // Summary stats
@@ -1404,7 +1499,7 @@ export default function PredictionMarkets() {
       </div>
 
       {/* Rating filter tabs */}
-      <div className="flex gap-1.5 flex-wrap mb-5">
+      <div className="flex gap-1.5 flex-wrap mb-3">
         {RATING_TABS.map(tab => (
           <button
             key={tab.id}
@@ -1422,6 +1517,62 @@ export default function PredictionMarkets() {
         ))}
       </div>
 
+      {/* ⚡ Kronos AI filter + sort row */}
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 mb-5">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Kronos AI Filter</span>
+          <span className="text-[9px] text-muted-foreground">(loads as cards render)</span>
+          {kronosFilter !== "all" && (
+            <button
+              onClick={() => { setKronosFilter("all"); setKronosSort("default"); }}
+              className="ml-auto text-[9px] text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {/* Signal filter */}
+        <div className="flex gap-1.5 flex-wrap mb-2">
+          {([
+            { id: "all",     label: "All Signals",    style: kronosFilter === "all"     ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"    : "border-border text-muted-foreground hover:text-foreground" },
+            { id: "bullish", label: "▲ Bullish",      style: kronosFilter === "bullish" ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-border text-muted-foreground hover:text-foreground" },
+            { id: "bearish", label: "▼ Bearish",      style: kronosFilter === "bearish" ? "border-rose-500/50 bg-rose-500/15 text-rose-300"       : "border-border text-muted-foreground hover:text-foreground" },
+            { id: "strong",  label: "💪 Strong (50+)",  style: kronosFilter === "strong"  ? "border-violet-500/50 bg-violet-500/15 text-violet-300"  : "border-border text-muted-foreground hover:text-foreground" },
+            { id: "tossup",  label: "⚖️ Toss-Up",      style: kronosFilter === "tossup"  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"     : "border-border text-muted-foreground hover:text-foreground" },
+          ] as { id: KronosFilter; label: string; style: string }[]).map(f => (
+            <button
+              key={f.id}
+              onClick={() => setKronosFilter(f.id)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${f.style}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {/* Sort by Kronos */}
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-muted-foreground uppercase tracking-wide">Sort:</span>
+          {([
+            { id: "default",         label: "Default" },
+            { id: "kronos_strength", label: "⚡ Highest Confidence" },
+            { id: "kronos_bullish",  label: "▲ Strongest Bullish" },
+            { id: "kronos_bearish",  label: "▼ Strongest Bearish" },
+          ] as { id: KronosSort; label: string }[]).map(s => (
+            <button
+              key={s.id}
+              onClick={() => setKronosSort(s.id)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                kronosSort === s.id
+                  ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Market grid */}
       {isLoading ? (
         <div className="grid md:grid-cols-2 gap-4">
@@ -1437,7 +1588,7 @@ export default function PredictionMarkets() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {filtered.map(m => <MarketCard key={m.id} m={m} onClick={() => setSelected(m)} />)}
+          {sorted.map(m => <MarketCard key={m.id} m={m} onClick={() => setSelected(m)} />)}
         </div>
       )}
 
