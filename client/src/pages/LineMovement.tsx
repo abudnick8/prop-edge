@@ -845,51 +845,81 @@ const CHAIN_EMOJI: Record<string, string> = {
 
 function CIQPickPanel({ game }: { game: GameLine }) {
   // Build the POST body from available LM game data
+  // NOTE: game.spread.current is the AWAY team's spread (e.g. -15.5 = away favored by 15.5)
+  const awaySpreadCurrent = game.spread.current;
   const postBody = {
-    sport:        game.sport,
-    homeTeam:     game.homeTeam,
-    awayTeam:     game.awayTeam,
-    spread:       game.spread.current,
-    total:        game.total.current,
-    mlHome:       game.moneyline.homeCurrent,
-    mlAway:       game.moneyline.awayCurrent,
-    spreadMove:   game.spread.move,
-    homeMoneyPct: game.moneyline.homeMoney,
-    awayMoneyPct: game.moneyline.awayMoney,
+    sport:          game.sport,
+    homeTeam:       game.homeTeam,
+    awayTeam:       game.awayTeam,
+    awaySpread:     awaySpreadCurrent,                          // away team's spread line
+    spread:         awaySpreadCurrent,                          // also pass as generic spread
+    total:          game.total.current,
+    mlHome:         game.moneyline.homeCurrent,
+    mlAway:         game.moneyline.awayCurrent,
+    spreadMove:     game.spread.move,
+    homeMoneyPct:   game.moneyline.homeMoney,
+    awayMoneyPct:   game.moneyline.awayMoney,
+    spreadAwayPct:  game.spread.awayMoney,                      // sharp money on away spread
+    spreadHomePct:  game.spread.homeMoney,                      // sharp money on home spread
   };
 
-  const { data, isLoading, isError } = useQuery<any>({
+  const { data, isLoading, refetch, isFetching } = useQuery<any>({
     queryKey: ["/api/line-movement/ciq", game.id],
-    queryFn: () => apiRequest("POST", "/api/line-movement/ciq", postBody).then(r => r.json()),
-    staleTime: 10 * 60 * 1000,   // re-grade every 10 min
-    retry: 1,
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/line-movement/ciq", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(postBody),
+        });
+        if (!res.ok) return { available: false, reason: `Server error ${res.status}` };
+        const json = await res.json();
+        return json;
+      } catch (e: any) {
+        return { available: false, reason: e?.message ?? "Network error" };
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1500,
   });
 
-  if (isLoading) {
+  if (isLoading || isFetching && !data) {
     return (
       <div className="rounded-xl border border-border p-4 space-y-2">
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-primary animate-pulse" />
-          <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
+          <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ — Analyzing…</span>
         </div>
         <div className="space-y-1.5">
           <Skeleton className="h-3 w-full rounded" />
           <Skeleton className="h-3 w-4/5 rounded" />
           <Skeleton className="h-3 w-3/5 rounded" />
         </div>
+        <p className="text-[10px] text-muted-foreground">Running Edge Crew v3 grade engine…</p>
       </div>
     );
   }
 
-  if (isError || !data || data.available === false) {
+  if (!data || data.available === false) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Brain size={14} className="text-primary" />
-          <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <Brain size={14} className="text-primary" />
+            <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
+          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1 text-[10px] font-bold text-primary/70 hover:text-primary transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={10} className={isFetching ? "animate-spin" : ""} />
+            {isFetching ? "Analyzing…" : "Retry"}
+          </button>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          No CIQ analysis available for this game. The grade engine needs line data (spread/moneyline) to score this matchup.
+          {data?.reason ?? "Analysis not available yet — tap Retry to run the Clubhouse IQ grade engine on this game."}
         </p>
       </div>
     );

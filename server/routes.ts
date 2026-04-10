@@ -5083,26 +5083,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Calls edge_grade.py directly and returns the full grade result
   app.post("/api/line-movement/ciq", async (req, res) => {
     try {
-      const { sport, homeTeam, awayTeam, spread, total, mlHome, mlAway,
-              spreadMove, homeRecord, awayRecord, homeMoneyPct, awayMoneyPct } = req.body ?? {};
+      const { sport, homeTeam, awayTeam, spread, awaySpread, total, mlHome, mlAway,
+              spreadMove, homeRecord, awayRecord, homeMoneyPct, awayMoneyPct,
+              spreadAwayPct, spreadHomePct } = req.body ?? {};
 
       if (!sport || !homeTeam || !awayTeam) {
         return res.status(400).json({ error: "sport, homeTeam, awayTeam required" });
       }
 
-      // Determine pick side from moneyline (or spread) signals
+      // LM data gives us the AWAY team's spread (e.g. -15.5 = away is -15.5 favorite)
+      // Home spread is the inverse
+      const awayLine  = awaySpread ?? spread ?? null;
+      const homeML    = mlHome ?? null;
+      const awayML    = mlAway ?? null;
+
+      // Determine pick side — priority: sharp money % → moneyline implied prob → spread
       let pickSide: "home" | "away" = "home";
-      if (mlHome != null && mlAway != null) {
-        const homeProb = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
-        const awayProb = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
-        // Use sharp money if available, else implied probability
-        if (homeMoneyPct != null && awayMoneyPct != null) {
-          pickSide = homeMoneyPct >= awayMoneyPct ? "home" : "away";
-        } else {
-          pickSide = homeProb >= awayProb ? "home" : "away";
-        }
-      } else if (spread != null) {
-        pickSide = spread < 0 ? "home" : "away"; // negative spread = home favored
+      const sharpHome = spreadHomePct ?? homeMoneyPct ?? null;
+      const sharpAway = spreadAwayPct ?? awayMoneyPct ?? null;
+
+      if (sharpHome != null && sharpAway != null) {
+        pickSide = sharpAway >= sharpHome ? "away" : "home";
+      } else if (homeML != null && awayML != null) {
+        const homeProb = homeML < 0 ? Math.abs(homeML) / (Math.abs(homeML) + 100) : 100 / (homeML + 100);
+        const awayProb = awayML < 0 ? Math.abs(awayML) / (Math.abs(awayML) + 100) : 100 / (awayML + 100);
+        pickSide = awayProb >= homeProb ? "away" : "home";
+      } else if (awayLine != null) {
+        // Negative away spread = away is the favorite
+        pickSide = awayLine < 0 ? "away" : "home";
       }
 
       const payload = {
@@ -5112,9 +5120,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pickSide,
         homeRecord:   homeRecord ?? "0-0",
         awayRecord:   awayRecord ?? "0-0",
-        homeML:       mlHome ?? null,
-        awayML:       mlAway ?? null,
-        spreadHome:   spread ?? null,
+        homeML:       homeML,
+        awayML:       awayML,
+        // edge_grade.py expects spreadHome = the home team's spread line
+        // if away is -15.5, home is +15.5
+        spreadHome:   awayLine != null ? -awayLine : null,
         spreadDelta:  spreadMove ?? 0,
         homeMoneyPct: homeMoneyPct ?? null,
         awayMoneyPct: awayMoneyPct ?? null,
