@@ -733,14 +733,33 @@ function MoveRow({ label, open, current, move }: { label: string; open: number|n
   if (open == null && current == null) return null;
   const badge = moveBadgeLM(move);
   const moved = move != null && move !== 0;
+  const deltaColor = !moved ? "rgba(19,35,58,0.3)" : (move! > 0 ? "#4ade80" : "#f87171");
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-14 text-right text-[11px] font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
-      <span className="font-mono text-[12px]" style={{ color: "rgba(19,35,58,0.55)" }}>{fmtLMLine(open)}</span>
-      <ArrowRight size={10} className="flex-shrink-0" style={{ color: "rgba(19,35,58,0.3)" }} />
-      <span className="font-mono font-black text-[13px]" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLMLine(current)}</span>
-      {badge && (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="w-16 text-[10px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "rgba(19,35,58,0.45)" }}>{label}</span>
+      {/* Open line */}
+      <div className="flex flex-col items-center">
+        <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.35)" }}>OPEN</span>
+        <span className="font-mono text-[13px] font-semibold" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLMLine(open)}</span>
+      </div>
+      <ArrowRight size={10} className="flex-shrink-0" style={{ color: "rgba(19,35,58,0.25)" }} />
+      {/* Current line — hero number */}
+      <div className="flex flex-col items-center">
+        <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.35)" }}>NOW</span>
+        <span className="font-mono text-[16px] font-black" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLMLine(current)}</span>
+      </div>
+      {/* Delta */}
+      {moved && move != null && (
+        <span className="text-[12px] font-black ml-1" style={{ color: deltaColor }}>
+          {move > 0 ? `▲ +${move}` : `▼ ${move}`}
+        </span>
+      )}
+      {badge && !moved && (
         <span className="text-[10px] px-1.5 py-0.5 rounded font-bold ml-1"
+          style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
+      )}
+      {badge && moved && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold ml-auto"
           style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
       )}
     </div>
@@ -751,27 +770,27 @@ function PublicRowLM({ label, publicPct, moneyPct, accentColor }: { label: strin
   if (publicPct == null && moneyPct == null) return null;
   const signal = sharpSignalLM(moneyPct, publicPct);
   return (
-    <div className="space-y-1">
+    <div className="rounded-lg px-3 py-2 space-y-1.5" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.06)" }}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
+        <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>{label}</span>
         {signal && <span className="text-[10px] font-bold" style={{ color: signal.color }}>{signal.label}</span>}
       </div>
       {publicPct != null && (
         <div className="flex items-center gap-1.5">
           <Users size={9} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
             <div className="h-full rounded-full" style={{ width: `${publicPct}%`, background: "rgba(99,102,241,0.55)" }} />
           </div>
-          <span className="text-[10px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.55)" }}>{publicPct}%</span>
+          <span className="text-[11px] font-black w-8 text-right" style={{ color: "rgba(19,35,58,0.7)" }}>{publicPct}%</span>
         </div>
       )}
       {moneyPct != null && (
         <div className="flex items-center gap-1.5">
           <DollarSign size={9} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
-            <div className="h-full rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 65 ? "rgba(74,222,128,0.7)" : `${accentColor}88` }} />
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+            <div className="h-full rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 60 ? "#4ade80cc" : moneyPct <= 40 ? "#f87171cc" : `${accentColor}88` }} />
           </div>
-          <span className="text-[10px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.55)" }}>{moneyPct}%</span>
+          <span className="text-[11px] font-black w-8 text-right" style={{ color: moneyPct >= 60 ? "#4ade80" : moneyPct <= 40 ? "#f87171" : "rgba(19,35,58,0.7)" }}>{moneyPct}%</span>
         </div>
       )}
     </div>

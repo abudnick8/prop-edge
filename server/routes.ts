@@ -4766,7 +4766,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
   // ── Line Movement: auto-pull opening vs current lines from ActionNetwork ───────────
   const LINE_MOVEMENT_CACHE = new Map<string, { data: any; ts: number }>();
-  const LM_TTL = 5 * 60 * 1000; // 5-min cache
+  const LM_TTL = 3 * 60 * 1000; // 3-min cache
 
   // ── Proactive game-time lookup: populated at startup + every 15 min ──────
   // Maps "awayTeamLower::homeTeamLower" → ISO gameTime string, for all 4 sports today.
@@ -4787,7 +4787,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${today}`;
           const { data } = await axios.get(url, {
             timeout: 8000,
-            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.actionnetwork.com/" },
+            headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.actionnetwork.com/", "Authorization": `Bearer ${process.env.ACTION_NETWORK_KEY ?? "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2"}` },
           });
           const games: any[] = data?.games ?? data?.scoreboard ?? [];
           for (const game of games) {
@@ -4841,6 +4841,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             "Accept": "application/json",
             "Referer": "https://www.actionnetwork.com/",
+            "Authorization": `Bearer ${process.env.ACTION_NETWORK_KEY ?? "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2"}`,
           };
 
           const { data } = await axios.get(url, { timeout: 10000, headers });
@@ -4864,8 +4865,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             if (oddsArr.length < 1) continue;
 
             const opening = oddsArr[0];
-            // Current = the entry with the most public/money data (auth key data), else latest
-            const current = oddsArr.find((o: any) => o.ml_away_money != null) ?? oddsArr[oddsArr.length - 1];
+            // Current = latest entry with public/money data (requires auth key); fallback to absolute latest
+            const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null);
+            const current = withPublic.length > 0 ? withPublic[withPublic.length - 1] : oddsArr[oddsArr.length - 1];
 
             // Spread movement
             const spreadOpen = opening.spread_away ?? null;

@@ -203,18 +203,32 @@ function fmtLM(v: number | null): string {
 }
 
 function MoveRowLS({ label, open, current, move }: { label: string; open: number|null; current: number|null; move: number|null }) {
-  const moved = move != null && Math.abs(move) >= 0.5;
-  const dir   = (move ?? 0) > 0 ? "#4ade80" : (move ?? 0) < 0 ? "#f87171" : "#94a3b8";
+  if (open == null && current == null) return null;
+  const moved  = move != null && Math.abs(move) >= 0.5;
+  const steam  = move != null && Math.abs(move) >= 3;
+  const deltaColor = !moved ? "rgba(19,35,58,0.3)" : (move! > 0 ? "#4ade80" : "#f87171");
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] w-14 font-semibold" style={{ color: "rgba(19,35,58,0.55)" }}>{label}</span>
-      <span className="font-mono text-[11px]" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLM(open)}</span>
-      <span className="text-[9px] mx-0.5" style={{ color: "rgba(19,35,58,0.3)" }}>→</span>
-      <span className="font-mono font-black text-[12px]" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLM(current)}</span>
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="text-[10px] w-16 font-bold uppercase tracking-wide flex-shrink-0" style={{ color: "rgba(19,35,58,0.45)" }}>{label}</span>
+      {/* Open */}
+      <div className="flex flex-col items-center min-w-[36px]">
+        <span className="text-[8px] uppercase font-bold" style={{ color: "rgba(19,35,58,0.3)" }}>Open</span>
+        <span className="font-mono text-[12px] font-semibold" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLM(open)}</span>
+      </div>
+      <ChevronRight size={9} style={{ color: "rgba(19,35,58,0.25)", flexShrink: 0 }} />
+      {/* Current — hero */}
+      <div className="flex flex-col items-center min-w-[36px]">
+        <span className="text-[8px] uppercase font-bold" style={{ color: "rgba(19,35,58,0.3)" }}>Now</span>
+        <span className="font-mono text-[15px] font-black" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLM(current)}</span>
+      </div>
+      {/* Delta */}
       {moved && move != null && (
-        <span className="text-[9px] font-bold" style={{ color: dir }}>
-          {move > 0 ? `+${move.toFixed(1)}` : move.toFixed(1)}
+        <span className="text-[11px] font-black" style={{ color: deltaColor }}>
+          {move > 0 ? `▲ +${Number(move.toFixed(1))}` : `▼ ${Number(move.toFixed(1))}`}
         </span>
+      )}
+      {steam && (
+        <span className="text-[9px] font-bold px-1 py-0.5 rounded ml-auto" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>STEAM</span>
       )}
     </div>
   );
@@ -222,25 +236,31 @@ function MoveRowLS({ label, open, current, move }: { label: string; open: number
 
 function PublicBarLS({ label, publicPct, moneyPct, accentColor }: { label: string; publicPct?: number|null; moneyPct?: number|null; accentColor: string }) {
   if (publicPct == null && moneyPct == null) return null;
+  const sharpMoney = moneyPct != null && publicPct != null && moneyPct - publicPct >= 15 && moneyPct >= 60;
+  const fadeMoney  = moneyPct != null && publicPct != null && publicPct - moneyPct >= 15 && moneyPct <= 40;
   return (
-    <div className="space-y-1">
-      <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
+    <div className="rounded-lg px-2.5 py-2 space-y-1.5" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.07)" }}>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>{label}</span>
+        {sharpMoney && <span className="text-[9px] font-bold" style={{ color: "#4ade80" }}>Sharp ↑</span>}
+        {fadeMoney  && <span className="text-[9px] font-bold" style={{ color: "#f87171" }}>Fade ↓</span>}
+      </div>
       {publicPct != null && (
         <div className="flex items-center gap-1.5">
-          <Users size={9} style={{ color: "rgba(19,35,58,0.4)" }} />
+          <Users size={8} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
           <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
-            <div className="h-1.5 rounded-full" style={{ width: `${publicPct}%`, background: accentColor + "88" }} />
+            <div className="h-1.5 rounded-full" style={{ width: `${publicPct}%`, background: "rgba(99,102,241,0.5)" }} />
           </div>
-          <span className="text-[9px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.5)" }}>{publicPct}%</span>
+          <span className="text-[11px] font-black w-8 text-right" style={{ color: "rgba(19,35,58,0.65)" }}>{publicPct}%</span>
         </div>
       )}
       {moneyPct != null && (
         <div className="flex items-center gap-1.5">
-          <DollarSign size={9} style={{ color: "rgba(19,35,58,0.4)" }} />
+          <DollarSign size={8} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
           <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
-            <div className="h-1.5 rounded-full" style={{ width: `${moneyPct}%`, background: accentColor }} />
+            <div className="h-1.5 rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 60 ? "#4ade80bb" : moneyPct <= 40 ? "#f87171bb" : `${accentColor}99` }} />
           </div>
-          <span className="text-[9px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.5)" }}>{moneyPct}%</span>
+          <span className="text-[11px] font-black w-8 text-right" style={{ color: moneyPct >= 60 ? "#4ade80" : moneyPct <= 40 ? "#f87171" : "rgba(19,35,58,0.65)" }}>{moneyPct}%</span>
         </div>
       )}
     </div>
