@@ -5,6 +5,54 @@ import { runScan, fetchLivePrices, computeSharpMoneyScore, tagUrgency } from "./
 import { broadcast } from "./ws";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { spawn, ChildProcess } from "child_process";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// ── Kronos Python microservice manager ───────────────────────────────────────
+const KRONOS_PORT = 5050;
+const KRONOS_URL  = `http://127.0.0.1:${KRONOS_PORT}`;
+let kronosProc: ChildProcess | null = null;
+let kronosReady = false;
+
+function startKronos() {
+  if (kronosProc) return;
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const scriptPath = path.join(__dirname, "kronos_service.py");
+  kronosProc = spawn("python3", [scriptPath], {
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
+  });
+  kronosProc.stdout?.on("data", (d: Buffer) => {
+    const msg = d.toString().trim();
+    console.log(`[Kronos] ${msg}`);
+    if (msg.includes("running on port")) kronosReady = true;
+  });
+  kronosProc.stderr?.on("data", (d: Buffer) => {
+    console.error(`[Kronos] ${d.toString().trim()}`);
+  });
+  kronosProc.on("exit", (code) => {
+    console.log(`[Kronos] Process exited (${code}). Will restart on next request.`);
+    kronosProc = null;
+    kronosReady = false;
+  });
+}
+
+async function ensureKronos(): Promise<boolean> {
+  if (!kronosProc) startKronos();
+  if (kronosReady) return true;
+  // Wait up to 4s for startup
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    if (kronosReady) return true;
+    try {
+      await axios.get(`${KRONOS_URL}/health`, { timeout: 500 });
+      kronosReady = true;
+      return true;
+    } catch {}
+  }
+  return false;
+}
 
 // ── Player stat cache (15 min TTL) ────────────────────────────────────────────
 const STAT_CACHE = new Map<string, { data: any; ts: number }>();
@@ -2028,6 +2076,122 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) {
       console.error("[pred-hist] Error:", e.message);
       res.json({ source: "error", history: [], error: e.message });
+    }
+  });
+
+  // ─── Kronos AI Forecast endpoint ───────────────────────────────────────────
+  // GET /api/prediction-markets/kronos/:marketId
+  // Fetches price history then proxies to the Kronos Python microservice.
+  // Returns: { signal, strength, forecast, explanation, trend_slope, volatility, ... }
+  const kronosCache = new Map<string, { data: any; ts: number }>();
+  const KRONOS_TTL = 5 * 60_000; // 5-min cache (price history doesn't change that fast)
+
+  // Start Kronos at server boot
+  startKronos();
+
+  app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
+    const { marketId } = req.params;
+    const pred_steps = parseInt((req.query.steps as string) || "12", 10);
+
+    // Cache check
+    const cacheKey = `${marketId}:${pred_steps}`;
+    const cached = kronosCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < KRONOS_TTL) {
+      return res.json({ ...cached.data, cached: true });
+    }
+
+    try {
+      // Step 1: Fetch price history (reuse history endpoint logic)
+      let history: { t: number; p: number }[] = [];
+
+      // Try to find the market in scan cache
+      const allMarkets = await storage.getBets();
+      const market = allMarkets.find((b: any) => b.id === marketId || b.polyId === marketId || b.conditionId === marketId);
+
+      if (market?.source === "polymarket" || (!market && !marketId.startsWith("KXSPORTS"))) {
+        // Polymarket: fetch CLOB history
+        try {
+          // Extract YES token — try clobTokenIds stored in cache
+          let yesTokenId: string | null = null;
+          if (market?.clobTokenIds) {
+            try {
+              const ids = typeof market.clobTokenIds === "string" ? JSON.parse(market.clobTokenIds) : market.clobTokenIds;
+              if (Array.isArray(ids) && ids.length > 0) yesTokenId = String(ids[0]);
+            } catch {}
+          }
+          if (!yesTokenId) {
+            // Try Gamma API for token
+            const gRes = await axios.get(`https://gamma-api.polymarket.com/markets/${marketId}`, { timeout: 5000 }).catch(() => null);
+            if (gRes?.data?.clobTokenIds) {
+              const ids = typeof gRes.data.clobTokenIds === "string" ? JSON.parse(gRes.data.clobTokenIds) : gRes.data.clobTokenIds;
+              if (Array.isArray(ids) && ids.length > 0) yesTokenId = String(ids[0]);
+            }
+          }
+          if (yesTokenId) {
+            const endTs = Math.floor(Date.now() / 1000);
+            const startTs = endTs - 30 * 24 * 3600;
+            const hRes = await axios.get("https://clob.polymarket.com/prices-history", {
+              params: { market: yesTokenId, startTs, endTs, fidelity: 60 },
+              timeout: 10_000,
+            });
+            const raw = hRes.data?.history ?? hRes.data ?? [];
+            history = (Array.isArray(raw) ? raw : []).map((pt: any) => ({ t: pt.t, p: pt.p }));
+          }
+        } catch (e: any) {
+          console.warn("[Kronos] CLOB fetch failed:", e.message);
+        }
+      }
+
+      // Kalshi or fallback: build synthetic from market data
+      if (history.length < 5 && market) {
+        const now = Math.floor(Date.now() / 1000);
+        const basePrice = market.yesPrice ?? market.price ?? 0.5;
+        const pd1 = market.pd1 ?? 0;
+        const ph1 = market.ph1 ?? 0;
+        history = [
+          { t: now - 7 * 24 * 3600, p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 * 7 / 100))) },
+          { t: now - 3 * 24 * 3600, p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 * 3 / 100))) },
+          { t: now - 24 * 3600,     p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 / 100))) },
+          { t: now - 3600,          p: Math.max(0.01, Math.min(0.99, basePrice - (ph1 / 100))) },
+          { t: now,                 p: Math.max(0.01, Math.min(0.99, basePrice)) },
+        ];
+      }
+
+      if (history.length < 2) {
+        return res.json({
+          signal: "neutral", strength: 0, forecast: [],
+          explanation: "Not enough price history for Kronos analysis.",
+          trend_slope: 0, volatility: 0, momentum: 0, sr: {},
+        });
+      }
+
+      // Step 2: Ensure Python service is up
+      const ready = await ensureKronos();
+      if (!ready) {
+        return res.status(503).json({
+          signal: "neutral", strength: 0, forecast: [],
+          explanation: "Kronos AI service is starting up — try again in a moment.",
+          error: "service_starting",
+        });
+      }
+
+      // Step 3: Call Kronos
+      const kronosRes = await axios.post(`${KRONOS_URL}/forecast`, {
+        history,
+        pred_steps,
+      }, { timeout: 8_000 });
+
+      const result = kronosRes.data;
+      kronosCache.set(cacheKey, { data: result, ts: Date.now() });
+      return res.json({ ...result, cached: false });
+
+    } catch (e: any) {
+      console.error("[Kronos] Endpoint error:", e.message);
+      return res.json({
+        signal: "neutral", strength: 0, forecast: [],
+        explanation: "Kronos analysis temporarily unavailable.",
+        error: e.message,
+      });
     }
   });
 
