@@ -1750,6 +1750,53 @@ export default function BetDetail() {
         </div>
       </div>
 
+      {/* ── Edge Crew Grade Banner ── */}
+      {(() => {
+        const ts = bet.teamStats as Record<string, any> | null;
+        const eg = ts?.edgeGrade;
+        const es = ts?.edgeScore;
+        const ez = ts?.edgeSizing;
+        const ev = ts?.edgeEV;
+        if (!eg) return null;
+        const gradeColor = eg.startsWith("A") ? "#4ade80" : eg.startsWith("B") ? "#fbbf24" : eg.startsWith("C") ? "#fb923c" : "#f87171";
+        const sizingColor = ez === "2u" ? "#4ade80" : ez === "1.5u" ? "#a3e635" : ez === "1u" ? "#fbbf24" : "#94a3b8";
+        return (
+          <div className="rounded-xl p-4 mb-1" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.5)" }}>Edge Crew v3 Grade</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Letter Grade */}
+              <div className="flex flex-col items-center justify-center rounded-lg px-4 py-2" style={{ background: gradeColor + "22", border: `2px solid ${gradeColor}` }}>
+                <span className="text-2xl font-black leading-none" style={{ color: gradeColor }}>{eg}</span>
+                <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Grade</span>
+              </div>
+              {/* Raw Score */}
+              {es != null && (
+                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.1)" }}>
+                  <span className="text-xl font-black leading-none" style={{ color: "#131A24" }}>{Number(es).toFixed(1)}<span className="text-sm font-semibold">/10</span></span>
+                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Score</span>
+                </div>
+              )}
+              {/* Sizing */}
+              {ez && (
+                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: sizingColor + "22", border: `1px solid ${sizingColor}` }}>
+                  <span className="text-xl font-black leading-none" style={{ color: sizingColor }}>{ez.toUpperCase()}</span>
+                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Sizing</span>
+                </div>
+              )}
+              {/* EV */}
+              {ev?.ev_pct != null && (
+                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: ev.ev_pct >= 0 ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${ev.ev_pct >= 0 ? "#4ade80" : "#f87171"}` }}>
+                  <span className="text-xl font-black leading-none" style={{ color: ev.ev_pct >= 0 ? "#4ade80" : "#f87171" }}>{ev.ev_pct >= 0 ? "+" : ""}{Number(ev.ev_pct).toFixed(1)}%</span>
+                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>EV</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Key Metrics Grid ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <Tile label="Confidence" value={`${score}/100`} color={score >= 85 ? "#4ade80" : score >= 70 ? "#fbbf24" : "#f87171"} accent={score >= 85} />

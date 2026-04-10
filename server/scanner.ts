@@ -8,6 +8,58 @@ import axios from "axios";
 import { InsertBet } from "@shared/schema";
 import { storage } from "./storage";
 import { applyMLWeights } from "./ml-weights";
+import { spawn } from "child_process";
+import path from "path";
+
+// ─── Edge Crew v3 Grade Engine ───────────────────────────────────────────────
+// Calls server/edge_grade.py via spawn for team-bet grading.
+// Props continue to use computeConfidence() — edge-crew doesn't cover props.
+
+interface EdgeGradeResult {
+  score:      number;       // 1–10
+  confidence: number;       // 40–95 (maps to Kronos 0–100 scale)
+  grade:      string;       // A+, A, A-, B+, B, B-, C+, C, D, F
+  sizing:     string;       // 2u, 1.5u, 1u, PASS
+  factors:    string[];     // human-readable variable notes
+  ev:         { ev_pct: number | null; ev_grade: string; kelly_units: string; true_prob: number | null; implied_prob: number | null; edge: number | null; moneyline: number | null };
+  peter:      { flags: any[]; adjustment: number; has_kill: boolean };
+  variables:  Record<string, any>;
+  chains_fired?: string[];
+}
+
+function callEdgeGrade(payload: Record<string, any>): Promise<EdgeGradeResult | null> {
+  return new Promise((resolve) => {
+    const pyPath = path.join(__dirname, "edge_grade.py");
+    const child = spawn("python3", [pyPath, "grade", JSON.stringify(payload)], { timeout: 15000 });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+    child.on("close", (code: number) => {
+      if (code !== 0 || !out.trim()) {
+        if (err) console.warn("[EdgeGrade] stderr:", err.slice(0, 300));
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(JSON.parse(out.trim()) as EdgeGradeResult);
+      } catch {
+        resolve(null);
+      }
+    });
+    child.on("error", () => resolve(null));
+  });
+}
+
+/** Map EdgeGradeResult → ScoreResult shape that the rest of scanner expects */
+function edgeGradeToScore(eg: EdgeGradeResult, fallback: any): { score: number; risk: "low" | "medium" | "high"; allocation: number; factors: string[]; summary: string } {
+  const score = eg.confidence;
+  const risk: "low" | "medium" | "high" = score >= 80 ? "low" : score >= 65 ? "medium" : "high";
+  const allocation = eg.sizing === "2u" ? 4 : eg.sizing === "1.5u" ? 3 : eg.sizing === "1u" ? 2 : 1;
+  const evStr = eg.ev?.ev_pct != null ? ` | EV ${eg.ev.ev_pct > 0 ? "+" : ""}${eg.ev.ev_pct}%` : "";
+  const summary = `Grade ${eg.grade} (${eg.sizing}) — Edge Crew score ${eg.score.toFixed(1)}/10${evStr}`;
+  return { score, risk, allocation, factors: eg.factors, summary };
+}
 
 // ─── ESPN Stat Cache ──────────────────────────────────────────────────────────
 // In-memory cache keyed by `playerName::sport::statKey` → recent average
@@ -1013,6 +1065,41 @@ function applyApiSportsBoosts(bets: InsertBet[], statsMap: Map<string, any>): In
   });
 }
 
+
+// ── Build Edge Crew grade payload from ActionNetwork game object ──────────────
+function buildEdgePayload(
+  game: any,
+  awayTeamObj: any,
+  homeTeamObj: any,
+  awayTeam: string,
+  homeTeam: string,
+  sportLabel: string,
+  pickSide: "home" | "away",
+  mlHome: number | null,
+  mlAway: number | null,
+  spreadDelta: number | null,
+  spreadHome: number | null,
+): Record<string, any> {
+  const hr = (awayTeamObj as any)?.record ?? (homeTeamObj as any)?.record ?? null;
+  const homeRecord = (homeTeamObj as any)?.record ?? "0-0";
+  const awayRecord = (awayTeamObj as any)?.record ?? "0-0";
+  return {
+    sport:      sportLabel,
+    homeTeam,
+    awayTeam,
+    pickSide,
+    homeRecord,
+    awayRecord,
+    homeML:     mlHome ?? null,
+    awayML:     mlAway ?? null,
+    spreadHome: spreadHome ?? null,
+    spreadDelta: spreadDelta ?? 0,
+    // Sharp money %
+    homeMoneyPct: game.odds?.[0]?.ml_home_money ?? null,
+    awayMoneyPct: game.odds?.[0]?.ml_away_money ?? null,
+  };
+}
+
 async function fetchActionNetwork(): Promise<InsertBet[]> {
   const bets: InsertBet[] = [];
   const seen = new Set<string>();
@@ -1108,7 +1195,11 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
               const id = `action-${sportSlug}-${game.id}-ml`;
               if (!seen.has(id)) {
                 seen.add(id);
-                const score = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds, sharpMoneyPct: pickedSharpMoney, publicTicketPct: pickedPublicTicket });
+                const baseScore = computeConfidence({ impliedProb: pickedProb, source: "actionnetwork", betType: "moneyline", sport: sportLabel, title, odds: pickedOdds, sharpMoneyPct: pickedSharpMoney, publicTicketPct: pickedPublicTicket });
+                // Try edge-crew grade engine first; fall back to Kronos computeConfidence
+                const egPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, pickSide as "home"|"away", mlHome, mlAway, null, null);
+                const eg = await callEdgeGrade(egPayload);
+                const score = eg ? { ...edgeGradeToScore(eg, baseScore), edgeGrade: eg.grade, edgeSizing: eg.sizing, edgeScore: eg.score, edgeVariables: eg.variables, edgeEV: eg.ev } : baseScore;
                 bets.push({
                   id, source: "actionnetwork", sport: sportLabel, betType: "moneyline", title,
                   description: `ActionNetwork line — ${label}`,
@@ -1118,7 +1209,13 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                   keyFactors: [label, ...score.factors], researchSummary: score.summary,
                   isHighConfidence: score.score >= 85,
                   homeTeam, awayTeam, playerName: null, gameTime,
-                  notificationSent: false, playerStats: null, teamStats: null,
+                  notificationSent: false, playerStats: null,
+                  teamStats: (score as any).edgeGrade ? {
+                    edgeGrade: (score as any).edgeGrade,
+                    edgeSizing: (score as any).edgeSizing,
+                    edgeScore: (score as any).edgeScore,
+                    edgeEV: (score as any).edgeEV,
+                  } : null,
                   yesPrice: null, noPrice: null,
                 });
               }
@@ -1159,7 +1256,10 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const spreadId = `action-${sportSlug}-${game.id}-spread`;
             if (!seen.has(spreadId)) {
               seen.add(spreadId);
-              const score = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine, sharpMoneyPct: pickedSpreadSharpMoney, publicTicketPct: pickedSpreadPublicTicket });
+              const baseSpreadScore = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine, sharpMoneyPct: pickedSpreadSharpMoney, publicTicketPct: pickedSpreadPublicTicket });
+              const egSpreadPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, pickSpreadSide as "home"|"away", mlHome, mlAway, null, pickSpreadLine ?? null);
+              const egSpread = await callEdgeGrade(egSpreadPayload);
+              const score = egSpread ? { ...edgeGradeToScore(egSpread, baseSpreadScore), edgeGrade: egSpread.grade, edgeSizing: egSpread.sizing, edgeScore: egSpread.score, edgeVariables: egSpread.variables, edgeEV: egSpread.ev } : baseSpreadScore;
               bets.push({
                 id: spreadId, source: "actionnetwork", sport: sportLabel, betType: "spread", title: spreadTitle,
                 description: `ActionNetwork spread — ${spreadLabel}`,
@@ -1169,7 +1269,13 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 keyFactors: [spreadLabel, ...score.factors], researchSummary: score.summary,
                 isHighConfidence: score.score >= 85,
                 homeTeam, awayTeam, playerName: null, gameTime,
-                notificationSent: false, playerStats: null, teamStats: null,
+                notificationSent: false, playerStats: null,
+                teamStats: (score as any).edgeGrade ? {
+                  edgeGrade: (score as any).edgeGrade,
+                  edgeSizing: (score as any).edgeSizing,
+                  edgeScore: (score as any).edgeScore,
+                  edgeEV: (score as any).edgeEV,
+                } : null,
                 yesPrice: null, noPrice: null,
               });
             }
@@ -1205,7 +1311,11 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
             const totalId = `action-${sportSlug}-${game.id}-total`;
             if (!seen.has(totalId)) {
               seen.add(totalId);
-              const score = computeConfidence({ impliedProb: pickTotalProb, source: "actionnetwork", betType: "total", sport: sportLabel, title: totalTitle, odds: pickTotalOdds, line: total, sharpMoneyPct: pickedTotalSharpMoney, publicTicketPct: pickedTotalPublicTicket });
+              const baseTotalScore = computeConfidence({ impliedProb: pickTotalProb, source: "actionnetwork", betType: "total", sport: sportLabel, title: totalTitle, odds: pickTotalOdds, line: total, sharpMoneyPct: pickedTotalSharpMoney, publicTicketPct: pickedTotalPublicTicket });
+              // Totals: pick "home" side as a proxy (over = offense, grade the home side)
+              const egTotalPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, "home", mlHome, mlAway, null, total ?? null);
+              const egTotal = await callEdgeGrade(egTotalPayload);
+              const score = egTotal ? { ...edgeGradeToScore(egTotal, baseTotalScore), edgeGrade: egTotal.grade, edgeSizing: egTotal.sizing, edgeScore: egTotal.score, edgeVariables: egTotal.variables, edgeEV: egTotal.ev } : baseTotalScore;
               bets.push({
                 id: totalId, source: "actionnetwork", sport: sportLabel, betType: "total", title: totalTitle,
                 description: `ActionNetwork total — ${totalLabel}`,
@@ -1215,7 +1325,13 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 keyFactors: [totalLabel, ...score.factors], researchSummary: score.summary,
                 isHighConfidence: score.score >= 85,
                 homeTeam, awayTeam, playerName: null, gameTime,
-                notificationSent: false, playerStats: null, teamStats: null,
+                notificationSent: false, playerStats: null,
+                teamStats: (score as any).edgeGrade ? {
+                  edgeGrade: (score as any).edgeGrade,
+                  edgeSizing: (score as any).edgeSizing,
+                  edgeScore: (score as any).edgeScore,
+                  edgeEV: (score as any).edgeEV,
+                } : null,
                 yesPrice: null, noPrice: null,
               });
             }

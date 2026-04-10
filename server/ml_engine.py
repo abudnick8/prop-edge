@@ -88,6 +88,15 @@ def extract_features(bet: dict) -> dict[str, Any]:
     line      = float(bet.get("line") or 0)
     pick_side = (bet.get("pickSide") or bet.get("pick_side") or "").upper()
 
+    # Edge-crew v3 grade fields — if present, use edge score (1-10) to enrich conf
+    edge_score_raw = bet.get("edgeScore")  # float 1-10
+    edge_grade_letter = (bet.get("edgeGrade") or "").upper()  # e.g. "A-", "B+"
+    edge_sizing = (bet.get("edgeSizing") or "").lower()       # "2u","1.5u","1u","pass"
+    if edge_score_raw is not None:
+        # Blend edge-crew confidence into conf: edge_crew confidence = 55 + (score-5)*8
+        edge_conf = max(40.0, min(95.0, 55.0 + (float(edge_score_raw) - 5.0) * 8.0))
+        conf = round((conf * 0.4) + (edge_conf * 0.6), 1)  # weight edge engine higher
+
     # Confidence tier
     if conf >= 85:
         conf_tier = "elite"
