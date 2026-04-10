@@ -1,6 +1,8 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, copyFile, readdir } from "fs/promises";
+import { existsSync } from "fs";
+import * as path from "path";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -35,6 +37,17 @@ const allowlist = [
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
+
+  // Create dist/ dir before copying (rm above wiped it)
+  const { mkdir } = await import("fs/promises");
+  await mkdir("dist", { recursive: true });
+
+  console.log("copying Python server files to dist/...");
+  const pyFiles = (await readdir("server")).filter(f => f.endsWith(".py"));
+  for (const f of pyFiles) {
+    await copyFile(path.join("server", f), path.join("dist", f));
+    console.log(`  copied ${f}`);
+  }
 
   console.log("building client...");
   await viteBuild();

@@ -5131,7 +5131,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         total:        total ?? null,
       };
 
-      const pyPath = path.join(__dirname, "edge_grade.py");
+      // Resolve edge_grade.py — try multiple paths since __dirname=dist/ in production
+      const fs = await import("fs");
+      const candidatePaths = [
+        path.join(process.cwd(), "server", "edge_grade.py"),
+        path.join(__dirname, "edge_grade.py"),
+        path.join(__dirname, "..", "server", "edge_grade.py"),
+      ];
+      const pyPath = candidatePaths.find(p => fs.existsSync(p)) ?? candidatePaths[0];
+      console.log(`[CIQ/LM] Using edge_grade.py at: ${pyPath} (exists: ${fs.existsSync(pyPath)})`);
+
       const result = await new Promise<any>((resolve) => {
         const child = spawn("python3", [pyPath, "grade", JSON.stringify(payload)], { timeout: 15000 });
         let out = "";
@@ -5140,14 +5149,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
         child.on("close", (code: number) => {
           if (code !== 0 || !out.trim()) {
-            console.warn("[CIQ/LM] edge_grade stderr:", err.slice(0, 200));
+            console.warn(`[CIQ/LM] edge_grade exited ${code}. stderr: ${err.slice(0, 400)}`);
             resolve(null);
             return;
           }
           try { resolve(JSON.parse(out.trim())); }
-          catch { resolve(null); }
+          catch (e) { console.warn("[CIQ/LM] JSON parse failed:", out.slice(0, 200)); resolve(null); }
         });
-        child.on("error", () => resolve(null));
+        child.on("error", (e: any) => { console.warn("[CIQ/LM] spawn error:", e.message); resolve(null); });
       });
 
       if (!result) {
