@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useRef } from "react";
-import { Wifi, WifiOff, RefreshCw, Clock, Tv2, MapPin, ChevronRight } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Clock, Tv2, MapPin, ChevronRight, TrendingUp, Loader2, DollarSign, Users } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface TeamScore {
@@ -188,6 +188,238 @@ function LinescoreTable({ teams, sport }: { teams: TeamScore[]; sport: string })
 }
 
 // ── Single game card ──────────────────────────────────────────────────────────
+
+// ── Line Movement Types ───────────────────────────────────────────────────────
+interface LMSpread  { open: number|null; current: number|null; move: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
+interface LMTotal   { open: number|null; current: number|null; move: number|null; overPublic?: number|null; overMoney?: number|null; underPublic?: number|null; underMoney?: number|null; }
+interface LMML      { awayOpen: number|null; awayCurrent: number|null; homeOpen: number|null; homeCurrent: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
+interface LMGame    { id: string; sport: string; awayTeam: string; homeTeam: string; gameTime: string|null; status: string; numBets: number|null; spread: LMSpread; total: LMTotal; moneyline: LMML; }
+
+// ── LM sub-helpers ────────────────────────────────────────────────────────────
+function fmtLM(v: number | null): string {
+  if (v == null) return "—";
+  if (v > 0) return `+${v}`;
+  return String(v);
+}
+
+function MoveRowLS({ label, open, current, move }: { label: string; open: number|null; current: number|null; move: number|null }) {
+  const moved = move != null && Math.abs(move) >= 0.5;
+  const dir   = (move ?? 0) > 0 ? "#4ade80" : (move ?? 0) < 0 ? "#f87171" : "#94a3b8";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] w-14 font-semibold" style={{ color: "rgba(19,35,58,0.55)" }}>{label}</span>
+      <span className="font-mono text-[11px]" style={{ color: "rgba(19,35,58,0.45)" }}>{fmtLM(open)}</span>
+      <span className="text-[9px] mx-0.5" style={{ color: "rgba(19,35,58,0.3)" }}>→</span>
+      <span className="font-mono font-black text-[12px]" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLM(current)}</span>
+      {moved && move != null && (
+        <span className="text-[9px] font-bold" style={{ color: dir }}>
+          {move > 0 ? `+${move.toFixed(1)}` : move.toFixed(1)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PublicBarLS({ label, publicPct, moneyPct, accentColor }: { label: string; publicPct?: number|null; moneyPct?: number|null; accentColor: string }) {
+  if (publicPct == null && moneyPct == null) return null;
+  return (
+    <div className="space-y-1">
+      <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
+      {publicPct != null && (
+        <div className="flex items-center gap-1.5">
+          <Users size={9} style={{ color: "rgba(19,35,58,0.4)" }} />
+          <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
+            <div className="h-1.5 rounded-full" style={{ width: `${publicPct}%`, background: accentColor + "88" }} />
+          </div>
+          <span className="text-[9px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.5)" }}>{publicPct}%</span>
+        </div>
+      )}
+      {moneyPct != null && (
+        <div className="flex items-center gap-1.5">
+          <DollarSign size={9} style={{ color: "rgba(19,35,58,0.4)" }} />
+          <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(19,35,58,0.1)" }}>
+            <div className="h-1.5 rounded-full" style={{ width: `${moneyPct}%`, background: accentColor }} />
+          </div>
+          <span className="text-[9px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.5)" }}>{moneyPct}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── GameLineMovement — inline line movement for a LiveGame card ───────────────
+function GameLineMovement({ game }: { game: LiveGame }) {
+  const [open, setOpen] = useState(false);
+  const sport = game.sport;
+  const meta  = SPORT_META[sport];
+  const accentColor = meta?.color ?? "#f59e0b";
+
+  const away = game.teams.find(t => t.homeAway === "away") ?? game.teams[0];
+  const home = game.teams.find(t => t.homeAway === "home") ?? game.teams[1];
+
+  const { data: lmData, isLoading } = useQuery<LMGame[]>({
+    queryKey: ["/api/line-movement"],
+    queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    enabled: open,
+  });
+
+  // Fuzzy match: compare last word of team names
+  const lmGame = lmData?.find(g => {
+    if (g.sport !== sport) return false;
+    const lmAway = g.awayTeam.split(" ").pop()?.toLowerCase() ?? "";
+    const lmHome = g.homeTeam.split(" ").pop()?.toLowerCase() ?? "";
+    const scoreAway = (away?.displayName ?? away?.abbr ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const scoreHome = (home?.displayName ?? home?.abbr ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const awayOk = lmAway && scoreAway && (lmAway.includes(scoreAway) || scoreAway.includes(lmAway) || lmAway === scoreAway || away?.abbr?.toLowerCase() === lmAway.slice(0,3));
+    const homeOk = lmHome && scoreHome && (lmHome.includes(scoreHome) || scoreHome.includes(lmHome) || lmHome === scoreHome || home?.abbr?.toLowerCase() === lmHome.slice(0,3));
+    return awayOk || homeOk;
+  }) ?? null;
+
+  const spreadMove = lmGame?.spread.move ?? null;
+  const totalMove  = lmGame?.total.move  ?? null;
+  const hasSteam = (Math.abs(spreadMove ?? 0) >= 2) || (Math.abs(totalMove ?? 0) >= 2);
+  const hasRLM   = (() => {
+    if (!lmGame) return false;
+    const awayPub = lmGame.spread.awayPublic ?? 50;
+    const moved = spreadMove ?? 0;
+    return (awayPub >= 60 && moved > 0) || (awayPub <= 40 && moved < 0);
+  })();
+
+  const hasAnyData = lmGame && (
+    lmGame.spread.open != null || lmGame.total.open != null ||
+    lmGame.moneyline.awayOpen != null
+  );
+
+  return (
+    <div className="rounded-lg overflow-hidden" style={{ border: `1px solid rgba(19,35,58,0.1)`, borderLeft: `3px solid ${accentColor}` }}>
+      {/* Collapsed header */}
+      <button
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors"
+        style={{ background: "rgba(19,35,58,0.03)" }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <TrendingUp size={12} style={{ color: accentColor, flexShrink: 0 }} />
+        <span className="text-[11px] font-bold" style={{ color: "rgba(19,35,58,0.65)" }}>Line Movement</span>
+
+        {hasSteam && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>🔥 Steam</span>
+        )}
+        {hasRLM && !hasSteam && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}>↩ RLM</span>
+        )}
+        {!lmGame && !isLoading && open && (
+          <span className="text-[9px] ml-1" style={{ color: "rgba(19,35,58,0.4)" }}>No data for this game</span>
+        )}
+
+        <ChevronRight size={12} className="ml-auto transition-transform" style={{ color: "rgba(19,35,58,0.35)", transform: open ? "rotate(90deg)" : "rotate(0deg)" }} />
+      </button>
+
+      {/* Expanded */}
+      {open && (
+        <div className="px-3 pb-3 pt-1 bg-white space-y-3">
+          {isLoading && (
+            <div className="flex items-center gap-2 py-2 text-[11px]" style={{ color: "rgba(19,35,58,0.45)" }}>
+              <Loader2 size={11} className="animate-spin" /> Loading…
+            </div>
+          )}
+
+          {!isLoading && !hasAnyData && (
+            <p className="text-[11px] py-2 text-center" style={{ color: "rgba(19,35,58,0.4)" }}>
+              No line movement data yet for this game.
+            </p>
+          )}
+
+          {hasAnyData && lmGame && (
+            <div className="space-y-3">
+              {/* game header */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>
+                  {lmGame.awayTeam} @ {lmGame.homeTeam}
+                </span>
+                {lmGame.numBets != null && (
+                  <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.4)" }}>
+                    {lmGame.numBets.toLocaleString()} bets tracked
+                  </span>
+                )}
+              </div>
+
+              {/* Spread */}
+              {(lmGame.spread.open != null || lmGame.spread.current != null) && (
+                <div className="space-y-1.5">
+                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Spread</div>
+                  <MoveRowLS label="ATS" open={lmGame.spread.open} current={lmGame.spread.current} move={lmGame.spread.move} />
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <PublicBarLS label={`${lmGame.awayTeam.split(" ").pop()} ATS`} publicPct={lmGame.spread.awayPublic} moneyPct={lmGame.spread.awayMoney} accentColor={accentColor} />
+                    <PublicBarLS label={`${lmGame.homeTeam.split(" ").pop()} ATS`} publicPct={lmGame.spread.homePublic} moneyPct={lmGame.spread.homeMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {lmGame.spread.open != null && lmGame.total.open != null && (
+                <div style={{ height: 1, background: "rgba(19,35,58,0.06)" }} />
+              )}
+
+              {/* Total */}
+              {(lmGame.total.open != null || lmGame.total.current != null) && (
+                <div className="space-y-1.5">
+                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Total (O/U)</div>
+                  <MoveRowLS label="O/U" open={lmGame.total.open} current={lmGame.total.current} move={lmGame.total.move} />
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <PublicBarLS label="Over"  publicPct={lmGame.total.overPublic}  moneyPct={lmGame.total.overMoney}  accentColor={accentColor} />
+                    <PublicBarLS label="Under" publicPct={lmGame.total.underPublic} moneyPct={lmGame.total.underMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {lmGame.total.open != null && (lmGame.moneyline.awayOpen != null || lmGame.moneyline.homeOpen != null) && (
+                <div style={{ height: 1, background: "rgba(19,35,58,0.06)" }} />
+              )}
+
+              {/* Moneyline */}
+              {(lmGame.moneyline.awayOpen != null || lmGame.moneyline.homeOpen != null) && (
+                <div className="space-y-1.5">
+                  <div className="text-[9px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.35)" }}>Moneyline</div>
+                  <MoveRowLS
+                    label={lmGame.awayTeam.split(" ").pop()!}
+                    open={lmGame.moneyline.awayOpen} current={lmGame.moneyline.awayCurrent}
+                    move={lmGame.moneyline.awayCurrent != null && lmGame.moneyline.awayOpen != null ? lmGame.moneyline.awayCurrent - lmGame.moneyline.awayOpen : null}
+                  />
+                  <MoveRowLS
+                    label={lmGame.homeTeam.split(" ").pop()!}
+                    open={lmGame.moneyline.homeOpen} current={lmGame.moneyline.homeCurrent}
+                    move={lmGame.moneyline.homeCurrent != null && lmGame.moneyline.homeOpen != null ? lmGame.moneyline.homeCurrent - lmGame.moneyline.homeOpen : null}
+                  />
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <PublicBarLS label={`${lmGame.awayTeam.split(" ").pop()} ML`} publicPct={lmGame.moneyline.awayPublic} moneyPct={lmGame.moneyline.awayMoney} accentColor={accentColor} />
+                    <PublicBarLS label={`${lmGame.homeTeam.split(" ").pop()} ML`} publicPct={lmGame.moneyline.homePublic} moneyPct={lmGame.moneyline.homeMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {/* Sharp signal summary */}
+              {(hasSteam || hasRLM) && (
+                <div className="rounded-lg px-3 py-2"
+                  style={{ background: hasSteam ? "rgba(248,113,113,0.06)" : "rgba(74,222,128,0.06)", border: `1px solid ${hasSteam ? "rgba(248,113,113,0.2)" : "rgba(74,222,128,0.2)"}` }}>
+                  <p className="text-[10px] font-bold" style={{ color: hasSteam ? "#f87171" : "#4ade80" }}>
+                    {hasSteam ? "🔥 Sharp Steam Detected" : "↩ Reverse Line Movement"}
+                  </p>
+                  <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.55)" }}>
+                    {hasSteam
+                      ? `Line moved ${Math.abs(spreadMove ?? totalMove ?? 0)} pts — pro money is behind this game.`
+                      : `Public % and line direction diverge — sharp money fading the public side.`}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameCard({ game, expanded, onToggle }: { game: LiveGame; expanded: boolean; onToggle: () => void }) {
   const meta = SPORT_META[game.sport] ?? SPORT_META.NBA;
   const { text: statusText, live, color: statusColor } = stateLabel(game.status, game.date);
@@ -336,6 +568,9 @@ function GameCard({ game, expanded, onToggle }: { game: LiveGame; expanded: bool
               </div>
             </div>
           )}
+
+          {/* Line Movement */}
+          <GameLineMovement game={game} />
 
           {/* Venue */}
           {game.venue && (
