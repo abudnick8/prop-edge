@@ -1155,94 +1155,98 @@ function GameCard({ game }: { game: GameLine }) {
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-accent/30 transition-colors"
+        className="px-4 pt-3 pb-2 cursor-pointer hover:bg-accent/30 transition-colors"
         onClick={() => setExpanded(!expanded)}
         data-testid={`game-card-${game.id}`}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-base flex-shrink-0">{SPORT_EMOJI[game.sport] ?? "🏟"}</span>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-foreground truncate">
-              {game.awayTeam} <span className="text-muted-foreground font-normal">@</span> {game.homeTeam}
-            </p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-foreground/70">{fmtTime(game.gameTime)}</span>
-              {game.numBets != null && (
-                <span className="text-[10px] text-foreground/70">{game.numBets.toLocaleString()} bets</span>
+        {/* Row 1: sport emoji + matchup + spread summary + chevron */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-base flex-shrink-0 mt-0.5">{SPORT_EMOJI[game.sport] ?? "🏟"}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground leading-snug">
+                {game.awayTeam} <span className="text-muted-foreground font-normal">@</span> {game.homeTeam}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-foreground/70">{fmtTime(game.gameTime)}</span>
+                {game.numBets != null && (
+                  <span className="text-[10px] text-foreground/70">{game.numBets.toLocaleString()} bets</span>
+                )}
+                {game.openingInserted && (
+                  <span className="text-[10px] text-foreground/70">opened {fmtRelTime(game.openingInserted)}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Spread/total + chevron — right side */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="text-right">
+              {game.spread.current != null && (
+                <p className="text-[11px] font-mono text-muted-foreground">
+                  {fmtLine(game.spread.current)}
+                  {spreadMove != null && spreadMove !== 0 && (
+                    <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                      ({spreadMove > 0 ? "+" : ""}{spreadMove})
+                    </span>
+                  )}
+                </p>
               )}
-              {game.openingInserted && (
-                <span className="text-[10px] text-foreground/70">opened {fmtRelTime(game.openingInserted)}</span>
+              {game.total.current != null && (
+                <p className="text-[10px] font-mono text-foreground/70">
+                  O/U {game.total.current}
+                  {totalMove != null && totalMove !== 0 && (
+                    <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                      ({totalMove > 0 ? "+" : ""}{totalMove})
+                    </span>
+                  )}
+                </p>
               )}
             </div>
+            {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Movement summary chips */}
-          {hasSteam && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border-red-500/30 font-bold">🔥 STEAM</Badge>
-          )}
-          {!hasSteam && hasSignificant && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border-amber-500/20 font-bold">⚡ MOVED</Badge>
-          )}
-          {hasPublicData && (
-            <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
-          )}
-          {/* Inline rec badge — always visible when there's a signal */}
-          {rec && !expanded && <RecBadge rec={rec} />}
-          {/* CIQ grade badge — whale-style, only shown when grade is ready */}
-          {!expanded && ciqAvailable && ciqGrade && (
-            <span
-              className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border flex-shrink-0"
-              style={{
-                background: `${ciqGradeColor}20`,
-                color: ciqGradeColor,
-                borderColor: `${ciqGradeColor}50`,
-              }}
-            >
-              🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
-            </span>
-          )}
-          {/* Research/Why button — opens line intelligence panel */}
-          {hasResearchWorthy && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowResearch(!showResearch); }}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors border ${
-                showResearch
-                  ? "bg-primary/20 text-primary border-primary/40"
-                  : "bg-primary/8 text-primary/70 border-primary/20 hover:bg-primary/15 hover:text-primary"
-              }`}
-              data-testid={`research-btn-${game.id}`}
-            >
-              <FlaskConical size={10} />
-              {showResearch ? "Hide" : "Why?"}
-            </button>
-          )}
-          {/* Quick spread/total summary */}
-          <div className="text-right hidden sm:block">
-            {game.spread.current != null && (
-              <p className="text-[11px] font-mono text-muted-foreground">
-                {fmtLine(game.spread.current)}
-                {spreadMove != null && spreadMove !== 0 && (
-                  <span className={`ml-1 text-[10px] font-bold ${Math.abs(spreadMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
-                    ({spreadMove > 0 ? "+" : ""}{spreadMove})
-                  </span>
-                )}
-              </p>
+        {/* Row 2: badge strip — wraps naturally on mobile */}
+        {!expanded && (
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {hasSteam && (
+              <Badge className="text-[9px] px-1.5 py-0.5 bg-red-500/15 text-red-400 border-red-500/30 font-bold">🔥 STEAM</Badge>
             )}
-            {game.total.current != null && (
-              <p className="text-[10px] font-mono text-foreground/70">
-                O/U {game.total.current}
-                {totalMove != null && totalMove !== 0 && (
-                  <span className={`ml-1 text-[9px] font-bold ${Math.abs(totalMove) >= 3 ? "text-red-400" : "text-amber-400"}`}>
-                    ({totalMove > 0 ? "+" : ""}{totalMove})
-                  </span>
-                )}
-              </p>
+            {!hasSteam && hasSignificant && (
+              <Badge className="text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border-amber-500/20 font-bold">⚡ MOVED</Badge>
+            )}
+            {hasPublicData && (
+              <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
+            )}
+            {rec && <RecBadge rec={rec} />}
+            {ciqAvailable && ciqGrade && (
+              <span
+                className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border flex-shrink-0"
+                style={{
+                  background: `${ciqGradeColor}20`,
+                  color: ciqGradeColor,
+                  borderColor: `${ciqGradeColor}50`,
+                }}
+              >
+                🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
+              </span>
+            )}
+            {hasResearchWorthy && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowResearch(!showResearch); }}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors border ${
+                  showResearch
+                    ? "bg-primary/20 text-primary border-primary/40"
+                    : "bg-primary/8 text-primary/70 border-primary/20 hover:bg-primary/15 hover:text-primary"
+                }`}
+                data-testid={`research-btn-${game.id}`}
+              >
+                <FlaskConical size={10} />
+                {showResearch ? "Hide" : "Why?"}
+              </button>
             )}
           </div>
-          {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
-        </div>
+        )}
       </div>
 
       {/* Research panel — shown when user clicks Why? */}
