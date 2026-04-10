@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.numpy", "python312Packages.scipy"]
 
 [phases.install]
 cmds = ["npm install --legacy-peer-deps"]

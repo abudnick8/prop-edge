@@ -30,6 +30,16 @@ function startKronos() {
   kronosProc.stderr?.on("data", (d: Buffer) => {
     console.error(`[Kronos] ${d.toString().trim()}`);
   });
+  kronosProc.on("error", (err: any) => {
+    if (err.code === "ENOENT") {
+      console.warn("[Kronos] python3 not found — Kronos AI will be disabled.");
+      kronosFailed = true;
+    } else {
+      console.error(`[Kronos] Spawn error: ${err.message}`);
+    }
+    kronosProc = null;
+    kronosReady = false;
+  });
   kronosProc.on("exit", (code) => {
     console.log(`[Kronos] Process exited (${code}). Will restart on next request.`);
     kronosProc = null;
@@ -37,19 +47,25 @@ function startKronos() {
   });
 }
 
+let kronosFailed = false; // set if python3 is unavailable
+
 async function ensureKronos(): Promise<boolean> {
+  if (kronosFailed) return false;
   if (!kronosProc) startKronos();
   if (kronosReady) return true;
   // Wait up to 4s for startup
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 200));
     if (kronosReady) return true;
+    if (kronosFailed) return false;
     try {
       await axios.get(`${KRONOS_URL}/health`, { timeout: 500 });
       kronosReady = true;
       return true;
     } catch {}
   }
+  console.warn("[Kronos] Timed out waiting for Python service — marking as unavailable");
+  kronosFailed = true;
   return false;
 }
 
