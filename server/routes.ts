@@ -1440,20 +1440,31 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const hasNumber     = /\d/.test(legText);
         const hasCondition  = /wins|beats|covers|over|under|leads|scores|advances|moneyline|spread|ml\b/i.test(legText);
         if (!hasColon && !hasNumber && !hasCondition) {
-          // Plain team name — resolve to full franchise name, detecting sport if needed
-          const s = (sport || "OTHER").toUpperCase();
-          let fullName = resolveFullTeamName(legText, sport);
-          // Determine sport label: if sport was OTHER/unknown, detect it from the resolved name
-          let detectedSport = s !== "OTHER" ? s : null;
-          if (!detectedSport) {
-            for (const sp of ["NBA","NHL","MLB","NFL"] as const) {
-              if (Object.values(TEAM_FULL_NAME[sp]).includes(fullName)) {
+          // Plain team name — always resolve by searching ALL leagues first
+          // so a multi-sport parlay doesn't mis-tag NBA teams as NHL etc.
+          let fullName = legText;
+          let detectedSport: string | null = null;
+          const lkey = legText.trim().toLowerCase();
+          // Search all four leagues regardless of what the market says
+          for (const sp of ["NBA", "NHL", "MLB", "NFL"] as const) {
+            const table = TEAM_FULL_NAME[sp];
+            for (const [k, v] of Object.entries(table)) {
+              if (k.toLowerCase() === lkey || v.toLowerCase() === lkey) {
+                fullName = v;
                 detectedSport = sp;
                 break;
               }
             }
+            if (detectedSport) break;
           }
-          // Never show "(Other)" — only append sport label when it adds value
+          // If not found in any table, fall back to resolveFullTeamName with the market sport
+          if (!detectedSport) {
+            fullName = resolveFullTeamName(legText, sport);
+            // Only use the market sport label if we confirmed the team is actually in that league
+            // Don't blindly label unknown teams with the market sport
+            detectedSport = null;
+          }
+          // Never show "(Other)" — only append sport label when it adds real context
           const sportLabel = detectedSport && detectedSport !== "OTHER" ? ` (${detectedSport})` : "";
           return `${dir} ${fullName} to Win${sportLabel}`;
         }
