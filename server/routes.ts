@@ -7,7 +7,6 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
-import { fileURLToPath } from "url";
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -17,8 +16,8 @@ let kronosReady = false;
 
 function startKronos() {
   if (kronosProc) return;
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const scriptPath = path.join(__dirname, "kronos_service.py");
+  // Resolve relative to repo root (works in both dev and Railway production)
+  const scriptPath = path.join(process.cwd(), "server", "kronos_service.py");
   kronosProc = spawn("python3", [scriptPath], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: false,
