@@ -112,6 +112,11 @@ interface PredMkt {
   crossDelta: number | null;
   previousPrice?: number | null;
   openTime?: string | null;
+  // Smart Wallet fields
+  smartWalletCount?: number;
+  smartWalletUSDC?: number;
+  smartWalletDir?: "yes" | "no" | "mixed" | null;
+  smartWalletHolders?: string[];
 }
 
 interface HistoryPoint { t: number | string; p: number; }

@@ -3,11 +3,12 @@ import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
 import {
   LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart,
+  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity,
 } from "lucide-react";
 
 const navItems = [
   { href: "/",           label: "Dashboard",     mobileLabel: "Home",     icon: LayoutDashboard,  emoji: "⬛" },
+  { href: "/scores",     label: "Live Scores",   mobileLabel: "Scores",   icon: Activity,         emoji: "⬛" },
   { href: "/clv",        label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,       emoji: "⬛" },
   { href: "/markets",    label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,        emoji: "⬛" },
   { href: "/conviction", label: "Top Plays",      mobileLabel: "Top",      icon: Zap,              emoji: "⬛" },
@@ -21,6 +22,7 @@ const navItems = [
 
 // Nav item badge definitions — editorial, restrained
 const NAV_BADGES: Record<string, { label: string; style: string }> = {
+  "/scores":     { label: "LIVE", style: "badge-live" },
   "/markets":    { label: "LIVE", style: "badge-live" },
   "/conviction": { label: "HOT",  style: "badge-hot" },
   "/lotto":      { label: "HOT",  style: "badge-hot" },

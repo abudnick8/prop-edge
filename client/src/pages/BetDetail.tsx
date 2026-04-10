@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { formatDistanceToNow, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { Tv2, MapPin, Wifi } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function formatOdds(odds: number | null): string {
@@ -590,6 +591,235 @@ function StatVsLine({ statLabel, statValue, propLine, pickSide }: { statLabel: s
   );
 }
 
+
+// ── Live Game Panel ────────────────────────────────────────────────────────
+interface LiveScoreTeam {
+  abbr: string; displayName: string; shortName: string;
+  logo: string | null; score: string; homeAway: string;
+  linescores: { period: number; value: string }[];
+  records: string[];
+}
+interface LiveSituation {
+  lastPlay: string | null; balls: number; strikes: number; outs: number;
+  onFirst: boolean; onSecond: boolean; onThird: boolean;
+  pitcher?: { name: string; summary: string; headshot: string | null } | null;
+  batter?: { name: string; summary: string; headshot: string | null } | null;
+}
+interface LiveScoreGame {
+  id: string; sport: string; shortName: string;
+  status: { state: string; description: string; detail: string; shortDetail: string; period: number; completed: boolean };
+  teams: LiveScoreTeam[];
+  situation: LiveSituation | null;
+  leaders: { category: string; displayValue: string; athlete: { name?: string; headshot?: string | null; teamId?: string | null } }[];
+  broadcasts: string[];
+  venue: { name: string; city?: string } | null;
+}
+
+function SmDiamond({ sit }: { sit: LiveSituation }) {
+  const on  = (active: boolean) => active ? "#f59e0b" : "transparent";
+  const str = (active: boolean) => active ? "#f59e0b" : "#3D4B5866";
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <rect x="14" y="2"  width="12" height="12" rx="2" fill={on(sit.onSecond)} stroke={str(sit.onSecond)} strokeWidth="1.5" transform="rotate(45 20 8)" />
+      <rect x="26" y="14" width="12" height="12" rx="2" fill={on(sit.onFirst)}  stroke={str(sit.onFirst)}  strokeWidth="1.5" transform="rotate(45 32 20)" />
+      <rect x="2"  y="14" width="12" height="12" rx="2" fill={on(sit.onThird)}  stroke={str(sit.onThird)}  strokeWidth="1.5" transform="rotate(45 8 20)" />
+      <polygon points="20,33 16,29 20,25 24,29" fill="rgba(19,35,58,0.3)" stroke="#3D4B58" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function LiveGamePanel({ bet }: { bet: Bet }) {
+  const sport = (bet.sport ?? "").toLowerCase();
+  const validSports = ["nba", "nfl", "mlb", "nhl"];
+  if (!validSports.includes(sport)) return null;
+
+  const { data, isLoading } = useQuery<{ sports: Record<string, LiveScoreGame[]>; updatedAt: string }>({
+    queryKey: ["/api/live-scores", sport],
+    queryFn: () => apiRequest("GET", `/api/live-scores?sport=${sport}`).then(r => r.json()),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+
+  const games: LiveScoreGame[] = data?.sports?.[sport] ?? [];
+
+  const matchGame = (g: LiveScoreGame) => {
+    if (!bet.awayTeam && !bet.homeTeam) return false;
+    const names = g.teams.flatMap(t => [
+      t.abbr.toLowerCase(), t.shortName.toLowerCase(), t.displayName.toLowerCase()
+    ]);
+    const awayLast = (bet.awayTeam ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const homeLast = (bet.homeTeam ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const awayMatch = !awayLast || names.some(n => n.includes(awayLast) || awayLast.includes(n));
+    const homeMatch = !homeLast || names.some(n => n.includes(homeLast) || homeLast.includes(n));
+    return awayMatch && homeMatch;
+  };
+
+  const liveGame  = games.find(g => g.status.state === "in" && matchGame(g)) ?? null;
+  const todayGame = !liveGame ? (games.find(g => matchGame(g)) ?? null) : null;
+  const game = liveGame ?? todayGame;
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-[#13233A]/10 p-4 animate-pulse bg-white">
+        <div className="h-4 w-32 bg-[#13233A]/08 rounded mb-3" />
+        <div className="h-16 bg-[#13233A]/05 rounded" />
+      </div>
+    );
+  }
+
+  if (!game) return null;
+
+  const isLive  = game.status.state === "in";
+  const isFinal = game.status.state === "post";
+  const away = game.teams.find(t => t.homeAway === "away") ?? game.teams[0];
+  const home = game.teams.find(t => t.homeAway === "home") ?? game.teams[1];
+  const awayScore = parseInt(away?.score ?? "0");
+  const homeScore = parseInt(home?.score ?? "0");
+  const awayWin = isFinal && awayScore > homeScore;
+  const homeWin = isFinal && homeScore > awayScore;
+
+  const SPORT_COLOR: Record<string, string> = {
+    nba: "#fb923c", mlb: "#60a5fa", nhl: "#22d3ee", nfl: "#f87171",
+  };
+  const sportColor = SPORT_COLOR[sport] ?? "#a78bfa";
+
+  const playerLeader = game.leaders.find(l =>
+    l.athlete.name && bet.playerName &&
+    l.athlete.name.toLowerCase().includes((bet.playerName.split(" ").pop() ?? "").toLowerCase())
+  ) ?? null;
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-[#13233A]/12 bg-white">
+      {/* Header */}
+      <div className="px-4 py-2 flex items-center justify-between" style={{ background: `${sportColor}18` }}>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <Wifi size={10} className="text-green-500" />
+              <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Live</span>
+            </span>
+          )}
+          <span className="text-[11px] font-bold" style={{ color: isLive ? "#16a34a" : "#64748b" }}>
+            {isLive ? game.status.shortDetail : isFinal ? "Final" : game.status.description}
+          </span>
+        </div>
+        {game.broadcasts[0] && (
+          <span className="flex items-center gap-1 text-[10px] text-[#3D4B58]">
+            <Tv2 size={9} /> {game.broadcasts[0]}
+          </span>
+        )}
+      </div>
+
+      {/* Score row */}
+      <div className="px-4 py-4 flex items-center gap-2">
+        <div className={`flex-1 flex items-center gap-2 min-w-0 ${isFinal && !awayWin ? "opacity-45" : ""}`}>
+          {away?.logo && (
+            <img src={away.logo} alt={away.abbr} className="w-9 h-9 object-contain flex-shrink-0"
+              onError={e => (e.currentTarget.style.display = "none")} />
+          )}
+          <div className="min-w-0">
+            <div className="font-black text-sm text-[#131A24]">{away?.abbr}</div>
+            {away?.records[0] && <div className="text-[9px] text-[#3D4B58]">{away.records[0]}</div>}
+          </div>
+          <div className={`ml-auto font-black text-3xl ${awayWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>{away?.score}</div>
+        </div>
+        <div className="text-[11px] font-bold text-[#3D4B58] flex-shrink-0 px-1">@</div>
+        <div className={`flex-1 flex items-center gap-2 flex-row-reverse min-w-0 ${isFinal && !homeWin ? "opacity-45" : ""}`}>
+          {home?.logo && (
+            <img src={home.logo} alt={home.abbr} className="w-9 h-9 object-contain flex-shrink-0"
+              onError={e => (e.currentTarget.style.display = "none")} />
+          )}
+          <div className="text-right min-w-0">
+            <div className="font-black text-sm text-[#131A24]">{home?.abbr}</div>
+            {home?.records[0] && <div className="text-[9px] text-[#3D4B58]">{home.records[0]}</div>}
+          </div>
+          <div className={`mr-auto font-black text-3xl ${homeWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>{home?.score}</div>
+        </div>
+      </div>
+
+      {/* MLB situation */}
+      {isLive && game.situation && sport === "mlb" && (
+        <div className="border-t border-[#13233A]/08 px-4 py-3 flex items-start gap-4 bg-[#F6F1E7]/50">
+          <div className="flex flex-col items-center gap-1">
+            <SmDiamond sit={game.situation} />
+            <div className="flex gap-0.5 mt-0.5">
+              {[0,1,2].map(i => (
+                <div key={i} className={`w-2 h-2 rounded-full ${i < game.situation!.outs ? "bg-amber-400" : "border border-[#3D4B58]"}`} />
+              ))}
+            </div>
+            <span className="text-[8px] text-[#3D4B58] uppercase font-bold">{game.situation.outs} out{game.situation.outs !== 1 ? "s" : ""}</span>
+          </div>
+          <div className="flex-1 space-y-1.5">
+            <div className="flex gap-3">
+              {[{l:"B",v:game.situation.balls,mx:4},{l:"S",v:game.situation.strikes,mx:3}].map(({l,v,mx}) => (
+                <div key={l} className="flex flex-col items-center gap-0.5">
+                  <span className="text-[9px] font-bold uppercase text-[#3D4B58]">{l}</span>
+                  <div className="flex gap-0.5">
+                    {Array.from({length:mx}).map((_,i) => (
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${i<v ? "bg-green-400" : "border border-[#3D4B58]"}`} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {game.situation.pitcher && (
+              <div className="flex items-center gap-1.5">
+                {game.situation.pitcher.headshot && (
+                  <img src={game.situation.pitcher.headshot} alt="" className="w-5 h-5 rounded-full border border-[#13233A]/10"
+                    onError={e => (e.currentTarget.style.display = "none")} />
+                )}
+                <span className="text-[9px] font-black text-[#3D4B58] uppercase mr-0.5">P</span>
+                <span className="text-[11px] font-semibold text-[#131A24]">{game.situation.pitcher.name}</span>
+                <span className="text-[10px] text-[#3D4B58]">({game.situation.pitcher.summary})</span>
+              </div>
+            )}
+            {game.situation.batter && (
+              <div className="flex items-center gap-1.5">
+                {game.situation.batter.headshot && (
+                  <img src={game.situation.batter.headshot} alt="" className="w-5 h-5 rounded-full border border-[#13233A]/10"
+                    onError={e => (e.currentTarget.style.display = "none")} />
+                )}
+                <span className="text-[9px] font-black text-[#3D4B58] uppercase mr-0.5">AB</span>
+                <span className="text-[11px] font-semibold text-[#131A24]">{game.situation.batter.name}</span>
+                <span className="text-[10px] text-[#3D4B58]">({game.situation.batter.summary})</span>
+              </div>
+            )}
+            {game.situation.lastPlay && (
+              <p className="text-[10px] text-[#3D4B58] italic">↳ {game.situation.lastPlay}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Player live stat line */}
+      {playerLeader && (
+        <div className="border-t border-[#13233A]/08 px-4 py-2.5 flex items-center gap-2 bg-[#F6F1E7]/40">
+          {playerLeader.athlete.headshot && (
+            <img src={playerLeader.athlete.headshot} alt="" className="w-7 h-7 rounded-full border border-[#13233A]/10"
+              onError={e => (e.currentTarget.style.display = "none")} />
+          )}
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-bold text-[#131A24]">{playerLeader.athlete.name}</span>
+            <span className="text-[11px] text-[#3D4B58] ml-1.5">{playerLeader.displayValue}</span>
+          </div>
+          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded"
+            style={{ background: `${sportColor}20`, color: sportColor }}>{playerLeader.category}</span>
+        </div>
+      )}
+
+      {/* Venue */}
+      {game.venue && (
+        <div className="border-t border-[#13233A]/06 px-4 py-2 flex items-center gap-1 text-[10px] text-[#3D4B58]/60">
+          <MapPin size={9} />
+          <span>{game.venue.name}{game.venue.city ? ` · ${game.venue.city}` : ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Player Stats Section ───────────────────────────────────────────────────
 function PlayerStatsSection({ bet }: { bet: Bet }) {
   const sport = bet.sport?.toUpperCase() ?? "";
@@ -1140,6 +1370,9 @@ export default function BetDetail() {
         riskLevel={bet.riskLevel}
         impliedProbability={bet.impliedProbability}
       />
+
+      {/* ── Live Game Score ── */}
+      {(bet.homeTeam || bet.awayTeam || bet.sport) && <LiveGamePanel bet={bet} />}
 
       {/* ── Player Analytics ── */}
       {bet.playerName && <PlayerStatsSection bet={bet} />}

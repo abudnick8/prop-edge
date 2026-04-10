@@ -7,6 +7,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
+import { startSmartWalletTracker, getSmartWallets, getSignalMap, getSignalForMarket } from "./smart-wallets";
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -680,6 +681,9 @@ let livePollInterval: NodeJS.Timeout | null = null;
 let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
+  // Start smart wallet tracker at server boot (fire-and-forget)
+  startSmartWalletTracker();
+
   // ─── Bets ─────────────────────────────────────────────────────────────────
   app.get("/api/bets", async (req, res) => {
     try {
@@ -1376,20 +1380,28 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const pw1 = parseFloat(m.oneWeekPriceChange ?? 0) || 0;
 
           // ── Whale detection: single large purchase — vol24hr >= $100K only ──
-          // A real whale is a single institution putting $100K+ into one market
-          // in one day. Price-move signals alone are noise on illiquid markets.
-          const isWhaleAlert = vol24h >= WHALE_ABS_VOL;
+          const isVolWhale  = vol24h >= WHALE_ABS_VOL;
 
-          // Direction: rising 24h price = YES pressure, falling = NO pressure
+          // ── Smart wallet signal: tracked top-20 traders holding this market ──
+          const condId      = m.conditionId ?? "";
+          const smartSignal = condId ? getSignalForMarket(condId) : null;
+          const isSmartWalletAlert = !!(smartSignal && smartSignal.walletCount >= 1 && smartSignal.totalUSDC >= 500);
+
+          // Combine vol-whale + smart-wallet into isWhaleAlert
+          const isWhaleAlert = isVolWhale || isSmartWalletAlert;
+
+          // Direction: prefer smart wallet direction (real positions), fall back to price move
           const priceMove = ph1 !== 0 ? ph1 : pd1;
-          const whaleDirection    = isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
+          const whaleDirection: "yes" | "no" | null = isSmartWalletAlert && smartSignal!.direction !== "mixed"
+            ? smartSignal!.direction as "yes" | "no"
+            : isWhaleAlert ? (priceMove >= 0 ? "yes" : "no") : null;
           const whalePriceMovePct = Math.round(Math.abs(ph1 !== 0 ? ph1 : pd1) * 1000) / 10;
 
-          // smartScore = % of $500K cap — so $100K=20, $250K=50, $500K+=100
-          // Calibrated to sports market reality: $500K in one day is a massive position
-          const smartScore = isWhaleAlert
-            ? Math.min(100, Math.round((vol24h / 500_000) * 100))
-            : 0;
+          // smartScore: vol-based (0–100) + wallet count bonus + USDC size bonus
+          const volScore    = isVolWhale ? Math.min(70, Math.round((vol24h / 500_000) * 70)) : 0;
+          const walletBonus = isSmartWalletAlert ? Math.min(20, (smartSignal!.walletCount) * 8) : 0;
+          const usdcBonus   = isSmartWalletAlert ? Math.min(10, Math.round(Math.log10(Math.max(1, smartSignal!.totalUSDC)) - 2)) : 0;
+          const smartScore  = isWhaleAlert ? Math.min(100, volScore + walletBonus + usdcBonus) : 0;
 
           const clobMid = m.conditionId ? (clobMids.get(m.conditionId) ?? null) : null;
           const rating  = rateMarket(m.question ?? m.groupItemTitle ?? "", yesPrice, clobMid, { isWhale: isWhaleAlert });
@@ -1435,10 +1447,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             smartScore,
             gameTime:         evEndDate,
             polyUrl:          `https://polymarket.com/event/${evSlug || m.id}`,
-            crossValidated:   false,
-            crossPrice:       null,
-            crossSource:      null,
-            crossDelta:       null,
+            crossValidated:      false,
+            crossPrice:          null,
+            crossSource:         null,
+            crossDelta:          null,
+            // Smart wallet data
+            smartWalletCount:    smartSignal?.walletCount ?? 0,
+            smartWalletUSDC:     Math.round(smartSignal?.totalUSDC ?? 0),
+            smartWalletDir:      smartSignal?.direction ?? null,
+            smartWalletHolders:  smartSignal?.holders ?? [],
           });
         }
       } catch (e: any) {
@@ -2125,13 +2142,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     const yesPrice    = mkt?.yesPrice ?? 0.5;
     const noPrice     = mkt ? (1 - yesPrice) : 0.5;
     const priceRating = mkt?.priceRating ?? "fair";
-    const isWhale     = mkt?.isWhaleAlert ?? false;
-    const whaleSide   = mkt?.whaleDirection ?? null;
-    const edge        = mkt?.edge ?? 0;            // edge vs fair value in cents
-    const ph1         = mkt?.ph1 ?? 0;             // 1h price change %pts
-    const pd1         = mkt?.pd1 ?? 0;             // 1d price change %pts
-    const crossVal    = mkt?.crossValidated ?? false;
-    const crossDelta  = mkt?.crossDelta ?? null;
+    const isWhale         = mkt?.isWhaleAlert ?? false;
+    const whaleSide       = mkt?.whaleDirection ?? null;
+    const edge            = mkt?.edge ?? 0;
+    const ph1             = mkt?.ph1 ?? 0;
+    const pd1             = mkt?.pd1 ?? 0;
+    const crossVal        = mkt?.crossValidated ?? false;
+    const crossDelta      = mkt?.crossDelta ?? null;
+    // Smart wallet data
+    const swCount         = mkt?.smartWalletCount ?? 0;   // # tracked wallets holding
+    const swUSDC          = mkt?.smartWalletUSDC  ?? 0;   // total USDC across wallets
+    const swDir           = mkt?.smartWalletDir   ?? null; // "yes"|"no"|"mixed"|null
+    const hasSmartMoney   = swCount >= 1 && swUSDC >= 500;
     const lm          = k.line_movement ?? {};
     const lb          = k.late_breaking ?? {};
     const crossover   = k.crossover ?? "none";
@@ -2147,6 +2169,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       signal === "bullish",
       priceRating === "great_buy" || priceRating === "good_buy",
       isWhale && whaleSide === "yes",
+      hasSmartMoney && swDir === "yes",      // smart wallets are holding YES
+      hasSmartMoney && swCount >= 2,          // 2+ smart wallets = strong conviction
       lm.bias === "sharp_yes",
       crossover === "golden_cross",
       lb.detected && lb.direction === "bullish",
@@ -2157,6 +2181,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       signal === "bearish",
       priceRating === "overpriced",
       isWhale && whaleSide === "no",
+      hasSmartMoney && swDir === "no",       // smart wallets are holding NO
       lm.bias === "sharp_no",
       crossover === "death_cross",
       lb.detected && lb.direction === "bearish",
@@ -2177,13 +2202,17 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (tossup && strength < 40) pickedSide = "pass";
 
     // ── Confidence: blend Kronos strength + confluence bonus ──
+    const swBonus = hasSmartMoney
+      ? Math.min(20, swCount * 6 + (swUSDC >= 5000 ? 5 : 0))   // up to +20 for smart wallets
+      : 0;
     const confluenceBonus =
       (isWhale ? 8 : 0) +
       (crossVal ? 6 : 0) +
       (crossover === "golden_cross" || crossover === "death_cross" ? 8 : 0) +
       (lb.detected ? 6 : 0) +
       (lm.bias !== "neutral" ? 5 : 0) +
-      (r2 > 0.7 ? 5 : 0);
+      (r2 > 0.7 ? 5 : 0) +
+      swBonus;
     const pickConf = Math.min(99, Math.max(1, strength + confluenceBonus));
 
     // ── Edge and ROI ──
@@ -2236,6 +2265,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       parts.push(`Whale activity confirmed on this side — large position(s) taken, aligning with Kronos direction.`);
     else if (isWhale && whaleSide && whaleSide !== pickedSide)
       parts.push(`Note: whale activity detected on the opposite side — factor into risk sizing.`);
+
+    // Smart wallet (top trader) positioning
+    if (hasSmartMoney && swDir === pickedSide)
+      parts.push(`Smart Money confirmed: ${swCount} top-ranked Polymarket trader${swCount > 1 ? "s" : ""} holding this ${swDir?.toUpperCase()} side ($${swUSDC.toLocaleString()} USDC combined) — aligns with Kronos pick.`);
+    else if (hasSmartMoney && swDir === "mixed")
+      parts.push(`Smart Money is split: ${swCount} top trader${swCount > 1 ? "s" : ""} hold positions on both sides ($${swUSDC.toLocaleString()} USDC) — market is contested.`);
+    else if (hasSmartMoney && swDir && swDir !== pickedSide)
+      parts.push(`Caution: ${swCount} top trader${swCount > 1 ? "s" : ""} are positioned on the ${swDir?.toUpperCase()} side ($${swUSDC.toLocaleString()} USDC) — opposite to this pick. Size carefully.`);
 
     // Sharp money / line movement
     if (lm.bias === "sharp_yes" && pickedSide === "yes")
@@ -5308,6 +5345,132 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const MARKET_SIGNALS_CACHE = new Map<string, { ts: number; data: any[] }>();
   const MARKET_SIGNALS_TTL = 60_000; // 1 minute
 
+
+  // ─── GET /api/live-scores — ESPN scoreboard proxy for all 4 major sports ─────
+  // Free ESPN public API — no auth required. Cached 30s for live games.
+  const LIVE_SCORES_CACHE = new Map<string, { data: any; ts: number }>();
+  const LIVE_SCORES_TTL   = 30_000; // 30 seconds
+
+  app.get("/api/live-scores", async (req, res) => {
+    try {
+      const sport = (req.query.sport as string ?? "all").toLowerCase();
+      const cacheKey = `live-scores-${sport}`;
+      const cached = LIVE_SCORES_CACHE.get(cacheKey);
+      if (cached && Date.now() - cached.ts < LIVE_SCORES_TTL) {
+        return res.json(cached.data);
+      }
+
+      const SPORTS = [
+        { key: "nba",  sn: "basketball", lg: "nba"      },
+        { key: "mlb",  sn: "baseball",   lg: "mlb"      },
+        { key: "nhl",  sn: "hockey",     lg: "nhl"      },
+        { key: "nfl",  sn: "football",   lg: "nfl"      },
+      ];
+
+      const targets = sport === "all" ? SPORTS : SPORTS.filter(s => s.key === sport);
+
+      const results: Record<string, any[]> = {};
+
+      await Promise.all(targets.map(async (s) => {
+        try {
+          const url = `https://site.api.espn.com/apis/site/v2/sports/${s.sn}/${s.lg}/scoreboard`;
+          const r   = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) { results[s.key] = []; return; }
+          const d   = await r.json() as any;
+
+          results[s.key] = (d.events ?? []).map((ev: any) => {
+            const comp = ev.competitions?.[0] ?? {};
+            const status = ev.status ?? {};
+            const sit    = comp.situation ?? null;
+
+            const teams = (comp.competitors ?? []).map((t: any) => ({
+              id:           t.id,
+              abbr:         t.team?.abbreviation ?? "?",
+              displayName:  t.team?.displayName ?? "",
+              shortName:    t.team?.shortDisplayName ?? "",
+              logo:         t.team?.logo ?? null,
+              color:        t.team?.color ? `#${t.team.color}` : null,
+              score:        t.score ?? "0",
+              homeAway:     t.homeAway,
+              linescores:   (t.linescores ?? []).map((ls: any) => ({
+                period: ls.period,
+                value:  ls.displayValue ?? "0",
+              })),
+              records:      (t.records ?? []).map((rec: any) => rec.summary).slice(0, 1),
+            }));
+
+            // Stat leaders shown on scoreboard (pitching/hitting/scoring leaders)
+            const leaders = (comp.leaders ?? []).flatMap((lg: any) =>
+              (lg.leaders ?? []).slice(0, 2).map((l: any) => ({
+                category:    lg.shortDisplayName ?? lg.abbreviation,
+                displayValue: l.displayValue,
+                athlete: {
+                  id:       l.athlete?.id,
+                  name:     l.athlete?.shortName ?? l.athlete?.displayName,
+                  headshot: l.athlete?.headshot ?? null,
+                  position: l.athlete?.position ?? null,
+                  teamId:   l.athlete?.team?.id ?? null,
+                },
+              }))
+            ).slice(0, 6);
+
+            return {
+              id:         ev.id,
+              uid:        ev.uid,
+              sport:      s.key.toUpperCase(),
+              name:       ev.name,
+              shortName:  ev.shortName,
+              date:       ev.date,
+              status: {
+                state:       status.type?.state ?? "pre",          // "pre"|"in"|"post"
+                description: status.type?.description ?? "Scheduled",
+                detail:      status.type?.detail ?? "",
+                shortDetail: status.type?.shortDetail ?? "",
+                period:      status.period ?? 0,
+                clock:       status.displayClock ?? "0:00",
+                completed:   status.type?.completed ?? false,
+              },
+              venue: comp.venue ? {
+                name: comp.venue.fullName,
+                city: comp.venue.address?.city,
+              } : null,
+              teams,
+              situation: sit ? {
+                lastPlay:  sit.lastPlay?.text ?? null,
+                balls:     sit.balls,
+                strikes:   sit.strikes,
+                outs:      sit.outs,
+                onFirst:   sit.onFirst ?? false,
+                onSecond:  sit.onSecond ?? false,
+                onThird:   sit.onThird ?? false,
+                pitcher: sit.pitcher ? {
+                  name:     sit.pitcher.athlete?.displayName,
+                  summary:  sit.pitcher.summary,
+                  headshot: sit.pitcher.athlete?.headshot ?? null,
+                } : null,
+                batter: sit.batter ? {
+                  name:     sit.batter.athlete?.displayName,
+                  summary:  sit.batter.summary,
+                  headshot: sit.batter.athlete?.headshot ?? null,
+                } : null,
+              } : null,
+              leaders,
+              broadcasts: (comp.broadcasts ?? []).flatMap((b: any) => b.names ?? []).slice(0, 2),
+            };
+          });
+        } catch {
+          results[s.key] = [];
+        }
+      }));
+
+      const payload = { sports: results, updatedAt: new Date().toISOString() };
+      LIVE_SCORES_CACHE.set(cacheKey, { data: payload, ts: Date.now() });
+      res.json(payload);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/market-signals", async (_req, res) => {
     try {
       const cacheKey = "market-signals";
@@ -5934,6 +6097,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       console.log(`[grade-all] Graded ${gradedCount} bets across all users`);
       res.json({ graded: gradedCount });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+
+  // GET /api/smart-wallets — expose tracked whale wallet data + signal map
+  app.get("/api/smart-wallets", async (_req, res) => {
+    try {
+      const wallets  = getSmartWallets();
+      const signalMap = getSignalMap();
+      res.json({ wallets, signalMap, count: wallets.length, updatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   return httpServer;
