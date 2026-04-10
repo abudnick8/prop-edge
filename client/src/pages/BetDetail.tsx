@@ -35,6 +35,89 @@ const SPORT_ACCENT: Record<string, string> = {
   NBA: "#fb923c", NFL: "#f87171", MLB: "#60a5fa", NHL: "#22d3ee",
 };
 
+// Team primary colors — used to tint Player Analytics for the player's team
+const TEAM_COLORS: Record<string, string> = {
+  // NBA
+  "Warriors": "#1D428A", "GSW": "#1D428A", "Golden State": "#1D428A",
+  "Lakers": "#552583", "LAL": "#552583", "Los Angeles Lakers": "#552583",
+  "Celtics": "#007A33", "BOS": "#007A33", "Boston": "#007A33",
+  "Heat": "#98002E", "MIA": "#98002E", "Miami": "#98002E",
+  "Bucks": "#00471B", "MIL": "#00471B", "Milwaukee": "#00471B",
+  "Nuggets": "#0E2240", "DEN": "#0E2240", "Denver": "#0E2240",
+  "Suns": "#1D1160", "PHX": "#1D1160", "Phoenix": "#1D1160",
+  "Clippers": "#C8102E", "LAC": "#C8102E",
+  "76ers": "#006BB6", "PHI": "#006BB6", "Philadelphia": "#006BB6",
+  "Bulls": "#CE1141", "CHI": "#CE1141", "Chicago": "#CE1141",
+  "Knicks": "#F58426", "NYK": "#F58426", "New York Knicks": "#F58426",
+  "Mavericks": "#00538C", "DAL": "#00538C", "Dallas": "#00538C",
+  "Thunder": "#007AC1", "OKC": "#007AC1", "Oklahoma City": "#007AC1",
+  "Pacers": "#002D62", "IND": "#002D62", "Indiana": "#002D62",
+  "Timberwolves": "#236192", "MIN": "#236192", "Minnesota": "#236192",
+  "Cavaliers": "#860038", "CLE": "#860038", "Cleveland": "#860038",
+  "Grizzlies": "#5D76A9", "MEM": "#5D76A9", "Memphis": "#5D76A9",
+  "Pelicans": "#0C2340", "NOP": "#0C2340", "New Orleans": "#0C2340",
+  "Kings": "#5A2D81", "SAC": "#5A2D81", "Sacramento": "#5A2D81",
+  "Raptors": "#CE1141", "TOR": "#CE1141", "Toronto": "#CE1141",
+  "Nets": "#000000", "BKN": "#000000", "Brooklyn": "#000000",
+  "Magic": "#0077C0", "ORL": "#0077C0", "Orlando": "#0077C0",
+  "Wizards": "#002B5C", "WAS": "#002B5C", "Washington": "#002B5C",
+  "Hawks": "#E03A3E", "ATL": "#E03A3E", "Atlanta": "#E03A3E",
+  "Hornets": "#1D1160", "CHA": "#1D1160", "Charlotte": "#1D1160",
+  "Pistons": "#C8102E", "DET": "#C8102E", "Detroit": "#C8102E",
+  "Spurs": "#C4CED4", "SAS": "#C4CED4", "San Antonio": "#C4CED4",
+  "Rockets": "#CE1141", "HOU": "#CE1141", "Houston": "#CE1141",
+  "Jazz": "#002B5C", "UTA": "#002B5C", "Utah": "#002B5C",
+  "Trail Blazers": "#E03A3E", "POR": "#E03A3E", "Portland": "#E03A3E",
+  // NFL
+  "Chiefs": "#E31837", "KC": "#E31837", "Kansas City Chiefs": "#E31837",
+  "Eagles": "#004C54", "PHI Eagles": "#004C54",
+  "49ers": "#AA0000", "SF": "#AA0000", "San Francisco": "#AA0000",
+  "Cowboys": "#003594", "DAL Cowboys": "#003594",
+  "Bills": "#00338D", "BUF": "#00338D", "Buffalo": "#00338D",
+  "Ravens": "#241773", "BAL": "#241773", "Baltimore": "#241773",
+  "Bengals": "#FB4F14", "CIN": "#FB4F14", "Cincinnati": "#FB4F14",
+  "Steelers": "#FFB612", "PIT": "#FFB612", "Pittsburgh": "#FFB612",
+  "Packers": "#203731", "GB": "#203731", "Green Bay": "#203731",
+  "Bears": "#0B162A", "CHI Bears": "#0B162A",
+  "Patriots": "#002244", "NE": "#002244", "New England": "#002244",
+  "Dolphins": "#008E97", "MIA Dolphins": "#008E97",
+  // MLB
+  "Yankees": "#003087", "NYY": "#003087", "New York Yankees": "#003087",
+  "Red Sox": "#BD3039", "BOS Red Sox": "#BD3039",
+  "Dodgers": "#005A9C", "LAD": "#005A9C", "Los Angeles Dodgers": "#005A9C",
+  "Cubs": "#0E3386", "CHC": "#0E3386",
+  "Cardinals": "#C41E3A", "STL": "#C41E3A", "St. Louis": "#C41E3A",
+  "Astros": "#002D62", "HOU Astros": "#002D62",
+  "Braves": "#CE1141", "ATL Braves": "#CE1141",
+  "Giants": "#FD5A1E", "SFG": "#FD5A1E", "San Francisco Giants": "#FD5A1E",
+  "Mets": "#002D72", "NYM": "#002D72", "New York Mets": "#002D72",
+  "Phillies": "#E81828", "PHI Phillies": "#E81828",
+  // NHL
+  "Bruins": "#FFB81C", "BOS Bruins": "#FFB81C",
+  "Maple Leafs": "#00205B", "TOR Maple Leafs": "#00205B",
+  "Rangers": "#0038A8", "NYR": "#0038A8", "New York Rangers": "#0038A8",
+  "Penguins": "#FCB514", "PIT Penguins": "#FCB514",
+  "Blackhawks": "#CF0A2C", "CHI Blackhawks": "#CF0A2C",
+  "Lightning": "#002868", "TB": "#002868", "Tampa Bay": "#002868",
+  "Avalanche": "#6F263D", "COL": "#6F263D", "Colorado": "#6F263D",
+  "Oilers": "#FF4C00", "EDM": "#FF4C00", "Edmonton": "#FF4C00",
+  "Canadiens": "#AF1E2D", "MTL": "#AF1E2D", "Montreal": "#AF1E2D",
+  "Canucks": "#00843D", "VAN": "#00843D", "Vancouver": "#00843D",
+};
+
+function getTeamColor(teamName?: string | null): string | null {
+  if (!teamName) return null;
+  // Try exact match first, then partial
+  if (TEAM_COLORS[teamName]) return TEAM_COLORS[teamName];
+  const lower = teamName.toLowerCase();
+  for (const [key, color] of Object.entries(TEAM_COLORS)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower.split(" ").pop()!)) {
+      return color;
+    }
+  }
+  return null;
+}
+
 // ── Badge Components ───────────────────────────────────────────────────────
 function SourceBadge({ source }: { source: string }) {
   return (
@@ -313,7 +396,7 @@ function KeyFactorsPanel({ factors }: { factors: string[] }) {
 }
 
 // ── Mini Bar (for game log) ────────────────────────────────────────────────
-function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: any[]; statKey: string; propLine?: number | null; label: string; pickSide?: string }) {
+function MiniBarChart({ games, statKey, propLine, label, pickSide, sportColor = "#f59e0b" }: { games: any[]; statKey: string; propLine?: number | null; label: string; pickSide?: string; sportColor?: string }) {
   if (!games.length) return null;
   const isUnder = pickSide?.toUpperCase() === "UNDER";
   const values = games.map((g) => parseFloat(g[statKey]) || 0);
@@ -323,17 +406,30 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.56)" }}>{label} — Last {games.length} Games</span>
-        {propLine != null && <span className="text-[10px] font-mono font-bold" style={{ color: "#f59e0b" }}>Line: {propLine}</span>}
+        {propLine != null && <span className="text-[10px] font-mono font-bold" style={{ color: sportColor }}>Line: {propLine}</span>}
       </div>
-      <div className="flex items-end gap-1.5" style={{ height: 52 }}>
+      <div className="flex items-end gap-1.5" style={{ height: 56 }}>
         {values.map((v, i) => {
           const pct = (v / max) * 100;
           const hitLine = propLine != null && (isUnder ? v < propLine : v >= propLine);
+          const missLine = propLine != null && !hitLine;
           return (
             <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
-              <span className="text-[9px] font-mono font-bold leading-none" style={{ color: hitLine ? "#4ade80" : "rgba(19,35,58,0.7)" }}>{v.toFixed(1) || "—"}</span>
+              <span className="text-[9px] font-mono font-bold leading-none"
+                style={{ color: hitLine ? "#4ade80" : missLine ? "#f87171" : sportColor }}>
+                {v.toFixed(1) || "—"}
+              </span>
               <div className="w-full rounded-t-sm transition-all duration-500"
-                style={{ height: `${Math.max(pct, 4)}%`, background: hitLine ? "linear-gradient(0deg,#4ade80,#22d3ee)" : "linear-gradient(0deg,#f59e0b,#fbbf24)", opacity: 0.85, minHeight: 4 }} />
+                style={{
+                  height: `${Math.max(pct, 4)}%`,
+                  background: hitLine
+                    ? "linear-gradient(0deg,#4ade80,#22c55e)"
+                    : missLine
+                      ? "linear-gradient(0deg,#f87171,#ef4444)"
+                      : `linear-gradient(0deg,${sportColor},${sportColor}cc)`,
+                  opacity: 0.9,
+                  minHeight: 4,
+                }} />
             </div>
           );
         })}
@@ -349,11 +445,19 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
         ))}
       </div>
       {propLine != null && (
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-0.5 rounded" style={{ background: "#f59e0b" }} />
-          <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Prop line ({propLine})</span>
-          <div className="w-2 h-2 rounded-sm ml-2" style={{ background: "rgba(74,222,128,0.4)" }} />
-          <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Hit</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 rounded" style={{ background: sportColor }} />
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Line ({propLine})</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-sm" style={{ background: "rgba(74,222,128,0.5)" }} />
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Hit</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-sm" style={{ background: "rgba(248,113,113,0.5)" }} />
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Miss</span>
+          </div>
         </div>
       )}
     </div>
@@ -361,7 +465,7 @@ function MiniBarChart({ games, statKey, propLine, label, pickSide }: { games: an
 }
 
 // ── Game Log Table — last N games with all stats, bet stat highlighted ──────
-function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, comboKeys, pickSide }: {
+function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, comboKeys, pickSide, sportColor = "#f59e0b" }: {
   games: any[];
   sport: string;
   focusStatKey: string;
@@ -369,6 +473,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
   propLine?: number | null;
   comboKeys?: string[];
   pickSide?: string;
+  sportColor?: string;
 }) {
   const isUnder = pickSide?.toUpperCase() === "UNDER";
   if (!games.length) return null;
@@ -440,8 +545,8 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
           Game Log — Last {games.length} Games
         </span>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-          style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)" }}>
-          ★ {focusStatLabel} highlighted
+          style={{ background: `${sportColor}18`, color: sportColor, border: `1px solid ${sportColor}40` }}>
+          ★ {focusStatLabel}
         </span>
       </div>
 
@@ -458,8 +563,8 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                 return (
                   <th key={col.key} className="px-2 py-2 text-center font-bold uppercase tracking-wide"
                     style={{
-                      color: isFocus ? "#f59e0b" : "rgba(19,35,58,0.49)",
-                      background: isFocus ? "rgba(245,158,11,0.06)" : "transparent",
+                      color: isFocus ? sportColor : "rgba(19,35,58,0.49)",
+                      background: isFocus ? `${sportColor}10` : "transparent",
                       whiteSpace: "nowrap",
                       fontSize: "9px",
                       letterSpacing: "0.08em",
@@ -521,9 +626,9 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
                     return (
                       <td key={col.key} className="px-2 py-2 text-center font-mono"
                         style={{
-                          background: isFocus ? (cellHit ? "rgba(74,222,128,0.1)" : cellMiss ? "rgba(248,113,113,0.08)" : "rgba(245,158,11,0.04)") : "transparent",
+                          background: isFocus ? (cellHit ? "rgba(74,222,128,0.1)" : cellMiss ? "rgba(248,113,113,0.08)" : `${sportColor}0a`) : "transparent",
                           color: isFocus
-                            ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : "#f59e0b")
+                            ? (cellHit ? "#4ade80" : cellMiss ? "#f87171" : sportColor)
                             : col.key === "date_game" || col.key === "opp_id" || col.key === "opp"
                               ? "rgba(19,35,58,0.56)"
                               : col.key === "result" ? "transparent" : "rgba(19,35,58,0.7)",
@@ -556,8 +661,8 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
             <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Miss &lt; {propLine}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(245,158,11,0.3)" }} />
-            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Focus stat column</span>
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: `${sportColor}50` }} />
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.49)" }}>Focus stat</span>
           </div>
         </div>
       )}
@@ -566,7 +671,7 @@ function GameLogTable({ games, sport, focusStatKey, focusStatLabel, propLine, co
 }
 
 // ── Season Stat vs Line Bar ────────────────────────────────────────────────
-function StatVsLine({ statLabel, statValue, propLine, pickSide }: { statLabel: string; statValue: number; propLine: number; pickSide?: string }) {
+function StatVsLine({ statLabel, statValue, propLine, pickSide, sportColor = "#f59e0b" }: { statLabel: string; statValue: number; propLine: number; pickSide?: string; sportColor?: string }) {
   const isUnder = pickSide?.toUpperCase() === "UNDER";
   const pct = Math.min((statValue / propLine) * 100, 150);
   const hitLine = isUnder ? statValue < propLine : statValue >= propLine;
@@ -574,15 +679,15 @@ function StatVsLine({ statLabel, statValue, propLine, pickSide }: { statLabel: s
     <div className="space-y-1">
       <div className="flex justify-between text-[10px]">
         <span style={{ color: "rgba(19,35,58,0.7)" }}>{statLabel} avg</span>
-        <span className="font-mono font-bold" style={{ color: hitLine ? "#4ade80" : "#f59e0b" }}>{statValue} vs {propLine} line</span>
+        <span className="font-mono font-bold" style={{ color: hitLine ? "#4ade80" : "#f87171" }}>{statValue} vs {propLine} line</span>
       </div>
       <div className="relative h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
         <div className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${Math.min(pct, 100)}%`, background: hitLine ? "linear-gradient(90deg,#4ade80,#22c55e)" : "linear-gradient(90deg,#f59e0b,#fbbf24)" }} />
+          style={{ width: `${Math.min(pct, 100)}%`, background: hitLine ? "linear-gradient(90deg,#4ade80,#22c55e)" : `linear-gradient(90deg,${sportColor},${sportColor}99)` }} />
         {/* Line marker */}
         <div className="absolute top-0 bottom-0 w-0.5" style={{ left: "66.7%", background: "rgba(19,35,58,0.7)" }} />
       </div>
-      <p className="text-[9px] text-right" style={{ color: hitLine ? "#4ade80" : "rgba(19,35,58,0.42)" }}>
+      <p className="text-[9px] text-right" style={{ color: hitLine ? "#4ade80" : "#f87171" }}>
         {isUnder
           ? (hitLine ? `✓ Avg is ${(propLine - statValue).toFixed(1)} below line` : `${(statValue - propLine).toFixed(1)} above line — over lean`)
           : (hitLine ? `✓ Avg is ${(statValue - propLine).toFixed(1)} above line` : `${(propLine - statValue).toFixed(1)} below line — under lean`)}
@@ -992,19 +1097,26 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
 
   if (!bet.playerName) return null;
 
+  // Derive accent color: prefer team color, fall back to sport color
+  const sportColor = SPORT_ACCENT[sport] ?? "#f59e0b";
+  const teamColor  = getTeamColor(bet.homeTeam) ?? getTeamColor(bet.awayTeam) ?? null;
+  const accentColor = teamColor ?? sportColor;
+
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.1)", borderLeft: `3px solid ${accentColor}` }}>
+      {/* Color accent top bar */}
+      <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accentColor}, ${accentColor}44)` }} />
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "rgba(19,35,58,0.1)" }}>
-        <BarChart2 size={13} style={{ color: "#f59e0b" }} />
+        <BarChart2 size={13} style={{ color: accentColor }} />
         <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Player Analytics</span>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: `${accentColor}18`, color: accentColor, border: `1px solid ${accentColor}40` }}>
           👤 {bet.playerName}
         </span>
         {data?.bbrUrl && (
           <a href={data.bbrUrl} target="_blank" rel="noopener noreferrer"
             className="ml-auto flex items-center gap-1 text-[10px] px-2 py-1 rounded border hover:bg-white/5 transition-colors"
-            style={{ color: "#f59e0b", borderColor: "rgba(245,158,11,0.25)" }}>
+            style={{ color: accentColor, borderColor: `${accentColor}40` }}>
             <ExternalLink size={9} /> BBR
           </a>
         )}
@@ -1057,15 +1169,15 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                       : (statKey.key === k || (statKey.key === "trb" && k === "reb"));
                     return (
                       <div key={k} className="text-center py-2 px-1 rounded-lg"
-                        style={{ background: isRelevant ? "rgba(245,158,11,0.1)" : "rgba(19,35,58,0.06)", border: `1px solid ${isRelevant ? "rgba(245,158,11,0.3)" : "rgba(19,35,58,0.1)"}` }}>
-                        <p className="text-base font-black font-mono leading-none" style={{ color: isRelevant ? "#f59e0b" : "hsl(45 100% 90%)" }}>{val}</p>
+                        style={{ background: isRelevant ? `${accentColor}18` : "rgba(19,35,58,0.06)", border: `1px solid ${isRelevant ? `${accentColor}50` : "rgba(19,35,58,0.1)"}` }}>
+                        <p className="text-base font-black font-mono leading-none" style={{ color: isRelevant ? accentColor : "#131A24" }}>{val}</p>
                         <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(19,35,58,0.49)" }}>{l}</p>
                       </div>
                     );
                   })}
                   {sport === "NFL" && Object.entries(data.season ?? {}).slice(0, 8).map(([k, v]) => (
                     <div key={k} className="text-center py-2 px-1 rounded-lg" style={{ background: "rgba(19,35,58,0.06)", border: "1px solid rgba(19,35,58,0.1)" }}>
-                      <p className="text-base font-black font-mono leading-none" style={{ color: "hsl(45 100% 90%)" }}>{String(v || "—")}</p>
+                      <p className="text-base font-black font-mono leading-none" style={{ color: "#131A24" }}>{String(v || "—")}</p>
                       <p className="text-[9px] mt-1 font-semibold uppercase" style={{ color: "rgba(19,35,58,0.49)" }}>{k.replace(/_/g, " ")}</p>
                     </div>
                   ))}
@@ -1082,7 +1194,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                     <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(19,35,58,0.49)" }}>
                       Season Avg vs Prop Line
                     </p>
-                    <StatVsLine statLabel={statKey.label} statValue={parseFloat(statVal.toFixed(1))} propLine={bet.line} pickSide={(bet.teamStats as any)?.pickSide} />
+                    <StatVsLine statLabel={statKey.label} statValue={parseFloat(statVal.toFixed(1))} propLine={bet.line} pickSide={(bet.teamStats as any)?.pickSide} sportColor={accentColor} />
                   </div>
                 );
               }
@@ -1101,6 +1213,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                   propLine={bet.line}
                   label={statKey.label}
                   pickSide={(bet.teamStats as any)?.pickSide}
+                  sportColor={accentColor}
                 />
                 <GameLogTable
                   games={data.recentGames.map((g: any) => ({
@@ -1113,6 +1226,7 @@ function PlayerStatsSection({ bet }: { bet: Bet }) {
                   propLine={bet.line}
                   comboKeys={statKey.comboKeys}
                   pickSide={(bet.teamStats as any)?.pickSide}
+                  sportColor={accentColor}
                 />
               </div>
             )}
