@@ -2430,11 +2430,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         });
       }
 
-      // Step 3: Call Kronos
+      // Step 3: Call Kronos (generous timeout — threaded server handles concurrency)
       const kronosRes = await axios.post(`${KRONOS_URL}/forecast`, {
         history,
         pred_steps,
-      }, { timeout: 8_000 });
+      }, { timeout: 20_000 });
 
       const result = kronosRes.data;
 

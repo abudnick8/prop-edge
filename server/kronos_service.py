@@ -30,6 +30,7 @@ Port: 5050
 """
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 import json
 import math
 import numpy as np
@@ -430,7 +431,11 @@ class KronosHandler(BaseHTTPRequestHandler):
             print(f"[Kronos] Error: {e}\n{tb}", file=sys.stderr)
             self._json(500, {**_empty(str(e)), "error": str(e)})
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle each request in a separate thread so 200+ parallel calls don't queue."""
+    daemon_threads = True
+
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PORT), KronosHandler)
-    print(f"[Kronos] Microservice v{VERSION} running on port {PORT}", flush=True)
+    server = ThreadedHTTPServer(("0.0.0.0", PORT), KronosHandler)
+    print(f"[Kronos] Microservice v{VERSION} running on port {PORT} (threaded)", flush=True)
     server.serve_forever()

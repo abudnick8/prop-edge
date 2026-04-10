@@ -1274,18 +1274,30 @@ export default function PredictionMarkets() {
   const qc = useQueryClient();
 
   // ── Bulk Kronos pre-fetch ──────────────────────────────────────────────────
-  // When a Kronos filter or sort is active, fetch ALL markets' Kronos data in
-  // parallel so the filter has populated data immediately (not lazily per-card).
+  // When a Kronos filter or sort is active, fetch ALL markets' Kronos data.
+  // CONCURRENCY CAP: send max 8 requests at a time so we don’t slam the
+  // single-process Python microservice with 200+ simultaneous calls.
+  // We track how many have already succeeded and enable the next wave.
   const kronosActive = kronosFilter !== "all" || kronosSort !== "default";
+  const KRONOS_BATCH = 8; // max parallel in-flight requests
+
+  // Count how many results are already in the RQ cache (from prior fetches)
+  const alreadyCachedCount = kronosActive
+    ? markets.filter(m => !!qc.getQueryData(["/api/prediction-markets/kronos", m.id])).length
+    : 0;
+
   const kronosQueryResults = useQueries({
     queries: kronosActive
-      ? markets.map(m => ({
+      ? markets.map((m, i) => ({
           queryKey: ["/api/prediction-markets/kronos", m.id],
           queryFn: () =>
             apiRequest("GET", `/api/prediction-markets/kronos/${m.id}?steps=12`)
               .then(r => r.json()) as Promise<KronosResponse>,
-          staleTime: 5 * 60 * 1000,  // 5-min cache matches server
-          retry: 1,
+          staleTime: 5 * 60 * 1000,
+          retry: false,
+          // Enable in waves: first batch immediately, subsequent batches
+          // unlock as earlier ones finish (alreadyCachedCount drives the window)
+          enabled: i < alreadyCachedCount + KRONOS_BATCH,
         }))
       : [],
   });
@@ -1734,18 +1746,18 @@ export default function PredictionMarkets() {
             <div key={i} className="rounded-xl border border-border bg-muted/30 animate-pulse h-48" />
           ))}
         </div>
-      ) : kronosActive && !kronosAllLoaded && filtered.length === 0 ? (
-        // Kronos filter active but still fetching — show spinner instead of empty state
+      ) : filtered.length === 0 && kronosActive && kronosLoadedCount === 0 ? (
+        // Kronos filter active, nothing loaded yet at all — show initial spinner
         <div className="text-center py-16 text-muted-foreground border border-dashed border-cyan-500/20 rounded-xl">
-          <p className="text-4xl mb-3 animate-spin inline-block">⚡</p>
-          <p className="font-semibold text-cyan-400">Kronos is analyzing all markets…</p>
-          <p className="text-xs mt-1">Loaded {kronosLoadedCount} of {kronosTotalCount} — results will appear as data arrives</p>
+          <p className="text-4xl mb-3 animate-pulse inline-block">⚡</p>
+          <p className="font-semibold text-cyan-400">Kronos is analyzing markets…</p>
+          <p className="text-xs mt-1">Starting analysis — results will appear shortly</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl">
           <p className="text-4xl mb-3">🔍</p>
-          <p className="font-semibold">No markets match your filters</p>
-          <p className="text-xs mt-1">Try adjusting filters or refreshing</p>
+          <p className="font-semibold">{kronosActive && !kronosAllLoaded ? "Still analyzing…" : "No markets match your filters"}</p>
+          <p className="text-xs mt-1">{kronosActive && !kronosAllLoaded ? `Checked ${kronosLoadedCount} of ${kronosTotalCount} markets — no matches yet` : "Try adjusting filters or refreshing"}</p>
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
