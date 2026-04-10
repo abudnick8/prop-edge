@@ -330,12 +330,32 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
           )}
 
           {/* Opponent def rank */}
-          {prop.opponentDefRank && (
-            <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2 text-[10px]">
-              <p className="font-bold text-muted-foreground mb-0.5 flex items-center gap-1"><Users size={9} /> Opponent Defense</p>
-              <p className="text-foreground">{JSON.stringify(prop.opponentDefRank).slice(0, 200)}</p>
-            </div>
-          )}
+          {prop.opponentDefRank && (() => {
+            // opponentDefRank is either an array of insight objects or a single object
+            const items: any[] = Array.isArray(prop.opponentDefRank)
+              ? prop.opponentDefRank
+              : [prop.opponentDefRank];
+            const visible = items.filter((item: any) => item?.description || item?.rankDescription || item?.label);
+            if (visible.length === 0) return null;
+            return (
+              <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2 text-[10px] space-y-1.5">
+                <p className="font-bold text-muted-foreground mb-0.5 flex items-center gap-1"><Users size={9} /> Opponent Defense</p>
+                {visible.map((item: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2">
+                    {item.label && (
+                      <span className="flex-shrink-0 font-black text-primary text-[11px] min-w-[28px] text-center"
+                        style={{ lineHeight: 1.2 }}>
+                        {item.label}
+                      </span>
+                    )}
+                    <p className="text-foreground/80 leading-snug">
+                      {item.description ?? item.rankDescription ?? ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Insights / narratives */}
           {prop.description && (
