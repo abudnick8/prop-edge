@@ -7,6 +7,7 @@
 import axios from "axios";
 import { InsertBet } from "@shared/schema";
 import { storage } from "./storage";
+import { applyMLWeights } from "./ml-weights";
 
 // ─── ESPN Stat Cache ──────────────────────────────────────────────────────────
 // In-memory cache keyed by `playerName::sport::statKey` → recent average
@@ -2480,7 +2481,7 @@ export function isLottoProp(title: string, impliedProb: number, betType?: string
   return true;
 }
 
-function computeConfidence(input: ScoreInput): ScoreResult {
+function computeConfidenceRaw(input: ScoreInput): ScoreResult {
   const prob = Math.max(0.01, Math.min(0.99, input.impliedProb));
   const factors: string[] = [];
   const isPlayerProp = input.betType === "player_prop";
@@ -3141,6 +3142,18 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
 }
 
 // ─── Main scanner ─────────────────────────────────────────────────────────────
+function computeConfidence(input: ScoreInput): ScoreResult {
+  const result = computeConfidenceRaw(input);
+  // Apply ML weight nudge — no-op until ≥10 graded outcomes exist
+  const mlScore = applyMLWeights(result.score, {
+    sport:   input.sport,
+    betType: input.betType,
+    formEdgePct: typeof input.formEdge === "number" ? input.formEdge * 100 : undefined,
+    hitRate: undefined,
+  });
+  return { ...result, score: mlScore };
+}
+
 export async function runScan(apiKey?: string | null): Promise<{ scanned: number; highConfidence: number }> {
   console.log("Running market scan...");
   const results: InsertBet[] = [];

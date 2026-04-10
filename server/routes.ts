@@ -8,6 +8,47 @@ import * as cheerio from "cheerio";
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import { startSmartWalletTracker, getSmartWallets, getSignalMap, getSignalForMarket } from "./smart-wallets";
+import * as fs from "fs";
+import { loadMLWeights, applyMLWeights } from "./ml-weights";
+
+// ── ML Engine helpers ────────────────────────────────────────────────────────
+const ML_DATA_DIR      = path.join(__dirname, "ml_data");
+const ML_WEIGHTS_FILE  = path.join(ML_DATA_DIR, "ml_weights.json");
+const ML_INSIGHTS_FILE = path.join(ML_DATA_DIR, "ml_insights.json");
+const ML_ENGINE_PY     = path.join(__dirname, "ml_engine.py");
+
+loadMLWeights(); // boot-time load; refreshed automatically after runMLEngine()
+
+// Log a graded outcome to ml_data/bet_outcome_log.json via Python
+function logMLOutcome(record: Record<string, any>): void {
+  try {
+    const proc = spawn("python3", [ML_ENGINE_PY, "append", JSON.stringify(record)], {
+      detached: true, stdio: "ignore",
+    });
+    proc.unref();
+  } catch { /* non-blocking, ignore */ }
+}
+
+// Run full ML engine (nightly or on demand)
+function runMLEngine(): Promise<Record<string, any>> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("python3", [ML_ENGINE_PY], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    proc.on("close", (code: number) => {
+      loadMLWeights(); // refresh weights in memory
+      if (code === 0) {
+        try {
+          const lines = out.trim().split("\n");
+          const jsonLine = lines.findLast((l: string) => l.startsWith("{"));
+          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
+        } catch { resolve({ status: "ok", output: out }); }
+      } else {
+        reject(new Error(`ML engine exited ${code}: ${out}`));
+      }
+    });
+  });
+}
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -837,6 +878,25 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const { status } = req.body;
       const bet = await storage.updateBetStatus(req.params.id, status);
       if (!bet) return res.status(404).json({ error: "Bet not found" });
+
+      // ML outcome log — only for definitive results
+      if (status === "won" || status === "lost") {
+        logMLOutcome({
+          bet_id:     bet.id,
+          sport:      (bet as any).sport ?? null,
+          bet_type:   (bet as any).betType ?? null,
+          pick_side:  (bet as any).teamStats ? (bet as any).teamStats.pickSide ?? null : null,
+          line:       (bet as any).line ?? null,
+          stat_value: null,
+          confidence: (bet as any).confidenceScore ?? null,
+          outcome:    status,
+          title:      (bet as any).title ?? null,
+          player:     (bet as any).playerName ?? null,
+          graded_at:  new Date().toISOString(),
+          source:     "manual",
+        });
+      }
+
       res.json(bet);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -847,6 +907,44 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     try {
       await storage.deleteBet(req.params.id);
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+
+  // ─── ML Self-Learning Endpoints ──────────────────────────────────────────
+
+  // GET /api/ml-insights — return latest ML insights JSON
+  app.get("/api/ml-insights", async (_req, res) => {
+    try {
+      if (fs.existsSync(ML_INSIGHTS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(ML_INSIGHTS_FILE, "utf-8"));
+        return res.json(data);
+      }
+      // Return empty scaffold if no data yet
+      return res.json({
+        overall: { total: 0, won: 0, lost: 0, push: 0, win_rate: null },
+        by_sport: {},
+        by_bet_type: {},
+        by_conf_tier: {},
+        by_week: [],
+        strengths: [],
+        weaknesses: [],
+        patterns: [],
+        last_run: null,
+        sample_size: 0,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/ml/run — trigger ML engine run (admin / nightly cron)
+  app.post("/api/ml/run", async (_req, res) => {
+    try {
+      const result = await runMLEngine();
+      res.json({ status: "ok", ...result });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -2213,7 +2311,13 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       (lm.bias !== "neutral" ? 5 : 0) +
       (r2 > 0.7 ? 5 : 0) +
       swBonus;
-    const pickConf = Math.min(99, Math.max(1, strength + confluenceBonus));
+    const pickConfRaw = Math.min(99, Math.max(1, strength + confluenceBonus));
+    // Apply ML weight nudge (no-op until we have ≥10 graded outcomes)
+    const pickConf = applyMLWeights(pickConfRaw, {
+      sport: mkt?.sport?.toUpperCase() ?? undefined,
+      betType: "prediction_market",
+      pickSide: pickedSide,
+    });
 
     // ── Edge and ROI ──
     const entryPrice = pickedSide === "yes" ? yesPrice : noPrice;
@@ -2331,6 +2435,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // Start Kronos at server boot
   startKronos();
+
+  // ── Nightly ML engine run (2:00 AM server time) ──────────────────────────
+  {
+    const scheduleNightlyML = () => {
+      const now = new Date();
+      const next2am = new Date(now);
+      next2am.setHours(2, 0, 0, 0);
+      if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
+      const msUntil = next2am.getTime() - now.getTime();
+      setTimeout(() => {
+        runMLEngine().then(() => {
+          console.log("[ML] Nightly engine run complete");
+        }).catch((e) => console.error("[ML] Nightly run error:", e));
+        setInterval(() => {
+          runMLEngine().catch((e) => console.error("[ML] Scheduled run error:", e));
+        }, 24 * 60 * 60 * 1000);
+      }, msUntil);
+    };
+    scheduleNightlyML();
+  }
 
   app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
     const { marketId } = req.params;
@@ -5808,9 +5932,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       if (statValue === null) return null;
       if (statValue === bet.line) return "push";
-      if (pickSide === "OVER") return statValue > bet.line ? "won" : "lost";
-      if (pickSide === "UNDER") return statValue < bet.line ? "won" : "lost";
-      return null;
+      const outcome: "won" | "lost" = pickSide === "OVER"
+        ? (statValue > bet.line ? "won" : "lost")
+        : (statValue < bet.line ? "won" : "lost");
+
+      // Log to ML engine for self-learning
+      logMLOutcome({
+        bet_id:    bet.id,
+        sport:     bet.sport,
+        bet_type:  bet.betType ?? "player_prop",
+        pick_side: pickSide,
+        line:      bet.line,
+        stat_value: statValue,
+        confidence: bet.confidenceScore ?? null,
+        outcome,
+        title:     bet.title,
+        player:    bet.playerName ?? null,
+        graded_at: new Date().toISOString(),
+      });
+
+      return outcome;
     } catch {
       return null;
     }

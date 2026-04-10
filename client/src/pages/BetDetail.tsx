@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft, Clock, User, TrendingUp, CheckCircle, XCircle,
   Shield, AlertTriangle, Zap, BarChart2, ExternalLink,
-  Loader2, Target, Activity, ChevronRight, Info, BookOpen
+  Loader2, Target, Activity, ChevronRight, Info, BookOpen,
+  DollarSign, Users, ArrowRight
 } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow, format } from "date-fns";
@@ -696,6 +697,261 @@ function StatVsLine({ statLabel, statValue, propLine, pickSide, sportColor = "#f
   );
 }
 
+
+
+// ── Line Movement Panel ────────────────────────────────────────────────────
+interface LMSpread  { open: number|null; current: number|null; move: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
+interface LMTotal   { open: number|null; current: number|null; move: number|null; overPublic?: number|null; overMoney?: number|null; underPublic?: number|null; underMoney?: number|null; }
+interface LMML      { awayOpen: number|null; awayCurrent: number|null; homeOpen: number|null; homeCurrent: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
+interface LMGame    { id: string; sport: string; awayTeam: string; homeTeam: string; gameTime: string|null; status: string; numBets: number|null; spread: LMSpread; total: LMTotal; moneyline: LMML; }
+
+function fmtLMLine(v: number | null): string {
+  if (v == null) return "—";
+  if (v > 0) return `+${v}`;
+  return String(v);
+}
+
+function moveBadgeLM(move: number | null): { label: string; color: string; bg: string } | null {
+  if (move == null || move === 0) return null;
+  const abs = Math.abs(move);
+  if (abs >= 3) return { label: `🔥 ${move > 0 ? "+" : ""}${move} STEAM`, color: "#f87171", bg: "rgba(248,113,113,0.12)" };
+  if (abs >= 1.5) return { label: `${move > 0 ? "+" : ""}${move} move`, color: "#fb923c", bg: "rgba(251,146,60,0.12)" };
+  if (abs >= 0.5) return { label: `${move > 0 ? "+" : ""}${move}`, color: "#fbbf24", bg: "rgba(251,191,36,0.10)" };
+  return null;
+}
+
+function sharpSignalLM(moneyPct: number|null|undefined, publicPct: number|null|undefined): { label: string; color: string } | null {
+  if (moneyPct == null || publicPct == null) return null;
+  const div = moneyPct - publicPct;
+  if (moneyPct >= 65 && div >= 20) return { label: `Sharp ↑ ${moneyPct}%$`, color: "#4ade80" };
+  if (moneyPct >= 55 && div >= 15) return { label: `Lean ↑ ${moneyPct}%$`, color: "#86efac" };
+  if (moneyPct <= 35 && div <= -20) return { label: `Fade ↓ ${moneyPct}%$`, color: "#f87171" };
+  return null;
+}
+
+function MoveRow({ label, open, current, move }: { label: string; open: number|null; current: number|null; move: number|null }) {
+  if (open == null && current == null) return null;
+  const badge = moveBadgeLM(move);
+  const moved = move != null && move !== 0;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-14 text-right text-[11px] font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
+      <span className="font-mono text-[12px]" style={{ color: "rgba(19,35,58,0.55)" }}>{fmtLMLine(open)}</span>
+      <ArrowRight size={10} className="flex-shrink-0" style={{ color: "rgba(19,35,58,0.3)" }} />
+      <span className="font-mono font-black text-[13px]" style={{ color: moved ? "#131A24" : "rgba(19,35,58,0.45)" }}>{fmtLMLine(current)}</span>
+      {badge && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold ml-1"
+          style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
+      )}
+    </div>
+  );
+}
+
+function PublicRowLM({ label, publicPct, moneyPct, accentColor }: { label: string; publicPct?: number|null; moneyPct?: number|null; accentColor: string }) {
+  if (publicPct == null && moneyPct == null) return null;
+  const signal = sharpSignalLM(moneyPct, publicPct);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold" style={{ color: "rgba(19,35,58,0.5)" }}>{label}</span>
+        {signal && <span className="text-[10px] font-bold" style={{ color: signal.color }}>{signal.label}</span>}
+      </div>
+      {publicPct != null && (
+        <div className="flex items-center gap-1.5">
+          <Users size={9} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+            <div className="h-full rounded-full" style={{ width: `${publicPct}%`, background: "rgba(99,102,241,0.55)" }} />
+          </div>
+          <span className="text-[10px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.55)" }}>{publicPct}%</span>
+        </div>
+      )}
+      {moneyPct != null && (
+        <div className="flex items-center gap-1.5">
+          <DollarSign size={9} style={{ color: "rgba(19,35,58,0.4)", flexShrink: 0 }} />
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+            <div className="h-full rounded-full" style={{ width: `${moneyPct}%`, background: moneyPct >= 65 ? "rgba(74,222,128,0.7)" : `${accentColor}88` }} />
+          </div>
+          <span className="text-[10px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.55)" }}>{moneyPct}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LineMovementPanel({ bet }: { bet: Bet }) {
+  const [open, setOpen] = useState(false);
+  const sport = (bet.sport ?? "").toUpperCase();
+  const validSports = ["NBA", "NFL", "MLB", "NHL"];
+  if (!validSports.includes(sport) || (!bet.homeTeam && !bet.awayTeam)) return null;
+
+  const sportColor = SPORT_ACCENT[sport] ?? "#f59e0b";
+  const teamColor  = getTeamColor(bet.homeTeam) ?? getTeamColor(bet.awayTeam) ?? null;
+  const accentColor = teamColor ?? sportColor;
+
+  const { data: lmData, isLoading } = useQuery<LMGame[]>({
+    queryKey: ["/api/line-movement"],
+    queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    enabled: open,  // only fetch when expanded
+  });
+
+  // Match by team name fuzzy
+  const matchGame = (g: LMGame) => {
+    const names = [g.awayTeam, g.homeTeam].map(n => n.toLowerCase());
+    const awayLast = (bet.awayTeam ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const homeLast = (bet.homeTeam ?? "").split(" ").pop()?.toLowerCase() ?? "";
+    const awayMatch = !awayLast || names.some(n => n.includes(awayLast) || awayLast.includes(n.split(" ").pop()!));
+    const homeMatch = !homeLast || names.some(n => n.includes(homeLast) || homeLast.includes(n.split(" ").pop()!));
+    return awayMatch && homeMatch;
+  };
+
+  const game = lmData?.find(g => g.sport === sport && matchGame(g)) ?? null;
+
+  // Detect what type of bet this is
+  const betType = bet.betType?.toLowerCase() ?? "";
+  const isSpread = betType.includes("spread") || betType.includes("ats");
+  const isTotal  = betType.includes("total") || betType.includes("ou") || betType.includes("over") || betType.includes("under");
+  const isML     = betType.includes("money") || betType.includes("ml") || betType.includes("moneyline");
+
+  // Overall movement signal
+  const spreadMove = game?.spread.move ?? null;
+  const totalMove  = game?.total.move ?? null;
+  const hasSteam = (Math.abs(spreadMove ?? 0) >= 2) || (Math.abs(totalMove ?? 0) >= 2);
+  const hasRLM = (() => {
+    if (!game) return false;
+    const awayPub = game.spread.awayPublic ?? 50;
+    const moved = spreadMove ?? 0;
+    return (awayPub >= 60 && moved > 0) || (awayPub <= 40 && moved < 0);
+  })();
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.1)", borderLeft: `3px solid ${accentColor}` }}>
+      {/* Accent bar */}
+      <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accentColor}, ${accentColor}33)` }} />
+
+      {/* Collapsed header — always visible */}
+      <button
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[#13233A]/[0.03] transition-colors"
+        style={{ background: "rgba(19,35,58,0.04)" }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <TrendingUp size={13} style={{ color: accentColor, flexShrink: 0 }} />
+        <span className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.7)" }}>Line Movement</span>
+
+        {/* Signal chips — visible even collapsed */}
+        {hasSteam && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>🔥 Steam</span>
+        )}
+        {hasRLM && !hasSteam && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#4ade80" }}>↩ RLM</span>
+        )}
+        {!game && !isLoading && open && (
+          <span className="text-[10px] text-[#3D4B58] ml-1">No data for this game</span>
+        )}
+
+        <span className="ml-auto" style={{ color: "rgba(19,35,58,0.35)", transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>
+          <ChevronRight size={13} />
+        </span>
+      </button>
+
+      {/* Expanded body */}
+      {open && (
+        <div className="px-4 pb-4 space-y-4" style={{ background: "#fff" }}>
+          {isLoading && (
+            <div className="flex items-center gap-2 py-3 text-xs" style={{ color: "rgba(19,35,58,0.5)" }}>
+              <Loader2 size={13} className="animate-spin" /> Loading line data…
+            </div>
+          )}
+
+          {!isLoading && !game && (
+            <p className="text-xs py-3 text-center" style={{ color: "rgba(19,35,58,0.45)" }}>
+              No line movement data found for this game yet.
+            </p>
+          )}
+
+          {game && (
+            <div className="space-y-4 pt-2">
+              {/* Game header */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold" style={{ color: "#131A24" }}>{game.awayTeam} @ {game.homeTeam}</span>
+                <div className="flex items-center gap-2">
+                  {game.numBets != null && (
+                    <span className="text-[10px] font-mono" style={{ color: "rgba(19,35,58,0.45)" }}>{game.numBets.toLocaleString()} bets</span>
+                  )}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide"
+                    style={{ background: `${accentColor}18`, color: accentColor }}>{game.sport}</span>
+                </div>
+              </div>
+
+              {/* ── Spread ─────────────────────────────── */}
+              {(game.spread.open != null || game.spread.current != null) && (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Spread</div>
+                  <MoveRow label="ATS" open={game.spread.open} current={game.spread.current} move={game.spread.move} />
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <PublicRowLM label={`${game.awayTeam.split(" ").pop()} ATS`} publicPct={game.spread.awayPublic} moneyPct={game.spread.awayMoney} accentColor={accentColor} />
+                    <PublicRowLM label={`${game.homeTeam.split(" ").pop()} ATS`} publicPct={game.spread.homePublic} moneyPct={game.spread.homeMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Divider ── */}
+              {(game.spread.open != null) && (game.total.open != null) && (
+                <div style={{ height: 1, background: "rgba(19,35,58,0.07)" }} />
+              )}
+
+              {/* ── Total ──────────────────────────────── */}
+              {(game.total.open != null || game.total.current != null) && (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Total (O/U)</div>
+                  <MoveRow label="O/U" open={game.total.open} current={game.total.current} move={game.total.move} />
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <PublicRowLM label="Over" publicPct={game.total.overPublic}  moneyPct={game.total.overMoney}  accentColor={accentColor} />
+                    <PublicRowLM label="Under" publicPct={game.total.underPublic} moneyPct={game.total.underMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Divider ── */}
+              {(game.total.open != null) && (game.moneyline.awayOpen != null || game.moneyline.homeOpen != null) && (
+                <div style={{ height: 1, background: "rgba(19,35,58,0.07)" }} />
+              )}
+
+              {/* ── Moneyline ──────────────────────────── */}
+              {(game.moneyline.awayOpen != null || game.moneyline.homeOpen != null) && (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>Moneyline</div>
+                  <MoveRow label={game.awayTeam.split(" ").pop()!} open={game.moneyline.awayOpen} current={game.moneyline.awayCurrent} move={game.moneyline.awayCurrent != null && game.moneyline.awayOpen != null ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null} />
+                  <MoveRow label={game.homeTeam.split(" ").pop()!} open={game.moneyline.homeOpen} current={game.moneyline.homeCurrent} move={game.moneyline.homeCurrent != null && game.moneyline.homeOpen != null ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null} />
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <PublicRowLM label={`${game.awayTeam.split(" ").pop()} ML`} publicPct={game.moneyline.awayPublic} moneyPct={game.moneyline.awayMoney} accentColor={accentColor} />
+                    <PublicRowLM label={`${game.homeTeam.split(" ").pop()} ML`} publicPct={game.moneyline.homePublic} moneyPct={game.moneyline.homeMoney} accentColor={accentColor} />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Sharp signal summary ── */}
+              {(hasSteam || hasRLM) && (
+                <div className="rounded-lg px-3 py-2.5 mt-1"
+                  style={{ background: hasSteam ? "rgba(248,113,113,0.06)" : "rgba(74,222,128,0.06)", border: `1px solid ${hasSteam ? "rgba(248,113,113,0.2)" : "rgba(74,222,128,0.2)"}` }}>
+                  <p className="text-[11px] font-bold" style={{ color: hasSteam ? "#f87171" : "#4ade80" }}>
+                    {hasSteam ? "🔥 Sharp Steam Detected" : "↩ Reverse Line Movement"}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.6)" }}>
+                    {hasSteam
+                      ? `Line moved ${Math.abs(spreadMove ?? totalMove ?? 0)} pts — professional money is behind this game.`
+                      : `Public % and line direction diverge — sharp money is fading the public side.`}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Live Game Panel ────────────────────────────────────────────────────────
 interface LiveScoreTeam {
@@ -1496,6 +1752,9 @@ export default function BetDetail() {
         riskLevel={bet.riskLevel}
         impliedProbability={bet.impliedProbability}
       />
+
+      {/* ── Line Movement ── */}
+      <LineMovementPanel bet={bet} />
 
       {/* ── Live Game Score ── */}
       {(bet.homeTeam || bet.awayTeam || bet.sport) && <LiveGamePanel bet={bet} />}

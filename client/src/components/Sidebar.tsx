@@ -3,7 +3,7 @@ import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
 import {
   LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity,
+  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain,
 } from "lucide-react";
 
 const navItems = [
@@ -17,6 +17,7 @@ const navItems = [
   { href: "/fantasy",    label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,          emoji: "⬛" },
   { href: "/lotto",      label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,           emoji: "⬛" },
   { href: "/bracket",    label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,           emoji: "⬛" },
+  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,            emoji: "⬛" },
   { href: "/settings",   label: "Settings",       mobileLabel: "Settings", icon: Settings,         emoji: "⬛" },
 ];
 
@@ -28,6 +29,7 @@ const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/lotto":      { label: "HOT",  style: "badge-hot" },
   "/linemate":   { label: "NEW",  style: "badge-new" },
   "/fantasy":    { label: "NEW",  style: "badge-new" },
+  "/ml-insights": { label: "NEW",  style: "badge-new" },
 };
 
 // ── Clubhouse IQ Logo — exact brand image + cursive wordmark ─────────────
