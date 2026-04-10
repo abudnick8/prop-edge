@@ -2157,26 +2157,75 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      // Kalshi or fallback: build synthetic from market data
-      if (history.length < 5 && market) {
-        const now = Math.floor(Date.now() / 1000);
-        const basePrice = market.yesPrice ?? market.price ?? 0.5;
-        const pd1 = market.pd1 ?? 0;
-        const ph1 = market.ph1 ?? 0;
-        history = [
-          { t: now - 7 * 24 * 3600, p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 * 7 / 100))) },
-          { t: now - 3 * 24 * 3600, p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 * 3 / 100))) },
-          { t: now - 24 * 3600,     p: Math.max(0.01, Math.min(0.99, basePrice - (pd1 / 100))) },
-          { t: now - 3600,          p: Math.max(0.01, Math.min(0.99, basePrice - (ph1 / 100))) },
-          { t: now,                 p: Math.max(0.01, Math.min(0.99, basePrice)) },
+      // Build rich synthetic history from price delta anchors
+      // Uses ph1 (1h), pd1 (1d), pw1 (1w) to reconstruct a 30-point price path
+      // This gives Kronos enough data to detect trends, momentum, and crossovers
+      if (history.length < 5) {
+        const now  = Math.floor(Date.now() / 1000);
+        const base = Math.max(0.02, Math.min(0.98, market?.yesPrice ?? market?.price ?? 0.5));
+
+        // Convert % deltas back to price levels
+        // ph1/pd1/pw1 are stored as percentage points (e.g. 3.2 = +3.2%)
+        const ph1Raw = (market?.ph1 ?? 0) / 100;  // 1h delta as fraction
+        const pd1Raw = (market?.pd1 ?? 0) / 100;  // 1d delta as fraction
+        const pw1Raw = (market?.pw1 ?? 0) / 100;  // 1w delta as fraction
+        const vol    = Math.max(0.003, Math.abs(pd1Raw) / 4); // volatility proxy
+
+        // Anchor prices at known timestamps
+        const p_now  = base;
+        const p_1h   = Math.max(0.02, Math.min(0.98, base - ph1Raw));
+        const p_1d   = Math.max(0.02, Math.min(0.98, base - pd1Raw));
+        const p_1w   = Math.max(0.02, Math.min(0.98, base - pw1Raw));
+        const p_2w   = Math.max(0.02, Math.min(0.98, p_1w - pw1Raw * 0.5)); // extrapolate
+
+        // Build 30 interpolated points across 2-week window (1 per ~12h)
+        // Using a simple linear interpolation between anchors + small deterministic jitter
+        const anchors = [
+          { t: now - 14 * 24 * 3600, p: p_2w },
+          { t: now -  7 * 24 * 3600, p: p_1w },
+          { t: now -  1 * 24 * 3600, p: p_1d },
+          { t: now -  1 * 3600,      p: p_1h },
+          { t: now,                   p: p_now },
         ];
+
+        history = [];
+        const POINTS = 30;
+        const windowSecs = 14 * 24 * 3600;
+        for (let i = 0; i < POINTS; i++) {
+          const frac = i / (POINTS - 1);
+          const ts   = now - windowSecs + Math.round(frac * windowSecs);
+
+          // Linear interpolation between nearest anchors
+          let p = p_now;
+          for (let ai = 0; ai < anchors.length - 1; ai++) {
+            const a0 = anchors[ai], a1 = anchors[ai + 1];
+            if (ts >= a0.t && ts <= a1.t) {
+              const span = a1.t - a0.t;
+              const localFrac = span > 0 ? (ts - a0.t) / span : 0;
+              p = a0.p + (a1.p - a0.p) * localFrac;
+              break;
+            }
+          }
+
+          // Deterministic jitter based on position (makes trend detectable)
+          const seed   = Math.sin(i * 2.9) * 0.5 + 0.5; // pseudo-random [0,1]
+          const jitter = (seed - 0.5) * vol * 0.8;
+          history.push({ t: ts, p: Math.max(0.02, Math.min(0.98, p + jitter)) });
+        }
       }
 
+      // Even if market is unknown, build minimal history from any price we have
       if (history.length < 2) {
         return res.json({
           signal: "neutral", strength: 0, forecast: [],
-          explanation: "Not enough price history for Kronos analysis.",
-          trend_slope: 0, volatility: 0, momentum: 0, sr: {},
+          explanation: "No market data available for Kronos analysis.",
+          trend_slope: 0, volatility: 0, momentum: 0,
+          action: "No data.", r2: 0, volatility_regime: "low",
+          line_movement: { short_slope: 0, long_slope: 0, bias: "neutral", divergence: 0 },
+          late_breaking: { detected: false, direction: null, magnitude: 0 },
+          crossover: "none", tossup: false,
+          sr: { support: null, resistance: null },
+          current_cents: 0, projected_cents: 0, data_points: 0,
         });
       }
 

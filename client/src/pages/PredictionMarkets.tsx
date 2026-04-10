@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, Trophy } from "lucide-react";
@@ -1164,9 +1164,45 @@ export default function PredictionMarkets() {
   const todayCount = markets.filter(isTodayMarket).length;
   const qc = useQueryClient();
 
-  // Helper: get cached Kronos result for a market (populated as cards mount)
-  const getKronos = (id: string): KronosResponse | undefined =>
-    qc.getQueryData<KronosResponse>(["/api/prediction-markets/kronos", id]);
+  // ── Bulk Kronos pre-fetch ──────────────────────────────────────────────────
+  // When a Kronos filter or sort is active, fetch ALL markets' Kronos data in
+  // parallel so the filter has populated data immediately (not lazily per-card).
+  const kronosActive = kronosFilter !== "all" || kronosSort !== "default";
+  const kronosQueryResults = useQueries({
+    queries: kronosActive
+      ? markets.map(m => ({
+          queryKey: ["/api/prediction-markets/kronos", m.id],
+          queryFn: () =>
+            apiRequest("GET", `/api/prediction-markets/kronos/${m.id}?steps=12`)
+              .then(r => r.json()) as Promise<KronosResponse>,
+          staleTime: 5 * 60 * 1000,  // 5-min cache matches server
+          retry: 1,
+        }))
+      : [],
+  });
+
+  // Build a lookup map: marketId → KronosResponse (from bulk fetch OR per-card cache)
+  const kronosMap = new Map<string, KronosResponse>();
+  if (kronosActive) {
+    markets.forEach((m, i) => {
+      const d = kronosQueryResults[i]?.data;
+      if (d) kronosMap.set(m.id, d);
+    });
+  } else {
+    // When not actively filtering, fall back to per-card cached data for badge display
+    markets.forEach(m => {
+      const d = qc.getQueryData<KronosResponse>(["/api/prediction-markets/kronos", m.id]);
+      if (d) kronosMap.set(m.id, d);
+    });
+  }
+  const getKronos = (id: string): KronosResponse | undefined => kronosMap.get(id);
+
+  // How many Kronos results are loaded (for filter UX feedback)
+  const kronosLoadedCount = kronosActive
+    ? kronosQueryResults.filter(q => q.isSuccess).length
+    : 0;
+  const kronosTotalCount  = kronosActive ? markets.length : 0;
+  const kronosAllLoaded   = kronosActive && kronosLoadedCount >= kronosTotalCount;
 
   const filtered = markets.filter(m => {
     if (m.yesPrice < 0.02 || m.yesPrice > 0.98) return false;
@@ -1177,10 +1213,10 @@ export default function PredictionMarkets() {
     if (ratingFilter !== "all" && ratingFilter !== "whale" && m.priceRating !== ratingFilter) return false;
     if (sourceFilter !== "all" && m.source !== sourceFilter) return false;
     if (search && !m.title.toLowerCase().includes(search.toLowerCase()) && !m.event.toLowerCase().includes(search.toLowerCase())) return false;
-    // Kronos filter (uses cached data — works once cards have loaded)
+    // Kronos filter — uses bulk pre-fetched data, available immediately
     if (kronosFilter !== "all") {
       const k = getKronos(m.id);
-      if (!k) return false; // hide if not yet loaded
+      if (!k) return false; // loading — hide until data arrives
       if (kronosFilter === "bullish" && k.signal !== "bullish") return false;
       if (kronosFilter === "bearish" && k.signal !== "bearish") return false;
       if (kronosFilter === "strong"  && k.strength < 50)        return false;
@@ -1521,8 +1557,17 @@ export default function PredictionMarkets() {
       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 mb-5">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">⚡ Kronos AI Filter</span>
-          <span className="text-[9px] text-muted-foreground">(loads as cards render)</span>
-          {kronosFilter !== "all" && (
+          {kronosActive && !kronosAllLoaded && (
+            <span className="text-[9px] text-cyan-400/70 animate-pulse">
+              Analyzing {kronosLoadedCount}/{kronosTotalCount}…
+            </span>
+          )}
+          {kronosActive && kronosAllLoaded && (
+            <span className="text-[9px] text-emerald-400">
+              ✓ {kronosTotalCount} markets analyzed
+            </span>
+          )}
+          {(kronosFilter !== "all" || kronosSort !== "default") && (
             <button
               onClick={() => { setKronosFilter("all"); setKronosSort("default"); }}
               className="ml-auto text-[9px] text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5"
@@ -1579,6 +1624,13 @@ export default function PredictionMarkets() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-border bg-muted/30 animate-pulse h-48" />
           ))}
+        </div>
+      ) : kronosActive && !kronosAllLoaded && filtered.length === 0 ? (
+        // Kronos filter active but still fetching — show spinner instead of empty state
+        <div className="text-center py-16 text-muted-foreground border border-dashed border-cyan-500/20 rounded-xl">
+          <p className="text-4xl mb-3 animate-spin inline-block">⚡</p>
+          <p className="font-semibold text-cyan-400">Kronos is analyzing all markets…</p>
+          <p className="text-xs mt-1">Loaded {kronosLoadedCount} of {kronosTotalCount} — results will appear as data arrives</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl">
