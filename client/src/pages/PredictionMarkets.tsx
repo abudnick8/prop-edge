@@ -209,6 +209,61 @@ const RATING_TABS: { id: RatingFilter; label: string; emoji: string }[] = [
 ];
 
 // ── Price History Drawer ──────────────────────────────────────────────────────
+function ExpandableLegs({ displayLegs, rawLegs }: { displayLegs: string[]; rawLegs: string[] | null }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  return (
+    <div className="mt-1">
+      <p className="text-[11px] font-bold text-orange-300 mb-2.5">
+        {displayLegs.length}-Leg Combo · tap each to see full condition
+      </p>
+      <div className="flex flex-col gap-2">
+        {displayLegs.map((leg, i) => {
+          const isYes = leg.startsWith("YES");
+          const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
+          const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
+          const isExpanded = expandedIdx === i;
+          // Full raw condition from server (before any client parsing)
+          const fullCondition = rawLegs?.[i]
+            ? rawLegs[i].replace(/^(YES|NO)\s+/i, "").trim()
+            : rawLegText;
+          const hasMore = fullCondition !== rawLegText && fullCondition.length > rawLegText.length;
+          return (
+            <button
+              key={i}
+              onClick={() => setExpandedIdx(isExpanded ? null : i)}
+              className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-[12px] text-left w-full transition-all ${
+                isYes
+                  ? "bg-green-500/5 border-green-500/20 hover:bg-green-500/10"
+                  : "bg-red-500/5 border-red-500/20 hover:bg-red-500/10"
+              }`}
+            >
+              <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
+                isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
+              }`}>
+                {isYes ? "YES" : "NO"}
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
+                  {isExpanded ? fullCondition : legText}
+                </span>
+                {isBareTotal && !legText.includes("(") && !isExpanded && (
+                  <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
+                )}
+                {isExpanded && fullCondition !== legText && (
+                  <p className="text-[10px] text-foreground/50 mt-1">Full condition from source</p>
+                )}
+              </div>
+              <span className="shrink-0 text-foreground/40 mt-0.5">
+                {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
   const cfg = RATING_CONFIG[m.priceRating] ?? RATING_CONFIG.fair;
   const url = m.polyUrl ?? m.kalshiUrl ?? "#";
@@ -271,39 +326,7 @@ function HistoryDrawer({ m, onClose }: { m: PredMkt; onClose: () => void }) {
               const { displayLegs, summaryTitle } = parseRawTitle(m.title, m.isParlay, m.legs);
               if (displayLegs && displayLegs.length > 0) {
                 return (
-                  <div className="mt-1">
-                    <p className="text-[11px] font-bold text-orange-300 mb-2.5">
-                      {displayLegs.length}-Leg Combo · tap each to see full condition
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      {displayLegs.map((leg, i) => {
-                        const isYes = leg.startsWith("YES");
-                        const rawLegText = leg.replace(/^(YES|NO)\s+/, "");
-                        const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
-                        return (
-                          <div key={i} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-[12px] ${
-                            isYes
-                              ? "bg-green-500/5 border-green-500/20"
-                              : "bg-red-500/5 border-red-500/20"
-                          }`}>
-                            <span className={`shrink-0 font-black text-[10px] px-2 py-1 rounded tracking-widest mt-0.5 ${
-                              isYes ? "bg-green-500/25 text-green-400" : "bg-red-500/25 text-red-400"
-                            }`}>
-                              {isYes ? "YES" : "NO"}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <span className={`leading-snug font-semibold ${isYes ? "text-foreground" : "text-muted-foreground"}`}>
-                                {legText}
-                              </span>
-                              {isBareTotal && !legText.includes("(") && (
-                                <p className="text-[10px] text-amber-400/80 mt-0.5">⚠ Game total — see other legs for matchup</p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <ExpandableLegs displayLegs={displayLegs} rawLegs={m.legs ?? null} />
                 );
               }
               return (
