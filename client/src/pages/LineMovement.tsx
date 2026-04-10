@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Users, DollarSign, Clock, Filter,
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
   Bell, BellOff, Target, Wind, Thermometer, Eye, ArrowRight,
+  Brain, Star, BarChart2, CheckCircle, XCircle, Minus as MinusIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
@@ -803,6 +804,294 @@ function RecCard({ rec }: { rec: BetRec }) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clubhouse IQ Pick Panel
+// Fetches matching bet from /api/bets (ActionNetwork team bets) and renders
+// the full CIQ analysis: grade, score, sizing, EV, chains, variables, pick rec
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CIQBet {
+  id: string;
+  sport: string;
+  betType: string;
+  source: string;
+  homeTeam?: string | null;
+  awayTeam?: string | null;
+  teamStats?: Record<string, unknown> | null;
+  confidenceScore?: number | null;
+  title?: string;
+  description?: string;
+}
+
+const GRADE_COLOR: Record<string, string> = {
+  "A+": "#22c55e",  A: "#4ade80",  "A-": "#86efac",
+  "B+": "#fbbf24",  B: "#f59e0b",  "B-": "#f59e0b",
+  "C+": "#fb923c",  C:  "#f97316", D:   "#ef4444",  F: "#dc2626",
+};
+
+const CHAIN_EMOJI: Record<string, string> = {
+  THE_MISPRICING: "💎", SHARPS_LOVE: "💰", INJURY_GOLDMINE: "🩺",
+  ACE_DOMINATION: "🎯", MISMATCH_MASSACRE: "⚡", FATIGUE_FADE: "😴",
+  DUMPSTER_FIRE: "🗑️", SCHEDULE_LOSS: "📅", COLD_TAKE: "🥶",
+  REVENGE_GAME: "🔥", PRIME_TIME: "⭐", TRAP_GAME: "⚠️",
+  VALUE_SPOT: "📈", SHARP_ACTION: "🔱", PUBLIC_FADE: "🔄",
+  TOTAL_STEAM: "♨️", SPREAD_STEAM: "🌊", COVER_MACHINE: "🏆",
+  UNDERDOG_SPOT: "🐶", ROAD_WARRIOR: "✈️", HOME_COOKUP: "🏠",
+  MUST_WIN: "❗", DIVISIONAL_EDGE: "🏟️", ALTITUDE_EFFECT: "⛰️",
+  WEATHER_FACTOR: "🌧️", REST_ADVANTAGE: "💤", PACE_MISMATCH: "⏱️",
+  GOALIE_MISMATCH: "🥅", ACE_FADE: "📉",
+};
+
+function CIQPickPanel({ game }: { game: GameLine }) {
+  const { data: allBets = [] } = useQuery<CIQBet[]>({
+    queryKey: ["/api/bets"],
+    queryFn: () => apiRequest("GET", "/api/bets").then(r => r.json()),
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  // Match LM game to an AN bet by home/away team (last word fuzzy match)
+  const matchedBet = (allBets as CIQBet[]).find(b => {
+    if (b.source !== "actionnetwork") return false;
+    if (b.betType === "player_prop" || b.betType === "futures" || b.betType === "season_prop") return false;
+    if (!b.homeTeam || !b.awayTeam) return false;
+    const bHome = b.homeTeam.toLowerCase();
+    const bAway = b.awayTeam.toLowerCase();
+    const gHome = game.homeTeam.toLowerCase();
+    const gAway = game.awayTeam.toLowerCase();
+    // Full match
+    if (bHome === gHome && bAway === gAway) return true;
+    // Last-word match (e.g. "Boston Celtics" vs "Celtics")
+    const bHomeLast = bHome.split(" ").pop() ?? "";
+    const bAwayLast = bAway.split(" ").pop() ?? "";
+    const gHomeLast = gHome.split(" ").pop() ?? "";
+    const gAwayLast = gAway.split(" ").pop() ?? "";
+    return bHomeLast === gHomeLast && bAwayLast === gAwayLast;
+  });
+
+  const ts = matchedBet?.teamStats as Record<string, any> | undefined;
+  const eg = ts?.edgeGrade as string | undefined;
+  const es = ts?.edgeScore as number | undefined;
+  const sizing = ts?.edgeSizing as string | undefined;
+  const ev = ts?.edgeEV as any;
+  const vars = ts?.edgeVariables as Record<string, any> | undefined;
+  const chains = (ts?.edgeChains ?? []) as string[];
+  const peter = ts?.edgePeter as { flags?: any[]; has_kill?: boolean } | undefined;
+  const pickSide = ts?.pickSide as string | undefined;
+  const pickedOdds = ts?.pickedOdds as number | undefined;
+
+  if (!matchedBet || !eg || es == null) {
+    return (
+      <div className="rounded-xl border border-dashed border-border p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Brain size={14} className="text-primary" />
+          <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          No CIQ analysis available for this game yet. Analysis runs when line data is ingested from ActionNetwork.
+        </p>
+      </div>
+    );
+  }
+
+  const gradeColor = GRADE_COLOR[eg] ?? "#94a3b8";
+  const evPct = ev?.ev_pct != null
+    ? Number(ev.ev_pct).toFixed(1)
+    : ev != null && typeof ev === "number"
+      ? ev.toFixed(1) : null;
+  const evPositive = evPct != null && parseFloat(evPct) > 0;
+
+  // Sizing → bet recommendation label
+  const sizingLabel = sizing === "2u" ? "Max Bet (2 units)" :
+    sizing === "1.5u" ? "Strong Bet (1.5 units)" :
+    sizing === "1u"  ? "Standard Bet (1 unit)" : "PASS";
+  const sizingColor = sizing === "2u" ? "#22c55e" : sizing === "1.5u" ? "#4ade80" : sizing === "1u" ? "#fbbf24" : "#94a3b8";
+
+  // Top variables sorted by score
+  const topVars = vars
+    ? Object.entries(vars)
+        .filter(([, v]) => v != null && typeof (v as any).score === "number")
+        .sort(([, a], [, b]) => Math.abs((b as any).score) - Math.abs((a as any).score))
+        .slice(0, 6)
+    : [];
+
+  const peterKill = peter?.has_kill === true;
+  const peterFlags = peter?.flags ?? [];
+
+  // Direction label (which side the engine likes)
+  const pickLabel = pickSide
+    ? pickSide.length > 25 ? pickSide.slice(0, 24) + "…" : pickSide
+    : (eg && (eg.startsWith("A") || eg.startsWith("B")) ? "See bet cards for pick" : "No strong edge");
+
+  return (
+    <div className="rounded-xl overflow-hidden border" style={{ borderColor: `${gradeColor}35` }}>
+
+      {/* ── Header: Grade + Score ── */}
+      <div className="px-4 py-3 flex items-center gap-3 flex-wrap"
+        style={{ background: `${gradeColor}12`, borderBottom: `1px solid ${gradeColor}25` }}>
+        {/* Grade badge */}
+        <div className="flex items-center justify-center rounded-lg w-12 h-12 flex-shrink-0"
+          style={{ background: `${gradeColor}18`, border: `2px solid ${gradeColor}` }}>
+          <span className="text-2xl font-black leading-none" style={{ color: gradeColor }}>{eg}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: gradeColor }}>
+              Clubhouse IQ Pick
+            </span>
+            {peterKill && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
+                ⚠️ KILL SIGNAL
+              </span>
+            )}
+          </div>
+          <p className="text-sm font-bold text-foreground mt-0.5 leading-tight">{pickLabel}</p>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-[10px] text-muted-foreground">
+              Score: <span className="font-bold" style={{ color: gradeColor }}>{es.toFixed(1)}/10</span>
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              Size: <span className="font-bold" style={{ color: sizingColor }}>{sizingLabel}</span>
+            </span>
+            {evPct != null && (
+              <span className="text-[10px] text-muted-foreground">
+                EV: <span className="font-bold" style={{ color: evPositive ? "#4ade80" : "#f87171" }}>
+                  {evPositive ? "+" : ""}{evPct}%
+                </span>
+              </span>
+            )}
+            {pickedOdds != null && (
+              <span className="text-[10px] text-muted-foreground">
+                Odds: <span className="font-mono font-bold text-foreground/80">
+                  {pickedOdds > 0 ? "+" : ""}{pickedOdds}
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Score ring */}
+        <div className="text-right flex-shrink-0">
+          <div className="text-3xl font-black leading-none" style={{ color: gradeColor }}>
+            {es.toFixed(1)}
+          </div>
+          <div className="text-[9px] text-muted-foreground">/ 10</div>
+        </div>
+      </div>
+
+      {/* ── Chains Fired ── */}
+      {chains.length > 0 && (
+        <div className="px-4 py-3 space-y-2" style={{ borderBottom: `1px solid ${gradeColor}15` }}>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <Zap size={10} className="text-amber-400" /> Chains Fired ({chains.length})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {chains.map((c, i) => {
+              const isPositive = !["DUMPSTER_FIRE","SCHEDULE_LOSS","COLD_TAKE","TRAP_GAME","ACE_FADE"].includes(c);
+              return (
+                <span key={i}
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                  style={{
+                    background: isPositive ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)",
+                    color: isPositive ? "#4ade80" : "#f87171",
+                    borderColor: isPositive ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)",
+                  }}>
+                  {CHAIN_EMOJI[c] ?? (isPositive ? "✅" : "❌")} {c.replace(/_/g, " ")}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Variable Breakdown ── */}
+      {topVars.length > 0 && (
+        <div className="px-4 py-3 space-y-2" style={{ borderBottom: `1px solid ${gradeColor}15` }}>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <BarChart2 size={10} className="text-indigo-400" /> Key Factors
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {topVars.map(([key, val], i) => {
+              const score = (val as any).score as number;
+              const label = (val as any).label ?? key.replace(/_/g, " ").replace(/\w/g, c => c.toUpperCase());
+              const barW = Math.min(Math.abs(score) / 2 * 100, 100);
+              const barColor = score >= 1.5 ? "#22c55e" : score >= 0.5 ? "#4ade80" : score <= -1.5 ? "#ef4444" : score <= -0.5 ? "#f87171" : "#94a3b8";
+              return (
+                <div key={i} className="space-y-0.5">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-foreground/80 font-medium">{label}</span>
+                    <span className="font-bold font-mono" style={{ color: barColor }}>
+                      {score > 0 ? "+" : ""}{score.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-border/50 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${barW}%`,
+                        background: barColor,
+                        marginLeft: score < 0 ? "auto" : undefined,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Peter/Kill Flags ── */}
+      {peterFlags.length > 0 && (
+        <div className="px-4 py-3 space-y-2" style={{ borderBottom: `1px solid ${gradeColor}15` }}>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <AlertTriangle size={10} className="text-orange-400" /> Risk Flags
+          </p>
+          <div className="space-y-1">
+            {peterFlags.map((f: any, i: number) => (
+              <div key={i} className="flex items-center gap-2 text-[11px]">
+                <span className="text-orange-400 flex-shrink-0">⚠️</span>
+                <span className="text-foreground/80">{typeof f === "string" ? f : f.reason ?? JSON.stringify(f)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Recommendation / Sizing call ── */}
+      <div className="px-4 py-3 flex items-start gap-3 flex-wrap"
+        style={{ background: `${sizingColor}08` }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+            <Star size={10} style={{ color: sizingColor }} /> Clubhouse Recommendation
+          </p>
+          <p className="text-sm font-bold" style={{ color: sizingColor }}>{sizingLabel}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+            {sizing === "2u" ? "High conviction edge — max unit allocation. Grade A+ signal with strong confluence." :
+             sizing === "1.5u" ? "Strong edge with clear signal. Allocate 1.5 units. Monitor for line movement." :
+             sizing === "1u" ? "Solid value. Standard 1-unit play — good edge, manageable risk." :
+             "Edge below threshold. Skip this game or reduce to a small speculative play only."}
+          </p>
+        </div>
+        <div className="flex-shrink-0 rounded-lg px-3 py-2 text-center"
+          style={{ background: `${sizingColor}18`, border: `1px solid ${sizingColor}35` }}>
+          <p className="text-[9px] text-muted-foreground">Units</p>
+          <p className="text-xl font-black leading-tight" style={{ color: sizingColor }}>
+            {sizing ?? "–"}
+          </p>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-2 border-t" style={{ borderColor: `${gradeColor}20`, background: "rgba(0,0,0,0.08)" }}>
+        <p className="text-[9px] text-muted-foreground">
+          Clubhouse IQ · Edge Crew v3 analysis · Grade scale A+ (≥8.0) → F · Not financial advice
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
@@ -872,6 +1161,19 @@ function GameCard({ game }: { game: GameLine }) {
           )}
           {/* Inline rec badge — always visible when there's a signal */}
           {rec && !expanded && <RecBadge rec={rec} />}
+          {/* CIQ badge — signals this game has AI analysis */}
+          {!expanded && (
+            <span
+              className="text-[9px] font-black px-2 py-0.5 rounded-full border hidden sm:inline flex-shrink-0"
+              style={{
+                background: "rgba(139,92,246,0.10)",
+                color: "#a78bfa",
+                borderColor: "rgba(139,92,246,0.30)",
+              }}
+            >
+              🧠 CIQ
+            </span>
+          )}
           {/* Research/Why button — opens line intelligence panel */}
           {hasResearchWorthy && (
             <button
@@ -938,6 +1240,9 @@ function GameCard({ game }: { game: GameLine }) {
 
           {/* ★ Bet Recommendation — shown first, most prominent section */}
           {rec && <RecCard rec={rec} />}
+
+          {/* ★ Clubhouse IQ Pick — AI analysis from Edge Crew v3 grade engine */}
+          <CIQPickPanel game={game} />
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
