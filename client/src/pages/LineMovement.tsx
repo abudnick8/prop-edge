@@ -844,44 +844,44 @@ const CHAIN_EMOJI: Record<string, string> = {
 };
 
 function CIQPickPanel({ game }: { game: GameLine }) {
-  const { data: allBets = [] } = useQuery<CIQBet[]>({
-    queryKey: ["/api/bets"],
-    queryFn: () => apiRequest("GET", "/api/bets").then(r => r.json()),
-    staleTime: 3 * 60 * 1000,
-    refetchInterval: 5 * 60 * 1000,
+  // Build the POST body from available LM game data
+  const postBody = {
+    sport:        game.sport,
+    homeTeam:     game.homeTeam,
+    awayTeam:     game.awayTeam,
+    spread:       game.spread.current,
+    total:        game.total.current,
+    mlHome:       game.moneyline.homeCurrent,
+    mlAway:       game.moneyline.awayCurrent,
+    spreadMove:   game.spread.move,
+    homeMoneyPct: game.moneyline.homeMoney,
+    awayMoneyPct: game.moneyline.awayMoney,
+  };
+
+  const { data, isLoading, isError } = useQuery<any>({
+    queryKey: ["/api/line-movement/ciq", game.id],
+    queryFn: () => apiRequest("POST", "/api/line-movement/ciq", postBody).then(r => r.json()),
+    staleTime: 10 * 60 * 1000,   // re-grade every 10 min
+    retry: 1,
   });
 
-  // Match LM game to an AN bet by home/away team (last word fuzzy match)
-  const matchedBet = (allBets as CIQBet[]).find(b => {
-    if (b.source !== "actionnetwork") return false;
-    if (b.betType === "player_prop" || b.betType === "futures" || b.betType === "season_prop") return false;
-    if (!b.homeTeam || !b.awayTeam) return false;
-    const bHome = b.homeTeam.toLowerCase();
-    const bAway = b.awayTeam.toLowerCase();
-    const gHome = game.homeTeam.toLowerCase();
-    const gAway = game.awayTeam.toLowerCase();
-    // Full match
-    if (bHome === gHome && bAway === gAway) return true;
-    // Last-word match (e.g. "Boston Celtics" vs "Celtics")
-    const bHomeLast = bHome.split(" ").pop() ?? "";
-    const bAwayLast = bAway.split(" ").pop() ?? "";
-    const gHomeLast = gHome.split(" ").pop() ?? "";
-    const gAwayLast = gAway.split(" ").pop() ?? "";
-    return bHomeLast === gHomeLast && bAwayLast === gAwayLast;
-  });
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Brain size={14} className="text-primary animate-pulse" />
+          <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
+        </div>
+        <div className="space-y-1.5">
+          <Skeleton className="h-3 w-full rounded" />
+          <Skeleton className="h-3 w-4/5 rounded" />
+          <Skeleton className="h-3 w-3/5 rounded" />
+        </div>
+      </div>
+    );
+  }
 
-  const ts = matchedBet?.teamStats as Record<string, any> | undefined;
-  const eg = ts?.edgeGrade as string | undefined;
-  const es = ts?.edgeScore as number | undefined;
-  const sizing = ts?.edgeSizing as string | undefined;
-  const ev = ts?.edgeEV as any;
-  const vars = ts?.edgeVariables as Record<string, any> | undefined;
-  const chains = (ts?.edgeChains ?? []) as string[];
-  const peter = ts?.edgePeter as { flags?: any[]; has_kill?: boolean } | undefined;
-  const pickSide = ts?.pickSide as string | undefined;
-  const pickedOdds = ts?.pickedOdds as number | undefined;
-
-  if (!matchedBet || !eg || es == null) {
+  if (isError || !data || data.available === false) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4">
         <div className="flex items-center gap-2 mb-2">
@@ -889,11 +889,22 @@ function CIQPickPanel({ game }: { game: GameLine }) {
           <span className="text-xs font-bold text-primary uppercase tracking-wider">Clubhouse IQ Pick</span>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          No CIQ analysis available for this game yet. Analysis runs when line data is ingested from ActionNetwork.
+          No CIQ analysis available for this game. The grade engine needs line data (spread/moneyline) to score this matchup.
         </p>
       </div>
     );
   }
+
+  const eg      = data.grade as string;
+  const es      = data.score as number;
+  const sizing  = data.sizing as string | undefined;
+  const ev      = data.ev as any;
+  const vars    = data.variables as Record<string, any> | undefined;
+  const chains  = (data.chains ?? []) as string[];
+  const peter   = data.peter as { flags?: any[]; has_kill?: boolean } | undefined;
+  const pickSide  = data.pickSide as string | undefined;
+  const pickTeam  = data.pickTeam as string | undefined;
+  const pickedOdds = data.pickedOdds as number | null | undefined;
 
   const gradeColor = GRADE_COLOR[eg] ?? "#94a3b8";
   const evPct = ev?.ev_pct != null
@@ -902,13 +913,11 @@ function CIQPickPanel({ game }: { game: GameLine }) {
       ? ev.toFixed(1) : null;
   const evPositive = evPct != null && parseFloat(evPct) > 0;
 
-  // Sizing → bet recommendation label
   const sizingLabel = sizing === "2u" ? "Max Bet (2 units)" :
     sizing === "1.5u" ? "Strong Bet (1.5 units)" :
-    sizing === "1u"  ? "Standard Bet (1 unit)" : "PASS";
+    sizing === "1u"   ? "Standard Bet (1 unit)" : "PASS";
   const sizingColor = sizing === "2u" ? "#22c55e" : sizing === "1.5u" ? "#4ade80" : sizing === "1u" ? "#fbbf24" : "#94a3b8";
 
-  // Top variables sorted by score
   const topVars = vars
     ? Object.entries(vars)
         .filter(([, v]) => v != null && typeof (v as any).score === "number")
@@ -916,13 +925,12 @@ function CIQPickPanel({ game }: { game: GameLine }) {
         .slice(0, 6)
     : [];
 
-  const peterKill = peter?.has_kill === true;
+  const peterKill  = peter?.has_kill === true;
   const peterFlags = peter?.flags ?? [];
 
-  // Direction label (which side the engine likes)
-  const pickLabel = pickSide
-    ? pickSide.length > 25 ? pickSide.slice(0, 24) + "…" : pickSide
-    : (eg && (eg.startsWith("A") || eg.startsWith("B")) ? "See bet cards for pick" : "No strong edge");
+  const pickLabel = pickTeam
+    ? `${pickTeam}${pickedOdds != null ? ` (${pickedOdds > 0 ? "+" : ""}${pickedOdds})` : ""}`
+    : (eg && (eg.startsWith("A") || eg.startsWith("B")) ? "Check bet cards for pick" : "No strong edge detected");
 
   return (
     <div className="rounded-xl overflow-hidden border" style={{ borderColor: `${gradeColor}35` }}>
@@ -930,7 +938,6 @@ function CIQPickPanel({ game }: { game: GameLine }) {
       {/* ── Header: Grade + Score ── */}
       <div className="px-4 py-3 flex items-center gap-3 flex-wrap"
         style={{ background: `${gradeColor}12`, borderBottom: `1px solid ${gradeColor}25` }}>
-        {/* Grade badge */}
         <div className="flex items-center justify-center rounded-lg w-12 h-12 flex-shrink-0"
           style={{ background: `${gradeColor}18`, border: `2px solid ${gradeColor}` }}>
           <span className="text-2xl font-black leading-none" style={{ color: gradeColor }}>{eg}</span>
@@ -961,20 +968,10 @@ function CIQPickPanel({ game }: { game: GameLine }) {
                 </span>
               </span>
             )}
-            {pickedOdds != null && (
-              <span className="text-[10px] text-muted-foreground">
-                Odds: <span className="font-mono font-bold text-foreground/80">
-                  {pickedOdds > 0 ? "+" : ""}{pickedOdds}
-                </span>
-              </span>
-            )}
           </div>
         </div>
-        {/* Score ring */}
         <div className="text-right flex-shrink-0">
-          <div className="text-3xl font-black leading-none" style={{ color: gradeColor }}>
-            {es.toFixed(1)}
-          </div>
+          <div className="text-3xl font-black leading-none" style={{ color: gradeColor }}>{es.toFixed(1)}</div>
           <div className="text-[9px] text-muted-foreground">/ 10</div>
         </div>
       </div>
@@ -1013,8 +1010,8 @@ function CIQPickPanel({ game }: { game: GameLine }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
             {topVars.map(([key, val], i) => {
               const score = (val as any).score as number;
-              const label = (val as any).label ?? key.replace(/_/g, " ").replace(/\w/g, c => c.toUpperCase());
-              const barW = Math.min(Math.abs(score) / 2 * 100, 100);
+              const label = (val as any).label ?? key.replace(/_/g, " ").replace(/\w/g, (c: string) => c.toUpperCase());
+              const barW  = Math.min(Math.abs(score) / 2 * 100, 100);
               const barColor = score >= 1.5 ? "#22c55e" : score >= 0.5 ? "#4ade80" : score <= -1.5 ? "#ef4444" : score <= -0.5 ? "#f87171" : "#94a3b8";
               return (
                 <div key={i} className="space-y-0.5">
@@ -1025,14 +1022,8 @@ function CIQPickPanel({ game }: { game: GameLine }) {
                     </span>
                   </div>
                   <div className="h-1 rounded-full bg-border/50 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${barW}%`,
-                        background: barColor,
-                        marginLeft: score < 0 ? "auto" : undefined,
-                      }}
-                    />
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${barW}%`, background: barColor }} />
                   </div>
                 </div>
               );
@@ -1058,7 +1049,7 @@ function CIQPickPanel({ game }: { game: GameLine }) {
         </div>
       )}
 
-      {/* ── Recommendation / Sizing call ── */}
+      {/* ── Recommendation ── */}
       <div className="px-4 py-3 flex items-start gap-3 flex-wrap"
         style={{ background: `${sizingColor}08` }}>
         <div className="flex-1 min-w-0">
@@ -1070,22 +1061,20 @@ function CIQPickPanel({ game }: { game: GameLine }) {
             {sizing === "2u" ? "High conviction edge — max unit allocation. Grade A+ signal with strong confluence." :
              sizing === "1.5u" ? "Strong edge with clear signal. Allocate 1.5 units. Monitor for line movement." :
              sizing === "1u" ? "Solid value. Standard 1-unit play — good edge, manageable risk." :
-             "Edge below threshold. Skip this game or reduce to a small speculative play only."}
+             "Edge below threshold. Skip or reduce to a small speculative play only."}
           </p>
         </div>
         <div className="flex-shrink-0 rounded-lg px-3 py-2 text-center"
           style={{ background: `${sizingColor}18`, border: `1px solid ${sizingColor}35` }}>
           <p className="text-[9px] text-muted-foreground">Units</p>
-          <p className="text-xl font-black leading-tight" style={{ color: sizingColor }}>
-            {sizing ?? "–"}
-          </p>
+          <p className="text-xl font-black leading-tight" style={{ color: sizingColor }}>{sizing ?? "–"}</p>
         </div>
       </div>
 
       {/* Footer */}
       <div className="px-4 py-2 border-t" style={{ borderColor: `${gradeColor}20`, background: "rgba(0,0,0,0.08)" }}>
         <p className="text-[9px] text-muted-foreground">
-          Clubhouse IQ · Edge Crew v3 analysis · Grade scale A+ (≥8.0) → F · Not financial advice
+          Clubhouse IQ · Edge Crew v3 · Grade: A+ (≥8.0) A (≥7.3) A- (≥6.5) B+ (≥6.0) B (≥5.5) PASS (&lt;5.0) · Not financial advice
         </p>
       </div>
     </div>

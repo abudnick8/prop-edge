@@ -5075,6 +5075,98 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return parts.join(" | ");
   }
 
+
+  // ─── Clubhouse IQ on-demand grade for Line Movement page ──────────────────
+  // POST /api/line-movement/ciq
+  // Body: { sport, homeTeam, awayTeam, spread?, total?, mlHome?, mlAway?,
+  //         spreadMove?, homeRecord?, awayRecord?, homeMoneyPct?, awayMoneyPct? }
+  // Calls edge_grade.py directly and returns the full grade result
+  app.post("/api/line-movement/ciq", async (req, res) => {
+    try {
+      const { sport, homeTeam, awayTeam, spread, total, mlHome, mlAway,
+              spreadMove, homeRecord, awayRecord, homeMoneyPct, awayMoneyPct } = req.body ?? {};
+
+      if (!sport || !homeTeam || !awayTeam) {
+        return res.status(400).json({ error: "sport, homeTeam, awayTeam required" });
+      }
+
+      // Determine pick side from moneyline (or spread) signals
+      let pickSide: "home" | "away" = "home";
+      if (mlHome != null && mlAway != null) {
+        const homeProb = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+        const awayProb = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+        // Use sharp money if available, else implied probability
+        if (homeMoneyPct != null && awayMoneyPct != null) {
+          pickSide = homeMoneyPct >= awayMoneyPct ? "home" : "away";
+        } else {
+          pickSide = homeProb >= awayProb ? "home" : "away";
+        }
+      } else if (spread != null) {
+        pickSide = spread < 0 ? "home" : "away"; // negative spread = home favored
+      }
+
+      const payload = {
+        sport,
+        homeTeam,
+        awayTeam,
+        pickSide,
+        homeRecord:   homeRecord ?? "0-0",
+        awayRecord:   awayRecord ?? "0-0",
+        homeML:       mlHome ?? null,
+        awayML:       mlAway ?? null,
+        spreadHome:   spread ?? null,
+        spreadDelta:  spreadMove ?? 0,
+        homeMoneyPct: homeMoneyPct ?? null,
+        awayMoneyPct: awayMoneyPct ?? null,
+        total:        total ?? null,
+      };
+
+      const pyPath = path.join(__dirname, "edge_grade.py");
+      const result = await new Promise<any>((resolve) => {
+        const child = spawn("python3", [pyPath, "grade", JSON.stringify(payload)], { timeout: 15000 });
+        let out = "";
+        let err = "";
+        child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+        child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+        child.on("close", (code: number) => {
+          if (code !== 0 || !out.trim()) {
+            console.warn("[CIQ/LM] edge_grade stderr:", err.slice(0, 200));
+            resolve(null);
+            return;
+          }
+          try { resolve(JSON.parse(out.trim())); }
+          catch { resolve(null); }
+        });
+        child.on("error", () => resolve(null));
+      });
+
+      if (!result) {
+        return res.status(200).json({ available: false, reason: "grade engine unavailable" });
+      }
+
+      const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+      const pickedOdds = pickSide === "home" ? (mlHome ?? null) : (mlAway ?? null);
+
+      return res.json({
+        available: true,
+        grade:       result.grade,
+        score:       result.score,
+        confidence:  result.confidence,
+        sizing:      result.sizing,
+        ev:          result.ev,
+        chains:      result.chains_fired ?? result.chains ?? [],
+        variables:   result.variables ?? {},
+        peter:       result.peter ?? { flags: [], has_kill: false },
+        pickSide,
+        pickTeam,
+        pickedOdds,
+      });
+    } catch (e: any) {
+      console.error("[CIQ/LM] Error:", e.message);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
   app.get("/api/line-movement/research/:gameId", async (req, res) => {
     try {
       const { gameId } = req.params;
