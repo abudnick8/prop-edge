@@ -1752,35 +1752,29 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             (kHasPriceMove ? Math.min(40, (kPriceDelta / 0.20) * 40) : 0)
           )) : 0;
 
+          const { title: kTitle, legs: kLegs, isParlay: kIsParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs, sport);
+          const kLegGames: (string | null)[] = (m.mve_selected_legs ?? []).map(
+            (leg: { market_ticker: string; event_ticker: string; side: string }) =>
+              gameFromEventTicker(leg.event_ticker, sport) ?? null
+          );
+          const kLegPlayerTeams: (string | null)[] = await Promise.all(
+            (kLegs ?? []).map(async (legStr: string) => {
+              const body = legStr.replace(/^(YES|NO)\s+/i, "").trim();
+              const propMatch = body.match(/^(.+?):\s*[\d.]+/) || body.match(/^(.+?)\s+[\d.]+[+\-]?\s+/);
+              const playerName = propMatch?.[1]?.trim();
+              if (!playerName || playerName.length < 4) return null;
+              if (/wins|beats|covers|over|under|advances/i.test(playerName)) return null;
+              return getPlayerTeam(playerName, sport);
+            })
+          );
           results.push({
             id:               `kalshi-${m.ticker}`,
             source:           "kalshi",
-            ...(() => {
-              const { title, legs, isParlay } = cleanKalshiTitle(m.title ?? "", m.mve_selected_legs, sport);
-              // Resolve per-leg game matchup + player team from mve_selected_legs
-              const legGames: (string | null)[] = (m.mve_selected_legs ?? []).map(
-                (leg: { market_ticker: string; event_ticker: string; side: string }) =>
-                  gameFromEventTicker(leg.event_ticker, sport) ?? null
-              );
-              // Extract player names from parsed legs for team lookup
-              const legPlayerTeams: (string | null)[] = await Promise.all(
-                (legs ?? []).map(async (legStr: string) => {
-                  // Parse player name from leg string: "YES PlayerName Line StatType"
-                  const body = legStr.replace(/^(YES|NO)\s+/i, "").trim();
-                  const propMatch = body.match(/^(.+?):\s*[\d.]+/) || body.match(/^(.+?)\s+[\d.]+[+\-]?\s+/);
-                  const playerName = propMatch?.[1]?.trim();
-                  if (!playerName || playerName.length < 4) return null;
-                  // Skip if it looks like a team condition rather than a player name
-                  if (/wins|beats|covers|over|under|advances/i.test(playerName)) return null;
-                  return getPlayerTeam(playerName, sport);
-                })
-              );
-              return {
-                title, legs, isParlay,
-                legGames: legGames.length > 0 ? legGames : null,
-                legPlayerTeams: legPlayerTeams.some(t => t) ? legPlayerTeams : null,
-              };
-            })(),
+            title:            kTitle,
+            legs:             kLegs,
+            isParlay:         kIsParlay,
+            legGames:         kLegGames.length > 0 ? kLegGames : null,
+            legPlayerTeams:   kLegPlayerTeams.some(t => t) ? kLegPlayerTeams : null,
             event:            m.event_ticker ?? m.title,
             sport,
             yesPrice,
