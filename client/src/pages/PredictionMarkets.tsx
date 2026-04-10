@@ -5,6 +5,7 @@ import { RefreshCw, ExternalLink, X, TrendingUp, TrendingDown, AlertTriangle, Ch
 import { Link } from "wouter";
 import { addWsListener } from "@/hooks/useWebSocket";
 import { CheatSheetButton } from "@/components/CheatSheet";
+import { getPlayerTeam } from "@/data/playerTeams";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from "recharts";
@@ -292,8 +293,11 @@ function ExpandableLegs({ displayLegs, rawLegs, event, sport, legGames, legPlaye
           const { text: legText, isBareTotal } = annotateLegWithContext(rawLegText, displayLegs, i);
           const isExpanded = expandedIdx === i;
           const legGame = legGames?.[i] ?? null;
-          const legPlayerTeam = legPlayerTeams?.[i] ?? null;
           const detail = parseLegDetail(leg, legGame ?? event, sport);
+          // Use static lookup first (instant), fall back to server-resolved value
+          const legPlayerTeam = detail.player
+            ? (getPlayerTeam(detail.player) ?? legPlayerTeams?.[i] ?? null)
+            : null;
           return (
             <button
               key={i}
