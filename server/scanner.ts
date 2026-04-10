@@ -25,6 +25,7 @@ interface EdgeGradeResult {
   peter:      { flags: any[]; adjustment: number; has_kill: boolean };
   variables:  Record<string, any>;
   chains_fired?: string[];
+  chains?: string[];  // alias from edge_grade.py
 }
 
 function callEdgeGrade(payload: Record<string, any>): Promise<EdgeGradeResult | null> {
@@ -1199,7 +1200,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                 // Try Clubhouse IQ grade engine first; fall back to computeConfidence
                 const egPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, pickSide as "home"|"away", mlHome, mlAway, null, null);
                 const eg = await callEdgeGrade(egPayload);
-                const score = eg ? { ...edgeGradeToScore(eg, baseScore), edgeGrade: eg.grade, edgeSizing: eg.sizing, edgeScore: eg.score, edgeVariables: eg.variables, edgeEV: eg.ev } : baseScore;
+                const score = eg ? { ...edgeGradeToScore(eg, baseScore), edgeGrade: eg.grade, edgeSizing: eg.sizing, edgeScore: eg.score, edgeVariables: eg.variables, edgeChains: eg.chains_fired ?? eg.chains, edgePeter: eg.peter, edgeEV: eg.ev } : baseScore;
                 bets.push({
                   id, source: "actionnetwork", sport: sportLabel, betType: "moneyline", title,
                   description: `ActionNetwork line — ${label}`,
@@ -1215,6 +1216,9 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                     edgeSizing: (score as any).edgeSizing,
                     edgeScore: (score as any).edgeScore,
                     edgeEV: (score as any).edgeEV,
+                    edgeVariables: (score as any).edgeVariables,
+                    edgeChains: (score as any).edgeChains,
+                    edgePeter: (score as any).edgePeter,
                   } : null,
                   yesPrice: null, noPrice: null,
                 });
@@ -1259,7 +1263,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
               const baseSpreadScore = computeConfidence({ impliedProb: pickSpreadProb, source: "actionnetwork", betType: "spread", sport: sportLabel, title: spreadTitle, odds: pickSpreadOdds, line: pickSpreadLine, sharpMoneyPct: pickedSpreadSharpMoney, publicTicketPct: pickedSpreadPublicTicket });
               const egSpreadPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, pickSpreadSide as "home"|"away", mlHome, mlAway, null, pickSpreadLine ?? null);
               const egSpread = await callEdgeGrade(egSpreadPayload);
-              const score = egSpread ? { ...edgeGradeToScore(egSpread, baseSpreadScore), edgeGrade: egSpread.grade, edgeSizing: egSpread.sizing, edgeScore: egSpread.score, edgeVariables: egSpread.variables, edgeEV: egSpread.ev } : baseSpreadScore;
+              const score = egSpread ? { ...edgeGradeToScore(egSpread, baseSpreadScore), edgeGrade: egSpread.grade, edgeSizing: egSpread.sizing, edgeScore: egSpread.score, edgeVariables: egSpread.variables, edgeChains: egSpread.chains_fired ?? egSpread.chains, edgePeter: egSpread.peter, edgeEV: egSpread.ev } : baseSpreadScore;
               bets.push({
                 id: spreadId, source: "actionnetwork", sport: sportLabel, betType: "spread", title: spreadTitle,
                 description: `ActionNetwork spread — ${spreadLabel}`,
@@ -1275,6 +1279,9 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                   edgeSizing: (score as any).edgeSizing,
                   edgeScore: (score as any).edgeScore,
                   edgeEV: (score as any).edgeEV,
+                  edgeVariables: (score as any).edgeVariables,
+                  edgeChains: (score as any).edgeChains,
+                  edgePeter: (score as any).edgePeter,
                 } : null,
                 yesPrice: null, noPrice: null,
               });
@@ -1315,7 +1322,7 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
               // Totals: pick "home" side as a proxy (over = offense, grade the home side)
               const egTotalPayload = buildEdgePayload(game, awayTeamObj, homeTeamObj, awayTeam, homeTeam, sportLabel, "home", mlHome, mlAway, null, total ?? null);
               const egTotal = await callEdgeGrade(egTotalPayload);
-              const score = egTotal ? { ...edgeGradeToScore(egTotal, baseTotalScore), edgeGrade: egTotal.grade, edgeSizing: egTotal.sizing, edgeScore: egTotal.score, edgeVariables: egTotal.variables, edgeEV: egTotal.ev } : baseTotalScore;
+              const score = egTotal ? { ...edgeGradeToScore(egTotal, baseTotalScore), edgeGrade: egTotal.grade, edgeSizing: egTotal.sizing, edgeScore: egTotal.score, edgeVariables: egTotal.variables, edgeChains: egTotal.chains_fired ?? egTotal.chains, edgePeter: egTotal.peter, edgeEV: egTotal.ev } : baseTotalScore;
               bets.push({
                 id: totalId, source: "actionnetwork", sport: sportLabel, betType: "total", title: totalTitle,
                 description: `ActionNetwork total — ${totalLabel}`,
@@ -1331,6 +1338,9 @@ async function fetchActionNetwork(): Promise<InsertBet[]> {
                   edgeSizing: (score as any).edgeSizing,
                   edgeScore: (score as any).edgeScore,
                   edgeEV: (score as any).edgeEV,
+                  edgeVariables: (score as any).edgeVariables,
+                  edgeChains: (score as any).edgeChains,
+                  edgePeter: (score as any).edgePeter,
                 } : null,
                 yesPrice: null, noPrice: null,
               });

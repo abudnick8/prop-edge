@@ -1632,6 +1632,254 @@ function RawStatsGrid({ data, title }: { data: Record<string, unknown>; title: s
   );
 }
 
+// ── Clubhouse IQ Analysis Panel ──────────────────────────────────────────────
+function CIQAnalysisPanel({ bet }: { bet: Bet }) {
+  const ts      = bet.teamStats as Record<string, any> | null;
+  const eg      = ts?.edgeGrade   as string | undefined;
+  const es      = ts?.edgeScore   as number | undefined;
+  const ez      = ts?.edgeSizing  as string | undefined;
+  const ev      = ts?.edgeEV      as any;
+  const vars    = ts?.edgeVariables as Record<string, any> | undefined;
+  const chains  = (ts?.edgeChains ?? []) as string[];
+  const peter   = ts?.edgePeter   as { flags?: any[]; has_kill?: boolean } | undefined;
+  const [showVars, setShowVars] = useState(false);
+
+  if (!eg) return null;
+
+  const gradeColor = eg.startsWith("A+") ? "#22c55e"
+    : eg.startsWith("A")  ? "#4ade80"
+    : eg.startsWith("B+") ? "#a3e635"
+    : eg.startsWith("B")  ? "#fbbf24"
+    : eg.startsWith("C")  ? "#fb923c"
+    : "#f87171";
+  const sizingColor = ez === "2u" ? "#22c55e" : ez === "1.5u" ? "#a3e635" : ez === "1u" ? "#fbbf24" : "#94a3b8";
+
+  const VAR_LABELS: Record<string, string> = {
+    star_player: "Star Player", rest: "Rest Advantage", off_ranking: "Offense",
+    def_ranking: "Defense", form: "Recent Form", home_away: "Home/Away",
+    h2h: "Head-to-Head", ats: "ATS Trend", line_movement: "Line Movement",
+    road_trip: "Road Trip", depth: "Depth / Injuries", pace: "Pace Matchup",
+    motivation: "Motivation", starting_pitcher: "Starting Pitcher",
+    goalie: "Goalie", congestion: "Fixture Load", park_factor: "Park Factor",
+    bullpen: "Bullpen", lineup_vs_hand: "Lineup vs Hand", umpire: "Umpire",
+    late_game_strength: "Late-Game Closing", quarter_pace: "Quarter Pace",
+    bench_diff: "Bench Depth",
+  };
+
+  const CHAIN_INFO: Record<string, { emoji: string; label: string; positive: boolean }> = {
+    THE_MISPRICING:    { emoji: "💰", label: "Market Mispricing",  positive: true  },
+    FATIGUE_FADE:      { emoji: "😴", label: "Fatigue Fade",       positive: true  },
+    FORM_WAVE:         { emoji: "🌊", label: "Form Wave",          positive: true  },
+    INJURY_GOLDMINE:   { emoji: "🩹", label: "Injury Goldmine",    positive: true  },
+    REST_DOMINATION:   { emoji: "🛌", label: "Rest Domination",    positive: true  },
+    SHARPS_LOVE:       { emoji: "⚡", label: "Sharps Love",        positive: true  },
+    BLOWOUT_INCOMING:  { emoji: "💥", label: "Blowout Incoming",   positive: true  },
+    MISMATCH_MASSACRE: { emoji: "🔪", label: "Mismatch Massacre",  positive: true  },
+    ROAD_WARRIOR:      { emoji: "🛣️", label: "Road Warrior",       positive: true  },
+    BENCH_MOB:         { emoji: "🪑", label: "Bench Mob",          positive: true  },
+    REVENGE_GAME:      { emoji: "😤", label: "Revenge Game",       positive: true  },
+    BOUNCE_BACK:       { emoji: "🔁", label: "Bounce Back",        positive: true  },
+    HUNGRY_DOG:        { emoji: "🐕", label: "Hungry Dog",         positive: true  },
+    GOALIE_EDGE:       { emoji: "🧤", label: "Goalie Edge",        positive: true  },
+    ACE_DOMINATION:    { emoji: "⚾", label: "Ace Domination",     positive: true  },
+    COORS_OVER:        { emoji: "🏔️", label: "Coors Over",         positive: true  },
+    PITCHING_DUEL:     { emoji: "🤝", label: "Pitching Duel",      positive: true  },
+    CONGESTION_FADE:   { emoji: "📅", label: "Congestion Fade",    positive: true  },
+    CLASS_GAP:         { emoji: "🏆", label: "Class Gap",          positive: true  },
+    FORTRESS_HOME:     { emoji: "🏰", label: "Fortress Home",      positive: true  },
+    DERBY_CHAOS:       { emoji: "🎭", label: "Derby Chaos",        positive: true  },
+    DUMPSTER_FIRE:     { emoji: "🔥", label: "Dumpster Fire",      positive: false },
+    COLD_TAKE:         { emoji: "🥶", label: "Cold Take",          positive: false },
+    GLASS_CANNON:      { emoji: "💎", label: "Glass Cannon",       positive: false },
+    SCHEDULE_LOSS:     { emoji: "📆", label: "Schedule Loss",      positive: false },
+    THIN_ROSTER:       { emoji: "🤕", label: "Thin Roster",        positive: false },
+    COASTING_FAV:      { emoji: "😴", label: "Coasting Fav",       positive: false },
+    FADE_THE_STREAK:   { emoji: "📉", label: "Fade the Streak",    positive: false },
+    TOURIST_TRAP:      { emoji: "🗺️", label: "Tourist Trap",       positive: false },
+    BLUE_BLOOD_TRAP:   { emoji: "👑", label: "Blue Blood Trap",    positive: false },
+  };
+
+  const availVars = vars
+    ? Object.entries(vars)
+        .filter(([, v]) => v?.available !== false && v?.score != null)
+        .sort(([, a], [, b]) => (b as any).score - (a as any).score)
+    : [];
+
+  return (
+    <div className="rounded-xl overflow-hidden mb-1" style={{ border: "1px solid rgba(19,35,58,0.14)" }}>
+
+      {/* ── Header: grade + score + sizing + EV + Kelly ── */}
+      <div className="px-4 pt-4 pb-3" style={{ background: "rgba(19,35,58,0.04)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(19,35,58,0.4)" }}>
+            Clubhouse IQ Analysis
+          </span>
+          {availVars.length > 0 && (
+            <button
+              onClick={() => setShowVars(v => !v)}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+              style={{ background: "rgba(19,35,58,0.08)", color: "rgba(19,35,58,0.55)" }}
+            >
+              {showVars ? "Hide breakdown ▲" : "Show breakdown ▼"}
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2.5">
+          {/* Letter grade */}
+          <div className="flex flex-col items-center justify-center rounded-lg px-4 py-2.5 min-w-[60px]"
+            style={{ background: gradeColor + "18", border: `2px solid ${gradeColor}` }}>
+            <span className="text-2xl font-black leading-none" style={{ color: gradeColor }}>{eg}</span>
+            <span className="text-[10px] font-bold mt-0.5 uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.45)" }}>Grade</span>
+          </div>
+          {/* Score /10 */}
+          {es != null && (
+            <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2.5"
+              style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.1)" }}>
+              <span className="text-xl font-black leading-none" style={{ color: "#131A24" }}>
+                {Number(es).toFixed(1)}<span className="text-xs font-semibold" style={{ color: "rgba(19,35,58,0.4)" }}>/10</span>
+              </span>
+              <span className="text-[10px] font-bold mt-0.5 uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.45)" }}>Score</span>
+            </div>
+          )}
+          {/* Sizing */}
+          {ez && (
+            <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2.5"
+              style={{ background: sizingColor + "18", border: `1px solid ${sizingColor}` }}>
+              <span className="text-xl font-black leading-none" style={{ color: sizingColor }}>{ez.toUpperCase()}</span>
+              <span className="text-[10px] font-bold mt-0.5 uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.45)" }}>Sizing</span>
+            </div>
+          )}
+          {/* EV % */}
+          {ev?.ev_pct != null && (
+            <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2.5"
+              style={{ background: ev.ev_pct >= 0 ? "rgba(34,197,94,0.08)" : "rgba(248,113,113,0.08)", border: `1px solid ${ev.ev_pct >= 0 ? "#4ade80" : "#f87171"}` }}>
+              <span className="text-xl font-black leading-none" style={{ color: ev.ev_pct >= 0 ? "#4ade80" : "#f87171" }}>
+                {ev.ev_pct >= 0 ? "+" : ""}{Number(ev.ev_pct).toFixed(1)}%
+              </span>
+              <span className="text-[10px] font-bold mt-0.5 uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.45)" }}>EV</span>
+            </div>
+          )}
+          {/* Kelly sizing */}
+          {ev?.kelly_units && ev.kelly_units !== "PASS" && (
+            <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2.5"
+              style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.1)" }}>
+              <span className="text-xl font-black leading-none" style={{ color: "#131A24" }}>{ev.kelly_units}</span>
+              <span className="text-[10px] font-bold mt-0.5 uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.45)" }}>Kelly</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Chains fired ── */}
+      {chains.length > 0 && (
+        <div className="px-4 py-3" style={{ background: "rgba(19,35,58,0.02)", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: "rgba(19,35,58,0.4)" }}>
+            Pattern Chains Fired ({chains.length})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {chains.map((c: string) => {
+              const info = CHAIN_INFO[c];
+              const positive = info?.positive ?? true;
+              return (
+                <span key={c} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold"
+                  style={{
+                    background: positive ? "rgba(34,197,94,0.10)" : "rgba(248,113,113,0.10)",
+                    border: `1px solid ${positive ? "rgba(34,197,94,0.3)" : "rgba(248,113,113,0.3)"}`,
+                    color: positive ? "#22c55e" : "#f87171",
+                  }}>
+                  {info?.emoji ?? "⚙️"} {info?.label ?? c.replace(/_/g, " ")}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Peter flags ── */}
+      {peter?.flags && peter.flags.length > 0 && (
+        <div className="px-4 py-3" style={{ background: "rgba(248,113,113,0.04)", borderTop: "1px solid rgba(248,113,113,0.15)" }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: "#f87171" }}>
+            {peter?.has_kill ? "⛔ Kill Switch Active" : "⚠️ Risk Flags"}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {peter.flags.map((flag: any, i: number) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase shrink-0"
+                  style={{ background: flag.action === "KILL" ? "rgba(248,113,113,0.2)" : "rgba(251,191,36,0.2)", color: flag.action === "KILL" ? "#f87171" : "#fbbf24" }}>
+                  {flag.action}
+                </span>
+                <span className="text-[11px] leading-tight" style={{ color: "rgba(19,35,58,0.65)" }}>{flag.note}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Variable breakdown ── */}
+      {showVars && availVars.length > 0 && (
+        <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-3" style={{ color: "rgba(19,35,58,0.4)" }}>
+            Variable Breakdown ({availVars.length} factors)
+          </p>
+          <div className="flex flex-col gap-3">
+            {availVars.map(([key, v]: [string, any]) => {
+              const varScore = Number(v.score ?? 5);
+              const varColor = varScore >= 7.5 ? "#22c55e" : varScore >= 6 ? "#4ade80" : varScore >= 4.5 ? "#fbbf24" : varScore >= 3 ? "#fb923c" : "#f87171";
+              const barPct = Math.round((varScore / 10) * 100);
+              const label = VAR_LABELS[key] ?? key.replace(/_/g, " ").split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold" style={{ color: "#131A24" }}>{label}</span>
+                    <span className="text-[11px] font-black tabular-nums" style={{ color: varColor }}>{varScore.toFixed(1)}/10</span>
+                  </div>
+                  <div className="h-1.5 rounded-full mb-1" style={{ background: "rgba(19,35,58,0.08)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${barPct}%`, background: varColor }} />
+                  </div>
+                  {v.note && (
+                    <p className="text-[10px] leading-snug" style={{ color: "rgba(19,35,58,0.5)" }}>{v.note}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── EV detail ── */}
+      {ev && (ev.true_prob != null || ev.implied_prob != null || ev.edge != null) && (
+        <div className="px-4 py-3" style={{ background: "rgba(19,35,58,0.02)", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: "rgba(19,35,58,0.4)" }}>Expected Value Detail</p>
+          <div className="grid grid-cols-3 gap-2">
+            {ev.true_prob != null && (
+              <div className="rounded-lg p-2 text-center" style={{ background: "rgba(19,35,58,0.05)" }}>
+                <p className="text-xs font-black" style={{ color: "#131A24" }}>{Math.round(ev.true_prob * 100)}%</p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.45)" }}>True Prob</p>
+              </div>
+            )}
+            {ev.implied_prob != null && (
+              <div className="rounded-lg p-2 text-center" style={{ background: "rgba(19,35,58,0.05)" }}>
+                <p className="text-xs font-black" style={{ color: "#131A24" }}>{Math.round(ev.implied_prob * 100)}%</p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.45)" }}>Implied</p>
+              </div>
+            )}
+            {ev.edge != null && (
+              <div className="rounded-lg p-2 text-center" style={{ background: ev.edge >= 0 ? "rgba(34,197,94,0.08)" : "rgba(248,113,113,0.08)" }}>
+                <p className="text-xs font-black" style={{ color: ev.edge >= 0 ? "#22c55e" : "#f87171" }}>
+                  {ev.edge >= 0 ? "+" : ""}{Math.round(ev.edge * 100)}%
+                </p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(19,35,58,0.45)" }}>Edge</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 // ── Main BetDetail Page ────────────────────────────────────────────────────
 export default function BetDetail() {
   const { id } = useParams<{ id: string }>();
@@ -1750,52 +1998,8 @@ export default function BetDetail() {
         </div>
       </div>
 
-      {/* ── Edge Crew Grade Banner ── */}
-      {(() => {
-        const ts = bet.teamStats as Record<string, any> | null;
-        const eg = ts?.edgeGrade;
-        const es = ts?.edgeScore;
-        const ez = ts?.edgeSizing;
-        const ev = ts?.edgeEV;
-        if (!eg) return null;
-        const gradeColor = eg.startsWith("A") ? "#4ade80" : eg.startsWith("B") ? "#fbbf24" : eg.startsWith("C") ? "#fb923c" : "#f87171";
-        const sizingColor = ez === "2u" ? "#4ade80" : ez === "1.5u" ? "#a3e635" : ez === "1u" ? "#fbbf24" : "#94a3b8";
-        return (
-          <div className="rounded-xl p-4 mb-1" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)" }}>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.5)" }}>Edge Crew v3 Grade</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Letter Grade */}
-              <div className="flex flex-col items-center justify-center rounded-lg px-4 py-2" style={{ background: gradeColor + "22", border: `2px solid ${gradeColor}` }}>
-                <span className="text-2xl font-black leading-none" style={{ color: gradeColor }}>{eg}</span>
-                <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Grade</span>
-              </div>
-              {/* Raw Score */}
-              {es != null && (
-                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.1)" }}>
-                  <span className="text-xl font-black leading-none" style={{ color: "#131A24" }}>{Number(es).toFixed(1)}<span className="text-sm font-semibold">/10</span></span>
-                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Score</span>
-                </div>
-              )}
-              {/* Sizing */}
-              {ez && (
-                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: sizingColor + "22", border: `1px solid ${sizingColor}` }}>
-                  <span className="text-xl font-black leading-none" style={{ color: sizingColor }}>{ez.toUpperCase()}</span>
-                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>Sizing</span>
-                </div>
-              )}
-              {/* EV */}
-              {ev?.ev_pct != null && (
-                <div className="flex flex-col items-center justify-center rounded-lg px-3 py-2" style={{ background: ev.ev_pct >= 0 ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${ev.ev_pct >= 0 ? "#4ade80" : "#f87171"}` }}>
-                  <span className="text-xl font-black leading-none" style={{ color: ev.ev_pct >= 0 ? "#4ade80" : "#f87171" }}>{ev.ev_pct >= 0 ? "+" : ""}{Number(ev.ev_pct).toFixed(1)}%</span>
-                  <span className="text-xs font-semibold mt-0.5" style={{ color: "rgba(19,35,58,0.5)" }}>EV</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* ── Clubhouse IQ Analysis Panel ── */}
+      <CIQAnalysisPanel bet={bet} />
 
       {/* ── Key Metrics Grid ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
