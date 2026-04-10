@@ -193,86 +193,69 @@ function LinescoreTable({ teams, sport }: { teams: TeamScore[]; sport: string })
 interface LMSpread  { open: number|null; current: number|null; move: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
 interface LMTotal   { open: number|null; current: number|null; move: number|null; overPublic?: number|null; overMoney?: number|null; underPublic?: number|null; underMoney?: number|null; }
 interface LMML      { awayOpen: number|null; awayCurrent: number|null; homeOpen: number|null; homeCurrent: number|null; awayPublic?: number|null; awayMoney?: number|null; homePublic?: number|null; homeMoney?: number|null; }
-interface LMGame    { id: string; sport: string; awayTeam: string; homeTeam: string; gameTime: string|null; status: string; numBets: number|null; spread: LMSpread; total: LMTotal; moneyline: LMML; }
+interface LMGame    { id: string; sport: string; awayTeam: string; homeTeam: string; gameTime: string|null; status: string; numBets: number|null; openingInserted: string|null; currentInserted: string|null; spread: LMSpread; total: LMTotal; moneyline: LMML; }
 
-// ── Helpers — exact copies from LineMovement.tsx ──────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function _fmtOdds(o: number|null|undefined) { if (o==null) return "—"; return o>0?`+${o}`:String(o); }
 function _fmtLine(n: number|null|undefined) { if (n==null) return "—"; return `${n>0?"+":""}${n}`; }
-function _moveBadge(move: number|null|undefined) {
-  if (move==null||move===0) return null;
-  const abs=Math.abs(move);
-  if (abs>=3)   return { label:`${move>0?"+":""}${move}`, color:"#f87171", bg:"rgba(248,113,113,0.12)" };
-  if (abs>=1.5) return { label:`${move>0?"+":""}${move}`, color:"#f59e0b", bg:"rgba(245,158,11,0.12)" };
-  return         { label:`${move>0?"+":""}${move}`, color:"rgba(19,35,58,0.6)", bg:"rgba(19,35,58,0.08)" };
-}
-function _sharpSig(money: number|null|undefined, pub: number|null|undefined): {label:string;color:string}|null {
-  if (money==null||pub==null) return null;
-  const d=money-pub;
-  if (money>=65&&d>=20) return {label:`Sharp ↑ ${money}% $`,color:"#4ade80"};
-  if (money>=55&&d>=15) return {label:`Lean ↑ ${money}% $`, color:"#86efac"};
-  if (money<=35&&d<=-20)return {label:`Fade ↓ ${money}% $`, color:"#f87171"};
-  return null;
-}
-
-// ── Exact MovementBar from LineMovement.tsx ───────────────────────────────────
-function LMBar({ open, current, move }: { open:number|null; current:number|null; move:number|null }) {
-  if (open==null||current==null) return null;
-  const badge = _moveBadge(move);
-  const moved = move!=null&&move!==0;
-  return (
-    <div className="flex items-center gap-2 text-xs my-1">
-      <span className="w-12 text-right font-medium" style={{color:"rgba(19,35,58,0.5)"}}>Line</span>
-      <span className="font-mono" style={{color:"rgba(19,35,58,0.6)"}}>{_fmtLine(open)}</span>
-      <span style={{color:"rgba(19,35,58,0.4)"}}>→</span>
-      <span className={`font-mono font-bold text-sm`} style={{color:moved?"#131A24":"rgba(19,35,58,0.45)"}}>{_fmtLine(current)}</span>
-      {badge && <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{color:badge.color,background:badge.bg}}>{badge.label}</span>}
-    </div>
-  );
-}
-
-// ── Exact PublicBar from LineMovement.tsx ─────────────────────────────────────
-function LMPubBar({ label, pub, money }: { label:string; pub?:number|null; money?:number|null }) {
-  if (pub==null&&money==null) return null;
-  const sig = _sharpSig(money, pub);
-  return (
-    <div className="space-y-1 mb-1.5">
-      <div className="flex items-center justify-between text-[10px]" style={{color:"rgba(19,35,58,0.5)"}}>
-        <span>{label}</span>
-        {sig && <span className="font-semibold" style={{color:sig.color}}>{sig.label}</span>}
-      </div>
-      {pub!=null && (
-        <div className="flex items-center gap-1.5">
-          <Users size={9} className="flex-shrink-0" style={{color:"rgba(19,35,58,0.4)"}}/>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{background:"rgba(19,35,58,0.09)"}}>
-            <div className="h-full rounded-full" style={{width:`${pub}%`,background:"rgba(99,102,241,0.6)"}}/>
-          </div>
-          <span className="text-[10px] font-mono w-7 text-right" style={{color:"rgba(19,35,58,0.5)"}}>{pub}%</span>
-        </div>
-      )}
-      {money!=null && (
-        <div className="flex items-center gap-1.5">
-          <DollarSign size={9} className="flex-shrink-0" style={{color:"rgba(19,35,58,0.4)"}}/>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{background:"rgba(19,35,58,0.09)"}}>
-            <div className="h-full rounded-full" style={{width:`${money}%`,background:money>=65?"rgba(74,222,128,0.7)":"rgba(245,158,11,0.5)"}}/>
-          </div>
-          <span className="text-[10px] font-mono w-7 text-right font-medium" style={{color:money>=65?"#4ade80":money>=55?"#f59e0b":"rgba(19,35,58,0.56)"}}>{money}%</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── GameLineMovement ──────────────────────────────────────────────────────────
+// Pixel-accurate copy of the reference image layout:
+//  SPREAD (AWAY TEAM)  |  TOTAL (O/U)  |  MONEYLINE
+//  Line X → X [badge]     Line X → X        TeamA +137 → +145 (+8)  Sharp ↑ 72% $
+//  Full Team (away)        Over              TeamB -165 → -175 (-10) Fade ↓ 28% $
+//   👤 ████░░░░ 51%        👤 ████░░░ 75%     ── then bars below ──
+//   $  ████░░░░ 62%        $  ████░░░ 59%
+//  Full Team (home)        Under
+//   👤 ████░░░░ 49%        👤 ██░░░░░ 25%
+//   $  ████░░░░ 38%        $  ████░░░ 41%
+//  footer: Opened · Updated · N bets                    via ActionNetwork
+
+function _fmtTime(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  } catch { return ""; }
+}
+
+function PubMoneyBars({ label, pub, money, role }: { label: string; pub?: number | null; money?: number | null; role?: string }) {
+  if (pub == null && money == null) return null;
+  return (
+    <div className="mb-2">
+      <div className="text-[10px] font-medium mb-1" style={{ color: "rgba(19,35,58,0.65)" }}>
+        {label}{role ? <span style={{ color: "rgba(19,35,58,0.4)" }}> ({role})</span> : null}
+      </div>
+      {pub != null && (
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <Users size={9} className="flex-shrink-0" style={{ color: "rgba(19,35,58,0.4)" }} />
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+            <div className="h-full rounded-full" style={{ width: `${pub}%`, background: "rgba(99,102,241,0.65)" }} />
+          </div>
+          <span className="text-[10px] font-mono w-7 text-right" style={{ color: "rgba(19,35,58,0.6)" }}>{pub}%</span>
+        </div>
+      )}
+      {money != null && (
+        <div className="flex items-center gap-1.5">
+          <DollarSign size={9} className="flex-shrink-0" style={{ color: "rgba(19,35,58,0.4)" }} />
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+            <div className="h-full rounded-full" style={{ width: `${money}%`, background: money >= 65 ? "rgba(74,222,128,0.75)" : "rgba(245,158,11,0.55)" }} />
+          </div>
+          <span className="text-[10px] font-mono font-semibold w-7 text-right" style={{ color: money >= 65 ? "#16a34a" : money >= 55 ? "#d97706" : "rgba(19,35,58,0.55)" }}>{money}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameLineMovement({ game }: { game: LiveGame }) {
   const sport = game.sport;
-
-  const away = game.teams.find(t => t.homeAway==="away") ?? game.teams[0];
-  const home = game.teams.find(t => t.homeAway==="home") ?? game.teams[1];
+  const away = game.teams.find(t => t.homeAway === "away") ?? game.teams[0];
+  const home = game.teams.find(t => t.homeAway === "home") ?? game.teams[1];
 
   const { data: lmData, isLoading } = useQuery<LMGame[]>({
     queryKey: ["/api/line-movement"],
     queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
-    staleTime: 3*60*1000, refetchInterval: 5*60*1000,
+    staleTime: 3 * 60 * 1000, refetchInterval: 5 * 60 * 1000,
   });
 
   const lmGame = lmData?.find(g => {
@@ -280,154 +263,166 @@ function GameLineMovement({ game }: { game: LiveGame }) {
     const sa = (away?.displayName ?? away?.abbr ?? "").toLowerCase();
     const sh = (home?.displayName ?? home?.abbr ?? "").toLowerCase();
     const al = sa.split(" ").pop() ?? ""; const hl = sh.split(" ").pop() ?? "";
-    return al.length>2 && hl.length>2 &&
-      (g.awayTeam.toLowerCase().includes(al)||al.includes(g.awayTeam.toLowerCase().split(" ").pop()!)) &&
-      (g.homeTeam.toLowerCase().includes(hl)||hl.includes(g.homeTeam.toLowerCase().split(" ").pop()!));
+    return al.length > 2 && hl.length > 2 &&
+      (g.awayTeam.toLowerCase().includes(al) || al.includes(g.awayTeam.toLowerCase().split(" ").pop()!)) &&
+      (g.homeTeam.toLowerCase().includes(hl) || hl.includes(g.homeTeam.toLowerCase().split(" ").pop()!));
   }) ?? null;
 
-  const mlAM  = lmGame?.moneyline.awayCurrent!=null&&lmGame?.moneyline.awayOpen!=null ? lmGame.moneyline.awayCurrent-lmGame.moneyline.awayOpen : null;
-  const mlHM  = lmGame?.moneyline.homeCurrent!=null&&lmGame?.moneyline.homeOpen!=null ? lmGame.moneyline.homeCurrent-lmGame.moneyline.homeOpen : null;
-  const hasData = lmGame && (lmGame.spread.open!=null||lmGame.total.open!=null||lmGame.moneyline.awayOpen!=null);
-  const sMove = lmGame?.spread.move ?? null;
-  const tMove = lmGame?.total.move  ?? null;
-  const hasSteam = (Math.abs(sMove??0)>=2)||(Math.abs(tMove??0)>=2);
-  const hasRLM   = lmGame ? ((lmGame.spread.awayPublic??50)>=60&&(sMove??0)>0)||((lmGame.spread.awayPublic??50)<=40&&(sMove??0)<0) : false;
-
-  // Stop propagation so clicks inside don't collapse the parent GameCard
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
   if (isLoading) return (
-    <div className="flex items-center gap-2 py-2 text-[11px]" style={{color:"rgba(19,35,58,0.4)"}} onClick={stopProp}>
-      <Loader2 size={12} className="animate-spin"/> Loading betting lines…
+    <div className="flex items-center gap-2 py-2 text-[11px]" style={{ color: "rgba(19,35,58,0.4)" }} onClick={stopProp}>
+      <Loader2 size={12} className="animate-spin" /> Loading betting lines…
     </div>
   );
-
-  if (!hasData || !lmGame) return (
-    <div className="text-[11px] py-1 text-center" style={{color:"rgba(19,35,58,0.35)"}} onClick={stopProp}>
+  if (!lmGame) return (
+    <div className="text-[11px] py-1 text-center" style={{ color: "rgba(19,35,58,0.35)" }} onClick={stopProp}>
       No line data available for this game.
     </div>
   );
 
+  const sMove = lmGame.spread.move;
+  const tMove = lmGame.total.move;
+  const mlAM = (lmGame.moneyline.awayCurrent != null && lmGame.moneyline.awayOpen != null) ? lmGame.moneyline.awayCurrent - lmGame.moneyline.awayOpen : null;
+  const mlHM = (lmGame.moneyline.homeCurrent != null && lmGame.moneyline.homeOpen != null) ? lmGame.moneyline.homeCurrent - lmGame.moneyline.homeOpen : null;
+
+  // Sharp signal per team
+  function sharpTag(money: number | null | undefined, pub: number | null | undefined) {
+    if (money == null || pub == null) return null;
+    const d = money - pub;
+    if (money >= 65 && d >= 20) return <span className="text-[9px] font-bold ml-1 whitespace-nowrap" style={{ color: "#16a34a" }}>Sharp ↑ {money}% $</span>;
+    if (money >= 55 && d >= 15) return <span className="text-[9px] font-bold ml-1 whitespace-nowrap" style={{ color: "#86efac" }}>Lean ↑ {money}% $</span>;
+    if (money <= 35 && d <= -20) return <span className="text-[9px] font-bold ml-1 whitespace-nowrap" style={{ color: "#ef4444" }}>Fade ↓ {money}% $</span>;
+    return null;
+  }
+
+  // Movement delta badge
+  function deltaBadge(move: number | null | undefined) {
+    if (move == null || move === 0) return null;
+    const abs = Math.abs(move);
+    const color = abs >= 3 ? "#ef4444" : abs >= 1.5 ? "#d97706" : "rgba(19,35,58,0.55)";
+    const bg    = abs >= 3 ? "rgba(248,113,113,0.12)" : abs >= 1.5 ? "rgba(245,158,11,0.12)" : "rgba(19,35,58,0.07)";
+    return (
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1" style={{ color, background: bg }}>
+        {move > 0 ? "+" : ""}{move.toFixed(1)}
+      </span>
+    );
+  }
+
+  const hasSteam = (Math.abs(sMove ?? 0) >= 2) || (Math.abs(tMove ?? 0) >= 2);
+  const hasRLM   = lmGame ? ((lmGame.spread.awayPublic ?? 50) >= 60 && (sMove ?? 0) > 0) || ((lmGame.spread.awayPublic ?? 50) <= 40 && (sMove ?? 0) < 0) : false;
+
+  // Format opened/updated times
+  const openedTime  = _fmtTime((lmGame as any).openingInserted ?? null);
+  const updatedTime = _fmtTime((lmGame as any).currentInserted ?? null);
+
   return (
-    <div onClick={stopProp} className="space-y-3">
-      {/* Section header */}
-      <div className="flex items-center gap-2">
-        <TrendingUp size={11} style={{color:"rgba(19,35,58,0.45)",flexShrink:0}}/>
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{color:"rgba(19,35,58,0.45)"}}>Lines &amp; Sharp Money</span>
-        {hasSteam && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{background:"rgba(248,113,113,0.1)",color:"#ef4444"}}>🔥 Steam</span>}
-        {hasRLM&&!hasSteam && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{background:"rgba(74,222,128,0.1)",color:"#22c55e"}}>↩ RLM</span>}
-      </div>
+    <div onClick={stopProp} className="space-y-3 pt-1">
 
-      {/* 3-column grid */}
-      <div className="grid grid-cols-3 gap-3">
-
-        {/* ── SPREAD ── */}
-        <div className="rounded-lg p-3" style={{background:"#fff",border:"1px solid rgba(19,35,58,0.08)"}}>
-          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{color:"rgba(19,35,58,0.45)"}}>
-            Spread ({lmGame.awayTeam.split(" ").pop()})
-          </p>
-          {/* Line row */}
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[10px] font-mono" style={{color:"rgba(19,35,58,0.45)"}}>Line</span>
-            <span className="text-[11px] font-mono" style={{color:"rgba(19,35,58,0.5)"}}>{_fmtLine(lmGame.spread.open)}</span>
-            <span className="text-[10px]" style={{color:"rgba(19,35,58,0.3)"}}>→</span>
-            <span className="text-[11px] font-mono font-black" style={{color:"#131A24"}}>{_fmtLine(lmGame.spread.current)}</span>
-            {sMove!=null&&sMove!==0 && (
-              <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{
-                background:sMove>0?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-                color:sMove>0?"#16a34a":"#dc2626"
-              }}>{sMove>0?"+":""}{sMove.toFixed(1)}</span>
-            )}
-          </div>
-          {/* Away public/money */}
-          <LMPubBar label={lmGame.awayTeam.split(" ").slice(-2).join(" ")} pub={lmGame.spread.awayPublic} money={lmGame.spread.awayMoney}/>
-          {/* Home public/money */}
-          <LMPubBar label={lmGame.homeTeam.split(" ").slice(-2).join(" ")} pub={lmGame.spread.homePublic} money={lmGame.spread.homeMoney}/>
-        </div>
-
-        {/* ── TOTAL (O/U) ── */}
-        <div className="rounded-lg p-3" style={{background:"#fff",border:"1px solid rgba(19,35,58,0.08)"}}>
-          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{color:"rgba(19,35,58,0.45)"}}>Total (O/U)</p>
-          {/* Line row */}
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[10px] font-mono" style={{color:"rgba(19,35,58,0.45)"}}>Line</span>
-            <span className="text-[11px] font-mono" style={{color:"rgba(19,35,58,0.5)"}}>{_fmtLine(lmGame.total.open)}</span>
-            <span className="text-[10px]" style={{color:"rgba(19,35,58,0.3)"}}>→</span>
-            <span className="text-[11px] font-mono font-black" style={{color:"#131A24"}}>{_fmtLine(lmGame.total.current)}</span>
-            {tMove!=null&&tMove!==0 && (
-              <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{
-                background:tMove>0?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-                color:tMove>0?"#16a34a":"#dc2626"
-              }}>{tMove>0?"+":""}{tMove.toFixed(1)}</span>
-            )}
-          </div>
-          {/* Over */}
-          <p className="text-[9px] font-semibold mb-0.5" style={{color:"rgba(19,35,58,0.5)"}}>Over</p>
-          <LMPubBar label="Over"  pub={lmGame.total.overPublic}  money={lmGame.total.overMoney}/>
-          {/* Under */}
-          <p className="text-[9px] font-semibold mb-0.5 mt-1" style={{color:"rgba(19,35,58,0.5)"}}>Under</p>
-          <LMPubBar label="Under" pub={lmGame.total.underPublic} money={lmGame.total.underMoney}/>
-        </div>
-
-        {/* ── MONEYLINE ── */}
-        <div className="rounded-lg p-3" style={{background:"#fff",border:"1px solid rgba(19,35,58,0.08)"}}>
-          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{color:"rgba(19,35,58,0.45)"}}>Moneyline</p>
-          {/* Away ML row */}
-          <div className="flex items-center gap-1 mb-1 flex-wrap">
-            <span className="text-[10px] font-semibold truncate" style={{color:"rgba(19,35,58,0.55)",maxWidth:"52px"}}>{lmGame.awayTeam.split(" ").pop()}</span>
-            <span className="text-[10px] font-mono" style={{color:"rgba(19,35,58,0.45)"}}>{_fmtOdds(lmGame.moneyline.awayOpen)}</span>
-            <span className="text-[9px]" style={{color:"rgba(19,35,58,0.3)"}}>→</span>
-            <span className="text-[11px] font-mono font-black" style={{color:"#131A24"}}>{_fmtOdds(lmGame.moneyline.awayCurrent)}</span>
-            {mlAM!=null&&mlAM!==0 && <span className="text-[9px] font-semibold" style={{color:mlAM>0?"#16a34a":"#dc2626"}}>({mlAM>0?"+":""}{mlAM})</span>}
-          </div>
-          {/* Home ML row */}
-          <div className="flex items-center gap-1 mb-2 flex-wrap">
-            <span className="text-[10px] font-semibold truncate" style={{color:"rgba(19,35,58,0.55)",maxWidth:"52px"}}>{lmGame.homeTeam.split(" ").pop()}</span>
-            <span className="text-[10px] font-mono" style={{color:"rgba(19,35,58,0.45)"}}>{_fmtOdds(lmGame.moneyline.homeOpen)}</span>
-            <span className="text-[9px]" style={{color:"rgba(19,35,58,0.3)"}}>→</span>
-            <span className="text-[11px] font-mono font-black" style={{color:"#131A24"}}>{_fmtOdds(lmGame.moneyline.homeCurrent)}</span>
-            {mlHM!=null&&mlHM!==0 && <span className="text-[9px] font-semibold" style={{color:mlHM>0?"#16a34a":"#dc2626"}}>({mlHM>0?"+":""}{mlHM})</span>}
-          </div>
-          {/* Public/money bars */}
-          <LMPubBar label={lmGame.awayTeam.split(" ").pop()!} pub={lmGame.moneyline.awayPublic} money={lmGame.moneyline.awayMoney}/>
-          <LMPubBar label={lmGame.homeTeam.split(" ").pop()!} pub={lmGame.moneyline.homePublic} money={lmGame.moneyline.homeMoney}/>
-        </div>
-
-      </div>
-
-      {/* Footer — opened/updated/bets/source */}
-      <div className="flex items-center justify-between flex-wrap gap-1">
-        <div className="flex items-center gap-3">
-          {lmGame.gameTime && (
-            <span className="text-[9px]" style={{color:"rgba(19,35,58,0.4)"}}>
-              Opened: {lmGame.gameTime}
-            </span>
-          )}
-          {lmGame.numBets!=null && (
-            <span className="text-[9px]" style={{color:"rgba(19,35,58,0.4)"}}>
-              {lmGame.numBets.toLocaleString()} total bets tracked
-            </span>
-          )}
-        </div>
-        <span className="text-[9px] font-semibold" style={{color:"rgba(19,35,58,0.35)"}}>via ActionNetwork</span>
-      </div>
-
-      {/* Steam / RLM banner */}
-      {(hasSteam||hasRLM) && (
-        <div className="rounded-lg px-3 py-2" style={{
-          background:hasSteam?"rgba(248,113,113,0.06)":"rgba(74,222,128,0.06)",
-          border:`1px solid ${hasSteam?"rgba(248,113,113,0.2)":"rgba(74,222,128,0.2)"}`,
-        }}>
-          <p className="text-[10px] font-bold" style={{color:hasSteam?"#ef4444":"#22c55e"}}>
-            {hasSteam?"🔥 Sharp Steam Detected":"↩ Reverse Line Movement"}
-          </p>
-          <p className="text-[9px] mt-0.5" style={{color:"rgba(19,35,58,0.55)"}}>
-            {hasSteam
-              ?`Line moved ${Math.abs(sMove??tMove??0).toFixed(1)} pts — professional money driving this.`
-              :`Public tickets and line direction diverge — sharp money fading the public.`}
-          </p>
+      {/* Optional steam/RLM badge row */}
+      {(hasSteam || hasRLM) && (
+        <div className="flex items-center gap-2">
+          <TrendingUp size={10} style={{ color: "rgba(19,35,58,0.4)" }} />
+          {hasSteam  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(248,113,113,0.1)", color: "#ef4444" }}>🔥 Sharp Steam</span>}
+          {hasRLM && !hasSteam && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(74,222,128,0.1)", color: "#16a34a" }}>↩ Reverse Line Movement</span>}
         </div>
       )}
+
+      {/* ── 3-column grid ── */}
+      <div className="grid grid-cols-3 gap-3">
+
+        {/* ════ SPREAD ════ */}
+        <div className="rounded-xl p-3" style={{ background: "#fff", border: "1px solid rgba(19,35,58,0.08)" }}>
+          {/* Col header */}
+          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{ color: "rgba(19,35,58,0.5)" }}>
+            Spread ({lmGame.awayTeam})
+          </p>
+          {/* Line open → current */}
+          <div className="flex items-center gap-1 mb-3 flex-wrap">
+            <span className="text-[10px] font-mono font-medium" style={{ color: "rgba(19,35,58,0.45)" }}>Line</span>
+            <span className="text-[11px] font-mono" style={{ color: "rgba(19,35,58,0.5)" }}>{_fmtLine(lmGame.spread.open)}</span>
+            <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 10 }}>→</span>
+            <span className="text-[12px] font-mono font-black" style={{ color: "#131A24" }}>{_fmtLine(lmGame.spread.current)}</span>
+            {deltaBadge(sMove)}
+          </div>
+          {/* Away team bars */}
+          <PubMoneyBars label={lmGame.awayTeam} role="away" pub={lmGame.spread.awayPublic} money={lmGame.spread.awayMoney} />
+          {/* Home team bars */}
+          <PubMoneyBars label={lmGame.homeTeam} role="home" pub={lmGame.spread.homePublic} money={lmGame.spread.homeMoney} />
+        </div>
+
+        {/* ════ TOTAL (O/U) ════ */}
+        <div className="rounded-xl p-3" style={{ background: "#fff", border: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{ color: "rgba(19,35,58,0.5)" }}>
+            Total (O/U)
+          </p>
+          <div className="flex items-center gap-1 mb-3 flex-wrap">
+            <span className="text-[10px] font-mono font-medium" style={{ color: "rgba(19,35,58,0.45)" }}>Line</span>
+            <span className="text-[11px] font-mono" style={{ color: "rgba(19,35,58,0.5)" }}>{_fmtLine(lmGame.total.open)}</span>
+            <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 10 }}>→</span>
+            <span className="text-[12px] font-mono font-black" style={{ color: "#131A24" }}>{_fmtLine(lmGame.total.current)}</span>
+            {deltaBadge(tMove)}
+          </div>
+          {/* Over */}
+          <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Over</div>
+          <PubMoneyBars label="" pub={lmGame.total.overPublic} money={lmGame.total.overMoney} />
+          {/* Under */}
+          <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Under</div>
+          <PubMoneyBars label="" pub={lmGame.total.underPublic} money={lmGame.total.underMoney} />
+        </div>
+
+        {/* ════ MONEYLINE ════ */}
+        <div className="rounded-xl p-3" style={{ background: "#fff", border: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[9px] font-black uppercase tracking-wider mb-2" style={{ color: "rgba(19,35,58,0.5)" }}>
+            Moneyline
+          </p>
+          {/* Away odds row + sharp tag */}
+          <div className="flex items-center gap-1 mb-1 flex-wrap">
+            <span className="text-[10px] font-medium" style={{ color: "rgba(19,35,58,0.55)", minWidth: 0 }}>{lmGame.awayTeam}</span>
+          </div>
+          <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+            <span className="text-[11px] font-mono" style={{ color: "rgba(19,35,58,0.5)" }}>{_fmtOdds(lmGame.moneyline.awayOpen)}</span>
+            <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 10 }}>→</span>
+            <span className="text-[12px] font-mono font-black" style={{ color: "#131A24" }}>{_fmtOdds(lmGame.moneyline.awayCurrent)}</span>
+            {mlAM != null && mlAM !== 0 && (
+              <span className="text-[10px] font-semibold" style={{ color: mlAM > 0 ? "#16a34a" : "#ef4444" }}>({mlAM > 0 ? "+" : ""}{mlAM})</span>
+            )}
+            {sharpTag(lmGame.moneyline.awayMoney, lmGame.moneyline.awayPublic)}
+          </div>
+          {/* Away bars */}
+          <PubMoneyBars label="" pub={lmGame.moneyline.awayPublic} money={lmGame.moneyline.awayMoney} />
+
+          {/* Home odds row + sharp tag */}
+          <div className="flex items-center gap-1 mt-1 mb-0.5 flex-wrap">
+            <span className="text-[10px] font-medium" style={{ color: "rgba(19,35,58,0.55)" }}>{lmGame.homeTeam}</span>
+          </div>
+          <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+            <span className="text-[11px] font-mono" style={{ color: "rgba(19,35,58,0.5)" }}>{_fmtOdds(lmGame.moneyline.homeOpen)}</span>
+            <span style={{ color: "rgba(19,35,58,0.3)", fontSize: 10 }}>→</span>
+            <span className="text-[12px] font-mono font-black" style={{ color: "#131A24" }}>{_fmtOdds(lmGame.moneyline.homeCurrent)}</span>
+            {mlHM != null && mlHM !== 0 && (
+              <span className="text-[10px] font-semibold" style={{ color: mlHM > 0 ? "#16a34a" : "#ef4444" }}>({mlHM > 0 ? "+" : ""}{mlHM})</span>
+            )}
+            {sharpTag(lmGame.moneyline.homeMoney, lmGame.moneyline.homePublic)}
+          </div>
+          {/* Home bars */}
+          <PubMoneyBars label="" pub={lmGame.moneyline.homePublic} money={lmGame.moneyline.homeMoney} />
+        </div>
+
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="flex items-center justify-between flex-wrap gap-2 pt-1" style={{ borderTop: "1px solid rgba(19,35,58,0.06)" }}>
+        <div className="flex items-center gap-3 flex-wrap">
+          {openedTime  && <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.45)" }}>Opened: {openedTime}</span>}
+          {updatedTime && <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.45)" }}>Updated: {updatedTime}</span>}
+          {lmGame.numBets != null && (
+            <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.45)" }}>{lmGame.numBets.toLocaleString()} total bets tracked</span>
+          )}
+        </div>
+        <span className="text-[9px] italic" style={{ color: "rgba(19,35,58,0.35)" }}>via ActionNetwork</span>
+      </div>
+
     </div>
   );
 }
