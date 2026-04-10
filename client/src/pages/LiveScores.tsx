@@ -81,13 +81,26 @@ const SPORT_META: Record<string, { label: string; emoji: string; color: string; 
   NFL: { label: "NFL",  emoji: "🏈", color: "#f87171", bg: "#f8717118", periods: ["Q1","Q2","Q3","Q4","OT"] },
 };
 
-function stateLabel(status: GameStatus): { text: string; live: boolean; color: string } {
+function toCentralTime(isoDate: string): string {
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Chicago",
+    }) + " CT";
+  } catch {
+    return "";
+  }
+}
+
+function stateLabel(status: GameStatus, date: string): { text: string; live: boolean; color: string } {
   if (status.state === "in") return { text: status.shortDetail || status.detail || "LIVE", live: true, color: "#22c55e" };
   if (status.state === "post") return { text: "Final", live: false, color: "#94a3b8" };
-  // Pre-game — show time
-  const d = new Date(status.detail || "");
-  const t = isNaN(d.getTime()) ? status.description : d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return { text: t, live: false, color: "#64748b" };
+  // Pre-game — show start time in Central Time
+  const t = toCentralTime(date);
+  return { text: t || status.description, live: false, color: "#64748b" };
 }
 
 function BaseballDiamond({ sit }: { sit: Situation }) {
@@ -177,7 +190,7 @@ function LinescoreTable({ teams, sport }: { teams: TeamScore[]; sport: string })
 // ── Single game card ──────────────────────────────────────────────────────────
 function GameCard({ game, expanded, onToggle }: { game: LiveGame; expanded: boolean; onToggle: () => void }) {
   const meta = SPORT_META[game.sport] ?? SPORT_META.NBA;
-  const { text: statusText, live, color: statusColor } = stateLabel(game.status);
+  const { text: statusText, live, color: statusColor } = stateLabel(game.status, game.date);
   const away = game.teams.find(t => t.homeAway === "away") ?? game.teams[0];
   const home = game.teams.find(t => t.homeAway === "home") ?? game.teams[1];
   const awayScore = parseInt(away?.score ?? "0");

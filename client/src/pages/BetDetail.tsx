@@ -606,13 +606,25 @@ interface LiveSituation {
   batter?: { name: string; summary: string; headshot: string | null } | null;
 }
 interface LiveScoreGame {
-  id: string; sport: string; shortName: string;
+  id: string; sport: string; shortName: string; date: string;
   status: { state: string; description: string; detail: string; shortDetail: string; period: number; completed: boolean };
   teams: LiveScoreTeam[];
   situation: LiveSituation | null;
   leaders: { category: string; displayValue: string; athlete: { name?: string; headshot?: string | null; teamId?: string | null } }[];
   broadcasts: string[];
   venue: { name: string; city?: string } | null;
+}
+
+function toCentralTimeBD(isoDate: string): string {
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Chicago",
+    }) + " CT";
+  } catch { return ""; }
 }
 
 function SmDiamond({ sit }: { sit: LiveSituation }) {
@@ -701,7 +713,7 @@ function LiveGamePanel({ bet }: { bet: Bet }) {
             </span>
           )}
           <span className="text-[11px] font-bold" style={{ color: isLive ? "#16a34a" : "#64748b" }}>
-            {isLive ? game.status.shortDetail : isFinal ? "Final" : game.status.description}
+            {isLive ? game.status.shortDetail : isFinal ? "Final" : (toCentralTimeBD(game.date) || game.status.description)}
           </span>
         </div>
         {game.broadcasts[0] && (
