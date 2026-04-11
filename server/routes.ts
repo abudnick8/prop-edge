@@ -1231,11 +1231,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           "Yankees": "New York Yankees", "Red Sox": "Boston Red Sox",
           "Dodgers": "Los Angeles Dodgers", "Cubs": "Chicago Cubs",
           "Mets": "New York Mets", "Astros": "Houston Astros",
-          "Braves": "Atlanta Braves", "Cardinals": "St. Louis Cardinals",
-          "Giants": "San Francisco Giants", "Phillies": "Philadelphia Phillies",
+          "Braves": "Atlanta Braves",
+          "Phillies": "Philadelphia Phillies",
           "Padres": "San Diego Padres", "Brewers": "Milwaukee Brewers",
-          "Mariners": "Seattle Mariners", "Angels": "Los Angeles Angels",
-          "Rangers": "Texas Rangers", "Tigers": "Detroit Tigers",
+          "Mariners": "Seattle Mariners",
+          "Tigers": "Detroit Tigers",
           "Royals": "Kansas City Royals", "Twins": "Minnesota Twins",
           "Guardians": "Cleveland Guardians", "Orioles": "Baltimore Orioles",
           "Rockies": "Colorado Rockies", "Reds": "Cincinnati Reds",
@@ -1270,11 +1270,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           "Blackhawks": "Chicago Blackhawks", "Avalanche": "Colorado Avalanche",
           "Blue Jackets": "Columbus Blue Jackets", "Stars": "Dallas Stars",
           "Red Wings": "Detroit Red Wings", "Oilers": "Edmonton Oilers",
-          "Panthers": "Florida Panthers", "Kings": "Los Angeles Kings",
+          "Kings": "Los Angeles Kings",
           "Wild": "Minnesota Wild", "Canadiens": "Montreal Canadiens",
           "Predators": "Nashville Predators", "Preds": "Nashville Predators",
           "Devils": "New Jersey Devils", "Islanders": "New York Islanders",
-          "Rangers": "New York Rangers", "Senators": "Ottawa Senators",
+          "Senators": "Ottawa Senators",
           "Flyers": "Philadelphia Flyers", "Penguins": "Pittsburgh Penguins",
           "Sharks": "San Jose Sharks", "Kraken": "Seattle Kraken",
           "Blues": "St. Louis Blues", "Lightning": "Tampa Bay Lightning",
@@ -1353,6 +1353,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const t = title.toLowerCase();
         const c = (category ?? "").toLowerCase();
         const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
+        // Soccer/MLS signals — return Other before any big-4 check to avoid false MLB/NBA tags
+        if (/\bfc\b|\bsc\b|\bcf\b|\bmls\b|portland timbers|lafc|inter miami|atlanta united|austin fc|charlotte fc|chicago fire|colorado rapids|columbus crew|dc united|fc cincinnati|fc dallas|houston dynamo|la galaxy|minnesota united|nashville sc|new england revolution|new york city fc|nycfc|orlando city|philadelphia union|real salt lake|san jose|seattle sounders|sporting kc|st\.? louis city|toronto fc|vancouver whitecaps/.test(allText)) return "Other";
         if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(allText)) return "NFL";
         if (/\bnba\b|basketball|lebron|durant|curry|celtics|lakers|knicks|heat|bucks/.test(allText)) return "NBA";
         if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher|batter|mets|yankees|dodgers|cubs/.test(allText)) return "MLB";
@@ -1360,17 +1362,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         // Extended team-name detection using TEAM_FULL_NAME lookup table
         // This fires AFTER the abbreviation/keyword checks above
         try {
-          const NBA_TEAMS = Object.keys(TEAM_FULL_NAME.NBA).map(k => k.toLowerCase());
-          const MLB_TEAMS = Object.keys(TEAM_FULL_NAME.MLB).map(k => k.toLowerCase());
-          const NHL_TEAMS = Object.keys(TEAM_FULL_NAME.NHL).map(k => k.toLowerCase());
-          const NFL_TEAMS = Object.keys(TEAM_FULL_NAME.NFL).map(k => k.toLowerCase());
-          // Use word-boundary matching so "heat" in "heated" doesn't trigger NBA
+          // Use FULL team names (values) only — not short city keys — to avoid cross-sport city collisions
+          // e.g. "Detroit" matches NBA/MLB/NHL/NFL so we skip it; "Detroit Tigers" is unambiguous
+          const NBA_FULL = Object.values(TEAM_FULL_NAME.NBA).map((v: any) => (v as string).toLowerCase());
+          const MLB_FULL = Object.values(TEAM_FULL_NAME.MLB).map((v: any) => (v as string).toLowerCase());
+          const NHL_FULL = Object.values(TEAM_FULL_NAME.NHL).map((v: any) => (v as string).toLowerCase());
+          const NFL_FULL = Object.values(TEAM_FULL_NAME.NFL).map((v: any) => (v as string).toLowerCase());
           const wordBoundary = (k: string) => new RegExp("\\b" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
-          // Check MLB/NHL/NFL before NBA — NBA city names (Detroit, Memphis, etc.) collide with other sports
-          if (MLB_TEAMS.some(k => wordBoundary(k).test(allText))) return "MLB";
-          if (NHL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NHL";
-          if (NFL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NFL";
-          if (NBA_TEAMS.some(k => wordBoundary(k).test(allText))) return "NBA";
+          // Check MLB/NHL/NFL before NBA to reduce ambiguity
+          if (MLB_FULL.some(k => wordBoundary(k).test(allText))) return "MLB";
+          if (NHL_FULL.some(k => wordBoundary(k).test(allText))) return "NHL";
+          if (NFL_FULL.some(k => wordBoundary(k).test(allText))) return "NFL";
+          if (NBA_FULL.some(k => wordBoundary(k).test(allText))) return "NBA";
         } catch { /* TEAM_FULL_NAME not yet in scope — fall through */ }
         return "Other";
       }
@@ -1380,27 +1383,48 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       function resolvePolymarketTitle(rawTitle: string): string {
         if (!rawTitle) return rawTitle;
         const tLow = rawTitle.toLowerCase();
-        // Detect sport from title keywords FIRST so we only expand names for the correct sport.
-        // This prevents "Detroit" (NBA Pistons) from colliding with "Detroit Tigers" (MLB).
-        let detectedSport: string | null = null;
-        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(tLow)) detectedSport = "NFL";
+
+        // ── RULE: Only expand team names if we can CONFIRM the sport from explicit keywords.
+        // City names like "Boston", "Dallas", "Detroit" exist in NBA/MLB/NHL/NFL — expanding
+        // without sport context guarantees wrong-team injection. If no sport keyword → return as-is.
+
+        // Soccer/MLS guard — never expand
+        if (/\bfc\b|\bsc\b|\bcf\b|\bmls\b|portland timbers|lafc|inter miami|atlanta united|austin fc|charlotte fc|chicago fire|colorado rapids|columbus crew|dc united|fc cincinnati|fc dallas|houston dynamo|la galaxy|minnesota united|nashville sc|new england revolution|new york city fc|nycfc|orlando city|philadelphia union|real salt lake|san jose earthquakes|seattle sounders|sporting kc|st\.? louis city|toronto fc|vancouver whitecaps/.test(tLow)) {
+          return rawTitle;
+        }
+
+        // Detect sport from EXPLICIT keywords only (abbreviation or sport name)
+        let detectedSport: keyof typeof TEAM_FULL_NAME | null = null;
+        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(tLow))   detectedSport = "NFL";
         else if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher/.test(tLow)) detectedSport = "MLB";
-        else if (/\bnhl\b|hockey|stanley cup|puck/.test(tLow)) detectedSport = "NHL";
-        else if (/\bnba\b|basketball/.test(tLow)) detectedSport = "NBA";
-        // If sport detected, only try that sport's lookup table.
-        // Without detection, use MLB/NHL/NFL before NBA to avoid city-name collisions.
-        const sportsToTry: (keyof typeof TEAM_FULL_NAME)[] = detectedSport
-          ? [detectedSport as keyof typeof TEAM_FULL_NAME]
-          : ["MLB", "NHL", "NFL", "NBA"];
-        for (const sport of sportsToTry) {
-          const table = TEAM_FULL_NAME[sport];
-          for (const [key, full] of Object.entries(table)) {
-            if (full === key) continue;
-            if (rawTitle.includes(full)) continue;
-            const re = new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "g");
-            if (re.test(rawTitle)) {
-              return rawTitle.replace(re, full);
-            }
+        else if (/\bnhl\b|hockey|stanley cup|puck/.test(tLow))                 detectedSport = "NHL";
+        else if (/\bnba\b|basketball/.test(tLow))                              detectedSport = "NBA";
+
+        // No confirmed sport → don't guess, return raw title unchanged
+        if (!detectedSport) return rawTitle;
+
+        // Only apply the confirmed sport's lookup table
+        const table = TEAM_FULL_NAME[detectedSport];
+
+        // Nicknames that are ambiguous even within a sport (e.g. Cardinals = MLB StL or NFL AZ)
+        const AMBIGUOUS_KEYS = new Set(["Rangers", "Cardinals", "Angels", "Panthers", "Giants", "Stars", "Jets", "Kings"]);
+
+        // If title already contains ANY full team name, skip expansion
+        const allFullNames: string[] = [];
+        try {
+          for (const t of Object.values(TEAM_FULL_NAME)) {
+            allFullNames.push(...Object.values(t as Record<string, string>));
+          }
+        } catch { /**/ }
+        if (allFullNames.some(fn => rawTitle.includes(fn))) return rawTitle;
+
+        for (const [key, full] of Object.entries(table)) {
+          if (full === key) continue;
+          if (AMBIGUOUS_KEYS.has(key)) continue;
+          if (rawTitle.includes(full)) continue;
+          const re = new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "g");
+          if (re.test(rawTitle)) {
+            return rawTitle.replace(re, full);
           }
         }
         return rawTitle;
