@@ -349,6 +349,9 @@ function GameLineMovement({ game }: { game: LiveGame }) {
           <PubMoneyBars label={lmGame.awayTeam} role="away" pub={lmGame.spread.awayPublic} money={lmGame.spread.awayMoney} />
           {/* Home team bars */}
           <PubMoneyBars label={lmGame.homeTeam} role="home" pub={lmGame.spread.homePublic} money={lmGame.spread.homeMoney} />
+          {lmGame.spread.awayPublic == null && lmGame.spread.awayMoney == null && (
+            <p className="text-[9px] italic" style={{ color: "rgba(19,35,58,0.35)" }}>No public % available</p>
+          )}
         </div>
 
         {/* ════ TOTAL (O/U) ════ */}
@@ -364,11 +367,19 @@ function GameLineMovement({ game }: { game: LiveGame }) {
             {deltaBadge(tMove)}
           </div>
           {/* Over */}
-          <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Over</div>
+          {(lmGame.total.overPublic != null || lmGame.total.overMoney != null) && (
+            <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Over</div>
+          )}
           <PubMoneyBars label="" pub={lmGame.total.overPublic} money={lmGame.total.overMoney} />
           {/* Under */}
-          <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Under</div>
+          {(lmGame.total.underPublic != null || lmGame.total.underMoney != null) && (
+            <div className="text-[9px] font-semibold mb-1" style={{ color: "rgba(19,35,58,0.55)" }}>Under</div>
+          )}
           <PubMoneyBars label="" pub={lmGame.total.underPublic} money={lmGame.total.underMoney} />
+          {/* No public data notice */}
+          {lmGame.total.overPublic == null && lmGame.total.overMoney == null && lmGame.total.underPublic == null && lmGame.total.underMoney == null && (
+            <p className="text-[9px] italic mt-1" style={{ color: "rgba(19,35,58,0.35)" }}>No public % available</p>
+          )}
         </div>
 
         {/* ════ MONEYLINE ════ */}
@@ -407,6 +418,9 @@ function GameLineMovement({ game }: { game: LiveGame }) {
           </div>
           {/* Home bars */}
           <PubMoneyBars label="" pub={lmGame.moneyline.homePublic} money={lmGame.moneyline.homeMoney} />
+          {lmGame.moneyline.awayPublic == null && lmGame.moneyline.awayMoney == null && (
+            <p className="text-[9px] italic mt-1" style={{ color: "rgba(19,35,58,0.35)" }}>No public % available</p>
+          )}
         </div>
 
       </div>
@@ -420,7 +434,9 @@ function GameLineMovement({ game }: { game: LiveGame }) {
             <span className="text-[9px]" style={{ color: "rgba(19,35,58,0.45)" }}>{lmGame.numBets.toLocaleString()} total bets tracked</span>
           )}
         </div>
-        <span className="text-[9px] italic" style={{ color: "rgba(19,35,58,0.35)" }}>via ActionNetwork</span>
+        <span className="text-[9px] italic" style={{ color: "rgba(19,35,58,0.35)" }}>
+          {lmGame.spread.awayPublic != null ? "via ActionNetwork" : "via ESPN · Public % N/A (end of season)"}
+        </span>
       </div>
 
     </div>
