@@ -4858,8 +4858,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             }
           } // end date loop
 
-          // Only show games starting within the next 30 hours (avoid far-future schedule)
-          const cutoff = new Date(nowUtc.getTime() + 30 * 3600 * 1000);
+          // Only show games starting within the next 48 hours (covers eve + next-day lines)
+          const cutoff = new Date(nowUtc.getTime() + 48 * 3600 * 1000);
           const games = allGames.filter((g: any) => {
             if (!g.start_time) return true;
             return new Date(g.start_time) <= cutoff;
@@ -4900,7 +4900,6 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             // ML movement
             const mlAwayOpen = opening.ml_away ?? null;
             const mlAwayCurrent = current.ml_away ?? null;
-            const mlHomeOpen = opening.ml_home ?? null;
             const mlHomeCurrent = current.ml_home ?? null;
 
             // Public/sharp betting %
@@ -4918,8 +4917,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const mlHomeMoney      = current.ml_home_money ?? null;
             const numBets          = current.num_bets ?? null;
 
-            // Only include games that have at least one line to show
-            if (spreadOpen == null && totalOpen == null && mlAwayOpen == null) continue;
+            // Only include games that have at least one line to show (ML-only games count too)
+            const mlHomeOpen = opening.ml_home ?? null;
+            if (spreadOpen == null && totalOpen == null && mlAwayOpen == null && mlHomeOpen == null) continue;
 
             results.push({
               id: `lm-${slug}-${game.id}`,
