@@ -1366,10 +1366,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           const NFL_TEAMS = Object.keys(TEAM_FULL_NAME.NFL).map(k => k.toLowerCase());
           // Use word-boundary matching so "heat" in "heated" doesn't trigger NBA
           const wordBoundary = (k: string) => new RegExp("\\b" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
-          if (NBA_TEAMS.some(k => wordBoundary(k).test(allText))) return "NBA";
+          // Check MLB/NHL/NFL before NBA — NBA city names (Detroit, Memphis, etc.) collide with other sports
           if (MLB_TEAMS.some(k => wordBoundary(k).test(allText))) return "MLB";
           if (NHL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NHL";
           if (NFL_TEAMS.some(k => wordBoundary(k).test(allText))) return "NFL";
+          if (NBA_TEAMS.some(k => wordBoundary(k).test(allText))) return "NBA";
         } catch { /* TEAM_FULL_NAME not yet in scope — fall through */ }
         return "Other";
       }
@@ -1378,17 +1379,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // become full franchise names.  e.g. "Will Boston win?" → "Will Boston Celtics win?"
       function resolvePolymarketTitle(rawTitle: string): string {
         if (!rawTitle) return rawTitle;
-        // Look for city/nickname patterns — swap them out for full names
-        // Try all sports in priority order (NBA first since most active)
-        for (const sport of ["NBA","NHL","MLB","NFL"] as const) {
+        const tLow = rawTitle.toLowerCase();
+        // Detect sport from title keywords FIRST so we only expand names for the correct sport.
+        // This prevents "Detroit" (NBA Pistons) from colliding with "Detroit Tigers" (MLB).
+        let detectedSport: string | null = null;
+        if (/\bnfl\b|football|super bowl|quarterback|touchdown/.test(tLow)) detectedSport = "NFL";
+        else if (/\bmlb\b|baseball|world series|home run|strikeout|pitcher/.test(tLow)) detectedSport = "MLB";
+        else if (/\bnhl\b|hockey|stanley cup|puck/.test(tLow)) detectedSport = "NHL";
+        else if (/\bnba\b|basketball/.test(tLow)) detectedSport = "NBA";
+        // If sport detected, only try that sport's lookup table.
+        // Without detection, use MLB/NHL/NFL before NBA to avoid city-name collisions.
+        const sportsToTry: (keyof typeof TEAM_FULL_NAME)[] = detectedSport
+          ? [detectedSport as keyof typeof TEAM_FULL_NAME]
+          : ["MLB", "NHL", "NFL", "NBA"];
+        for (const sport of sportsToTry) {
           const table = TEAM_FULL_NAME[sport];
           for (const [key, full] of Object.entries(table)) {
-            // Only replace standalone city/nickname words (word-boundary), skip if already full name
-            if (full === key) continue; // already the full name — nothing to expand
-            if (rawTitle.includes(full)) continue; // full name already present
+            if (full === key) continue;
+            if (rawTitle.includes(full)) continue;
             const re = new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "g");
             if (re.test(rawTitle)) {
-              // Replace but only if this is the first/only sport match to avoid double-replacing
               return rawTitle.replace(re, full);
             }
           }
@@ -1435,7 +1445,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const buckets: Record<string, any[]> = { NFL: [], NBA: [], MLB: [], NHL: [], Other: [] };
         for (const m of allMarkets) {
           const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
-          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
+          const rawQ1 = m.question ?? m.groupItemTitle ?? "";
+          const sport = classifySport(resolvePolymarketTitle(rawQ1), tagSlugs, "");
           if ((buckets[sport]?.length ?? 0) < PER_CATEGORY_LIMIT) {
             buckets[sport].push(m);
           }
@@ -1452,7 +1463,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
         for (const m of cappedMarkets) {
           const tagSlugs: string[] = ((m.events ?? [])[0]?.tags ?? []).map((t: any) => t.slug ?? t.label ?? "");
-          const sport = classifySport(m.question ?? m.groupItemTitle ?? "", tagSlugs, "");
+          const rawQ2 = m.question ?? m.groupItemTitle ?? "";
+          const sport = classifySport(resolvePolymarketTitle(rawQ2), tagSlugs, "");
 
           // Skip events whose end date has already passed
           const evEnd = (m.events ?? [])[0]?.endDate ?? m.endDate ?? null;
