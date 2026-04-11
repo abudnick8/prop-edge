@@ -4970,9 +4970,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const nbaSportsGames = results.filter((g: any) => g.sport === "NBA");
       if (nbaSportsGames.length === 0) {
         try {
-          const espnNbaUrl = `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events?limit=30&dates=${todayUtc}`;
-          const { data: espnData } = await axios.get(espnNbaUrl, { timeout: 12000 }).catch(() => ({ data: {} }));
-          const espnEvents: any[] = espnData?.items ?? [];
+          // ESPN indexes games by local US date — check yesterday/today/tomorrow UTC to catch all windows
+          const yesterdayUtc = new Date(nowUtc.getTime() - 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+          const espnDates = [yesterdayUtc, todayUtc, tomorrowUtc];
+          const espnSeenIds = new Set<string>();
+          const espnAllEvents: any[] = [];
+          for (const d of espnDates) {
+            const u = `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events?limit=30&dates=${d}`;
+            const { data: dd } = await axios.get(u, { timeout: 10000 }).catch(() => ({ data: {} }));
+            for (const item of (dd?.items ?? [])) {
+              const eid = String(item.$ref ?? "").match(/events\/([0-9]+)/)?.[1] ?? "";
+              if (eid && !espnSeenIds.has(eid)) { espnSeenIds.add(eid); espnAllEvents.push(item); }
+            }
+          }
+          // Filter to games within ±12h of now
+          // espnNbaUrl: multi-date fetch done above
+          const espnEvents: any[] = espnAllEvents;
 
           await Promise.allSettled(espnEvents.map(async (item: any) => {
             try {
@@ -5026,7 +5039,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 awayTeam,
                 homeTeam,
                 gameTime: startTime,
-                status: "scheduled",
+                status: evData.status ?? "scheduled",
                 openingInserted: null,
                 currentInserted: null,
                 numBets: null,
