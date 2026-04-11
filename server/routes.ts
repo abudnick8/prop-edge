@@ -4966,6 +4966,109 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       }));
 
+      // ── ESPN NBA fallback: if ActionNetwork has 0 NBA games with lines, fetch from ESPN ──
+      const nbaSportsGames = results.filter((g: any) => g.sport === "NBA");
+      if (nbaSportsGames.length === 0) {
+        try {
+          const espnNbaUrl = `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events?limit=30&dates=${todayUtc}`;
+          const { data: espnData } = await axios.get(espnNbaUrl, { timeout: 12000 }).catch(() => ({ data: {} }));
+          const espnEvents: any[] = espnData?.items ?? [];
+
+          await Promise.allSettled(espnEvents.map(async (item: any) => {
+            try {
+              const { data: evData } = await axios.get(item.$ref, { timeout: 8000 });
+              const comp = evData.competitions?.[0] ?? {};
+              const name: string = evData.name ?? "";
+              const startTime: string | null = evData.date ?? null;
+
+              // name = "Away Team at Home Team"
+              const atIdx = name.lastIndexOf(" at ");
+              if (atIdx < 0) return;
+              const awayTeam = name.slice(0, atIdx).trim();
+              const homeTeam = name.slice(atIdx + 4).trim();
+
+              const oddsRef: string | undefined = comp.odds?.$ref;
+              if (!oddsRef) return;
+
+              const { data: oddsData } = await axios.get(oddsRef, { timeout: 8000 });
+              const entry: any = (oddsData.items ?? [])[0];
+              if (!entry) return;
+
+              // ESPN: entry.spread = home team spread (e.g. -6.5 means home -6.5, away +6.5)
+              const homeSpread: number | null = entry.spread ?? null;
+              const awaySpreadCurrent: number | null = homeSpread != null ? -homeSpread : null;
+              const awaySpreadOpenStr: string = entry.awayTeamOdds?.open?.pointSpread?.american ?? "";
+              const awaySpreadOpen: number | null = awaySpreadOpenStr ? parseFloat(awaySpreadOpenStr) : null;
+              const spreadMove: number | null = (awaySpreadOpen != null && awaySpreadCurrent != null) ? awaySpreadCurrent - awaySpreadOpen : null;
+
+              const totalOpen: number | null = entry.open?.total?.american ? parseFloat(entry.open.total.american) : null;
+              const totalCurrent: number | null = entry.overUnder ?? null;
+              const totalMove: number | null = (totalOpen != null && totalCurrent != null) ? totalCurrent - totalOpen : null;
+
+              const mlAwayCurrent: number | null = entry.awayTeamOdds?.moneyLine ?? null;
+              const mlHomeCurrent: number | null = entry.homeTeamOdds?.moneyLine ?? null;
+
+              // Open ML from awayTeamOdds.open.moneyLine.american
+              const mlAwayOpenStr: string = entry.awayTeamOdds?.open?.moneyLine?.american ?? "";
+              const mlHomeOpenStr: string = entry.homeTeamOdds?.open?.moneyLine?.american ?? "";
+              const mlAwayOpen: number | null = mlAwayOpenStr ? parseFloat(mlAwayOpenStr) : null;
+              const mlHomeOpen: number | null = mlHomeOpenStr ? parseFloat(mlHomeOpenStr) : null;
+
+              // Only include if we have at least one line
+              if (awaySpreadCurrent == null && totalCurrent == null && mlAwayCurrent == null && mlHomeCurrent == null) return;
+
+              const overOdds: number | null = entry.overOdds ?? null;
+              const underOdds: number | null = entry.underOdds ?? null;
+
+              results.push({
+                id: `lm-espn-nba-${evData.id}`,
+                sport: "NBA",
+                awayTeam,
+                homeTeam,
+                gameTime: startTime,
+                status: "scheduled",
+                openingInserted: null,
+                currentInserted: null,
+                numBets: null,
+                spread: {
+                  open: awaySpreadOpen,
+                  current: awaySpreadCurrent,
+                  move: spreadMove,
+                  awayPublic: null,
+                  awayMoney: null,
+                  homePublic: null,
+                  homeMoney: null,
+                },
+                total: {
+                  open: totalOpen,
+                  current: totalCurrent,
+                  move: totalMove,
+                  overPublic: null,
+                  overMoney: overOdds,
+                  underPublic: null,
+                  underMoney: underOdds,
+                },
+                moneyline: {
+                  awayOpen: mlAwayOpen,
+                  awayCurrent: mlAwayCurrent,
+                  homeOpen: mlHomeOpen,
+                  homeCurrent: mlHomeCurrent,
+                  awayPublic: null,
+                  awayMoney: null,
+                  homePublic: null,
+                  homeMoney: null,
+                },
+              });
+            } catch (e: any) {
+              console.warn(`[LineMovement] ESPN NBA event error:`, e.message);
+            }
+          }));
+          console.log(`[LineMovement] ESPN NBA fallback added ${results.filter((g: any) => g.sport === "NBA").length} games`);
+        } catch (e: any) {
+          console.warn(`[LineMovement] ESPN NBA fallback error:`, e.message);
+        }
+      }
+
       // Sort: most movement first (by abs spread move + abs total move)
       results.sort((a, b) => {
         const aMove = Math.abs(a.spread?.move ?? 0) + Math.abs(a.total?.move ?? 0);
