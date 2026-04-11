@@ -4823,8 +4823,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       const ACTION_BOOK_IDS = "15,68,30";
-      // ActionNetwork requires YYYYMMDD format (no dashes); bearer auth causes 400
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      // ActionNetwork uses UTC dates — NBA evening games often fall on the next UTC date
+      const nowUtc = new Date();
+      const todayUtc    = nowUtc.toISOString().slice(0, 10).replace(/-/g, "");
+      const tomorrowUtc = new Date(nowUtc.getTime() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
       const sports = [
         { slug: "nba",   label: "NBA" },
         { slug: "mlb",   label: "MLB" },
@@ -4836,7 +4838,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       await Promise.allSettled(sports.map(async ({ slug, label }) => {
         try {
-          const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${today}`;
+          // Fetch both today and tomorrow (UTC) so evening games aren't missed
           const headers: Record<string, string> = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             "Accept": "application/json",
@@ -4844,8 +4846,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             "Authorization": `Bearer ${process.env.ACTION_NETWORK_KEY ?? "95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2"}`,
           };
 
-          const { data } = await axios.get(url, { timeout: 10000, headers });
-          const games: any[] = data?.games ?? data?.scoreboard ?? [];
+          const dates = [todayUtc, tomorrowUtc];
+          const allGames: any[] = [];
+          const seenIds = new Set<string>();
+          for (const date of dates) {
+            const url = `https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/${slug}?period=game&bookIds=${ACTION_BOOK_IDS}&date=${date}`;
+            const { data } = await axios.get(url, { timeout: 10000, headers }).catch(() => ({ data: {} }));
+            const pageGames: any[] = data?.games ?? data?.scoreboard ?? [];
+            for (const g of pageGames) {
+              if (!seenIds.has(String(g.id))) { seenIds.add(String(g.id)); allGames.push(g); }
+            }
+          } // end date loop
+
+          // Only show games starting within the next 30 hours (avoid far-future schedule)
+          const cutoff = new Date(nowUtc.getTime() + 30 * 3600 * 1000);
+          const games = allGames.filter((g: any) => {
+            if (!g.start_time) return true;
+            return new Date(g.start_time) <= cutoff;
+          });
 
           for (const game of games) {
             const status = game.status ?? "";
