@@ -5,8 +5,8 @@
  * into ml_data/pick_snapshots.json for the auto-grader to grade later.
  *
  * Only logs picks that:
- *  - Have a gameTime (so the grader knows when to check)
- *  - Are team bets (spread/total/moneyline) — player props need box scores
+ *  - Have a gameTime (or are player props — fallback to today at 8pm CT)
+ *  - Are not futures/season_props
  *  - Haven't already been logged (deduped by bet id)
  */
 
@@ -62,13 +62,27 @@ export function logPicks(bets: any[]): void {
     // Skip if already logged
     if (existingIds.has(bet.id)) continue;
 
-    // Must have a gameTime to be gradeable
-    if (!bet.gameTime) continue;
-
     // Skip futures/season props — no single game result to grade
     const btype = (bet.betType || "").toLowerCase();
     if (btype === "futures" || btype === "season_prop") continue;
-    // Player props are now graded by auto_grader v2 using ESPN box scores — log them
+
+    // Player props: use fallback gameTime of today at 8pm CT if missing
+    // (props are always for today's games; Kalshi often has null expiration)
+    let resolvedGameTime = bet.gameTime;
+    if (!resolvedGameTime && btype === "player_prop") {
+      // Default to today at 8pm CT (01:00 UTC next day)
+      const today = new Date();
+      today.setUTCHours(1, 0, 0, 0); // 8pm CT = 01:00 UTC next day
+      // If current UTC hour < 1, it's still "tonight"
+      if (new Date().getUTCHours() >= 1) {
+        today.setUTCDate(today.getUTCDate() + 1);
+      }
+      resolvedGameTime = today.toISOString();
+    }
+
+    // Non-prop bets must have a gameTime
+    if (!resolvedGameTime && btype !== "player_prop") continue;
+    if (!resolvedGameTime) continue; // final safety
 
     // Infer pickSide from available fields
     let pickSide: string | null = null;
@@ -104,9 +118,9 @@ export function logPicks(bets: any[]): void {
       edgeScore:       bet.edgeScore       ?? null,
       edgeGrade:       bet.edgeGrade       ?? null,
       edgeSizing:      bet.edgeSizing      ?? null,
-      gameTime:        bet.gameTime instanceof Date
-                         ? bet.gameTime.toISOString()
-                         : (bet.gameTime ? String(bet.gameTime) : null),
+      gameTime:        resolvedGameTime instanceof Date
+                         ? (resolvedGameTime as Date).toISOString()
+                         : (resolvedGameTime ? String(resolvedGameTime) : null),
       loggedAt:        now,
     };
 
