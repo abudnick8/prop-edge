@@ -5708,6 +5708,250 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ── Steam / Book-Error Intel Endpoint ──────────────────────────────────────
+  // GET /api/line-movement/intel/:gameId
+  // Auto-fires when a steam move or book error is detected on a game card.
+  // Returns a concise "why did the line move?" card: injuries, news, weather,
+  // sharp signal breakdown.  Cached 15 min.
+  const LM_INTEL_CACHE = new Map<string, { data: any; ts: number }>();
+  const LM_INTEL_TTL = 15 * 60 * 1000;
+
+  app.get("/api/line-movement/intel/:gameId", async (req, res) => {
+    try {
+      const { gameId } = req.params;
+
+      // Serve from cache if fresh
+      const cached = LM_INTEL_CACHE.get(gameId);
+      if (cached && Date.now() - cached.ts < LM_INTEL_TTL) {
+        return res.json({ ...cached.data, cached: true });
+      }
+
+      // Find the game from the line movement cache
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      const game = lmCache?.data?.find((g: any) => g.id === gameId);
+      if (!game) {
+        return res.status(404).json({ error: "Game not found — refresh line movement data first." });
+      }
+
+      const { sport, awayTeam, homeTeam, gameTime, spread, total, moneyline } = game;
+      const gameName = `${awayTeam} @ ${homeTeam}`;
+
+      // Detect trigger type
+      const spreadMove = spread?.move ?? 0;
+      const totalMove  = total?.move ?? 0;
+      const mlAwayMove = (moneyline?.awayOpen != null && moneyline?.awayCurrent != null)
+        ? moneyline.awayCurrent - moneyline.awayOpen : 0;
+      const mlHomeMove = (moneyline?.homeOpen != null && moneyline?.homeCurrent != null)
+        ? moneyline.homeCurrent - moneyline.homeOpen : 0;
+
+      const isSteam      = Math.abs(spreadMove) >= STEAM_SPREAD || Math.abs(totalMove) >= STEAM_TOTAL;
+      const isRLM        = (() => {
+        if (spread?.awayPublic != null && spreadMove !== 0) {
+          const pub = spread.awayPublic;
+          if (pub >= 60 && spreadMove > 0.5) return true;  // public on away, line moved against them
+          if (pub <= 38 && spreadMove < -0.5) return true; // public on home, line moved against them
+        }
+        if (total?.overPublic != null && totalMove !== 0) {
+          const pub = total.overPublic;
+          if (pub >= 60 && totalMove < -0.5) return true;
+          if (pub <= 38 && totalMove > 0.5) return true;
+        }
+        return false;
+      })();
+      const isSharpDiv   = (() => {
+        if (spread?.awayMoney != null && spread?.awayPublic != null) {
+          return Math.abs(spread.awayMoney - spread.awayPublic) >= 25;
+        }
+        return false;
+      })();
+      const isMLBigMove  = Math.abs(mlAwayMove) >= SIGNIFICANT_ML || Math.abs(mlHomeMove) >= SIGNIFICANT_ML;
+
+      // Determine trigger label
+      let triggerType = "line_alert";
+      let triggerLabel = "Line Alert";
+      if (isSteam)     { triggerType = "steam";   triggerLabel = "Steam Move"; }
+      else if (isRLM)  { triggerType = "rlm";     triggerLabel = "Reverse Line Movement"; }
+      else if (isSharpDiv) { triggerType = "sharp_div"; triggerLabel = "Sharp/Public Split"; }
+      else if (isMLBigMove) { triggerType = "ml_move"; triggerLabel = "Big ML Move"; }
+
+      // Parallel research: injuries + 3 news queries + weather
+      const searchQueries = [
+        `${awayTeam} ${homeTeam} ${sport} injury update today`,
+        `${awayTeam} ${homeTeam} line movement betting news today`,
+        `${awayTeam} OR ${homeTeam} game news ${new Date().toISOString().slice(0, 10)}`,
+      ];
+
+      const [injuryData, news1, news2, news3, weather] = await Promise.allSettled([
+        fetchESPNInjuries(sport),
+        fetchGoogleNewsRSS(searchQueries[0]),
+        fetchGoogleNewsRSS(searchQueries[1]),
+        fetchGoogleNewsRSS(searchQueries[2]),
+        fetchWeather(homeTeam, sport),
+      ]);
+
+      // Injuries — filter to this game's teams
+      const allInj: { player: string; status: string; team: string }[] =
+        injuryData.status === "fulfilled" ? injuryData.value : [];
+      const awayWords = awayTeam.split(" ");
+      const homeWords = homeTeam.split(" ");
+      const gameInjuries = allInj.filter(inj => {
+        const t = inj.team.toLowerCase();
+        return awayWords.some((w: string) => w.length > 3 && t.includes(w.toLowerCase())) ||
+               homeWords.some((w: string) => w.length > 3 && t.includes(w.toLowerCase()));
+      }).slice(0, 6);
+
+      // Deduplicate news across 3 queries
+      const rawNews = [
+        ...(news1.status === "fulfilled" ? news1.value : []),
+        ...(news2.status === "fulfilled" ? news2.value : []),
+        ...(news3.status === "fulfilled" ? news3.value : []),
+      ];
+      const seen = new Set<string>();
+      const dedupedNews = rawNews.filter(n => {
+        const key = n.title.toLowerCase().slice(0, 40);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 6);
+
+      // Build a prioritized reason list (shown as intel bullets)
+      const reasons: { icon: string; type: string; text: string; severity: "high" | "medium" | "low" }[] = [];
+
+      // 1. Injury intel — highest priority
+      const outPlayers = gameInjuries.filter(i => /out|doubtful/i.test(i.status));
+      const qPlayers   = gameInjuries.filter(i => /questionable|probable/i.test(i.status));
+      if (outPlayers.length > 0) {
+        reasons.push({
+          icon: "🏥",
+          type: "injury",
+          text: `Key injuries: ${outPlayers.map(i => `${i.player} (${i.team}) — ${i.status}`).join(", ")}`,
+          severity: "high",
+        });
+      }
+      if (qPlayers.length > 0) {
+        reasons.push({
+          icon: "⚠️",
+          type: "injury",
+          text: `Questionable: ${qPlayers.map(i => `${i.player} (${i.team})`).join(", ")}`,
+          severity: "medium",
+        });
+      }
+
+      // 2. Sharp money signal
+      const spreadMoneyAway = spread?.awayMoney;
+      const spreadPublicAway = spread?.awayPublic;
+      if (spreadMoneyAway != null && spreadPublicAway != null) {
+        const div = spreadMoneyAway - spreadPublicAway;
+        if (Math.abs(div) >= 15) {
+          const sharpSide = div > 0 ? awayTeam : homeTeam;
+          const pct = div > 0 ? spreadMoneyAway : (100 - spreadMoneyAway);
+          const pubPct = div > 0 ? spreadPublicAway : (100 - spreadPublicAway);
+          reasons.push({
+            icon: "💰",
+            type: "sharp_money",
+            text: `Sharp money on ${sharpSide}: ${pct}% of $ vs ${pubPct}% of tickets — ${Math.abs(div)}-pt split`,
+            severity: Math.abs(div) >= 25 ? "high" : "medium",
+          });
+        }
+      }
+      const mlMoneyAway = moneyline?.awayMoney;
+      const mlPublicAway = moneyline?.awayPublic;
+      if (mlMoneyAway != null && mlPublicAway != null) {
+        const div = mlMoneyAway - mlPublicAway;
+        if (Math.abs(div) >= 20) {
+          const sharpSide = div > 0 ? awayTeam : homeTeam;
+          const pct = div > 0 ? mlMoneyAway : (100 - mlMoneyAway);
+          reasons.push({
+            icon: "💰",
+            type: "sharp_money",
+            text: `ML sharp action: ${sharpSide} drawing ${pct}% of ML money`,
+            severity: "medium",
+          });
+        }
+      }
+
+      // 3. Weather (outdoor sports)
+      const weatherInfo = weather.status === "fulfilled" ? weather.value : null;
+      if (weatherInfo) {
+        const hasWind = /wind/i.test(weatherInfo);
+        const hasRain = /rain|storm|snow/i.test(weatherInfo);
+        reasons.push({
+          icon: hasWind ? "💨" : hasRain ? "🌧" : "🌤",
+          type: "weather",
+          text: `Weather: ${weatherInfo}`,
+          severity: (hasWind || hasRain) ? "high" : "low",
+        });
+      }
+
+      // 4. Line movement context
+      if (Math.abs(spreadMove) > 0) {
+        const side = spreadMove < 0 ? awayTeam : homeTeam;
+        reasons.push({
+          icon: "📊",
+          type: "line_move",
+          text: `Spread moved ${spreadMove > 0 ? "+" : ""}${spreadMove} pts toward ${side} (${spread?.open != null ? (spread.open > 0 ? "+" : "") + spread.open : "?"} → ${spread?.current != null ? (spread.current > 0 ? "+" : "") + spread.current : "?"})`,
+          severity: Math.abs(spreadMove) >= 3 ? "high" : "medium",
+        });
+      }
+      if (Math.abs(totalMove) > 0) {
+        const dir = totalMove > 0 ? "Over" : "Under";
+        reasons.push({
+          icon: "📊",
+          type: "line_move",
+          text: `Total steamed ${Math.abs(totalMove)} pts to the ${dir} (${total?.open} → ${total?.current})`,
+          severity: Math.abs(totalMove) >= 3 ? "high" : "medium",
+        });
+      }
+
+      // 5. News headlines — scan for relevant keywords
+      const relevantNews = dedupedNews.filter(n => {
+        const t = n.title.toLowerCase();
+        const teamKeywords = [...awayTeam.split(" "), ...homeTeam.split(" ")]
+          .filter((w: string) => w.length > 3)
+          .map((w: string) => w.toLowerCase());
+        return teamKeywords.some((kw: string) => t.includes(kw)) ||
+          /injur|scratch|lineup|roster|suspend|trade|deal|weather|wind|rain|snow|out|dnp|questionable|ruled/i.test(t);
+      }).slice(0, 4);
+
+      // Build concise summary headline
+      const topReason = reasons.find(r => r.severity === "high") ?? reasons[0] ?? null;
+      let headline = "";
+      if (isSteam) {
+        headline = `🔥 Steam detected on ${gameName}`;
+        if (topReason) headline += ` — ${topReason.text.replace(/^[^\w]*/, "")}`;
+      } else if (isRLM) {
+        headline = `↩ Reverse Line Movement on ${gameName}`;
+        if (topReason) headline += ` — ${topReason.text.replace(/^[^\w]*/, "")}`;
+      } else {
+        headline = `⚡ Line Alert: ${gameName}`;
+        if (topReason) headline += ` — ${topReason.text.replace(/^[^\w]*/, "")}`;
+      }
+
+      const result = {
+        gameId,
+        gameName,
+        sport,
+        gameTime,
+        triggerType,
+        triggerLabel,
+        isSteam,
+        isRLM,
+        isSharpDiv,
+        headline,
+        reasons,
+        relevantNews,
+        injuries: gameInjuries,
+        weather: weatherInfo,
+        analyzedAt: new Date().toISOString(),
+      };
+
+      LM_INTEL_CACHE.set(gameId, { data: result, ts: Date.now() });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Book Error Detection ─────────────────────────────────────────────────────
   const LM_ERRORS_CACHE = new Map<string, { data: any; ts: number }>();
   const LM_ERRORS_TTL = 10 * 60 * 1000; // 10-min cache
