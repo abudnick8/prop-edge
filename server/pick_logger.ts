@@ -65,9 +65,10 @@ export function logPicks(bets: any[]): void {
     // Must have a gameTime to be gradeable
     if (!bet.gameTime) continue;
 
-    // Skip futures/season props (no single game result)
+    // Skip futures/season props — no single game result to grade
     const btype = (bet.betType || "").toLowerCase();
     if (btype === "futures" || btype === "season_prop") continue;
+    // Player props are now graded by auto_grader v2 using ESPN box scores — log them
 
     // Infer pickSide from available fields
     let pickSide: string | null = null;
