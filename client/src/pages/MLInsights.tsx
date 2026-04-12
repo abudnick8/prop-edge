@@ -144,9 +144,16 @@ function PatternCard({ p }: { p: any }) {
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
-function EmptyState() {
+function EmptyState({ onGradeRun, gradeIsPending, gradeIsSuccess, gradeIsError, gradeData, runIsSuccess }: {
+  onGradeRun: () => void;
+  gradeIsPending: boolean;
+  gradeIsSuccess: boolean;
+  gradeIsError: boolean;
+  gradeData: any;
+  runIsSuccess: boolean;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
       <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: `${NAV}11` }}>
         <Brain size={28} style={{ color: NAV }} />
       </div>
@@ -156,6 +163,40 @@ function EmptyState() {
           The ML engine learns from graded picks. Once bets are marked won or lost — either automatically or manually — patterns will appear here.
         </p>
       </div>
+
+      {/* Prominent Grade+Run button on empty state */}
+      <button
+        onClick={onGradeRun}
+        disabled={gradeIsPending}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold"
+        style={{ background: NAV, color: "#F6F1E7", opacity: gradeIsPending ? 0.7 : 1 }}
+      >
+        <Zap size={15} className={gradeIsPending ? "animate-spin" : ""} />
+        {gradeIsPending ? "Grading picks…" : "Grade + Run ML Now"}
+      </button>
+
+      {/* Status banners */}
+      {gradeIsSuccess && (
+        <div className="rounded-xl p-3 flex items-center gap-2 w-full max-w-sm" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+          <CheckCircle2 size={14} style={{ color: GREEN }} />
+          <span className="text-sm font-semibold" style={{ color: GREEN }}>
+            Graded {gradeData?.grader?.graded ?? 0} new picks · ML weights updated · Synced to GitHub
+          </span>
+        </div>
+      )}
+      {gradeIsError && (
+        <div className="rounded-xl p-3 flex items-center gap-2 w-full max-w-sm" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
+          <AlertTriangle size={14} style={{ color: RED }} />
+          <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+        </div>
+      )}
+      {runIsSuccess && (
+        <div className="rounded-xl p-3 flex items-center gap-2 w-full max-w-sm" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+          <CheckCircle2 size={14} style={{ color: GREEN }} />
+          <span className="text-sm font-semibold" style={{ color: GREEN }}>ML engine ran successfully. Insights updated.</span>
+        </div>
+      )}
+
       <div className="rounded-xl p-4 max-w-sm text-left" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
         <p className="text-xs font-bold mb-2" style={{ color: FG }}>How it works</p>
         <ol className="text-xs space-y-1.5" style={{ color: MUTED }}>
@@ -328,32 +369,42 @@ export default function MLInsights() {
         )}
 
         {/* No data yet */}
-        {!isLoading && !isError && !hasData && <EmptyState />}
+        {!isLoading && !isError && !hasData && (
+          <EmptyState
+            onGradeRun={() => gradeMutation.mutate()}
+            gradeIsPending={gradeMutation.isPending}
+            gradeIsSuccess={gradeMutation.isSuccess}
+            gradeIsError={gradeMutation.isError}
+            gradeData={gradeMutation.data}
+            runIsSuccess={runMutation.isSuccess}
+          />
+        )}
 
         {/* ── Data sections ── */}
+        {/* Run/Grade status banners — always visible, not gated on hasData */}
+        {hasData && gradeMutation.isSuccess && (
+          <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+            <CheckCircle2 size={14} style={{ color: GREEN }} />
+            <span className="text-sm font-semibold" style={{ color: GREEN }}>
+              Graded {(gradeMutation.data as any)?.grader?.graded ?? 0} new picks · ML weights updated · Synced to GitHub
+            </span>
+          </div>
+        )}
+        {gradeMutation.isError && (
+          <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
+            <AlertTriangle size={14} style={{ color: RED }} />
+            <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+          </div>
+        )}
+        {runMutation.isSuccess && (
+          <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+            <CheckCircle2 size={14} style={{ color: GREEN }} />
+            <span className="text-sm font-semibold" style={{ color: GREEN }}>ML engine ran successfully. Insights updated.</span>
+          </div>
+        )}
+
         {hasData && (
           <>
-            {/* Run/Grade status banners */}
-            {gradeMutation.isSuccess && (
-              <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
-                <CheckCircle2 size={14} style={{ color: GREEN }} />
-                <span className="text-sm font-semibold" style={{ color: GREEN }}>
-                  Graded {(gradeMutation.data as any)?.grader?.graded ?? 0} new picks · ML weights updated · Synced to GitHub
-                </span>
-              </div>
-            )}
-            {gradeMutation.isError && (
-              <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
-                <AlertTriangle size={14} style={{ color: RED }} />
-                <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
-              </div>
-            )}
-            {runMutation.isSuccess && (
-              <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
-                <CheckCircle2 size={14} style={{ color: GREEN }} />
-                <span className="text-sm font-semibold" style={{ color: GREEN }}>ML engine ran successfully. Insights updated.</span>
-              </div>
-            )}
 
             {/* ── Overall stats ── */}
             <section>
