@@ -13,6 +13,7 @@ import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors
 import { CheatSheetButton, CheatSheetInline } from "@/components/CheatSheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SteamIntelBanner } from "@/components/SteamIntelBanner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LineData {
@@ -1131,6 +1132,26 @@ function GameCard({ game }: { game: GameLine }) {
   const totalMove = game.total.move;
   const totalAbsMove = Math.abs(spreadMove ?? 0) + Math.abs(totalMove ?? 0);
   const hasSteam = Math.abs(spreadMove ?? 0) >= 3 || Math.abs(totalMove ?? 0) >= 3;
+  // Detect RLM and sharp divergence for intel banner
+  const isRLM = (() => {
+    if (game.spread?.awayPublic != null && spreadMove != null) {
+      const pub = game.spread.awayPublic;
+      if (pub >= 60 && (spreadMove ?? 0) > 0.5) return true;
+      if (pub <= 38 && (spreadMove ?? 0) < -0.5) return true;
+    }
+    if (game.total?.overPublic != null && totalMove != null) {
+      const pub = game.total.overPublic;
+      if (pub >= 60 && (totalMove ?? 0) < -0.5) return true;
+      if (pub <= 38 && (totalMove ?? 0) > 0.5) return true;
+    }
+    return false;
+  })();
+  const isSharpDiv = (() => {
+    if (game.spread?.awayMoney != null && game.spread?.awayPublic != null) {
+      return Math.abs(game.spread.awayMoney - game.spread.awayPublic) >= 25;
+    }
+    return false;
+  })();
   const hasSignificant = totalAbsMove >= RESEARCH_SPREAD_THRESHOLD;
   const hasPublicData = game.spread.awayMoney != null || game.total.overMoney != null || game.moneyline.awayMoney != null;
 
@@ -1248,6 +1269,11 @@ function GameCard({ game }: { game: GameLine }) {
           </div>
         )}
       </div>
+
+      {/* Steam Intel Banner — auto-shows WHY the line moved (injuries, news, weather, sharp $) */}
+      {(hasSteam || isRLM || isSharpDiv) && (
+        <SteamIntelBanner gameId={game.id} triggered={hasSteam || isRLM || isSharpDiv} />
+      )}
 
       {/* Research panel — shown when user clicks Why? */}
       {showResearch && (
