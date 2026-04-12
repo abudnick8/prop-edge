@@ -133,6 +133,46 @@ async function syncMLDataToGitHub(): Promise<void> {
   }
 }
 
+// Lightweight snapshot-only sync — runs after every scanner pick log
+// Keeps pick_snapshots.json backed up on GitHub so restarts don't lose picks
+async function syncSnapshotsToGitHub(): Promise<void> {
+  const token  = process.env.GITHUB_TOKEN;
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
+  const branch = "main";
+  if (!token) return;
+
+  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const filename = "pick_snapshots.json";
+  const localPath = path.join(DATA_DIR, filename);
+  if (!fs.existsSync(localPath)) return;
+
+  try {
+    const content  = fs.readFileSync(localPath);
+    const b64      = content.toString("base64");
+    const apiUrl   = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}`;
+    const headers  = { Authorization: `token ${token}`, "Content-Type": "application/json", "User-Agent": "clubhouse-iq" };
+
+    // Get current SHA (needed for update)
+    let sha: string | undefined;
+    const getResp = await fetch(`${apiUrl}?ref=${branch}`, { headers });
+    if (getResp.ok) {
+      const j = await getResp.json() as any;
+      sha = j.sha;
+    }
+
+    const body: any = { message: "chore: sync pick_snapshots", content: b64, branch };
+    if (sha) body.sha = sha;
+
+    const putResp = await fetch(apiUrl, { method: "PUT", headers, body: JSON.stringify(body) });
+    if (!putResp.ok) {
+      const err = await putResp.text();
+      console.warn(`[MLSync] snapshot sync failed: ${err.slice(0, 120)}`);
+    }
+  } catch (e: any) {
+    console.warn(`[MLSync] snapshot sync error: ${e.message}`);
+  }
+}
+
 // Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
 async function pullMLDataFromGitHub(): Promise<void> {
   const token  = process.env.GITHUB_TOKEN;
@@ -4874,6 +4914,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length, auto: true });
       // Log picks for ML self-learning
       try { logPicks(allBets); } catch(e: any) { console.warn("[PickLogger] error:", e.message); }
+      // Sync snapshots to GitHub so they survive redeploys (fire-and-forget)
+      syncSnapshotsToGitHub().catch((e: any) => console.warn("[MLSync] snapshot sync error:", e.message));
       const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
         broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
