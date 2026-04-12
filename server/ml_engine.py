@@ -129,17 +129,23 @@ def extract_features(bet: dict) -> dict[str, Any]:
     else:
         form_tier = "cold"
 
+    # Player prop fields
+    player_name   = (bet.get("playerName")   or bet.get("player_name")   or "").strip()
+    stat_category = (bet.get("statCategory") or bet.get("stat_category") or "").upper().replace(" ", "_")
+
     return {
-        "sport":       sport,
-        "bet_type":    bet_type,
-        "conf_tier":   conf_tier,
-        "edge_tier":   edge_tier,
-        "form_tier":   form_tier,
-        "pick_side":   pick_side,
-        "conf":        conf,
-        "form_edge":   form_edge,
-        "hit_rate":    hit_rate,
-        "line":        line,
+        "sport":        sport,
+        "bet_type":     bet_type,
+        "conf_tier":    conf_tier,
+        "edge_tier":    edge_tier,
+        "form_tier":    form_tier,
+        "pick_side":    pick_side,
+        "conf":         conf,
+        "form_edge":    form_edge,
+        "hit_rate":     hit_rate,
+        "line":         line,
+        "stat_category": stat_category,
+        "player_name":  player_name,
     }
 
 # ── Pattern accuracy engine ────────────────────────────────────────────────────
@@ -174,6 +180,17 @@ def compute_pattern_accuracy(outcomes: list[dict]) -> dict[str, dict]:
             f"bet_type:{feats['bet_type']}|conf_tier:{feats['conf_tier']}",
             f"bet_type:{feats['bet_type']}|form_tier:{feats['form_tier']}",
             f"sport:{feats['sport']}|pick_side:{feats['pick_side']}",
+            # Player prop dimensions — only non-empty
+            *(
+                [
+                    f"stat_category:{feats['stat_category']}",
+                    f"sport:{feats['sport']}|stat_category:{feats['stat_category']}",
+                    f"stat_category:{feats['stat_category']}|conf_tier:{feats['conf_tier']}",
+                    f"stat_category:{feats['stat_category']}|pick_side:{feats['pick_side']}",
+                    f"sport:{feats['sport']}|stat_category:{feats['stat_category']}|form_tier:{feats['form_tier']}",
+                ]
+                if feats.get("stat_category") else []
+            ),
         ]
 
         for dim in dims:
