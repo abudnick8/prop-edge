@@ -186,7 +186,25 @@ export default function MLInsights() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ml-insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ml/snapshots"] });
     },
+  });
+
+  const gradeMutation = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/ml/grade", { method: "POST" });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ml-insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ml/snapshots"] });
+    },
+  });
+
+  const { data: snapStats } = useQuery<{ snapshots: number; graded: number; open: number; won: number; lost: number; win_rate: number | null }>({
+    queryKey: ["/api/ml/snapshots"],
+    refetchInterval: 30_000,
   });
 
   const hasData = data && (data.sample_size ?? 0) >= 1;
@@ -230,21 +248,67 @@ export default function MLInsights() {
           <div className="flex items-center gap-2">
             {data?.last_run && (
               <span className="text-xs" style={{ color: "rgba(246,241,231,0.5)" }}>
-                Updated {new Date(data.last_run).toLocaleDateString()}
+                {new Date(data.last_run).toLocaleDateString()}
               </span>
             )}
             <button
-              onClick={() => runMutation.mutate()}
-              disabled={runMutation.isPending}
+              onClick={() => gradeMutation.mutate()}
+              disabled={gradeMutation.isPending || runMutation.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: "rgba(34,197,94,0.2)", color: "#22c55e" }}
+              title="Grade new picks then recompute weights"
+            >
+              <Zap size={12} className={gradeMutation.isPending ? "animate-spin" : ""} />
+              {gradeMutation.isPending ? "Grading..." : "Grade + Run"}
+            </button>
+            <button
+              onClick={() => runMutation.mutate()}
+              disabled={runMutation.isPending || gradeMutation.isPending}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold"
               style={{ background: "rgba(246,241,231,0.15)", color: "#F6F1E7" }}
+              title="Recompute weights from existing graded outcomes"
             >
               <RefreshCw size={12} className={runMutation.isPending ? "animate-spin" : ""} />
-              {runMutation.isPending ? "Running..." : "Run Now"}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Snapshot stats bar */}
+      {snapStats && (
+        <div className="sticky top-[52px] z-10 border-b" style={{ background: "#fff", borderColor: "rgba(19,35,58,0.08)" }}>
+          <div className="max-w-2xl mx-auto px-4 py-2 flex items-center gap-4 overflow-x-auto">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Activity size={12} style={{ color: MUTED }} />
+              <span className="text-xs font-semibold" style={{ color: FG }}>{snapStats.snapshots} picks logged</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Target size={12} style={{ color: MUTED }} />
+              <span className="text-xs font-semibold" style={{ color: FG }}>{snapStats.graded} graded</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <CheckCircle2 size={12} style={{ color: GREEN }} />
+              <span className="text-xs font-bold" style={{ color: GREEN }}>{snapStats.won}W</span>
+              <XCircle size={12} style={{ color: RED }} />
+              <span className="text-xs font-bold" style={{ color: RED }}>{snapStats.lost}L</span>
+            </div>
+            {snapStats.win_rate !== null && (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-xs font-black" style={{ color: snapStats.win_rate >= 55 ? GREEN : snapStats.win_rate >= 50 ? AMBER : RED }}>
+                  {snapStats.win_rate}% win rate
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Clock size={12} style={{ color: MUTED }} />
+              <span className="text-xs" style={{ color: MUTED }}>{snapStats.open} awaiting grade</span>
+            </div>
+            <div className="ml-auto flex-shrink-0">
+              <span className="text-xs" style={{ color: MUTED }}>Auto-grades nightly @ 2am</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
 
@@ -269,7 +333,21 @@ export default function MLInsights() {
         {/* ── Data sections ── */}
         {hasData && (
           <>
-            {/* Run status */}
+            {/* Run/Grade status banners */}
+            {gradeMutation.isSuccess && (
+              <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
+                <CheckCircle2 size={14} style={{ color: GREEN }} />
+                <span className="text-sm font-semibold" style={{ color: GREEN }}>
+                  Graded {(gradeMutation.data as any)?.grader?.graded ?? 0} new picks · ML weights updated · Synced to GitHub
+                </span>
+              </div>
+            )}
+            {gradeMutation.isError && (
+              <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
+                <AlertTriangle size={14} style={{ color: RED }} />
+                <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+              </div>
+            )}
             {runMutation.isSuccess && (
               <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${GREEN}11`, border: `1px solid ${GREEN}33` }}>
                 <CheckCircle2 size={14} style={{ color: GREEN }} />
@@ -284,7 +362,7 @@ export default function MLInsights() {
                 <StatTile label="Win Rate" value={pct(data.overall.win_rate)} color={winRateColor(data.overall.win_rate)} sub={`${data.overall.total} graded picks`} />
                 <StatTile label="Won" value={String(data.overall.won)} color={GREEN} sub="picks" />
                 <StatTile label="Lost" value={String(data.overall.lost)} color={RED} sub="picks" />
-                <StatTile label="Push" value={String(data.overall.push)} color={MUTED} sub="picks" />
+                <StatTile label="Est. ROI" value={(data.overall as any).roi_est != null ? `${(data.overall as any).roi_est}%` : "—"} color={(data.overall as any).roi_est > 0 ? GREEN : RED} sub="at -110 avg" />
               </div>
             </section>
 

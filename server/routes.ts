@@ -10,6 +10,7 @@ import path from "path";
 import { startSmartWalletTracker, getSmartWallets, getSignalMap, getSignalForMarket } from "./smart-wallets";
 import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
+import { logPicks } from "./pick_logger";
 
 // ── ML Engine helpers ────────────────────────────────────────────────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
@@ -48,6 +49,117 @@ function runMLEngine(): Promise<Record<string, any>> {
       }
     });
   });
+}
+
+// Run any Python script in the server/ dir and return its JSON output
+function runPythonScript(scriptName: string, args: string[] = []): Promise<Record<string, any>> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(process.cwd(), "server", scriptName);
+    const proc = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    proc.stderr.on("data", (d: Buffer) => { process.stderr.write(d); });
+    proc.on("close", (code: number) => {
+      if (code === 0) {
+        try {
+          const lines = out.trim().split("\n");
+          const jsonLine = lines.findLast((l: string) => l.trimStart().startsWith("{"));
+          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
+        } catch { resolve({ status: "ok", output: out }); }
+      } else {
+        reject(new Error(`${scriptName} exited ${code}: ${out.slice(-500)}`));
+      }
+    });
+  });
+}
+
+// Sync ml_data/ to GitHub so outcomes survive Railway redeploys
+// Uses the GitHub API to upsert files — no git CLI needed on Railway
+async function syncMLDataToGitHub(): Promise<void> {
+  const token  = process.env.GITHUB_TOKEN;
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";   // owner/repo
+  const branch = process.env.GITHUB_BRANCH || "main";
+  if (!token) { console.warn("[MLSync] GITHUB_TOKEN not set — skipping sync"); return; }
+
+  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+
+  for (const filename of files) {
+    const filepath = path.join(DATA_DIR, filename);
+    if (!fs.existsSync(filepath)) continue;
+    try {
+      const content64 = fs.readFileSync(filepath).toString("base64");
+      const remotePath = `server/ml_data/${filename}`;
+      const apiUrl = `https://api.github.com/repos/${repo}/contents/${remotePath}`;
+
+      // Get current SHA (needed for update)
+      let sha: string | undefined;
+      try {
+        const getResp = await fetch(`${apiUrl}?ref=${branch}`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        });
+        if (getResp.ok) {
+          const getJson = await getResp.json() as any;
+          sha = getJson.sha;
+        }
+      } catch { /* file doesn't exist yet */ }
+
+      const body: Record<string, any> = {
+        message: `[ML Auto-sync] Update ${filename}`,
+        content: content64,
+        branch,
+      };
+      if (sha) body.sha = sha;
+
+      const putResp = await fetch(apiUrl, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (putResp.ok) {
+        console.log(`[MLSync] Synced ${filename} to GitHub`);
+      } else {
+        const err = await putResp.text();
+        console.warn(`[MLSync] Failed to sync ${filename}: ${err.slice(0, 200)}`);
+      }
+    } catch (e: any) {
+      console.warn(`[MLSync] Error syncing ${filename}:`, e.message);
+    }
+  }
+}
+
+// Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
+async function pullMLDataFromGitHub(): Promise<void> {
+  const token  = process.env.GITHUB_TOKEN;
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
+  const branch = process.env.GITHUB_BRANCH || "main";
+  if (!token) return;
+
+  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+
+  for (const filename of files) {
+    try {
+      const apiUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
+      const resp    = await fetch(apiUrl, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      });
+      if (!resp.ok) continue;
+      const json    = await resp.json() as any;
+      const decoded = Buffer.from(json.content, "base64").toString("utf8");
+      fs.writeFileSync(path.join(DATA_DIR, filename), decoded);
+      console.log(`[MLSync] Pulled ${filename} from GitHub`);
+    } catch (e: any) {
+      console.warn(`[MLSync] Could not pull ${filename}:`, e.message);
+    }
+  }
 }
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
@@ -722,6 +834,17 @@ let livePollInterval: NodeJS.Timeout | null = null;
 let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
+  // Ensure ml_data directory exists
+  const ML_DATA_RUNTIME = path.join(process.cwd(), "server", "ml_data");
+  if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
+  ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json"].forEach(f => {
+    const p = path.join(ML_DATA_RUNTIME, f);
+    if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
+  });
+
+  // Pull ML data from GitHub on startup so outcomes survive redeploys
+  pullMLDataFromGitHub().catch((e: any) => console.warn("[MLSync] startup pull error:", e.message));
+
   // Start smart wallet tracker at server boot (fire-and-forget)
   startSmartWalletTracker();
 
@@ -915,25 +1038,96 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── ML Self-Learning Endpoints ──────────────────────────────────────────
 
-  // GET /api/ml-insights — return latest ML insights JSON
+  // GET /api/ml-insights — return latest ML insights JSON transformed for UI
   app.get("/api/ml-insights", async (_req, res) => {
     try {
-      if (fs.existsSync(ML_INSIGHTS_FILE)) {
-        const data = JSON.parse(fs.readFileSync(ML_INSIGHTS_FILE, "utf-8"));
-        return res.json(data);
-      }
-      // Return empty scaffold if no data yet
-      return res.json({
+      const EMPTY = {
         overall: { total: 0, won: 0, lost: 0, push: 0, win_rate: null },
-        by_sport: {},
-        by_bet_type: {},
-        by_conf_tier: {},
-        by_week: [],
-        strengths: [],
-        weaknesses: [],
-        patterns: [],
-        last_run: null,
-        sample_size: 0,
+        by_sport: {}, by_bet_type: {}, by_conf_tier: {}, by_week: [],
+        strengths: [], weaknesses: [], patterns: [],
+        last_run: null, sample_size: 0,
+      };
+
+      if (!fs.existsSync(ML_INSIGHTS_FILE)) return res.json(EMPTY);
+
+      const raw = JSON.parse(fs.readFileSync(ML_INSIGHTS_FILE, "utf-8"));
+      if (raw.status === "insufficient_data" || !raw.accuracy) return res.json({ ...EMPTY, message: raw.message });
+
+      const acc = raw.accuracy ?? {};
+
+      // ── overall ──
+      const overall = {
+        total:    acc.total    ?? 0,
+        won:      acc.won      ?? 0,
+        lost:     acc.lost     ?? 0,
+        push:     acc.push     ?? 0,
+        win_rate: acc.win_rate ?? null,
+        roi_est:  acc.roi_est  ?? null,
+      };
+
+      // ── by_sport ──
+      const by_sport: Record<string, any> = {};
+      for (const [sport, s] of Object.entries(acc.by_sport ?? {})) {
+        const sv = s as any;
+        by_sport[sport] = { won: sv.won, lost: sv.lost, push: 0, win_rate: sv.win_rate, sample: sv.won + sv.lost };
+      }
+
+      // ── by_bet_type ──
+      const by_bet_type: Record<string, any> = {};
+      for (const [type, t] of Object.entries(acc.by_type ?? {})) {
+        const tv = t as any;
+        by_bet_type[type] = { won: tv.won, lost: tv.lost, push: 0, win_rate: tv.win_rate, sample: tv.won + tv.lost };
+      }
+
+      // ── by_conf_tier (with expected rates) ──
+      const EXPECTED: Record<string, number> = { elite: 0.85, high: 0.72, medium: 0.58, low: 0.45 };
+      const by_conf_tier: Record<string, any> = {};
+      for (const [tier, c] of Object.entries(acc.by_conf_tier ?? {})) {
+        const cv = c as any;
+        by_conf_tier[tier] = { won: cv.won, lost: cv.lost, push: 0, win_rate: cv.win_rate, sample: cv.won + cv.lost, expected_rate: EXPECTED[tier] ?? 0.5 };
+      }
+
+      // ── by_week ──
+      const by_week = Object.entries(acc.weekly ?? {}).map(([week, w]) => {
+        const wv = w as any;
+        return { week, won: wv.won, lost: wv.lost, win_rate: wv.win_rate, sample: wv.won + wv.lost };
+      });
+
+      // ── strengths / weaknesses from insights ──
+      const strengths:  string[] = [];
+      const weaknesses: string[] = [];
+      for (const ins of (raw.insights ?? [])) {
+        if (ins.type === "strength" || (ins.type === "sport" && (ins.adj ?? 0) > 0) || (ins.type === "calibration" && (ins.adj ?? 0) > 0)) {
+          strengths.push(ins.title + (ins.detail ? " — " + ins.detail : ""));
+        } else if (ins.type === "weakness" || (ins.type === "sport" && (ins.adj ?? 0) < 0) || (ins.type === "calibration" && (ins.adj ?? 0) < 0)) {
+          weaknesses.push(ins.title + (ins.detail ? " — " + ins.detail : ""));
+        }
+      }
+
+      // ── top patterns ──
+      const patterns = Object.entries(raw.patterns ?? {})
+        .filter(([, p]: any) => p.total >= 5)
+        .map(([key, p]: any) => ({
+          pattern: key.replace(/\|/g, " + ").replace(/_/g, " ").replace(/:/g, ": "),
+          win_rate: Math.round(p.win_rate * 100),
+          sample: Math.round(p.total),
+          insight: p.win_rate >= 0.55
+            ? `Strong pattern: ${Math.round(p.win_rate * 100)}% win rate across ${Math.round(p.total)} picks.`
+            : p.win_rate <= 0.45
+            ? `Weak pattern: only ${Math.round(p.win_rate * 100)}% win rate — model adjusting down.`
+            : `Neutral pattern: ${Math.round(p.win_rate * 100)}% win rate — near baseline.`,
+        }))
+        .sort((a, b) => Math.abs(b.win_rate - 50) - Math.abs(a.win_rate - 50))
+        .slice(0, 10);
+
+      return res.json({
+        overall, by_sport, by_bet_type, by_conf_tier, by_week,
+        strengths: strengths.slice(0, 5),
+        weaknesses: weaknesses.slice(0, 5),
+        patterns,
+        last_run:    raw.last_run ?? null,
+        sample_size: acc.total ?? 0,
+        weights:     raw.weights ?? null,
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -950,6 +1144,41 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // POST /api/ml/grade — run auto-grader then ML engine
+  app.post("/api/ml/grade", async (_req, res) => {
+    try {
+      const graderResult = await runPythonScript("auto_grader.py");
+      const mlResult     = await runMLEngine();
+      // Sync ml_data to GitHub so outcomes survive redeploys
+      syncMLDataToGitHub().catch((e: any) => console.warn("[MLSync] GitHub sync error:", e.message));
+      res.json({ status: "ok", grader: graderResult, ml: mlResult });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/ml/snapshots — how many picks have been logged
+  app.get("/api/ml/snapshots", (_req, res) => {
+    try {
+      const snapFile = path.join(process.cwd(), "server", "ml_data", "pick_snapshots.json");
+      const outFile  = path.join(process.cwd(), "server", "ml_data", "bet_outcome_log.json");
+      const snaps    = fs.existsSync(snapFile)  ? JSON.parse(fs.readFileSync(snapFile,  "utf8")) : [];
+      const outcomes = fs.existsSync(outFile)   ? JSON.parse(fs.readFileSync(outFile,   "utf8")) : [];
+      const graded   = outcomes.filter((o: any) => o.result && o.result !== "open");
+      const won      = graded.filter((o: any) => o.result === "won").length;
+      const lost     = graded.filter((o: any) => o.result === "lost").length;
+      res.json({
+        snapshots: snaps.length,
+        graded:    graded.length,
+        open:      snaps.length - graded.length,
+        won, lost,
+        win_rate:  graded.length > 0 ? Math.round((won / (won + lost || 1)) * 1000) / 10 : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Scanner ──────────────────────────────────────────────────────────────
   app.post("/api/scan", async (req, res) => {
     try {
@@ -958,6 +1187,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Push real-time update to all connected clients
       const allBets = await storage.getBets();
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length });
+      // Log picks for ML self-learning
+      try { logPicks(allBets); } catch(e: any) { console.warn("[PickLogger] error:", e.message); }
       // Fire high-confidence alerts for any bet ≥ 80
       const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
@@ -2472,21 +2703,47 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // Start Kronos at server boot
   startKronos();
 
-  // ── Nightly ML engine run (2:00 AM server time) ──────────────────────────
+  // ── Nightly ML pipeline: grade picks → run ML engine → sync to GitHub ──────
+  // Runs at 2:00 AM server time (after US games finish)
   {
+    const runNightlyML = async () => {
+      console.log("[ML] Nightly pipeline starting...");
+      try {
+        // Step 1: Auto-grade picks against ESPN final scores
+        const graderResult = await runPythonScript("auto_grader.py");
+        console.log("[ML] Grader done:", graderResult);
+      } catch (e: any) {
+        console.error("[ML] Grader error:", e.message);
+      }
+      try {
+        // Step 2: Run ML engine to recompute weights from graded outcomes
+        await runMLEngine();
+        console.log("[ML] Engine run complete");
+      } catch (e: any) {
+        console.error("[ML] Engine error:", e.message);
+      }
+      try {
+        // Step 3: Sync ml_data/ back to GitHub so outcomes survive next redeploy
+        await syncMLDataToGitHub();
+        console.log("[ML] GitHub sync complete");
+      } catch (e: any) {
+        console.error("[ML] Sync error:", e.message);
+      }
+    };
+
     const scheduleNightlyML = () => {
       const now = new Date();
+      // 2:00 AM UTC (covers games finishing in US timezones)
       const next2am = new Date(now);
-      next2am.setHours(2, 0, 0, 0);
-      if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
+      next2am.setUTCHours(7, 0, 0, 0); // 7am UTC = 2am CDT
+      if (next2am <= now) next2am.setUTCDate(next2am.getUTCDate() + 1);
       const msUntil = next2am.getTime() - now.getTime();
+      const hoursUntil = Math.round(msUntil / 3600000 * 10) / 10;
+      console.log(`[ML] Nightly pipeline scheduled in ${hoursUntil}h`);
       setTimeout(() => {
-        runMLEngine().then(() => {
-          console.log("[ML] Nightly engine run complete");
-        }).catch((e) => console.error("[ML] Nightly run error:", e));
-        setInterval(() => {
-          runMLEngine().catch((e) => console.error("[ML] Scheduled run error:", e));
-        }, 24 * 60 * 60 * 1000);
+        runNightlyML();
+        // Repeat every 24h
+        setInterval(runNightlyML, 24 * 60 * 60 * 1000);
       }, msUntil);
     };
     scheduleNightlyML();
@@ -4615,6 +4872,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const result = await runScan(settings.oddsApiKey);
       const allBets = await storage.getBets();
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length, auto: true });
+      // Log picks for ML self-learning
+      try { logPicks(allBets); } catch(e: any) { console.warn("[PickLogger] error:", e.message); }
       const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
         broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
