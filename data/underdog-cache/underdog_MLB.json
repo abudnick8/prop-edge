@@ -4255,7 +4255,7 @@
       "updated_at": "2026-04-12T19:36:01Z"
     },
     {
-      "id": "0d3147f6-e6f7-4c34-8d5c-14cc37b196ee",
+      "id": "487c944c-cc53-46de-b08f-f608f2d19c7c",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -4265,44 +4265,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "62fbf9dd-3477-408d-a255-49262b0c8e60",
+          "id": "4051a3be-6585-4d75-b64c-970b7dc4bd1e",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "40+",
+          "choice_display_name_shorter": "41+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "0d3147f6-e6f7-4c34-8d5c-14cc37b196ee",
+          "over_under_line_id": "487c944c-cc53-46de-b08f-f608f2d19c7c",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Chris Sale",
-          "selection_subheader": "Higher 39.5 Fantasy Points",
+          "selection_subheader": "Higher 40.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T16:52:18Z"
+          "updated_at": "2026-04-12T21:44:44Z"
         },
         {
-          "id": "b69a0734-9d1b-4958-a7f0-8c550ab9c8a5",
+          "id": "fd5fb22d-98c0-4f66-bacc-c07454ba91cc",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "39-",
+          "choice_display_name_shorter": "40-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "0d3147f6-e6f7-4c34-8d5c-14cc37b196ee",
+          "over_under_line_id": "487c944c-cc53-46de-b08f-f608f2d19c7c",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Chris Sale",
-          "selection_subheader": "Lower 39.5 Fantasy Points",
+          "selection_subheader": "Lower 40.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T16:52:18Z"
+          "updated_at": "2026-04-12T21:44:44Z"
         }
       ],
       "over_under": {
@@ -4332,9 +4332,9 @@
       "rank": 1101151080800,
       "sort_by": null,
       "stable_id": "080d28a2-2466-4931-b9e0-9243fe383022|balanced",
-      "stat_value": "39.5",
+      "stat_value": "40.5",
       "status": "active",
-      "updated_at": "2026-04-12T16:52:18Z"
+      "updated_at": "2026-04-12T21:44:44Z"
     },
     {
       "id": "d74f7731-f928-4847-8900-df3f90aea8f2",
@@ -5897,7 +5897,7 @@
       "updated_at": "2026-04-12T20:22:56Z"
     },
     {
-      "id": "d2037f58-fb61-4577-bb35-dc183aa660ad",
+      "id": "33086fb7-ec71-48ca-820b-26acf11e45b2",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -5907,44 +5907,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "f3351423-488d-422c-9011-cbc68ccec622",
+          "id": "8f060726-f352-44bb-b669-b7f923bc98b2",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "27+",
+          "choice_display_name_shorter": "26+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "d2037f58-fb61-4577-bb35-dc183aa660ad",
+          "over_under_line_id": "33086fb7-ec71-48ca-820b-26acf11e45b2",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Tanner Bibee",
-          "selection_subheader": "Higher 26.5 Fantasy Points",
+          "selection_subheader": "Higher 25.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T09:06:10Z"
+          "updated_at": "2026-04-12T21:49:10Z"
         },
         {
-          "id": "e922ca20-9533-4638-8684-20f9bdad1364",
+          "id": "c4fbb14b-230d-4cc7-8f3a-e41cea6f5a40",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "26-",
+          "choice_display_name_shorter": "25-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "d2037f58-fb61-4577-bb35-dc183aa660ad",
+          "over_under_line_id": "33086fb7-ec71-48ca-820b-26acf11e45b2",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Tanner Bibee",
-          "selection_subheader": "Lower 26.5 Fantasy Points",
+          "selection_subheader": "Lower 25.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T09:06:10Z"
+          "updated_at": "2026-04-12T21:49:10Z"
         }
       ],
       "over_under": {
@@ -5974,12 +5974,12 @@
       "rank": 1101151100800,
       "sort_by": null,
       "stable_id": "54501f64-3405-4f27-a31c-f26710487f9e|balanced",
-      "stat_value": "26.5",
+      "stat_value": "25.5",
       "status": "active",
-      "updated_at": "2026-04-12T12:07:47Z"
+      "updated_at": "2026-04-12T21:49:10Z"
     },
     {
-      "id": "bf5e83cf-6d29-4804-8389-6cd4913994fd",
+      "id": "36586c36-cf33-4cff-94cf-b66c20daf8b3",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -5989,44 +5989,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "26278856-93dc-4d8d-9c05-8db7d55e030a",
-          "american_price": "-106",
+          "id": "02fac8d1-774a-4fe2-b982-28945a85f792",
+          "american_price": "-102",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "18+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.95",
+          "decimal_price": "1.99",
           "grouping_id": null,
-          "over_under_line_id": "bf5e83cf-6d29-4804-8389-6cd4913994fd",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "36586c36-cf33-4cff-94cf-b66c20daf8b3",
+          "payout_multiplier": "1.03",
           "raw_probability": null,
           "selection_header": "Tanner Bibee",
           "selection_subheader": "Higher 17.5 Pitching Outs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:44:34Z"
+          "updated_at": "2026-04-12T21:45:09Z"
         },
         {
-          "id": "34ad1eef-166f-4b26-abbf-dfcc656e87c0",
-          "american_price": "-129",
+          "id": "d98116c7-bdad-430a-89b6-acf627e97c95",
+          "american_price": "-134",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "17-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.78",
+          "decimal_price": "1.75",
           "grouping_id": null,
-          "over_under_line_id": "bf5e83cf-6d29-4804-8389-6cd4913994fd",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "36586c36-cf33-4cff-94cf-b66c20daf8b3",
+          "payout_multiplier": "0.88",
           "raw_probability": null,
           "selection_header": "Tanner Bibee",
           "selection_subheader": "Lower 17.5 Pitching Outs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:44:34Z"
+          "updated_at": "2026-04-12T21:45:09Z"
         }
       ],
       "over_under": {
@@ -6052,13 +6052,13 @@
         "title": "Tanner Bibee Pitching Outs O/U"
       },
       "over_under_id": "358c05a7-68e5-4022-9006-6bf78678a0f3",
-      "provider_id": "swish",
+      "provider_id": "manual",
       "rank": 1101151100900,
       "sort_by": null,
       "stable_id": "358c05a7-68e5-4022-9006-6bf78678a0f3|balanced",
       "stat_value": "17.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:44:34Z"
+      "updated_at": "2026-04-12T21:45:26Z"
     },
     {
       "id": "82c72b9b-2af4-4186-89bd-ba4b7dd56e37",
@@ -13585,24 +13585,24 @@
           "updated_at": "2026-04-12T20:41:56Z"
         },
         {
-          "id": "41ffb295-2c57-43fe-a64d-8d30cc302954",
-          "american_price": "-170",
+          "id": "3034f44c-5f35-4bb6-8e07-a9b570bfbf46",
+          "american_price": "-159",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "18-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.59",
+          "decimal_price": "1.63",
           "grouping_id": null,
           "over_under_line_id": "8b927eb8-2640-434b-981d-464bdb97c492",
-          "payout_multiplier": "0.8",
+          "payout_multiplier": "0.81",
           "raw_probability": null,
           "selection_header": "Garrett Crochet",
           "selection_subheader": "Lower 18.5 Pitching Outs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -13634,7 +13634,7 @@
       "stable_id": "b2973f70-b582-4c20-af62-fda5a1962745|balanced",
       "stat_value": "18.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:56Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "d199ace0-c815-4089-a92b-80393cae9498",
@@ -13811,44 +13811,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "26f1289e-6d6b-4465-94a2-846189e2b0f3",
-          "american_price": "+103",
+          "id": "e8a2646f-33b2-4698-9e9b-466aad47b104",
+          "american_price": "+107",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.03",
+          "decimal_price": "2.07",
           "grouping_id": null,
           "over_under_line_id": "d94751bc-5767-4e0a-91c6-7f22a69fe5a7",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.05",
           "raw_probability": null,
           "selection_header": "Garrett Crochet",
           "selection_subheader": "Higher 1.5 Walks Allowed",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
-          "id": "16db160a-0daf-46d1-b982-0bce98c4b7c2",
-          "american_price": "-127",
+          "id": "130346ab-e9d3-4760-af6b-47ac80e1f03f",
+          "american_price": "-132",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.79",
+          "decimal_price": "1.76",
           "grouping_id": null,
           "over_under_line_id": "d94751bc-5767-4e0a-91c6-7f22a69fe5a7",
-          "payout_multiplier": "0.88",
+          "payout_multiplier": "0.87",
           "raw_probability": null,
           "selection_header": "Garrett Crochet",
           "selection_subheader": "Lower 1.5 Walks Allowed",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -13880,7 +13880,7 @@
       "stable_id": "1cdfdf58-081b-4951-8941-b1ee28c7d6e5|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:46Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "3c2dcdc3-de78-4c95-882c-44fe87c9e775",
@@ -14221,24 +14221,24 @@
           "updated_at": "2026-04-12T20:41:57Z"
         },
         {
-          "id": "9bbdc0f9-8662-4184-b38d-20e9c0d03224",
-          "american_price": "-139",
+          "id": "3a35ebad-5b84-46c2-bdcf-a9e6edd34c87",
+          "american_price": "-145",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.72",
+          "decimal_price": "1.69",
           "grouping_id": null,
           "over_under_line_id": "a784c030-2138-42a9-923d-b183bd7fb8cc",
-          "payout_multiplier": "0.88",
+          "payout_multiplier": "0.87",
           "raw_probability": null,
           "selection_header": "Jarren Duran",
           "selection_subheader": "Lower 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:48Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -14270,7 +14270,7 @@
       "stable_id": "8bf36f74-c8de-4d29-8578-2038a5329f0a|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:57Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "bf8348df-d202-45c0-b859-e2b5d086d152",
@@ -14365,24 +14365,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "73bd2f57-367a-4c65-bb52-f0375a08f662",
-          "american_price": "+578",
+          "id": "2bc41214-876a-4ea5-b1e5-975c08fb9197",
+          "american_price": "+596",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "6.78",
+          "decimal_price": "6.96",
           "grouping_id": null,
           "over_under_line_id": "0ac63b80-e79f-464d-bd2a-7b249c584022",
-          "payout_multiplier": "3.38",
+          "payout_multiplier": "3.48",
           "raw_probability": null,
           "selection_header": "Jarren Duran",
           "selection_subheader": "Higher 0.5 Stolen Bases",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:41:57Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -14414,7 +14414,7 @@
       "stable_id": "3d3a7152-27cb-4ebd-9ce3-8020966a0628|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:57Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "2b4b33eb-cf2b-4cb5-bf84-46407d65cf1a",
@@ -14509,24 +14509,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "58df77d0-f20c-485c-918e-10d52c2e27cc",
-          "american_price": "+488",
+          "id": "3301d1b5-c66d-4713-94a7-e0daa8e07416",
+          "american_price": "+533",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "5.88",
+          "decimal_price": "6.33",
           "grouping_id": null,
           "over_under_line_id": "c4b6a5c8-545a-47d9-a3b7-f6d69ba614d6",
-          "payout_multiplier": "2.72",
+          "payout_multiplier": "2.95",
           "raw_probability": null,
           "selection_header": "Trevor Story",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         }
       ],
       "over_under": {
@@ -14558,7 +14558,7 @@
       "stable_id": "24fcb110-6cc4-441b-b858-0bbf2650d7de|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:54Z"
     },
     {
       "id": "dc0a014a-5464-4e1f-819f-85ecca2f892c",
@@ -14735,24 +14735,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "71a30e9d-5e57-49dc-9785-1f9db260d3b8",
-          "american_price": "+133",
+          "id": "a688fced-a5b0-4050-b6db-7790207fbdd5",
+          "american_price": "+138",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.33",
+          "decimal_price": "2.38",
           "grouping_id": null,
           "over_under_line_id": "d8547a55-64b2-4c4e-9eb6-3190173f088b",
-          "payout_multiplier": "1.07",
+          "payout_multiplier": "1.1",
           "raw_probability": null,
           "selection_header": "Trevor Story",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         },
         {
           "id": "d82e95b5-47c1-4329-9a90-1c762857225c",
@@ -14804,7 +14804,7 @@
       "stable_id": "0728fbc8-c445-466a-b72a-3dbf0d002a0e|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:54Z"
     },
     {
       "id": "76a8ab43-58b8-431b-86ce-53f45ccf4b7c",
@@ -14817,44 +14817,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "eecbfbf7-6222-4fed-952c-eed13a75cce3",
-          "american_price": "+168",
+          "id": "413f79fd-ebed-4a80-878c-59020b700a7a",
+          "american_price": "+176",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.68",
+          "decimal_price": "2.76",
           "grouping_id": null,
           "over_under_line_id": "76a8ab43-58b8-431b-86ce-53f45ccf4b7c",
-          "payout_multiplier": "1.25",
+          "payout_multiplier": "1.29",
           "raw_probability": null,
           "selection_header": "Trevor Story",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         },
         {
-          "id": "9979b928-7da8-4f12-8246-daac846c1cf1",
-          "american_price": "-257",
+          "id": "64df93a9-3583-475c-ad50-59e718f04d28",
+          "american_price": "-271",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.39",
+          "decimal_price": "1.37",
           "grouping_id": null,
           "over_under_line_id": "76a8ab43-58b8-431b-86ce-53f45ccf4b7c",
-          "payout_multiplier": "0.7",
+          "payout_multiplier": "0.69",
           "raw_probability": null,
           "selection_header": "Trevor Story",
           "selection_subheader": "Lower 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         }
       ],
       "over_under": {
@@ -14886,7 +14886,7 @@
       "stable_id": "25e970be-5110-4299-81c1-5098f8536489|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:54Z"
     },
     {
       "id": "9a07589a-0b35-4a61-b107-44bd53c6227c",
@@ -14899,24 +14899,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "6fc85bfd-d08e-494a-9b39-3510c5379bd4",
-          "american_price": "+494",
+          "id": "b360110b-652c-4025-92b3-629895a4efbc",
+          "american_price": "+528",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "5.94",
+          "decimal_price": "6.28",
           "grouping_id": null,
           "over_under_line_id": "9a07589a-0b35-4a61-b107-44bd53c6227c",
-          "payout_multiplier": "2.91",
+          "payout_multiplier": "3.1",
           "raw_probability": null,
           "selection_header": "Trevor Story",
           "selection_subheader": "Higher 0.5 Stolen Bases",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -14948,7 +14948,7 @@
       "stable_id": "61d7dee0-566c-4bf3-92ac-c04956714415|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "fc666177-e4d1-48b7-a17a-cd7ba2e64664",
@@ -15269,44 +15269,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "6912aff7-28ba-46ba-a468-59e4f1fb1404",
-          "american_price": "+151",
+          "id": "b8582258-da94-45c6-87ce-98f3454c7a3a",
+          "american_price": "+157",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.51",
+          "decimal_price": "2.57",
           "grouping_id": null,
           "over_under_line_id": "e00fc4cd-2812-4abc-a497-a43ddfc85020",
-          "payout_multiplier": "1.16",
+          "payout_multiplier": "1.19",
           "raw_probability": null,
           "selection_header": "Willson Contreras",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         },
         {
-          "id": "ef08dd7e-264c-4fa2-8d4e-995fb9eb4733",
-          "american_price": "-228",
+          "id": "da0f5ddb-effc-4e4f-a0be-59a0c9081252",
+          "american_price": "-239",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.44",
+          "decimal_price": "1.42",
           "grouping_id": null,
           "over_under_line_id": "e00fc4cd-2812-4abc-a497-a43ddfc85020",
-          "payout_multiplier": "0.73",
+          "payout_multiplier": "0.72",
           "raw_probability": null,
           "selection_header": "Willson Contreras",
           "selection_subheader": "Lower 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:54Z"
         }
       ],
       "over_under": {
@@ -15338,7 +15338,7 @@
       "stable_id": "701e1bef-2187-47fb-ae65-a8bce8e7f1c4|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:54Z"
     },
     {
       "id": "aab1417b-7b33-4514-bf25-beaebf26fb70",
@@ -15433,24 +15433,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "24c06da0-58a6-440d-8a0e-57145a4d56bb",
-          "american_price": "+350",
+          "id": "834ab176-bd09-475e-ab67-73a8eac751ff",
+          "american_price": "+371",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "4.5",
+          "decimal_price": "4.71",
           "grouping_id": null,
           "over_under_line_id": "bd94c906-57f3-46d1-afce-0e974b0f6d7c",
-          "payout_multiplier": "2.02",
+          "payout_multiplier": "2.12",
           "raw_probability": null,
           "selection_header": "Roman Anthony",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:49Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -15482,7 +15482,7 @@
       "stable_id": "ccbdd228-af73-41ab-9b6f-9f46c8a95098|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:49Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "07a97758-4b1d-4d56-995e-be3c80e149b8",
@@ -16131,24 +16131,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "e25eb508-5077-4c99-8449-16c2c7524903",
-          "american_price": "+103",
+          "id": "94cc45f1-e7cf-40ed-9a9b-01ad08d81ffa",
+          "american_price": "+106",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.03",
+          "decimal_price": "2.06",
           "grouping_id": null,
           "over_under_line_id": "7c503a7b-5d40-48c3-9b93-c862d5854759",
-          "payout_multiplier": "1.06",
+          "payout_multiplier": "1.07",
           "raw_probability": null,
           "selection_header": "Wilyer Abreu",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:47Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
           "id": "b6370dd4-1d93-47bb-a937-36870121c03a",
@@ -16200,7 +16200,7 @@
       "stable_id": "05ff0bff-711d-4acb-b6b3-46abc35b8e85|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:47Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "46763893-6a44-461e-97e7-9eb33db16c62",
@@ -16213,24 +16213,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "2c0f208c-5938-45a6-acbf-bab63b58f521",
-          "american_price": "+135",
+          "id": "a9ea9fd7-99db-4bf4-a65e-5549ba4a279c",
+          "american_price": "+131",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.35",
+          "decimal_price": "2.31",
           "grouping_id": null,
           "over_under_line_id": "46763893-6a44-461e-97e7-9eb33db16c62",
-          "payout_multiplier": "1.08",
+          "payout_multiplier": "1.06",
           "raw_probability": null,
           "selection_header": "Wilyer Abreu",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:41:56Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
           "id": "d744498e-d863-45b9-a1dd-075ef9698218",
@@ -16282,7 +16282,7 @@
       "stable_id": "4f7689b7-731d-4d88-b9ea-63d98cacc83c|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:56Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "af87c2a6-9a4d-4d6d-a26d-338a46c79ced",
@@ -16315,24 +16315,24 @@
           "updated_at": "2026-04-12T20:41:56Z"
         },
         {
-          "id": "faaa3492-b332-4ced-8e33-601c88793d54",
-          "american_price": "-167",
+          "id": "e8f41a98-939b-4da6-9d30-63ceed7c8f72",
+          "american_price": "-173",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.6",
+          "decimal_price": "1.58",
           "grouping_id": null,
           "over_under_line_id": "af87c2a6-9a4d-4d6d-a26d-338a46c79ced",
-          "payout_multiplier": "0.8",
+          "payout_multiplier": "0.79",
           "raw_probability": null,
           "selection_header": "Ceddanne Rafaela",
           "selection_subheader": "Lower 1.5 Hits + Runs + RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:47Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -16364,7 +16364,7 @@
       "stable_id": "26315312-33c0-4786-85b5-4f9483b2c9e3|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:56Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "62c7d4f4-7487-4d4a-a53b-da31df7734a1",
@@ -16377,24 +16377,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "97f4071d-bd4a-40d9-9aa2-f1efadc10b14",
-          "american_price": "+818",
+          "id": "1d90674a-afa9-4315-b24d-0aeadbb95c4e",
+          "american_price": "+881",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "9.18",
+          "decimal_price": "9.81",
           "grouping_id": null,
           "over_under_line_id": "62c7d4f4-7487-4d4a-a53b-da31df7734a1",
-          "payout_multiplier": "4.33",
+          "payout_multiplier": "4.67",
           "raw_probability": null,
           "selection_header": "Ceddanne Rafaela",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:47Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -16426,7 +16426,7 @@
       "stable_id": "0c5864bf-ca9c-43c5-a635-1a93aab123f8|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:47Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "6b81b59b-2a9b-4375-8c9f-4e8b5a81f92a",
@@ -16521,24 +16521,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "445d40d6-c7ab-4be0-865e-433fd3544edb",
-          "american_price": "+160",
+          "id": "7d88f4f6-c8d0-49cf-a50e-4304bd06c349",
+          "american_price": "+165",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.6",
+          "decimal_price": "2.65",
           "grouping_id": null,
           "over_under_line_id": "211510c1-8d02-41f4-abcf-48029b3cc23a",
-          "payout_multiplier": "1.21",
+          "payout_multiplier": "1.24",
           "raw_probability": null,
           "selection_header": "Ceddanne Rafaela",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:47Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
           "id": "097a3768-4e53-47e3-98d8-362f6eea89c1",
@@ -16590,7 +16590,7 @@
       "stable_id": "ff5d7bd8-3fca-4e5e-9765-cc4062805e84|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:47Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "d3eb2c45-0e7c-475a-9ff7-26ed8d744790",
@@ -16603,24 +16603,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "8e63884c-ad97-40df-aa5a-5158a7f12368",
-          "american_price": "+253",
+          "id": "2b902cb8-b13a-4b5d-8b4b-7a5dd8ff1871",
+          "american_price": "+261",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "3.53",
+          "decimal_price": "3.61",
           "grouping_id": null,
           "over_under_line_id": "d3eb2c45-0e7c-475a-9ff7-26ed8d744790",
-          "payout_multiplier": "1.54",
+          "payout_multiplier": "1.58",
           "raw_probability": null,
           "selection_header": "Ceddanne Rafaela",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:47Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
           "id": "c729f766-53b9-468b-b9c1-73fc9cdf1711",
@@ -16672,7 +16672,7 @@
       "stable_id": "d50526f0-080f-4785-b649-8a6699026f5f|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:47Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "116bb9e2-c2da-479d-806f-8134082ab3b9",
@@ -16879,88 +16879,6 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-04-12T20:36:49Z"
-    },
-    {
-      "id": "16811965-21c6-4aee-bff2-f97b3c1e14d1",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "9ef4f32f-b535-4d9c-b4de-9ab4e978189c",
-          "american_price": "+144",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "2+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.44",
-          "grouping_id": null,
-          "over_under_line_id": "16811965-21c6-4aee-bff2-f97b3c1e14d1",
-          "payout_multiplier": "1.1",
-          "raw_probability": null,
-          "selection_header": "Caleb Durbin",
-          "selection_subheader": "Higher 1.5 Total Bases",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:41:57Z"
-        },
-        {
-          "id": "4fe263a2-845a-4c81-9c69-d459cc8ca436",
-          "american_price": "-197",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "1-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.51",
-          "grouping_id": null,
-          "over_under_line_id": "16811965-21c6-4aee-bff2-f97b3c1e14d1",
-          "payout_multiplier": "0.75",
-          "raw_probability": null,
-          "selection_header": "Caleb Durbin",
-          "selection_subheader": "Lower 1.5 Total Bases",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:41:57Z"
-        }
-      ],
-      "over_under": {
-        "id": "1206e8a2-60ff-4b96-b9d3-cd68a0167708",
-        "appearance_stat": {
-          "id": "a43c7a41-dc9a-4838-b94d-7f738fb8d775-1f670d50-4b2e-4fde-b9c7-598418a986a1",
-          "appearance_id": "a43c7a41-dc9a-4838-b94d-7f738fb8d775",
-          "display_stat": "Total Bases",
-          "graded_by": "high_score",
-          "pickem_stat_id": "1f670d50-4b2e-4fde-b9c7-598418a986a1",
-          "rank": 7,
-          "stat": "total_bases"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Caleb Durbin Total Bases O/U"
-      },
-      "over_under_id": "1206e8a2-60ff-4b96-b9d3-cd68a0167708",
-      "provider_id": "swish",
-      "rank": 1101991360700,
-      "sort_by": null,
-      "stable_id": "1206e8a2-60ff-4b96-b9d3-cd68a0167708|balanced",
-      "stat_value": "1.5",
-      "status": "active",
-      "updated_at": "2026-04-12T20:41:57Z"
     },
     {
       "id": "2ea2b981-1214-411d-b5e4-0cd94f0f4854",
@@ -17219,24 +17137,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "8bfd0cee-fecc-4a20-aca9-affe702a89e3",
-          "american_price": "+595",
+          "id": "51802aff-1bb5-4e61-8370-224d4ecf3f3e",
+          "american_price": "+649",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "6.95",
+          "decimal_price": "7.49",
           "grouping_id": null,
           "over_under_line_id": "9f470959-dc57-41a4-94a7-e60b9c19f8be",
-          "payout_multiplier": "3.48",
+          "payout_multiplier": "3.67",
           "raw_probability": null,
           "selection_header": "Caleb Durbin",
           "selection_subheader": "Higher 0.5 Stolen Bases",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:41:57Z"
+          "updated_at": "2026-04-12T21:27:56Z"
         }
       ],
       "over_under": {
@@ -17268,7 +17186,7 @@
       "stable_id": "15ee8869-fdf6-4622-9e37-f357df9c7a41|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:57Z"
+      "updated_at": "2026-04-12T21:27:56Z"
     },
     {
       "id": "6a40c909-a97b-4840-b78c-2bcd9510a19c",
@@ -17301,15 +17219,15 @@
           "updated_at": "2026-04-12T20:41:56Z"
         },
         {
-          "id": "1c58490d-cc87-4e77-858e-6c6d841c18ef",
-          "american_price": "-170",
+          "id": "d0122891-b052-48bd-8d18-7a6cf1d134db",
+          "american_price": "-176",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.59",
+          "decimal_price": "1.57",
           "grouping_id": null,
           "over_under_line_id": "6a40c909-a97b-4840-b78c-2bcd9510a19c",
           "payout_multiplier": "0.79",
@@ -17318,7 +17236,7 @@
           "selection_subheader": "Lower 1.5 Hits + Runs + RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -17350,7 +17268,7 @@
       "stable_id": "856fb84f-4227-4d01-bf00-42c9e69d1f18|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:56Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "a33448af-7765-4b68-a4ec-d2c901cb6583",
@@ -17363,24 +17281,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "727f71ce-0926-4d19-99be-3e7e4826d04d",
-          "american_price": "+649",
+          "id": "fa8eedbe-6002-4149-a8a0-a87c66ee55bb",
+          "american_price": "+681",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "7.49",
+          "decimal_price": "7.81",
           "grouping_id": null,
           "over_under_line_id": "a33448af-7765-4b68-a4ec-d2c901cb6583",
-          "payout_multiplier": "3.56",
+          "payout_multiplier": "3.61",
           "raw_probability": null,
           "selection_header": "Carlos Narváez",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:45Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -17412,7 +17330,7 @@
       "stable_id": "9c85cfb6-a7f3-4f78-bd3e-0d523fec0774|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:45Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "7b67819c-33e6-4b50-8c90-d84db6c6a35c",
@@ -17527,24 +17445,24 @@
           "updated_at": "2026-04-12T20:41:56Z"
         },
         {
-          "id": "e5852d0d-f206-4538-931a-ae375aa82792",
-          "american_price": "-250",
+          "id": "533e9bcd-766e-45b0-83f2-7925073b811a",
+          "american_price": "-264",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.4",
+          "decimal_price": "1.38",
           "grouping_id": null,
           "over_under_line_id": "2e794011-91fd-42e6-86f0-48de9539a697",
-          "payout_multiplier": "0.71",
+          "payout_multiplier": "0.7",
           "raw_probability": null,
           "selection_header": "Carlos Narváez",
           "selection_subheader": "Lower 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         }
       ],
       "over_under": {
@@ -17576,7 +17494,7 @@
       "stable_id": "d4e8cff8-50cc-424a-81f2-34087ddd34cd|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:41:56Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "403cdff5-5d90-4c7d-91c2-aca10efd960d",
@@ -17589,24 +17507,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "e3a442c9-7227-4a51-bd67-da61c9b4188b",
-          "american_price": "+225",
+          "id": "cc2387fb-cc77-44d4-94d4-d7ddf642db42",
+          "american_price": "+233",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "3.25",
+          "decimal_price": "3.33",
           "grouping_id": null,
           "over_under_line_id": "403cdff5-5d90-4c7d-91c2-aca10efd960d",
-          "payout_multiplier": "1.4",
+          "payout_multiplier": "1.44",
           "raw_probability": null,
           "selection_header": "Carlos Narváez",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-12T20:36:46Z"
+          "updated_at": "2026-04-12T21:27:55Z"
         },
         {
           "id": "085b0cd4-3e4e-4497-a453-f6819b0e48c0",
@@ -17658,7 +17576,7 @@
       "stable_id": "57375b5c-4c95-4fb1-ab9f-1f28e4dbf26d|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-04-12T20:36:46Z"
+      "updated_at": "2026-04-12T21:27:55Z"
     },
     {
       "id": "ffce3c01-1c3b-4e29-b796-28dc9df95176",
@@ -18534,6 +18452,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-04-12T21:26:57Z",
+  "cached_at": "2026-04-12T21:57:24Z",
   "sport": "MLB"
 }
