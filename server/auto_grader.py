@@ -613,13 +613,22 @@ def run_grader() -> dict:
         if bid in existing_bet_ids or bid in graded_ids:
             continue
         gt_str = snap.get("gameTime") or snap.get("game_time")
+        btype = (snap.get("betType") or "").lower()
+
         if not gt_str:
-            continue
-        try:
-            gt = datetime.datetime.fromisoformat(str(gt_str).replace("Z", "").replace("+00:00", ""))
-            if gt > cutoff:
+            # Player props logged before gameTime fix: use yesterday as fallback
+            # (they were logged for today's games, so yesterday = games already played)
+            if btype == "player_prop":
+                gt = NOW - datetime.timedelta(days=1)
+            else:
+                continue  # non-props without gameTime: skip
+        else:
+            try:
+                gt = datetime.datetime.fromisoformat(str(gt_str).replace("Z", "").replace("+00:00", ""))
+            except Exception:
                 continue
-        except Exception:
+
+        if gt > cutoff:
             continue
         pending.append(snap)
 
