@@ -54,7 +54,7 @@ function runMLEngine(): Promise<Record<string, any>> {
 // Run any Python script in the server/ dir and return its JSON output
 function runPythonScript(scriptName: string, args: string[] = []): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), "server", scriptName);
+    const scriptPath = path.join(__dirname, scriptName);
     const proc = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
