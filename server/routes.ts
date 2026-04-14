@@ -81,7 +81,7 @@ async function syncMLDataToGitHub(): Promise<void> {
   const branch = process.env.GITHUB_BRANCH || "main";
   if (!token) { console.warn("[MLSync] GITHUB_TOKEN not set — skipping sync"); return; }
 
-  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const DATA_DIR = path.join(__dirname, "ml_data");
   const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
 
   for (const filename of files) {
@@ -141,7 +141,7 @@ async function syncSnapshotsToGitHub(): Promise<void> {
   const branch = "main";
   if (!token) return;
 
-  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const DATA_DIR = path.join(__dirname, "ml_data");
   const filename = "pick_snapshots.json";
   const localPath = path.join(DATA_DIR, filename);
   if (!fs.existsSync(localPath)) return;
@@ -180,7 +180,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
   const branch = process.env.GITHUB_BRANCH || "main";
   if (!token) return;
 
-  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
   const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
@@ -875,7 +875,7 @@ let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
   // Ensure ml_data directory exists
-  const ML_DATA_RUNTIME = path.join(process.cwd(), "server", "ml_data");
+  const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");
   if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
   ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json"].forEach(f => {
     const p = path.join(ML_DATA_RUNTIME, f);
