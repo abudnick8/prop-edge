@@ -56,11 +56,11 @@ export default function ParlaySlip() {
         potentialPayout: payout ? parseFloat(payout) : null,
         legs: legs.map(l => ({
           betId: l.betId,
-          betSlug: l.betSlug,
+          betSlug: l.betSlug ?? undefined,
           betTitle: l.betTitle,
           betSport: l.betSport,
           betLine: l.betLine,
-          betPickSide: l.betPickSide,
+          betPickSide: l.betPickSide ?? undefined,
           odds: l.odds,
         })),
       }, token),
