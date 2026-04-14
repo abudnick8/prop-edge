@@ -87,7 +87,7 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
     "B":  { color: "#93c5fd", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.35)",  label: "Moderate edge — look for confirming signal" },
     "C":  { color: "rgba(19,35,58,0.56)", bg: "rgba(19,35,58,0.06)", border: "rgba(19,35,58,0.17)", label: "Edge below threshold" },
   };
-  const tierStyle = (edgeTier && TIER_STYLE[edgeTier]) ?? TIER_STYLE["C"];
+  const tierStyle = (edgeTier != null && TIER_STYLE[edgeTier] != null ? TIER_STYLE[edgeTier] : null) ?? TIER_STYLE["C"];
 
   // Classify each factor for icon/color
   function factorTone(f: string): "positive" | "caution" | "negative" | "neutral" {
@@ -469,6 +469,8 @@ function StatVsLine({ statLabel, statValue, propLine, isL5, pickSide }: { statLa
 // ── Player Stats Section ──────────────────────────────────────────────────
 function PlayerStatsSection({ bet }: { bet: Bet }) {
   const sport = bet.sport?.toUpperCase() ?? "";
+  const _ts = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
+  const pickSide = bet.betType === "player_prop" ? _ts?.pickSide?.toUpperCase() : undefined;
   const canFetch = !!bet.playerName && (sport === "NBA" || sport === "NFL" || sport === "MLB" || sport === "NHL");
 
   const { data, isLoading, isError } = useQuery<any>({
