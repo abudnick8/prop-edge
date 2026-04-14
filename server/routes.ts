@@ -360,8 +360,8 @@ const ESPN_ID_CACHE: Record<string, string> = {
   "Sidney Crosby": "3114",              "Evgeni Malkin": "3124",
   "Erik Karlsson": "5164",              "Cale Makar": "4233563",
   "Charlie McAvoy": "3988803",          "Sam Bennett": "3114732",
-  "David Pastrnak": "3114778",          "Roman Josi": "5180",
-  "John Tavares": "5160",               "Nathan MacKinnon": "3041969",
+  "Roman Josi": "5180",
+  "John Tavares": "5160",
   "Alex Ovechkin": "3101",              "Mitch Marner": "4063404",
   // ── MLB (verified via ESPN site v2 team roster scan) ─────────────────────
   "Shohei Ohtani": "39832",            "Mike Trout": "30836",
@@ -513,7 +513,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
             if (seenEventIds.has(eid)) continue; // deduplicate across seasons
             seenEventIds.add(eid);
             const evInfo = eventsMap[eid] ?? {};
-            entries.push({ entry: ev, eventInfo: evInfo, labels });
+            entries.push({ entry: ev, eventInfo: evInfo, labels: labels ?? [] });
           }
         }
       }
@@ -532,7 +532,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
         )
       );
 
-      let allGameEntries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+      let allGameEntries: Array<{ entry: any; eventInfo: any; labels?: string[] }> = [];
       for (const result of seasonFetches) {
         if (result.status === "fulfilled") {
           allGameEntries.push(...parseV3Response(result.value.data));
@@ -929,7 +929,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Merge lotto + regular props per sport
       const limitedProps: any[] = [];
-      const allSports = new Set([...Object.keys(propsBySport), ...Object.keys(lottoBySport)]);
+      const allSports = Array.from(new Set([...Object.keys(propsBySport), ...Object.keys(lottoBySport)]));
       for (const sport of allSports) {
         limitedProps.push(...(lottoBySport[sport] ?? []));
         limitedProps.push(...(propsBySport[sport] ?? []));
@@ -972,7 +972,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const awayLast = (b.awayTeam.split(" ").pop() ?? "").toLowerCase();
             const homeLast = (b.homeTeam.split(" ").pop() ?? "").toLowerCase();
             if (awayLast.length > 3 && homeLast.length > 3) {
-              for (const [k, v] of GAME_TIME_LOOKUP) {
+              for (const [k, v] of Array.from(GAME_TIME_LOOKUP)) {
                 if (k.includes(awayLast) && k.includes(homeLast)) {
                   matched = v;
                   break;
@@ -1317,7 +1317,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (words.length < 2) return null;
     let best: number | null = null;
     let bestScore = 0;
-    for (const [key, prob] of manifoldMap) {
+    for (const [key, prob] of Array.from(manifoldMap)) {
       const overlap = words.filter(w => key.includes(w)).length;
       const score = overlap / words.length;
       if (score >= 0.55 && score > bestScore) {
@@ -1362,12 +1362,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       //   - High-confluence (multi-signal): 20–25%
       //   - Single-source only (no Manifold/CLOB confirmation): use 10% floor
       //   - Overpriced markets: fade target = entry - same ROI (price must fall)
-      function rateMarket(
+      const rateMarket = (
         title: string,
         marketPrice: number,
         clobMid: number | null,
         extraSignals?: { isWhale?: boolean; crossValidated?: boolean }
-      ) {
+      ) => {
         const signals: number[] = [marketPrice];
         if (clobMid !== null) signals.push(clobMid);
         const manifoldProb = findManifoldMatch(title, manifoldMap);
@@ -1597,7 +1597,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Resolve a raw city/nickname string to its full franchise name.
       // Tries sport-specific lookup first, then all other sports if sport is OTHER/unknown.
-      function resolveFullTeamName(raw: string, sport: string): string {
+      const resolveFullTeamName = (raw: string, sport: string): string  =>{
         const s = (sport || "OTHER").toUpperCase();
         const key = raw.trim();
         // Direct match in sport-specific table
@@ -1621,7 +1621,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // ── Sport classifier ──────────────────────────────────────────────────
-      function classifySport(title: string, tags: string[], category: string): string {
+      const classifySport = (title: string, tags: string[], category: string): string  =>{
         const t = title.toLowerCase();
         const c = (category ?? "").toLowerCase();
         const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
@@ -1652,7 +1652,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Resolve a raw Polymarket question/title so city-only or nickname team references
       // become full franchise names.  e.g. "Will Boston win?" → "Will Boston Celtics win?"
-      function resolvePolymarketTitle(rawTitle: string): string {
+      const resolvePolymarketTitle = (rawTitle: string): string  =>{
         if (!rawTitle) return rawTitle;
         const tLow = rawTitle.toLowerCase();
 
@@ -1873,7 +1873,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
       // We parse these into a human-readable label + structured legs array.
       // Decode Kalshi ticker prefix → human-readable stat category
-      function kalshiStatFromTicker(ticker: string): string {
+      const kalshiStatFromTicker = (ticker: string): string  =>{
         const t = (ticker ?? "").toUpperCase();
         // NBA player props
         if (t.includes("NBAREBAST")) return "REB+AST";  // must check before REB/AST
@@ -1919,7 +1919,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return "";  // Non-player-prop — don't append anything
       }
 
-      function annotateTeamLeg(legText: string, dir: string, sport: string): string {
+      const annotateTeamLeg = (legText: string, dir: string, sport: string): string  =>{
         // If the leg is just a team name (no colon, no stat number, no condition words)
         // e.g. "Boston", "Minnesota", "Arsenal", "Oklahoma City"
         const hasColon      = legText.includes(":");
@@ -2006,7 +2006,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Extract a human-readable game matchup from a Kalshi event ticker.
       // Tickers look like: KXNBA-25-BOS-LAL, KXNHL-26-TOR-BOS, KXMLB-25-NYM-ATL, etc.
-      function gameFromEventTicker(ticker: string, sport?: string): string | null {
+      const gameFromEventTicker = (ticker: string, sport?: string): string | null  =>{
         if (!ticker) return null;
         // Strip the leading "KX<SPORT>-YY-" prefix, leaving "AWAY-HOME" team codes
         const m = ticker.match(/^KX(?:NBA|NHL|MLB|NFL|NCAAB|NCAAF)?[-_]?\d*[-_]?([A-Z]{2,4})[-_]([A-Z]{2,4})/i);
@@ -2032,15 +2032,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Detect a bare game total leg: "Over 205.5 points scored", "Under 6.5 runs", etc.
       // Returns true if the leg text is a game-level total with no team context.
-      function isBareTotal(legText: string): boolean {
+      const isBareTotal = (legText: string): boolean  =>{
         return /^(?:over|under)\s+[\d.]+\s+(?:points?|runs?|goals?|runs?|pts?)(?:\s+scored)?$/i.test(legText.trim());
       }
 
-      function cleanKalshiTitle(
+      const cleanKalshiTitle = (
         raw: string,
         mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>,
         sport?: string
-      ): { title: string; legs: string[] | null; isParlay: boolean } {
+      ): { title: string; legs: string[] | null; isParlay: boolean } => {
         if (!raw) return { title: raw, legs: null, isParlay: false };
 
         // ── Pattern A: player-prop parlay — starts with "yes/no Name: line"
@@ -2333,7 +2333,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Sort: today/within-24h markets FIRST, then whale alerts, then rating
       // isTodaySrv: fires if gameTime closes within next 24 hours OR is today's date
-      function isTodaySrv(gt: string | null): boolean {
+      const isTodaySrv = (gt: string | null): boolean  =>{
         if (!gt) return false;
         try {
           const t = new Date(gt).getTime();
@@ -3095,7 +3095,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Flatten all entries across all conference/division children
       const allEntries: any[] = [];
-      function extractEntries(node: any) {
+      const extractEntries = (node: any)  =>{
         const entries = node?.standings?.entries;
         if (Array.isArray(entries)) {
           allEntries.push(...entries);
@@ -3116,11 +3116,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // Parse each team's stats
-      function getStat(stats: any[], name: string): number {
+      const getStat = (stats: any[], name: string): number  =>{
         const s = stats.find((x: any) => x.name === name);
         return s ? parseFloat(s.value ?? s.displayValue ?? "0") || 0 : 0;
       }
-      function getStatStr(stats: any[], name: string): string {
+      const getStatStr = (stats: any[], name: string): string  =>{
         const s = stats.find((x: any) => x.name === name);
         return s ? (s.displayValue ?? "") : "";
       }
@@ -3161,7 +3161,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // Assign conference from standings children structure
-      function assignConference(node: any, confName: string) {
+      const assignConference = (node: any, confName: string)  =>{
         const entries = node?.standings?.entries;
         if (Array.isArray(entries)) {
           entries.forEach((e: any) => { e._conf = confName; });
@@ -4085,7 +4085,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 85).length;
 
       // Helper: format a single bet for display/text
-      function betSummary(b: any, idx: number): string {
+      const betSummary = (b: any, idx: number): string  =>{
         const line = b.line != null ? ` | Line: ${b.line}` : "";
         const over = b.overOdds != null ? ` | Over: ${b.overOdds > 0 ? "+" : ""}${b.overOdds}` : "";
         const under = b.underOdds != null ? ` / Under: ${b.underOdds > 0 ? "+" : ""}${b.underOdds}` : "";
@@ -4097,7 +4097,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // Helper: serialize a bet for the relatedBets response
-      function serializeBet(b: any, reason: string) {
+      const serializeBet = (b: any, reason: string)  =>{
         return {
           id: b.id, title: b.title, sport: b.sport, betType: b.betType,
           playerName: b.playerName ?? null, homeTeam: b.homeTeam ?? null, awayTeam: b.awayTeam ?? null,
@@ -4590,7 +4590,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
 
     // Map TrackedProp statCategory → ESPN stat key(s) to try
-    function mapStatCategory(statCategory: string, sport: string): string[] {
+    const mapStatCategory = (statCategory: string, sport: string): string[]  =>{
       const cat = statCategory.toLowerCase();
       if (sport === "NBA") {
         if (cat.includes("point")) return ["pts", "points", "avgpoints"];
@@ -4632,7 +4632,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       return [];
     }
 
-    function extractStatValue(statsRecord: Record<string, number>, keys: string[]): number | null {
+    const extractStatValue = (statsRecord: Record<string, number>, keys: string[]): number | null  =>{
       for (const k of keys) {
         if (statsRecord[k] !== undefined) return statsRecord[k];
       }
@@ -6444,7 +6444,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch {}
 
       // Normalize string for fuzzy matching
-      function normStr(s: string): string {
+      const normStr = (s: string): string  =>{
         return (s ?? "").toLowerCase()
           .replace(/[^a-z0-9 ]/g, " ")
           .replace(/\s+/g, " ")
@@ -6452,7 +6452,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Count word overlap between two normalized strings
-      function wordOverlap(a: string, b: string): number {
+      const wordOverlap = (a: string, b: string): number  =>{
         const wa = new Set(a.split(" ").filter((w: string) => w.length > 2));
         const wb = b.split(" ").filter((w: string) => w.length > 2);
         return wb.filter((w: string) => wa.has(w)).length;
