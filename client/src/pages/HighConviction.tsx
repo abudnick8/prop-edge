@@ -122,7 +122,7 @@ function marketAlignsBet(mkt: PredMkt, bet: Bet): boolean {
 
   // Check betType alignment
   if (bet.betType === "moneyline" || bet.betType === "spread") {
-    const pick = (bet.pick ?? "").toLowerCase();
+    const pick = (bet.title ?? "").toLowerCase();
     // Check pick team name in market title
     const pickWords = pick.split(/\s+/).filter(w => w.length > 3);
     if (pickWords.some(w => title.includes(w))) return true;
@@ -144,7 +144,7 @@ function lineAlignsBet(game: GameLine, bet: Bet): { aligns: boolean; signal: Con
   const abTotal    = Math.abs(totalMove);
 
   const betType = bet.betType;
-  const pick    = (bet.pick ?? "").toLowerCase();
+  const pick    = (bet.title ?? "").toLowerCase();
 
   if ((betType === "moneyline" || betType === "spread") && abSpread >= 1.5) {
     // Spread moves toward away team (negative) means sharps on away
@@ -333,7 +333,7 @@ function buildConvictionPlays(
     signals.push({
       type: "model",
       label: `Clubhouse IQ Model — ${conf}/100 Confidence`,
-      detail: `${bet.pick ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Model grade: ${bet.grade ?? "A"}. This pick crosses the high-confidence threshold (≥82).`,
+      detail: `${bet.title ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Model grade: ${bet.edgeTier ?? "A"}. This pick crosses the high-confidence threshold (≥82).`,
       strength: conf >= 90 ? "strong" : "moderate",
       color: "#facc15",
       bg: "rgba(250,204,21,0.10)",
@@ -381,7 +381,7 @@ function buildConvictionPlays(
     if (signals.length < 2) continue;
 
     // ── Build directive ────────────────────────────────────────────────────
-    const pickStr    = bet.pick ?? "";
+    const pickStr    = bet.title ?? "";
     const isOver     = pickStr.toLowerCase().includes("over");
     const isUnder    = pickStr.toLowerCase().includes("under");
     const lineVal    = bet.line != null ? ` ${bet.line}` : "";
@@ -425,7 +425,7 @@ function buildConvictionPlays(
       id: `hc-${bet.id}`,
       sport: bet.sport,
       teams: [bet.awayTeam, bet.homeTeam].filter(Boolean).join(" @ ") || bet.sport,
-      gameTime: bet.gameTime ?? null,
+      gameTime: bet.gameTime ? (bet.gameTime instanceof Date ? bet.gameTime.toISOString() : bet.gameTime as string) : null,
       directive,
       betType: bet.betType ?? "bet",
       shortDesc,
@@ -480,7 +480,7 @@ function buildWatchingPlays(
     confirmedSignals.push({
       type: "model",
       label: `Clubhouse IQ Model — ${conf}/100 Confidence`,
-      detail: `${bet.pick ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Grade: ${bet.grade ?? "A"}.`,
+      detail: `${bet.title ?? "Pick"} · ${bet.betType?.replace("_", " ")} · ${bet.sport}. Grade: ${bet.edgeTier ?? "A"}.`,
       strength: conf >= 80 ? "moderate" : "moderate",
       color: "#facc15",
       bg: "rgba(250,204,21,0.10)",
@@ -513,7 +513,7 @@ function buildWatchingPlays(
         const totalMove  = matchedGame.total.move ?? 0;
         const abSpread   = Math.abs(spreadMove);
         const abTotal    = Math.abs(totalMove);
-        const pick = (bet.pick ?? "").toLowerCase();
+        const pick = (bet.title ?? "").toLowerCase();
 
         const hasSmallSpread = (bet.betType === "moneyline" || bet.betType === "spread") && abSpread >= 0.5 && abSpread < 1.5;
         const hasSmallTotal  = bet.betType === "total" && abTotal >= 0.3 && abTotal < 1.5;
@@ -607,7 +607,7 @@ function buildWatchingPlays(
     if (confirmedSignals.length < 1) continue;
 
     // Build directive
-    const pickStr = bet.pick ?? "";
+    const pickStr = bet.title ?? "";
     const isOver  = pickStr.toLowerCase().includes("over");
     const isUnder = pickStr.toLowerCase().includes("under");
     const lineVal = bet.line != null ? ` ${bet.line}` : "";
@@ -643,7 +643,7 @@ function buildWatchingPlays(
       id: `watch-${bet.id}`,
       sport: bet.sport,
       teams: [bet.awayTeam, bet.homeTeam].filter(Boolean).join(" @ ") || bet.sport,
-      gameTime: bet.gameTime ?? null,
+      gameTime: bet.gameTime ? (bet.gameTime instanceof Date ? bet.gameTime.toISOString() : bet.gameTime as string) : null,
       directive,
       betType: bet.betType ?? "bet",
       shortDesc,
@@ -831,9 +831,9 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
                 <Zap size={10} /> Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
+                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
                 <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-400">{play.bet.confidenceScore}/100</span></div>
-                {play.bet.grade && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.grade}</span></div>}
+                {play.bet.edgeTier && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
                 {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
               </div>
             </div>
@@ -1035,16 +1035,16 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                 <Zap size={10} /> Clubhouse IQ Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.pick}</span></div>
+                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
                 <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-400">{play.bet.confidenceScore}/100</span></div>
                 {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
-                {play.bet.grade && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.grade}</span></div>}
+                {play.bet.edgeTier && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
                 {play.bet.overOdds != null && <div><span className="text-muted-foreground">Over: </span><span className="font-semibold font-mono">{fmtOdds(play.bet.overOdds)}</span></div>}
                 {play.bet.underOdds != null && <div><span className="text-muted-foreground">Under: </span><span className="font-semibold font-mono">{fmtOdds(play.bet.underOdds)}</span></div>}
-                {play.bet.analysis && (
+                {play.bet.researchSummary && (
                   <div className="col-span-2 mt-1">
                     <span className="text-muted-foreground">Analysis: </span>
-                    <span className="text-foreground/80">{play.bet.analysis}</span>
+                    <span className="text-foreground/80">{play.bet.researchSummary}</span>
                   </div>
                 )}
               </div>
