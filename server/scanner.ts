@@ -100,18 +100,8 @@ const COMBO_STAT_MAP: Record<string, Record<string, string[]>> = {
     "goals+assists":          ["goals", "ast"],
     "goals + assists":        ["goals", "ast"],
     // NHL "points" prop = goals + assists (ESPN game log: goals col + ast col)
-    // ESPN's pts col = G+A, but explicit combo gives correct per-game breakdown in drawer
     points:                   ["goals", "ast"],
-    power_play_points:        ["goals", "ast"], // best proxy available in ESPN game log
-    // power_play_points not in ESPN game log — skip
-  },
-  MLB: {
-    hits_runs_rbis:           ["hits", "runs", "rbi"],
-    "hits+runs+rbis":         ["hits", "runs", "rbi"],
-    "hits + runs + rbis":     ["hits", "runs", "rbi"],
-    // total_bases: ESPN game log doesn't expose TB directly.
-    // Use hits as single-key proxy (handled by STAT_KEY_MAP fallback).
-    // Not added here — no reliable combo formula via simple summation.
+    power_play_points:        ["goals", "ast"],
   },
 };
 
