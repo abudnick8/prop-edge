@@ -74,6 +74,28 @@ def fetch_url(url: str, timeout: int = 12) -> dict:
 
 # ── Sport config ──────────────────────────────────────────────────────────────
 
+ODDS_API_SPORT_KEY_MAP = {
+    "basketball_nba": "NBA",
+    "baseball_mlb":   "MLB",
+    "icehockey_nhl":  "NHL",
+    "americanfootball_nfl": "NFL",
+}
+
+def normalize_sport(raw):
+    if not raw:
+        return None
+    up = raw.upper().strip()
+    if up in ("NBA", "MLB", "NHL", "NFL"):
+        return up
+    lower = raw.lower().strip()
+    if lower in ODDS_API_SPORT_KEY_MAP:
+        return ODDS_API_SPORT_KEY_MAP[lower]
+    if "NBA" in up or "BASKETBALL" in up: return "NBA"
+    if "MLB" in up or "BASEBALL"   in up: return "MLB"
+    if "NHL" in up or "HOCKEY"     in up: return "NHL"
+    if "NFL" in up or "FOOTBALL"   in up: return "NFL"
+    return None
+
 SPORT_ESPN = {
     "NBA": ("basketball", "nba"),
     "MLB": ("baseball",   "mlb"),
@@ -484,12 +506,23 @@ def extract_combo_stat(
 # ── Grade a team bet ───────────────────────────────────────────────────────────
 
 def find_game(scores: list, home_team: str, away_team: str) -> dict | None:
+    if not home_team and not away_team:
+        return None
     for g in scores:
         home_ok = teams_match(g["home"], home_team) or teams_match(g["home"], away_team)
         away_ok = teams_match(g["away"], away_team) or teams_match(g["away"], home_team)
         if home_ok and away_ok:
             return g
         if teams_match(g["home"], away_team) and teams_match(g["away"], home_team):
+            return g
+    return None
+
+
+def find_game_by_team(scores: list, team: str) -> dict | None:
+    if not team:
+        return None
+    for g in scores:
+        if teams_match(g["home"], team) or teams_match(g["away"], team):
             return g
     return None
 
@@ -633,6 +666,11 @@ def run_grader() -> dict:
         pending.append(snap)
 
     print(f"[Grader] {len(pending)} picks to grade out of {len(snapshots)} snapshots")
+    sport_counts = {}
+    for s in pending:
+        sp = normalize_sport(s.get("sport") or "") or "UNKNOWN"
+        sport_counts[sp] = sport_counts.get(sp, 0) + 1
+    print(f"[Grader] Sport breakdown of pending: {sport_counts}")
 
     newly_graded = []
     skipped_no_game = 0
@@ -642,11 +680,15 @@ def run_grader() -> dict:
 
     # ── Group by sport ─────────────────────────────────────────────────────────
     by_sport: dict[str, list] = {}
+    skipped_unknown_sport = 0
     for snap in pending:
-        sport = (snap.get("sport") or "").upper()
-        if sport not in SPORT_ESPN:
+        sport = normalize_sport(snap.get("sport") or "")
+        if sport is None or sport not in SPORT_ESPN:
+            skipped_unknown_sport += 1
             continue
         by_sport.setdefault(sport, []).append(snap)
+    if skipped_unknown_sport:
+        print(f"[Grader] Skipped {skipped_unknown_sport} picks with unrecognized sport")
 
     for sport, snaps in by_sport.items():
         print(f"\n  [Grader] Grading {len(snaps)} {sport} picks...")
@@ -657,10 +699,11 @@ def run_grader() -> dict:
             gt_str = snap.get("gameTime") or snap.get("game_time", "")
             try:
                 dt = datetime.datetime.fromisoformat(str(gt_str).replace("Z", "").replace("+00:00", ""))
-                for delta in [-1, 0, 1, 2]:
+                for delta in [-2, -1, 0, 1, 2]:
                     dates_needed.add((dt + datetime.timedelta(days=delta)).strftime("%Y%m%d"))
             except Exception:
-                pass
+                for delta in range(0, 7):
+                    dates_needed.add((NOW - datetime.timedelta(days=delta)).strftime("%Y%m%d"))
 
         # Batch-fetch all scores for this sport
         all_scores: list[dict] = []
@@ -683,10 +726,18 @@ def run_grader() -> dict:
             game_time  = snap.get("gameTime") or snap.get("game_time")
 
             game = find_game(all_scores, home, away)
+            if not game:
+                team3 = snap.get("team") or ""
+                for t in [team3, home, away]:
+                    if t:
+                        game = find_game_by_team(all_scores, t)
+                        if game:
+                            break
 
             if not game:
                 skipped_no_game += 1
-                print(f"    No completed game found for: {away} @ {home}")
+                label = snap.get("playerName") or f"{away} @ {home}"
+                print(f"    No completed game found for: {label}")
                 continue
 
             # ── Team bets ──────────────────────────────────────────────────
