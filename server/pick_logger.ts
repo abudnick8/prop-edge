@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 
-const DATA_DIR      = path.join(process.cwd(), "server", "ml_data");
+const DATA_DIR      = path.join(__dirname, "ml_data");
 const SNAPSHOT_FILE = path.join(DATA_DIR, "pick_snapshots.json");
 
 type PickSnapshot = {
