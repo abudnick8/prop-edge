@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import { MessageCircleQuestion, Send, Sparkles, AlertCircle, Trash2, TrendingUp, ChevronRight } from "lucide-react";
+import { MessageCircleQuestion, Send, Sparkles, AlertCircle, Trash2, TrendingUp, ChevronRight, Shuffle } from "lucide-react";
 import { Link } from "wouter";
 
 interface RelatedBet {
