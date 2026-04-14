@@ -104,6 +104,7 @@ function AppInner() {
               <Route path="/ask" component={Ask} />
               <Route path="/bracket" component={Bracket} />
               <Route path="/clv" component={LineMovement} />
+              <Route path="/line-movement" component={LineMovement} />
               <Route path="/markets" component={PredictionMarkets} />
               <Route path="/markets/top-traders" component={TopTraders} />
               <Route path="/fantasy" component={Fantasy} />
