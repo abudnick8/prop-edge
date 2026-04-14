@@ -1600,6 +1600,11 @@ export default function LineMovement() {
         <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
 
+      {/* ── Sharp Money Panel ── */}
+      <div className="mt-2">
+        <SharpMoneyPanel />
+      </div>
+
       {/* Content */}
       {isLoading ? (
         <div className="space-y-3">
