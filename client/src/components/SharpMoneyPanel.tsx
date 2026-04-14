@@ -1,3 +1,4 @@
+import { useState } from "react";
 /**
  * SharpMoneyPanel — Clubhouse IQ
  * Shows real sharp money data from Pinnacle, OddsPapi, and ActionNetwork
@@ -274,8 +275,8 @@ function GameCard({ game, expanded, onToggle }: { game: SharpGameData; expanded:
 }
 
 export function SharpMoneyPanel() {
-  const [expandedId, setExpandedId] = React.useState<string | null>(null);
-  const [sportFilter, setSportFilter] = React.useState<string>("ALL");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sportFilter, setSportFilter] = useState<string>("ALL");
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["sharp-money"],
@@ -392,5 +393,3 @@ export function SharpMoneyPanel() {
   );
 }
 
-// Need React import for useState
-import React from "react";
