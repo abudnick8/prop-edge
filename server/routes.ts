@@ -11,6 +11,7 @@ import { startSmartWalletTracker, getSmartWallets, getSignalMap, getSignalForMar
 import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
+import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
 
 // ── ML Engine helpers ────────────────────────────────────────────────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
@@ -5096,6 +5097,42 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     try {
       await storage.dismissClvAlert(req.params.id);
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Sharp Money endpoints ───────────────────────────────────────────────────
+  // GET /api/sharp-money — all sports, top sharp plays today
+  app.get("/api/sharp-money", async (_req, res) => {
+    try {
+      const data = await fetchSharpMoneyAllSports();
+      res.json({ games: data, updatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/sharp-money/:sport — single sport (NBA/MLB/NHL/NFL)
+  app.get("/api/sharp-money/:sport", async (req, res) => {
+    try {
+      const sport = (req.params.sport || "").toUpperCase();
+      const data  = await fetchSharpMoneyBySport(sport);
+      res.json({ sport, games: data, updatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/sharp-money/game/:sport/:home/:away — specific game
+  app.get("/api/sharp-money/game/:sport/:home/:away", async (req, res) => {
+    try {
+      const sport = (req.params.sport || "").toUpperCase();
+      const home  = decodeURIComponent(req.params.home || "");
+      const away  = decodeURIComponent(req.params.away || "");
+      const data  = await fetchSharpMoneyForGame(sport, home, away);
+      if (!data) return res.status(404).json({ error: "Game not found" });
+      res.json(data);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
