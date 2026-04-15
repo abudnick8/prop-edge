@@ -55,10 +55,10 @@ function sharpBarColor(pct: number): string {
   return lerpColor("#d97706", "#16a34a", t);
 }
 
-// Public money bar: low% → blue (#2563eb), high% → purple (#7c3aed)
+// Public ticket bar: low% → light blue (#60a5fa), high% → light purple (#a78bfa)
 function publicBarColor(pct: number): string {
   const t = Math.max(0, Math.min(1, pct / 100));
-  return lerpColor("#2563eb", "#7c3aed", t);
+  return lerpColor("#60a5fa", "#a78bfa", t);
 }
 
 // Label color: sharp side uses sharpBarColor, fade side is muted red
@@ -101,22 +101,13 @@ function DollarIcon({ size = 12, color = MUTED }: { size?: number; color?: strin
 }
 
 // ── Single bar row ─────────────────────────────────────────────────────────────
-// type: "sharp" uses green→gold scale; "public" uses purple→blue scale
-function BarRow({
-  icon, pct, type, isSharpSide,
-}: {
-  icon: "person" | "dollar";
-  pct: number;
-  type: "sharp" | "public";
-  isSharpSide: boolean;
-}) {
-  const barColor = type === "sharp"
-    ? sharpBarColor(pct)
-    : publicBarColor(pct);
-
-  const numColor = type === "sharp"
-    ? sharpBarColor(pct)
-    : publicBarColor(pct);
+// Person icon bar → ALWAYS public ticket scale (blue→purple)
+// Dollar icon bar → ALWAYS sharp money scale  (gold→green)
+// This is fixed regardless of which side is sharp/fade.
+function BarRow({ icon, pct }: { icon: "person" | "dollar"; pct: number }) {
+  // Person = public tickets: blue (0%) → purple (100%)
+  // Dollar = sharp money:    gold (0%) → green  (100%)
+  const barColor = icon === "person" ? publicBarColor(pct) : sharpBarColor(pct);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
@@ -131,10 +122,7 @@ function BarRow({
           transition: "width 0.5s ease, background 0.5s ease",
         }} />
       </div>
-      <span style={{
-        fontSize: 11, fontWeight: 700, color: numColor,
-        minWidth: 30, textAlign: "right",
-      }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: barColor, minWidth: 30, textAlign: "right" }}>
         {pct.toFixed(0)}%
       </span>
     </div>
@@ -142,8 +130,6 @@ function BarRow({
 }
 
 // ── Two-bar row (ticket row + money row) ──────────────────────────────────────
-// Sharp side: both bars use sharp color scale
-// Fade side: both bars use public color scale (they're the public side)
 function TwoBarRow({
   label, ticketPct, moneyPct, isSharp,
 }: {
@@ -152,9 +138,8 @@ function TwoBarRow({
   moneyPct: number;
   isSharp: boolean;
 }) {
-  const arrow = isSharp ? "↑" : "↓";
-  const word  = isSharp ? "Sharp" : "Fade";
-  // Label color scales with money %: sharp = sharpBarColor, fade = fixed red
+  const arrow      = isSharp ? "↑" : "↓";
+  const word       = isSharp ? "Sharp" : "Fade";
   const labelColor = isSharp ? sharpLabelColor(moneyPct) : RED;
 
   return (
@@ -165,10 +150,10 @@ function TwoBarRow({
           {word} {arrow} {moneyPct.toFixed(0)}% $
         </span>
       </div>
-      {/* Ticket % — sharp side: sharpBarColor scale; fade side: publicBarColor scale */}
-      <BarRow icon="person" pct={ticketPct} type={isSharp ? "sharp" : "public"} isSharpSide={isSharp} />
-      {/* Money % — sharp side: sharpBarColor scale; fade side: publicBarColor scale */}
-      <BarRow icon="dollar" pct={moneyPct}  type={isSharp ? "sharp" : "public"} isSharpSide={isSharp} />
+      {/* Person bar — public ticket scale (blue→purple) */}
+      <BarRow icon="person" pct={ticketPct} />
+      {/* Dollar bar — sharp money scale (gold→green) */}
+      <BarRow icon="dollar" pct={moneyPct} />
     </div>
   );
 }
@@ -257,8 +242,8 @@ function ColorLegend() {
       </div>
       {/* Person = public ticket scale */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <PersonIcon size={12} color="#2563eb" />
-        <div style={{ width: 44, height: 7, borderRadius: 99, background: "linear-gradient(to right, #2563eb, #7c3aed)" }} />
+        <PersonIcon size={12} color="#60a5fa" />
+        <div style={{ width: 44, height: 7, borderRadius: 99, background: "linear-gradient(to right, #60a5fa, #a78bfa)" }} />
         <span style={{ fontSize: 10, color: MUTED }}>Tickets (low→high)</span>
       </div>
     </div>
