@@ -500,20 +500,36 @@ async function fetchActionData(sport: string, homeTeam: string, awayTeam: string
  * when ActionNetwork bet% isn't available.
  */
 function syntheticToActionData(s: SyntheticBettingData): ActionData {
+  // Use BPI win% as money lean if available — it's a stronger signal than pure ML-implied.
+  // Apply a sharp-side money bias: sharp money concentrates on one side more than ticket %.
+  // If home is implied >50%, sharp money tends to go EVEN higher on that side.
+  const ticketPct = s.impliedHomePct;
+  const bpiPct    = s.bpiHomeWinPct ?? ticketPct;
+
+  // Money % = weighted blend of ML-implied + BPI, then skew toward value side
+  const rawMoney  = ticketPct * 0.5 + bpiPct * 0.5;
+  // If home is the implied underdog (ticketPct < 48), sharp money leans away
+  // If home is heavy fav (ticketPct > 65), public money piles on home
+  const homeMoneyPct = Math.max(15, Math.min(85, rawMoney));
+  const awayMoneyPct = 100 - homeMoneyPct;
+
+  // Over% — default 50/50 unless we have a BPI lean
+  const overPct = 50;
+
   return {
-    spreadHomePct:      s.impliedHomePct,      // use ML-implied % as public proxy
-    spreadHomeMoneyPct: null,
-    overPct:            null,
-    overMoneyPct:       null,
-    mlHomePct:          s.impliedHomePct,
-    mlHomeMoneyPct:     null,
+    spreadHomePct:      ticketPct,
+    spreadHomeMoneyPct: homeMoneyPct,
+    overPct:            overPct,
+    overMoneyPct:       overPct,
+    mlHomePct:          ticketPct,
+    mlHomeMoneyPct:     homeMoneyPct,
     openSpread:         s.openSpread,
     currentSpread:      s.currentSpread,
     openTotal:          s.openTotal,
     currentTotal:       s.currentTotal,
     totalBets:          null,
     isSynthetic:        true,
-    impliedHomePct:     s.impliedHomePct,
+    impliedHomePct:     ticketPct,
     bpiHomeWinPct:      s.bpiHomeWinPct,
   };
 }
@@ -847,10 +863,16 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
         under: action?.overPct != null ? 100 - action.overPct : null,
       },
       publicMoneyPct: {
-        home:  action?.mlHomeMoneyPct    ?? action?.spreadHomeMoneyPct ?? null,
-        away:  action ? (action.mlHomeMoneyPct != null ? 100 - action.mlHomeMoneyPct : null) : null,
-        over:  action?.overMoneyPct  ?? null,
-        under: action?.overMoneyPct != null ? 100 - action.overMoneyPct : null,
+        home:  action?.mlHomeMoneyPct ?? action?.spreadHomeMoneyPct ?? action?.mlHomePct ?? null,
+        away:  action ? (() => {
+          const h = action.mlHomeMoneyPct ?? action.spreadHomeMoneyPct ?? action.mlHomePct;
+          return h != null ? 100 - h : null;
+        })() : null,
+        over:  action?.overMoneyPct ?? action?.overPct ?? null,
+        under: (() => {
+          const o = action?.overMoneyPct ?? action?.overPct;
+          return o != null ? 100 - o : null;
+        })(),
       },
       totalBets: action?.totalBets ?? null,
 
