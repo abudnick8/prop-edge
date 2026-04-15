@@ -704,9 +704,8 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
   try {
     matchups = await fetchPinnacleMatchups(sport);
   } catch (e: any) {
-    console.warn(`[SharpMoney] Pinnacle matchups ${sport}: ${e.message}`);
-    SPORT_CACHE.set(sport, { games: [], ts: Date.now() });
-    return [];
+    console.warn(`[SharpMoney] Pinnacle matchups ${sport}: ${e.message} — falling through to ESPN`);
+    // Do NOT return [] here — fall through to ESPN fallback below
   }
 
   if (matchups.length === 0) {
@@ -899,8 +898,14 @@ async function fetchEspnOdds(sport: string): Promise<EspnGameOdds[]> {
   const paths = ESPN_SPORT_PATHS[sport];
   if (!paths) return [];
 
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const sbUrl = `https://site.api.espn.com/apis/site/v2/sports/${paths.sport}/${paths.league}/scoreboard?dates=${today}`;
+  // Use a 2-day window (today + tomorrow) so day-games and night-games both appear,
+  // and so MLB/NFL games scheduled tomorrow are included.
+  const todayDate = new Date();
+  const tomorrowDate = new Date(todayDate);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const today    = todayDate.toISOString().slice(0, 10).replace(/-/g, "");
+  const tomorrow = tomorrowDate.toISOString().slice(0, 10).replace(/-/g, "");
+  const sbUrl = `https://site.api.espn.com/apis/site/v2/sports/${paths.sport}/${paths.league}/scoreboard?dates=${today}${tomorrow}`;
 
   const sbRes = await fetch(sbUrl, {
     headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
