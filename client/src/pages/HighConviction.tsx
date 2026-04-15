@@ -675,7 +675,7 @@ function ProximityMeter({ proximity }: { proximity: number }) {
   const color = proximity >= 85 ? "#f59e0b" : proximity >= 65 ? "#a78bfa" : "#60a5fa";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.1)" }}>
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.15)" }}>
         <div
           className="h-full rounded-full transition-all"
           style={{
@@ -695,7 +695,7 @@ function ProximityMeter({ proximity }: { proximity: number }) {
 function WatchingCard({ play }: { play: WatchingPlay }) {
   const [expanded, setExpanded] = useState(false);
   const betTypeColor: Record<string, string> = {
-    moneyline: "#facc15", spread: "#a78bfa", total: "#60a5fa", player_prop: "#34d399",
+    moneyline: "#92400e", spread: "#6d28d9", total: "#1d4ed8", player_prop: "#15803d",
   };
   const btColor = betTypeColor[play.betType] ?? "#94a3b8";
   const sportEmoji: Record<string, string> = { NBA: "🏀", NFL: "🏈", MLB: "⚾", NHL: "🏒" };
@@ -706,7 +706,7 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
       style={{
         borderColor: "rgba(251,191,36,0.25)",
         boxShadow: expanded ? "0 0 16px rgba(251,191,36,0.10)" : "0 0 6px rgba(251,191,36,0.05)",
-        background: "rgba(251,191,36,0.03)",
+        background: "rgba(19,35,58,0.04)",
       }}
       onClick={() => setExpanded(e => !e)}
     >
@@ -716,37 +716,37 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
           <div className="flex-1 min-w-0">
             {/* Badges */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", borderColor: "rgba(251,191,36,0.30)" }}>
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.13)", color: "#92400e", borderColor: "rgba(146,64,14,0.45)" }}>
                 👁 WATCHING
               </span>
-              <span className="text-[9px] text-muted-foreground">
+              <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>
                 {sportEmoji[play.sport] ?? "🏟"} {play.sport}
               </span>
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: `${btColor}18`, color: btColor }}
+                style={{ background: `${btColor}20`, color: btColor, border: `1px solid ${btColor}55` }}
               >
                 {play.betType.replace("_", " ").toUpperCase()}
               </span>
             </div>
 
             {/* Teams */}
-            <p className="text-[11px] text-muted-foreground truncate">{play.teams}</p>
+            <p className="text-[11px] truncate" style={{ color: "#3D4B58" }}>{play.teams}</p>
 
             {/* Directive */}
             <p className="text-lg font-black tracking-tight leading-tight mt-0.5" style={{ color: "#fbbf24" }}>
               {play.directive}
             </p>
-            <p className="text-[11px] font-medium text-foreground/70 mt-0.5">{play.shortDesc}</p>
+            <p className="text-[11px] font-semibold mt-0.5" style={{ color: "#131A24" }}>{play.shortDesc}</p>
           </div>
 
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
             <div className="w-24">
-              <p className="text-[9px] text-muted-foreground text-right mb-1">Proximity</p>
+              <p className="text-[9px] font-semibold text-right mb-1" style={{ color: "#3D4B58" }}>Proximity</p>
               <ProximityMeter proximity={play.proximity} />
             </div>
             {play.gameTime && (
-              <span className="text-[9px] text-muted-foreground">{fmtTime(play.gameTime)}</span>
+              <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>{fmtTime(play.gameTime)}</span>
             )}
             {expanded
               ? <ChevronUp size={14} className="text-muted-foreground" />
@@ -776,18 +776,18 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
               ○ {m.type === "model" ? "Model" : m.type === "line_movement" ? "Line Mvmt" : "Whale"}
             </span>
           ))}
-          <span className="text-[9px] text-muted-foreground ml-auto">tap to expand →</span>
+          <span className="text-[9px] font-semibold ml-auto" style={{ color: "#3D4B58" }}>tap to expand →</span>
         </div>
       )}
 
       {/* Expanded */}
       {expanded && (
-        <div className="border-t px-4 py-4 space-y-3" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+        <div className="border-t px-4 py-4 space-y-3" style={{ borderColor: "rgba(19,35,58,0.15)" }}>
 
           {/* Confirmed signals */}
           {play.confirmedSignals.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#3D4B58" }}>
                 <Star size={10} /> Confirmed Signals
               </p>
               {play.confirmedSignals.map((s, i) => (
@@ -806,19 +806,19 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
                 <div
                   key={i}
                   className="rounded-lg border px-3 py-2.5"
-                  style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.14)" }}
+                  style={{ background: "rgba(19,35,58,0.06)", borderColor: "rgba(19,35,58,0.22)" }}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm leading-none">{m.icon}</span>
-                    <p className="text-xs font-bold text-muted-foreground">{m.label}</p>
+                    <p className="text-xs font-bold" style={{ color: "#3D4B58" }}>{m.label}</p>
                     <span
                       className="text-[9px] font-black px-1.5 py-0.5 rounded-full ml-auto"
-                      style={{ background: "rgba(19,35,58,0.08)", color: "rgba(19,35,58,0.49)" }}
+                      style={{ background: "rgba(19,35,58,0.10)", color: "#131A24", border: "1px solid rgba(19,35,58,0.22)" }}
                     >
                       PENDING
                     </span>
                   </div>
-                  <p className="text-[11px] text-foreground/70 leading-relaxed">{m.hint}</p>
+                  <p className="text-[11px] leading-relaxed" style={{ color: "#131A24" }}>{m.hint}</p>
                 </div>
               ))}
             </div>
@@ -826,20 +826,20 @@ function WatchingCard({ play }: { play: WatchingPlay }) {
 
           {/* Clubhouse IQ model data */}
           {play.bet && (
-            <div className="rounded-lg p-3 space-y-1.5 border border-yellow-500/15" style={{ background: "rgba(250,204,21,0.04)" }}>
+            <div className="rounded-lg p-3 space-y-1.5 border" style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.18)" }}>
               <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Zap size={10} /> Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
-                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-400">{play.bet.confidenceScore}/100</span></div>
-                {play.bet.edgeTier && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
-                {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
+                <div><span style={{ color: "#3D4B58" }}>Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
+                <div><span style={{ color: "#3D4B58" }}>Confidence: </span><span className="font-semibold" style={{ color: "#92400e" }}>{play.bet.confidenceScore}/100</span></div>
+                {play.bet.edgeTier && <div><span style={{ color: "#3D4B58" }}>Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
+                {play.bet.line != null && <div><span style={{ color: "#3D4B58" }}>Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
               </div>
             </div>
           )}
 
-          <p className="text-[9px] text-foreground/70">
+          <p className="text-[9px]" style={{ color: "#3D4B58" }}>
             Watching plays haven't met full confluence yet. Auto-promotes to Top Plays once all required signals align.
           </p>
         </div>
@@ -856,7 +856,7 @@ function ConvictionMeter({ score, maxScore }: { score: number; maxScore: number 
   const color = pct >= 85 ? "#f87171" : pct >= 65 ? "#facc15" : "#60a5fa";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.12)" }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="text-[10px] font-black tabular-nums" style={{ color }}>{Math.round(pct)}</span>
@@ -894,7 +894,7 @@ function SignalRow({ signal }: { signal: ConvictionSignal }) {
       </div>
       {open && (
         <div className="px-3 pb-3">
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{signal.detail}</p>
+          <p className="text-[11px] leading-relaxed" style={{ color: "#131A24" }}>{signal.detail}</p>
         </div>
       )}
     </div>
@@ -906,7 +906,7 @@ function SignalRow({ signal }: { signal: ConvictionSignal }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const SPORT_EMOJI: Record<string, string> = { NBA: "🏀", NFL: "🏈", MLB: "⚾", NHL: "🏒" };
 const BET_TYPE_COLOR: Record<string, string> = {
-  moneyline: "#facc15", spread: "#a78bfa", total: "#60a5fa", player_prop: "#34d399",
+  moneyline: "#92400e", spread: "#6d28d9", total: "#1d4ed8", player_prop: "#15803d",
 };
 
 function ConvictionCard({ play }: { play: ConvictionPlay }) {
@@ -918,7 +918,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
   // Glow color based on signal count
   const glowColor = allThree ? "#f87171" : "#facc15";
   const borderColor = allThree ? "rgba(248,113,113,0.45)" : "rgba(250,204,21,0.35)";
-  const headerBg    = allThree ? "rgba(248,113,113,0.08)" : "rgba(250,204,21,0.07)";
+  const headerBg    = allThree ? "rgba(185,28,28,0.08)" : "rgba(19,35,58,0.05)";
 
   return (
     <div
@@ -936,21 +936,21 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             {/* Signal count badge + sport */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               {allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/35">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.45)" }}>
                   🔥 ALL 3 SIGNALS
                 </span>
               )}
               {!allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-yellow-500/15 text-amber-400 border border-yellow-500/30">
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", borderColor: "rgba(146,64,14,0.40)" }}>
                   ⚡ {signalCount} SIGNALS
                 </span>
               )}
-              <span className="text-[9px] text-muted-foreground">
+              <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>
                 {SPORT_EMOJI[play.sport] ?? "🏟"} {play.sport}
               </span>
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: `${BET_TYPE_COLOR[play.betType] ?? "#94a3b8"}18`, color: BET_TYPE_COLOR[play.betType] ?? "#94a3b8" }}
+                style={{ background: `${BET_TYPE_COLOR[play.betType] ?? "#3D4B58"}20`, color: BET_TYPE_COLOR[play.betType] ?? "#3D4B58", border: `1px solid ${BET_TYPE_COLOR[play.betType] ?? "#3D4B58"}55` }}
               >
                 {play.betType.replace("_", " ").toUpperCase()}
               </span>
@@ -958,7 +958,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
               {play.bet && (play.bet as any).edgeTier && (play.bet as any).edgeTier !== "C" && (() => {
                 const tier = (play.bet as any).edgeTier as string;
                 const ep   = (play.bet as any).edgePct as number | undefined;
-                const edgeColors: Record<string, string> = { "A+": "#4ade80", "A": "#facc15", "B": "#93c5fd" };
+                const edgeColors: Record<string, string> = { "A+": "#15803d", "A": "#92400e", "B": "#1d4ed8" };
                 const c = edgeColors[tier] ?? "#94a3b8";
                 return (
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded border" style={{ background: `${c}18`, color: c, borderColor: `${c}40` }}>
@@ -969,7 +969,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             </div>
 
             {/* Teams */}
-            <p className="text-[11px] text-muted-foreground truncate">{play.teams}</p>
+            <p className="text-[11px] truncate" style={{ color: "#3D4B58" }}>{play.teams}</p>
 
             {/* THE DIRECTIVE */}
             <p
@@ -978,18 +978,18 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             >
               {play.directive}
             </p>
-            <p className="text-[11px] font-medium text-foreground/70 mt-0.5">{play.shortDesc}</p>
+            <p className="text-[11px] font-semibold mt-0.5" style={{ color: "#131A24" }}>{play.shortDesc}</p>
           </div>
 
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
             {/* Conviction meter */}
             <div className="w-24">
-              <p className="text-[9px] text-muted-foreground text-right mb-1">Conviction</p>
+              <p className="text-[9px] font-semibold text-right mb-1" style={{ color: "#3D4B58" }}>Conviction</p>
               <ConvictionMeter score={play.totalScore} maxScore={maxScore} />
             </div>
             {/* Game time */}
             {play.gameTime && (
-              <span className="text-[9px] text-muted-foreground">{fmtTime(play.gameTime)}</span>
+              <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>{fmtTime(play.gameTime)}</span>
             )}
             {expanded
               ? <ChevronUp size={14} className="text-muted-foreground" />
@@ -1000,7 +1000,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
 
       {/* Signal pills row (collapsed) */}
       {!expanded && (
-        <div className="px-4 py-2 flex items-center gap-1.5 flex-wrap border-t border-white/5">
+        <div className="px-4 py-2 flex items-center gap-1.5 flex-wrap border-t" style={{ borderColor: "rgba(19,35,58,0.12)" }}>
           {play.signals.map((s, i) => (
             <span
               key={i}
@@ -1010,7 +1010,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
               {s.icon} {s.type === "model" ? "Clubhouse IQ Model" : s.type === "line_movement" ? "Line Movement" : "Whale Buy"}
             </span>
           ))}
-          <span className="text-[9px] text-muted-foreground ml-auto">tap to expand →</span>
+          <span className="text-[9px] font-semibold ml-auto" style={{ color: "#3D4B58" }}>tap to expand →</span>
         </div>
       )}
 
@@ -1020,7 +1020,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
 
           {/* All signals stacked */}
           <div className="space-y-2">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#3D4B58" }}>
               <Star size={10} /> Confluence Signals
             </p>
             {play.signals.map((s, i) => (
@@ -1035,10 +1035,10 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
                 <Zap size={10} /> Clubhouse IQ Model Data
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                <div><span className="text-muted-foreground">Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
-                <div><span className="text-muted-foreground">Confidence: </span><span className="font-semibold text-amber-400">{play.bet.confidenceScore}/100</span></div>
-                {play.bet.line != null && <div><span className="text-muted-foreground">Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
-                {play.bet.edgeTier && <div><span className="text-muted-foreground">Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
+                <div><span style={{ color: "#3D4B58" }}>Pick: </span><span className="font-semibold">{play.bet.title}</span></div>
+                <div><span style={{ color: "#3D4B58" }}>Confidence: </span><span className="font-semibold" style={{ color: "#92400e" }}>{play.bet.confidenceScore}/100</span></div>
+                {play.bet.line != null && <div><span style={{ color: "#3D4B58" }}>Line: </span><span className="font-semibold">{play.bet.line}</span></div>}
+                {play.bet.edgeTier && <div><span style={{ color: "#3D4B58" }}>Grade: </span><span className="font-semibold">{play.bet.edgeTier}</span></div>}
                 {play.bet.overOdds != null && <div><span className="text-muted-foreground">Over: </span><span className="font-semibold font-mono">{fmtOdds(play.bet.overOdds)}</span></div>}
                 {play.bet.underOdds != null && <div><span className="text-muted-foreground">Under: </span><span className="font-semibold font-mono">{fmtOdds(play.bet.underOdds)}</span></div>}
                 {play.bet.researchSummary && (
@@ -1138,7 +1138,7 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           )}
 
           {/* Disclaimer */}
-          <p className="text-[9px] text-foreground/70">
+          <p className="text-[9px]" style={{ color: "#3D4B58" }}>
             Confluence plays require ≥2 aligned signals. Not financial advice. Always manage bankroll responsibly.
           </p>
         </div>
@@ -1330,7 +1330,7 @@ export default function HighConviction() {
                 <div className="flex items-center gap-2 px-1">
                   <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#facc15" }}>Team Bets</span>
                   <div className="flex-1 h-px" style={{ background: "rgba(250,204,21,0.15)" }} />
-                  <span className="text-[9px] text-foreground/70">{teamFired.length}</span>
+                  <span className="text-[9px]" style={{ color: "#3D4B58" }}>{teamFired.length}</span>
                 </div>
                 {teamFired.map(play => <ConvictionCard key={play.id} play={play} />)}
               </>
@@ -1340,7 +1340,7 @@ export default function HighConviction() {
                 <div className="flex items-center gap-2 px-1 mt-1">
                   <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
                   <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
-                  <span className="text-[9px] text-foreground/70">{propFired.length}/3</span>
+                  <span className="text-[9px]" style={{ color: "#3D4B58" }}>{propFired.length}/3</span>
                 </div>
                 {propFired.map(play => <ConvictionCard key={play.id} play={play} />)}
               </>
@@ -1391,7 +1391,7 @@ export default function HighConviction() {
                     <div className="flex items-center gap-2 px-1">
                       <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#fbbf24" }}>Team Bets</span>
                       <div className="flex-1 h-px" style={{ background: "rgba(251,191,36,0.15)" }} />
-                      <span className="text-[9px] text-foreground/70">{teamW.length}/5</span>
+                      <span className="text-[9px]" style={{ color: "#3D4B58" }}>{teamW.length}/5</span>
                     </div>
                     {teamW.map(play => <WatchingCard key={play.id} play={play} />)}
                   </>
@@ -1401,7 +1401,7 @@ export default function HighConviction() {
                     <div className="flex items-center gap-2 px-1 mt-1">
                       <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: "#34d399" }}>Player Props</span>
                       <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
-                      <span className="text-[9px] text-foreground/70">{propW.length}/3</span>
+                      <span className="text-[9px]" style={{ color: "#3D4B58" }}>{propW.length}/3</span>
                     </div>
                     {propW.map(play => <WatchingCard key={play.id} play={play} />)}
                   </>
@@ -1425,7 +1425,7 @@ export default function HighConviction() {
 
       {/* How it works */}
       <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(19,35,58,0.01)" }}>
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#3D4B58" }}>
           <AlertCircle size={10} /> How Confluence Works
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
