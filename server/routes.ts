@@ -1201,8 +1201,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/snapshots — how many picks have been logged
   app.get("/api/ml/snapshots", (_req, res) => {
     try {
-      const snapFile = path.join(process.cwd(), "server", "ml_data", "pick_snapshots.json");
-      const outFile  = path.join(process.cwd(), "server", "ml_data", "bet_outcome_log.json");
+      const snapFile = path.join(__dirname, "ml_data", "pick_snapshots.json");
+      const outFile  = path.join(__dirname, "ml_data", "bet_outcome_log.json");
       const snaps    = fs.existsSync(snapFile)  ? JSON.parse(fs.readFileSync(snapFile,  "utf8")) : [];
       const outcomes = fs.existsSync(outFile)   ? JSON.parse(fs.readFileSync(outFile,   "utf8")) : [];
       const graded   = outcomes.filter((o: any) => o.result && o.result !== "open");
