@@ -719,6 +719,7 @@ def run_grader() -> dict:
         summary_cache: dict[str, dict | None] = {}
 
         for snap in snaps:
+          try:
             bet_type   = (snap.get("betType") or "").lower()
             home       = snap.get("homeTeam", "")
             away       = snap.get("awayTeam", "")
@@ -814,6 +815,10 @@ def run_grader() -> dict:
             player_str = f" | {snap.get('playerName')} {snap.get('statCategory')}" if bet_type in ("player_prop", "prop") else ""
             print(f"    ✓ {away} @ {home}{player_str} → {result.upper()} "
                   f"(line={snap.get('line')} pick={snap.get('pickSide')} conf={snap.get('confidenceScore')})")
+          except Exception as snap_err:
+            errors += 1
+            print(f"    [Grader] Error processing pick {snap.get('betId','?')}: {snap_err}")
+            continue
 
     # Save
     save_json(OUTCOME_LOG, outcomes)
