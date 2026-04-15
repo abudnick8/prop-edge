@@ -130,6 +130,11 @@ function BarRow({ icon, pct }: { icon: "person" | "dollar"; pct: number }) {
 }
 
 // ── Two-bar row (ticket row + money row) ──────────────────────────────────────
+// isSharp: explicitly confirmed sharp side (from server sharpDirection signal)
+// If isSharp is false, we still derive Sharp/Fade from moneyPct:
+//   moneyPct > 55  → this side has more money → Sharp ↑
+//   moneyPct < 45  → less money → Fade ↓
+//   40-55           → "Even" — no clear lean
 function TwoBarRow({
   label, ticketPct, moneyPct, isSharp,
 }: {
@@ -138,9 +143,24 @@ function TwoBarRow({
   moneyPct: number;
   isSharp: boolean;
 }) {
-  const arrow      = isSharp ? "↑" : "↓";
-  const word       = isSharp ? "Sharp" : "Fade";
-  const labelColor = isSharp ? sharpLabelColor(moneyPct) : RED;
+  // Derive label: explicit sharp flag takes priority,
+  // otherwise read the money% to determine lean
+  let word: string;
+  let arrow: string;
+  let labelColor: string;
+
+  if (isSharp) {
+    word = "Sharp"; arrow = "↑"; labelColor = sharpLabelColor(moneyPct);
+  } else if (moneyPct > 55) {
+    // More money here than average — call it Sharp
+    word = "Sharp"; arrow = "↑"; labelColor = sharpLabelColor(moneyPct);
+  } else if (moneyPct < 45) {
+    // Less money — Fade
+    word = "Fade"; arrow = "↓"; labelColor = RED;
+  } else {
+    // 45–55%: truly even, don't call it either way
+    word = "Even"; arrow = "–"; labelColor = MUTED;
+  }
 
   return (
     <div style={{ marginBottom: 10 }}>
