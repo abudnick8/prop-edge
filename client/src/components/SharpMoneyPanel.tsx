@@ -248,22 +248,18 @@ function deriveData(game: SharpGameData) {
 // ── Color legend ──────────────────────────────────────────────────────────────
 function ColorLegend() {
   return (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12, padding: "8px 12px", borderRadius: 10, background: "#fff", border: `1px solid ${BORDER}` }}>
-      {/* Sharp scale */}
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 12, padding: "8px 12px", borderRadius: 10, background: "#fff", border: `1px solid ${BORDER}` }}>
+      {/* Dollar = sharp money scale */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{
-          width: 48, height: 7, borderRadius: 99,
-          background: "linear-gradient(to right, #d97706, #16a34a)",
-        }} />
-        <span style={{ fontSize: 10, color: MUTED }}>Sharp $ (low→high)</span>
+        <DollarIcon size={12} color="#d97706" />
+        <div style={{ width: 44, height: 7, borderRadius: 99, background: "linear-gradient(to right, #d97706, #16a34a)" }} />
+        <span style={{ fontSize: 10, color: MUTED }}>$ Money (low→high)</span>
       </div>
-      {/* Public scale */}
+      {/* Person = public ticket scale */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{
-          width: 48, height: 7, borderRadius: 99,
-          background: "linear-gradient(to right, #2563eb, #7c3aed)",
-        }} />
-        <span style={{ fontSize: 10, color: MUTED }}>Public tickets (low→high)</span>
+        <PersonIcon size={12} color="#2563eb" />
+        <div style={{ width: 44, height: 7, borderRadius: 99, background: "linear-gradient(to right, #2563eb, #7c3aed)" }} />
+        <span style={{ fontSize: 10, color: MUTED }}>Tickets (low→high)</span>
       </div>
     </div>
   );
