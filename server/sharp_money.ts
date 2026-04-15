@@ -651,6 +651,41 @@ function buildSharpScore(
     }
   }
 
+  // ── Layer 5: ML-implied sharp direction when no hard signals ────────────────
+  // When Pinnacle divergence + RLM both fail (synthetic path), derive direction
+  // from the money/ticket split in synthetic data, or from ML odds as last resort.
+  if (direction === "neutral" && action) {
+    const homePct  = action.spreadHomePct ?? action.mlHomePct ?? null;
+    const moneyPct = action.spreadHomeMoneyPct ?? action.mlHomeMoneyPct ?? null;
+
+    if (homePct !== null) {
+      // If money% and ticket% both strongly agree on one side, call it
+      const effectiveMoneyPct = moneyPct ?? homePct;
+      if (effectiveMoneyPct > 60) {
+        direction = "home";
+        signals.push(`Public money leaning HOME (${effectiveMoneyPct.toFixed(0)}% of money)`);
+      } else if (effectiveMoneyPct < 40) {
+        direction = "away";
+        signals.push(`Public money leaning AWAY (${(100 - effectiveMoneyPct).toFixed(0)}% of money)`);
+      }
+    }
+  }
+
+  // If still no direction and we have ML, use underdog as sharp lean
+  // (sharp bettors historically take value on underdogs)
+  if (direction === "neutral" && (pinOdds.mlHome !== null || pinOdds.mlAway !== null)) {
+    const mlHome = pinOdds.mlHome ?? 0;
+    const mlAway = pinOdds.mlAway ?? 0;
+    // Underdog = positive ML or less negative
+    if (mlHome > mlAway) {
+      direction = "home"; // home is underdog
+      signals.push(`Sharp lean: HOME underdog (${mlHome > 0 ? "+" : ""}${mlHome}) — value vs public favorites`);
+    } else if (mlAway > mlHome) {
+      direction = "away"; // away is underdog
+      signals.push(`Sharp lean: AWAY underdog (${mlAway > 0 ? "+" : ""}${mlAway}) — value vs public favorites`);
+    }
+  }
+
   // If no signals at all, add a baseline note from Pinnacle lines
   if (signals.length === 0 && (pinOdds.spread !== null || pinOdds.total !== null)) {
     signals.push(`Pinnacle lines: spread ${pinOdds.spread ?? "N/A"} | total ${pinOdds.total ?? "N/A"} | ML home ${pinOdds.mlHome ?? "N/A"}`);
