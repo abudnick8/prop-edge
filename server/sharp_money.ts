@@ -747,30 +747,31 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
     const softData = softResult.status === "fulfilled" ? softResult.value : null;
     let   action   = actionResult.status === "fulfilled" ? actionResult.value : null;
 
-    // ── Fallback: if ActionNetwork didn't return bet%, build synthetic data ──
-    if (!action || (action.spreadHomePct === null && action.mlHomePct === null)) {
-      try {
-        // Find the ESPN game entry for this matchup
-        const espnList = await fetchEspnOdds(sport);
-        const espnGame = espnList.find(eg =>
-          teamMatch(eg.homeTeam, mu.homeTeam) || teamMatch(eg.awayTeam, mu.awayTeam)
-        ) ?? null;
-        const synthetic = await buildSyntheticBettingData(sport, mu.homeTeam, mu.awayTeam, espnGame);
-        if (synthetic) {
-          // Merge: keep real open/current from action if we have it, supplement with ESPN
-          if (action) {
-            action.openSpread    = action.openSpread    ?? synthetic.openSpread;
-            action.currentSpread = action.currentSpread ?? synthetic.currentSpread;
-            action.openTotal     = action.openTotal     ?? synthetic.openTotal;
-            action.currentTotal  = action.currentTotal  ?? synthetic.currentTotal;
-            (action as any).isSynthetic = true;
-          } else {
-            action = syntheticToActionData(synthetic);
-          }
-          console.log(`[SharpMoney] ${sport} ${mu.awayTeam}@${mu.homeTeam}: using synthetic bet% (implied ${synthetic.impliedHomePct?.toFixed(0)}% home)`);
+    // ── Always build synthetic public lean from ESPN/ML-implied odds ───────────
+    // ActionNetwork's free key never returns real bet% — synthetic is always primary.
+    // ActionNetwork is still used for open/current line data (which it sometimes has).
+    try {
+      const espnList = await fetchEspnOdds(sport);
+      const espnGame = espnList.find(eg =>
+        teamMatch(eg.homeTeam, mu.homeTeam) || teamMatch(eg.awayTeam, mu.awayTeam)
+      ) ?? null;
+      const synthetic = await buildSyntheticBettingData(sport, mu.homeTeam, mu.awayTeam, espnGame);
+      if (synthetic) {
+        if (action) {
+          // Overlay synthetic bet% onto action (which has lines but no bet%)
+          action.mlHomePct          = action.mlHomePct          ?? synthetic.impliedHomePct;
+          action.spreadHomePct      = action.spreadHomePct      ?? synthetic.impliedHomePct;
+          action.openSpread         = action.openSpread         ?? synthetic.openSpread;
+          action.currentSpread      = action.currentSpread      ?? synthetic.currentSpread;
+          action.openTotal          = action.openTotal          ?? synthetic.openTotal;
+          action.currentTotal       = action.currentTotal       ?? synthetic.currentTotal;
+          (action as any).isSynthetic    = true;
+          (action as any).bpiHomeWinPct  = synthetic.bpiHomeWinPct;
+        } else {
+          action = syntheticToActionData(synthetic);
         }
-      } catch { /* synthetic is best-effort */ }
-    }
+      }
+    } catch { /* synthetic is best-effort */ }
 
     const { score, signals, direction, rlmDetected, rlmSide, rlmDescription, spreadDivergence, totalDivergence } =
       buildSharpScore(pinOdds, softData, action);
@@ -994,21 +995,22 @@ async function fetchSharpMoneyFallback(sport: string): Promise<SharpGameData[]> 
 
     // Build synthetic action data — either from ActionNetwork (if it returned real bet%)
     // or from ESPN BPI + ML-implied lean (guaranteed fallback)
-    if (!action || (action.spreadHomePct === null && action.mlHomePct === null)) {
+    // Always build synthetic for ESPN path too
+    try {
       const synthetic = await buildSyntheticBettingData(sport, eg.homeTeam, eg.awayTeam, eg);
       if (synthetic) {
-        const synth = syntheticToActionData(synthetic);
-        // Merge real open/current if action exists but just lacks bet%
         if (action) {
-          action.openSpread    = action.openSpread    ?? synth.openSpread;
-          action.currentSpread = action.currentSpread ?? synth.currentSpread;
-          (action as any).isSynthetic = true;
-          (action as any).bpiHomeWinPct = synth.bpiHomeWinPct;
+          action.mlHomePct          = action.mlHomePct          ?? synthetic.impliedHomePct;
+          action.spreadHomePct      = action.spreadHomePct      ?? synthetic.impliedHomePct;
+          action.openSpread         = action.openSpread         ?? synthetic.openSpread;
+          action.currentSpread      = action.currentSpread      ?? synthetic.currentSpread;
+          (action as any).isSynthetic    = true;
+          (action as any).bpiHomeWinPct  = synthetic.bpiHomeWinPct;
         } else {
-          action = synth;
+          action = syntheticToActionData(synthetic);
         }
       }
-    }
+    } catch { /* best-effort */ }
 
     // Build a DraftKings-based "soft" line (no Pinnacle divergence in this path)
     const syntheticPin = { spread: eg.spread, total: eg.total, mlHome: eg.mlHome, mlAway: eg.mlAway };
