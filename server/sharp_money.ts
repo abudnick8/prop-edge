@@ -325,6 +325,100 @@ async function fetchOddsPapiData(sport: string, homeTeam: string, awayTeam: stri
   }
 }
 
+// ── Source 3b: ESPN BPI Win Probability → synthetic public lean ──────────────
+// When ActionNetwork bet% is unavailable, we derive "public lean" from:
+//  1. ESPN BPI game projection (win probability) → implied public favorite
+//  2. Line movement from open → current (ESPN odds) → RLM proxy
+//  3. Multi-book line comparison (ESPN has DK, which we compare to Pinnacle)
+// This gives us enough signal for RLM detection even without raw bet%.
+
+interface SyntheticBettingData {
+  impliedHomePct: number | null;     // from ML odds (public-implied favorite %)
+  impliedAwayPct: number | null;
+  bpiHomeWinPct:  number | null;     // ESPN BPI model win probability
+  openSpread:     number | null;
+  currentSpread:  number | null;
+  openTotal:      number | null;
+  currentTotal:   number | null;
+  multiBookSpread: number | null;    // consensus from multiple books
+  multiBookTotal:  number | null;
+}
+
+// Convert American ML odds to implied win probability (for public lean estimation)
+function mlToImpliedPct(american: number): number {
+  if (american < 0) return (-american) / (-american + 100) * 100;
+  return 100 / (american + 100) * 100;
+}
+
+async function fetchEspnBPI(
+  sport: string,
+  eventId: string,
+  paths: { sport: string; league: string }
+): Promise<{ homeWinPct: number | null; awayWinPct: number | null }> {
+  try {
+    const url = `https://sports.core.api.espn.com/v2/sports/${paths.sport}/leagues/${paths.league}/events/${eventId}/competitions/${eventId}/predictor`;
+    const res = await fetch(url, {
+      headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(6_000),
+    });
+    if (!res.ok) return { homeWinPct: null, awayWinPct: null };
+    const d: any = await res.json();
+
+    const getProj = (side: any) => {
+      const stats: any[] = side?.statistics || [];
+      const gp = stats.find((s: any) => s.name === "gameProjection");
+      return gp ? parseFloat(gp.value) : null;
+    };
+
+    return {
+      homeWinPct: getProj(d.homeTeam),
+      awayWinPct: getProj(d.awayTeam),
+    };
+  } catch {
+    return { homeWinPct: null, awayWinPct: null };
+  }
+}
+
+async function buildSyntheticBettingData(
+  sport: string,
+  homeTeam: string,
+  awayTeam: string,
+  espnGame: EspnGameOdds | null
+): Promise<SyntheticBettingData | null> {
+  if (!espnGame) return null;
+
+  const paths = ESPN_SPORT_PATHS[sport];
+  if (!paths) return null;
+
+  // Derive implied public favorite from ML odds
+  // Public tends to bet favorites heavily — ML converts to implied %
+  let impliedHomePct: number | null = null;
+  let impliedAwayPct: number | null = null;
+  if (espnGame.mlHome !== null && espnGame.mlAway !== null) {
+    const rawHome = mlToImpliedPct(espnGame.mlHome);
+    const rawAway = mlToImpliedPct(espnGame.mlAway);
+    const total = rawHome + rawAway;
+    // Remove vig and normalize
+    impliedHomePct = (rawHome / total) * 100;
+    impliedAwayPct = (rawAway / total) * 100;
+  }
+
+  // Get BPI win probability
+  const bpi = await fetchEspnBPI(sport, espnGame.eventId, paths);
+
+  return {
+    impliedHomePct,
+    impliedAwayPct,
+    bpiHomeWinPct: bpi.homeWinPct,
+    openSpread:    espnGame.openSpread,
+    currentSpread: espnGame.currSpread,
+    openTotal:     espnGame.openTotal,
+    currentTotal:  espnGame.currTotal,
+    multiBookSpread: espnGame.spread,
+    multiBookTotal:  espnGame.total,
+  };
+}
+
 // ── Source 3: ActionNetwork public betting % ─────────────────────────────────
 
 interface ActionData {
@@ -339,6 +433,10 @@ interface ActionData {
   openTotal: number | null;
   currentTotal: number | null;
   totalBets: number | null;
+  // synthetic fields (populated when real bet% unavailable)
+  isSynthetic?: boolean;
+  impliedHomePct?: number | null;
+  bpiHomeWinPct?: number | null;
 }
 
 async function fetchActionData(sport: string, homeTeam: string, awayTeam: string): Promise<ActionData | null> {
@@ -395,6 +493,29 @@ async function fetchActionData(sport: string, homeTeam: string, awayTeam: string
     console.warn(`[SharpMoney] ActionNetwork error: ${e.message}`);
     return null;
   }
+}
+
+/**
+ * Build an ActionData-compatible object from synthetic/ESPN sources
+ * when ActionNetwork bet% isn't available.
+ */
+function syntheticToActionData(s: SyntheticBettingData): ActionData {
+  return {
+    spreadHomePct:      s.impliedHomePct,      // use ML-implied % as public proxy
+    spreadHomeMoneyPct: null,
+    overPct:            null,
+    overMoneyPct:       null,
+    mlHomePct:          s.impliedHomePct,
+    mlHomeMoneyPct:     null,
+    openSpread:         s.openSpread,
+    currentSpread:      s.currentSpread,
+    openTotal:          s.openTotal,
+    currentTotal:       s.currentTotal,
+    totalBets:          null,
+    isSynthetic:        true,
+    impliedHomePct:     s.impliedHomePct,
+    bpiHomeWinPct:      s.bpiHomeWinPct,
+  };
 }
 
 // ── Sharp Score Calculator ────────────────────────────────────────────────────
@@ -535,6 +656,18 @@ function buildSharpScore(
     signals.push(`Pinnacle lines: spread ${pinOdds.spread ?? "N/A"} | total ${pinOdds.total ?? "N/A"} | ML home ${pinOdds.mlHome ?? "N/A"}`);
   }
 
+  // Label synthetic public data so the UI can show a disclaimer
+  if ((action as any)?.isSynthetic && action?.mlHomePct !== null) {
+    const impliedFav = (action.mlHomePct ?? 50) > 50 ? "HOME" : "AWAY";
+    signals.push(`Public lean estimated from ML odds (${impliedFav} implied favorite — live bet% unavailable)`);
+  }
+
+  // Add BPI model note if available
+  if ((action as any)?.bpiHomeWinPct !== null && (action as any)?.bpiHomeWinPct !== undefined) {
+    const bpi = (action as any).bpiHomeWinPct as number;
+    signals.push(`ESPN BPI model: ${bpi.toFixed(1)}% home win probability`);
+  }
+
   return {
     score: Math.min(100, score),
     signals,
@@ -612,7 +745,32 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
 
     const pinOdds  = pinResult.status  === "fulfilled" ? pinResult.value  : { spread: null, total: null, mlHome: null, mlAway: null };
     const softData = softResult.status === "fulfilled" ? softResult.value : null;
-    const action   = actionResult.status === "fulfilled" ? actionResult.value : null;
+    let   action   = actionResult.status === "fulfilled" ? actionResult.value : null;
+
+    // ── Fallback: if ActionNetwork didn't return bet%, build synthetic data ──
+    if (!action || (action.spreadHomePct === null && action.mlHomePct === null)) {
+      try {
+        // Find the ESPN game entry for this matchup
+        const espnList = await fetchEspnOdds(sport);
+        const espnGame = espnList.find(eg =>
+          teamMatch(eg.homeTeam, mu.homeTeam) || teamMatch(eg.awayTeam, mu.awayTeam)
+        ) ?? null;
+        const synthetic = await buildSyntheticBettingData(sport, mu.homeTeam, mu.awayTeam, espnGame);
+        if (synthetic) {
+          // Merge: keep real open/current from action if we have it, supplement with ESPN
+          if (action) {
+            action.openSpread    = action.openSpread    ?? synthetic.openSpread;
+            action.currentSpread = action.currentSpread ?? synthetic.currentSpread;
+            action.openTotal     = action.openTotal     ?? synthetic.openTotal;
+            action.currentTotal  = action.currentTotal  ?? synthetic.currentTotal;
+            (action as any).isSynthetic = true;
+          } else {
+            action = syntheticToActionData(synthetic);
+          }
+          console.log(`[SharpMoney] ${sport} ${mu.awayTeam}@${mu.homeTeam}: using synthetic bet% (implied ${synthetic.impliedHomePct?.toFixed(0)}% home)`);
+        }
+      } catch { /* synthetic is best-effort */ }
+    }
 
     const { score, signals, direction, rlmDetected, rlmSide, rlmDescription, spreadDivergence, totalDivergence } =
       buildSharpScore(pinOdds, softData, action);
@@ -832,27 +990,32 @@ async function fetchSharpMoneyFallback(sport: string): Promise<SharpGameData[]> 
     const actionResult = await Promise.allSettled([
       fetchActionData(sport, eg.homeTeam, eg.awayTeam),
     ]);
-    const action = actionResult[0].status === "fulfilled" ? actionResult[0].value : null;
+    let action = actionResult[0].status === "fulfilled" ? actionResult[0].value : null;
 
-    // Build a synthetic PinnacleOdds from DraftKings (no divergence, only RLM)
+    // Build synthetic action data — either from ActionNetwork (if it returned real bet%)
+    // or from ESPN BPI + ML-implied lean (guaranteed fallback)
+    if (!action || (action.spreadHomePct === null && action.mlHomePct === null)) {
+      const synthetic = await buildSyntheticBettingData(sport, eg.homeTeam, eg.awayTeam, eg);
+      if (synthetic) {
+        const synth = syntheticToActionData(synthetic);
+        // Merge real open/current if action exists but just lacks bet%
+        if (action) {
+          action.openSpread    = action.openSpread    ?? synth.openSpread;
+          action.currentSpread = action.currentSpread ?? synth.currentSpread;
+          (action as any).isSynthetic = true;
+          (action as any).bpiHomeWinPct = synth.bpiHomeWinPct;
+        } else {
+          action = synth;
+        }
+      }
+    }
+
+    // Build a DraftKings-based "soft" line (no Pinnacle divergence in this path)
     const syntheticPin = { spread: eg.spread, total: eg.total, mlHome: eg.mlHome, mlAway: eg.mlAway };
-
-    // Build synthetic action data from ESPN open/current if ActionNetwork fails
-    const syntheticAction: ActionData | null = action ?? (
-      eg.openSpread !== null && eg.currSpread !== null ? {
-        spreadHomePct: null, spreadHomeMoneyPct: null,
-        overPct: null, overMoneyPct: null,
-        mlHomePct: null, mlHomeMoneyPct: null,
-        openSpread: eg.openSpread,
-        currentSpread: eg.currSpread,
-        openTotal: eg.openTotal,
-        currentTotal: eg.currTotal,
-        totalBets: null,
-      } : null
-    );
+    const syntheticAction = action;
 
     const { score, signals, direction, rlmDetected, rlmSide, rlmDescription, spreadDivergence, totalDivergence } =
-      buildSharpScore(syntheticPin, null, syntheticAction);
+      buildSharpScore(syntheticPin, null, syntheticAction ?? null);
 
     const sources: string[] = ["ESPN/DraftKings (fallback)"];
     if (action) sources.push("ActionNetwork");
