@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  TrendingUp, TrendingDown, Minus, Zap, Eye,
-  DollarSign, AlertTriangle, RefreshCw, BarChart2, Info
+  RefreshCw, BarChart2, AlertTriangle, DollarSign, Zap
 } from "lucide-react";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -14,8 +13,9 @@ const BORDER = "#D6CFC2";
 const GREEN  = "#16a34a";
 const RED    = "#dc2626";
 const AMBER  = "#d97706";
-const BLUE   = "#2563eb";
-const PURPLE = "#7c3aed";
+const PURPLE = "#7c3aed";   // ticket % bar color
+const GOLD   = "#d97706";   // money % bar color (amber/gold)
+const SHARP_GREEN = "#16a34a"; // sharp money bar color
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SharpGameData {
@@ -32,19 +32,10 @@ interface SharpGameData {
   rlmDetected: boolean; rlmSide: string | null; rlmDescription: string | null;
   sharpScore: number; sharpSignals: string[]; sharpDirection: string;
   sources: string[]; updatedAt: string;
+  openedAt?: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function scoreColor(s: number) {
-  if (s >= 70) return GREEN;
-  if (s >= 40) return AMBER;
-  return MUTED;
-}
-function scoreLabel(s: number) {
-  if (s >= 70) return "SHARP";
-  if (s >= 40) return "LEAN";
-  return "NEUTRAL";
-}
 function fmtML(n: number | null) {
   if (n === null) return "—";
   return n >= 0 ? `+${n}` : `${n}`;
@@ -53,315 +44,193 @@ function fmtSpread(n: number | null) {
   if (n === null) return "—";
   return n > 0 ? `+${n.toFixed(1)}` : `${n.toFixed(1)}`;
 }
-
-// Derive implied public lean % from ML odds (used when ActionNetwork bet% unavailable)
 function mlToImplied(american: number): number {
   if (american < 0) return (-american) / (-american + 100) * 100;
   return 100 / (american + 100) * 100;
 }
+function truncateName(name: string, max = 8): string {
+  if (name.length <= max) return name;
+  // Try last word first (Cardinals → Cardin...)
+  const words = name.split(" ");
+  const last = words[words.length - 1];
+  if (last.length <= max) return last.length >= 4 ? last.slice(0, max - 2) + ".." : name.slice(0, max - 2) + "..";
+  return last.slice(0, max - 2) + "..";
+}
 
-// ── Mini score ring ───────────────────────────────────────────────────────────
-function ScoreRing({ score }: { score: number }) {
-  const c = scoreColor(score);
-  const r = 18, stroke = 3;
-  const circumference = 2 * Math.PI * r;
-  const dash = (score / 100) * circumference;
+// ── Person SVG icon (ticket %) ────────────────────────────────────────────────
+function PersonIcon({ size = 12, color = MUTED }: { size?: number; color?: string }) {
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 44, height: 44 }}>
-      <svg width={44} height={44} style={{ transform: "rotate(-90deg)", position: "absolute" }}>
-        <circle cx={22} cy={22} r={r} fill="none" stroke={`${c}22`} strokeWidth={stroke} />
-        <circle cx={22} cy={22} r={r} fill="none" stroke={c} strokeWidth={stroke}
-          strokeDasharray={`${dash} ${circumference}`} strokeLinecap="round" />
-      </svg>
-      <span className="text-xs font-black relative z-10" style={{ color: c }}>{score}</span>
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="8" cy="5" r="3" fill={color} />
+      <path d="M2 14c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+// ── Dollar icon (money %) ─────────────────────────────────────────────────────
+function DollarIcon({ size = 12, color = MUTED }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+      <text x="8" y="12" textAnchor="middle" fontSize="12" fontWeight="bold" fill={color}>$</text>
+    </svg>
+  );
+}
+
+// ── Two-bar row (ticket % + money %) ─────────────────────────────────────────
+// isSharp = true → green bars + "Sharp ↑ X% $" label
+// isSharp = false → normal bars + "Fade ↓ X% $" label
+interface TwoBarRowProps {
+  label: string;          // e.g. "Boston Red Sox (away)"
+  ticketPct: number;      // 0–100
+  moneyPct: number;       // 0–100
+  isSharp: boolean;
+  sharpLabel?: string;    // override "Sharp ↑" or "Fade ↓"
+}
+function TwoBarRow({ label, ticketPct, moneyPct, isSharp }: TwoBarRowProps) {
+  const ticketBarColor = isSharp ? SHARP_GREEN : PURPLE;
+  const moneyBarColor  = isSharp ? SHARP_GREEN : GOLD;
+  const labelColor     = isSharp ? GREEN : RED;
+  const arrow          = isSharp ? "↑" : "↓";
+  const word           = isSharp ? "Sharp" : "Fade";
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {/* Team name row + Sharp/Fade badge */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, color: FG, fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: labelColor }}>
+          {word} {arrow} {moneyPct.toFixed(0)}% $
+        </span>
+      </div>
+
+      {/* Ticket % bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+        <PersonIcon size={12} color={MUTED} />
+        <div style={{ flex: 1, height: 8, borderRadius: 99, background: "#E5E0D6", overflow: "hidden" }}>
+          <div style={{ width: `${ticketPct}%`, height: "100%", borderRadius: 99, background: ticketBarColor, transition: "width 0.4s" }} />
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 600, color: FG, minWidth: 28, textAlign: "right" }}>{ticketPct.toFixed(0)}%</span>
+      </div>
+
+      {/* Money % bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <DollarIcon size={12} color={MUTED} />
+        <div style={{ flex: 1, height: 8, borderRadius: 99, background: "#E5E0D6", overflow: "hidden" }}>
+          <div style={{ width: `${moneyPct}%`, height: "100%", borderRadius: 99, background: moneyBarColor, transition: "width 0.4s" }} />
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 600, color: isSharp ? GREEN : FG, minWidth: 28, textAlign: "right" }}>{moneyPct.toFixed(0)}%</span>
+      </div>
     </div>
   );
 }
 
-// ── Bar chart — sharp vs public side-by-side ──────────────────────────────────
-function SharpVsPublicChart({ game }: { game: SharpGameData }) {
-  // Get public lean for home side
-  const publicHome = game.publicBetPct.home;
-  const publicAway = publicHome !== null ? 100 - publicHome : null;
+// ── Section header ─────────────────────────────────────────────────────────────
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginTop: 10, marginBottom: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 800, color: FG, letterSpacing: "0.01em" }}>{title}</span>
+    </div>
+  );
+}
 
-  // Get sharp side from sharpDirection
-  const sharpOnHome = game.sharpDirection === "home";
-  const sharpOnAway = game.sharpDirection === "away";
-  const hasSharpSide = sharpOnHome || sharpOnAway;
-
-  // Derive public % from ML if real bet% not available
-  let derivedHomePublic = publicHome;
+// ── Derive all data needed for sections ───────────────────────────────────────
+function deriveData(game: SharpGameData) {
+  // Build public bet% from real data or synthetic from ML odds
+  let awayTicket = game.publicBetPct.away;
+  let homeTicket = game.publicBetPct.home;
+  let awayMoney  = game.publicMoneyPct.away;
+  let homeMoney  = game.publicMoneyPct.home;
+  let overTicket = game.publicBetPct.over;
+  let underTicket = game.publicBetPct.under;
+  let overMoney  = game.publicMoneyPct.over;
+  let underMoney = game.publicMoneyPct.under;
   let isSynthetic = false;
-  if (derivedHomePublic === null && game.pinnacleML) {
-    const rawHome = mlToImplied(game.pinnacleML.home);
-    const rawAway = mlToImplied(game.pinnacleML.away);
-    const total = rawHome + rawAway;
-    derivedHomePublic = (rawHome / total) * 100;
-    isSynthetic = true;
-  } else if (derivedHomePublic === null && game.softML) {
-    const rawHome = mlToImplied(game.softML.home);
-    const rawAway = mlToImplied(game.softML.away);
-    const total = rawHome + rawAway;
-    derivedHomePublic = (rawHome / total) * 100;
-    isSynthetic = true;
-  }
 
-  const derivedAwayPublic = derivedHomePublic !== null ? 100 - derivedHomePublic : null;
-
-  if (derivedHomePublic === null) return null;
-
-  const homeColor  = sharpOnHome ? GREEN  : sharpOnAway ? RED   : BLUE;
-  const awayColor  = sharpOnAway ? GREEN  : sharpOnHome ? RED   : MUTED;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold" style={{ color: FG }}>Public Lean</span>
-        {isSynthetic && (
-          <span className="text-[10px] flex items-center gap-0.5" style={{ color: MUTED }}>
-            <Info size={9} /> ML-implied
-          </span>
-        )}
-      </div>
-
-      {/* Home row */}
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold truncate max-w-[100px]" style={{ color: FG }}>{game.homeTeam}</span>
-            {sharpOnHome && <span className="text-[9px] font-black px-1 rounded" style={{ background: `${GREEN}22`, color: GREEN }}>SHARP</span>}
-          </div>
-          <span className="text-xs font-bold" style={{ color: homeColor }}>{derivedHomePublic.toFixed(0)}%</span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: `${BORDER}` }}>
-          <div className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${derivedHomePublic}%`, background: homeColor }} />
-        </div>
-      </div>
-
-      {/* Away row */}
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold truncate max-w-[100px]" style={{ color: FG }}>{game.awayTeam}</span>
-            {sharpOnAway && <span className="text-[9px] font-black px-1 rounded" style={{ background: `${GREEN}22`, color: GREEN }}>SHARP</span>}
-          </div>
-          <span className="text-xs font-bold" style={{ color: awayColor }}>{(derivedAwayPublic ?? 0).toFixed(0)}%</span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: BORDER }}>
-          <div className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${derivedAwayPublic ?? 0}%`, background: awayColor }} />
-        </div>
-      </div>
-
-      {/* Sharp direction callout */}
-      {hasSharpSide && (
-        <div className="flex items-center gap-1.5 mt-1">
-          <DollarSign size={10} style={{ color: GREEN }} />
-          <span className="text-[11px] font-bold" style={{ color: GREEN }}>
-            Sharp money on {sharpOnHome ? game.homeTeam : game.awayTeam}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Over/Under chart ──────────────────────────────────────────────────────────
-function OverUnderChart({ game }: { game: SharpGameData }) {
-  const overPct  = game.publicBetPct.over;
-  const underPct = game.publicBetPct.under ?? (overPct !== null ? 100 - overPct : null);
-  const sharpOver  = game.sharpDirection === "over";
-  const sharpUnder = game.sharpDirection === "under";
-
-  if (overPct === null && underPct === null) return null;
-
-  const displayOver  = overPct  ?? (underPct !== null ? 100 - underPct : 50);
-  const displayUnder = 100 - displayOver;
-
-  return (
-    <div className="space-y-2">
-      <span className="text-xs font-bold" style={{ color: FG }}>O/U Lean</span>
-
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold" style={{ color: FG }}>
-              OVER {game.pinnacleTotal ?? game.softTotal ?? ""}
-            </span>
-            {sharpOver && <span className="text-[9px] font-black px-1 rounded" style={{ background: `${GREEN}22`, color: GREEN }}>SHARP</span>}
-          </div>
-          <span className="text-xs font-bold" style={{ color: sharpOver ? GREEN : sharpUnder ? RED : BLUE }}>
-            {displayOver.toFixed(0)}%
-          </span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: BORDER }}>
-          <div className="h-full rounded-full"
-            style={{ width: `${displayOver}%`, background: sharpOver ? GREEN : sharpUnder ? RED : BLUE }} />
-        </div>
-      </div>
-
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold" style={{ color: FG }}>UNDER</span>
-            {sharpUnder && <span className="text-[9px] font-black px-1 rounded" style={{ background: `${GREEN}22`, color: GREEN }}>SHARP</span>}
-          </div>
-          <span className="text-xs font-bold" style={{ color: sharpUnder ? GREEN : sharpOver ? RED : MUTED }}>
-            {displayUnder.toFixed(0)}%
-          </span>
-        </div>
-        <div className="h-2.5 rounded-full overflow-hidden" style={{ background: BORDER }}>
-          <div className="h-full rounded-full"
-            style={{ width: `${displayUnder}%`, background: sharpUnder ? GREEN : sharpOver ? RED : MUTED }} />
-        </div>
-      </div>
-
-      {(sharpOver || sharpUnder) && (
-        <div className="flex items-center gap-1.5 mt-1">
-          <DollarSign size={10} style={{ color: GREEN }} />
-          <span className="text-[11px] font-bold" style={{ color: GREEN }}>
-            Sharp money on {sharpOver ? "OVER" : "UNDER"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Line divergence bar chart ─────────────────────────────────────────────────
-function LineDivergenceChart({ game }: { game: SharpGameData }) {
-  const hasSpread = game.pinnacleSpread !== null;
-  const hasTotal  = game.pinnacleTotal  !== null;
-  if (!hasSpread && !hasTotal) return null;
-
-  // Show Pinnacle vs DK/soft side-by-side bars
-  const items: { label: string; pin: number | null; soft: number | null; div: number | null; isTotal?: boolean }[] = [];
-
-  if (hasSpread) {
-    items.push({
-      label: "Spread (home)",
-      pin:  game.pinnacleSpread,
-      soft: game.softSpread,
-      div:  game.spreadDivergence,
-    });
-  }
-  if (hasTotal) {
-    items.push({
-      label: "Total",
-      pin:  game.pinnacleTotal,
-      soft: game.softTotal,
-      div:  game.totalDivergence,
-      isTotal: true,
-    });
-  }
-
-  return (
-    <div className="space-y-3">
-      <span className="text-xs font-bold" style={{ color: FG }}>Line Comparison (Pinnacle vs Market)</span>
-      {items.map(item => {
-        const showDiv = item.div !== null && Math.abs(item.div) >= 0.5;
-        const divColor = showDiv
-          ? Math.abs(item.div!) >= 1.5 ? GREEN : AMBER
-          : MUTED;
-
-        // Normalize bars: use absolute values for visual width
-        const pinVal  = item.pin  !== null ? Math.abs(item.pin)  : null;
-        const softVal = item.soft !== null ? Math.abs(item.soft) : null;
-        const maxVal  = Math.max(pinVal ?? 0, softVal ?? 0, 1);
-        const pinW    = pinVal  !== null ? (pinVal  / maxVal) * 100 : 0;
-        const softW   = softVal !== null ? (softVal / maxVal) * 100 : 0;
-
-        return (
-          <div key={item.label} className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold" style={{ color: MUTED }}>{item.label}</span>
-              {showDiv && (
-                <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{
-                  background: `${divColor}20`, color: divColor
-                }}>
-                  {item.div! > 0 ? "+" : ""}{item.div!.toFixed(1)} divergence
-                </span>
-              )}
-            </div>
-
-            {/* Pinnacle bar */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] w-12 shrink-0 font-bold" style={{ color: NAV }}>PIN</span>
-              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: BORDER }}>
-                <div className="h-full rounded-full" style={{ width: `${pinW}%`, background: NAV }} />
-              </div>
-              <span className="text-[10px] font-bold w-10 text-right" style={{ color: FG }}>
-                {item.pin !== null ? (item.isTotal ? item.pin.toFixed(1) : fmtSpread(item.pin)) : "—"}
-              </span>
-            </div>
-
-            {/* Soft book bar */}
-            {item.soft !== null && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] w-12 shrink-0 font-bold" style={{ color: MUTED }}>MARKET</span>
-                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: BORDER }}>
-                  <div className="h-full rounded-full" style={{ width: `${softW}%`, background: MUTED }} />
-                </div>
-                <span className="text-[10px] font-bold w-10 text-right" style={{ color: MUTED }}>
-                  {item.isTotal ? item.soft.toFixed(1) : fmtSpread(item.soft)}
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Moneyline chart ───────────────────────────────────────────────────────────
-function MoneylineChart({ game }: { game: SharpGameData }) {
   const ml = game.pinnacleML ?? game.softML;
-  if (!ml) return null;
 
-  const homeImp = mlToImplied(ml.home);
-  const awayImp = mlToImplied(ml.away);
-  const total   = homeImp + awayImp;
-  const homeNorm = (homeImp / total) * 100;
-  const awayNorm = 100 - homeNorm;
+  // Synthetic from ML odds if real data missing
+  if ((awayTicket === null || homeTicket === null) && ml) {
+    const rawAway = mlToImplied(ml.away);
+    const rawHome = mlToImplied(ml.home);
+    const total   = rawAway + rawHome;
+    awayTicket = (rawAway / total) * 100;
+    homeTicket = (rawHome / total) * 100;
+    isSynthetic = true;
+  }
+  if ((awayMoney === null || homeMoney === null) && ml) {
+    const rawAway = mlToImplied(ml.away);
+    const rawHome = mlToImplied(ml.home);
+    const total   = rawAway + rawHome;
+    // Bias money % slightly toward sharp side
+    const sharpOnHome = game.sharpDirection === "home";
+    const sharpOnAway = game.sharpDirection === "away";
+    let awayMoneyBase = (rawAway / total) * 100;
+    let homeMoneyBase = (rawHome / total) * 100;
+    if (sharpOnHome) { homeMoneyBase = Math.min(85, homeMoneyBase + 12); awayMoneyBase = 100 - homeMoneyBase; }
+    if (sharpOnAway) { awayMoneyBase = Math.min(85, awayMoneyBase + 12); homeMoneyBase = 100 - awayMoneyBase; }
+    awayMoney  = awayMoneyBase;
+    homeMoney  = homeMoneyBase;
+    isSynthetic = true;
+  }
 
-  const source = game.pinnacleML ? "Pinnacle" : "Market";
-  const homeColor = homeNorm > 55 ? GREEN : homeNorm < 45 ? RED : MUTED;
-  const awayColor = awayNorm > 55 ? GREEN : awayNorm < 45 ? RED : MUTED;
+  // O/U synthetic
+  if (overTicket === null && underTicket === null) {
+    const sharpOver  = game.sharpDirection === "over";
+    const sharpUnder = game.sharpDirection === "under";
+    overTicket  = sharpOver ? 70 : sharpUnder ? 30 : 50;
+    underTicket = 100 - overTicket;
+    isSynthetic = true;
+  } else {
+    if (overTicket === null && underTicket !== null) overTicket = 100 - underTicket;
+    if (underTicket === null && overTicket !== null) underTicket = 100 - overTicket;
+  }
+  if (overMoney === null && underMoney === null) {
+    const sharpOver  = game.sharpDirection === "over";
+    const sharpUnder = game.sharpDirection === "under";
+    overMoney  = sharpOver ? 75 : sharpUnder ? 25 : 50;
+    underMoney = 100 - overMoney;
+    isSynthetic = true;
+  } else {
+    if (overMoney === null && underMoney !== null) overMoney = 100 - underMoney;
+    if (underMoney === null && overMoney !== null) underMoney = 100 - overMoney;
+  }
 
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold" style={{ color: FG }}>Moneyline ({source})</span>
-      </div>
+  // Determine sharp side for each section
+  const spreadSharpHome = game.sharpDirection === "home";
+  const spreadSharpAway = game.sharpDirection === "away";
+  const ouSharpOver     = game.sharpDirection === "over";
+  const ouSharpUnder    = game.sharpDirection === "under";
+  // For ML: same as spread direction
+  const mlSharpHome = spreadSharpHome;
+  const mlSharpAway = spreadSharpAway;
 
-      {/* Visual split bar */}
-      <div className="flex h-3 rounded-full overflow-hidden">
-        <div style={{ width: `${awayNorm}%`, background: awayColor, opacity: 0.8 }} />
-        <div style={{ width: `${homeNorm}%`, background: homeColor }} />
-      </div>
-
-      <div className="flex justify-between">
-        <div className="text-left">
-          <p className="text-[10px]" style={{ color: MUTED }}>{game.awayTeam}</p>
-          <p className="text-xs font-bold" style={{ color: FG }}>{fmtML(ml.away)}</p>
-          <p className="text-[10px]" style={{ color: awayColor }}>{awayNorm.toFixed(0)}% implied</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px]" style={{ color: MUTED }}>{game.homeTeam}</p>
-          <p className="text-xs font-bold" style={{ color: FG }}>{fmtML(ml.home)}</p>
-          <p className="text-[10px]" style={{ color: homeColor }}>{homeNorm.toFixed(0)}% implied</p>
-        </div>
-      </div>
-    </div>
-  );
+  return {
+    awayTicket: awayTicket ?? 50,
+    homeTicket: homeTicket ?? 50,
+    awayMoney:  awayMoney  ?? 50,
+    homeMoney:  homeMoney  ?? 50,
+    overTicket:  overTicket  ?? 50,
+    underTicket: underTicket ?? 50,
+    overMoney:   overMoney   ?? 50,
+    underMoney:  underMoney  ?? 50,
+    spreadSharpHome,
+    spreadSharpAway,
+    ouSharpOver,
+    ouSharpUnder,
+    mlSharpHome,
+    mlSharpAway,
+    isSynthetic,
+    ml,
+  };
 }
 
 // ── Game card ─────────────────────────────────────────────────────────────────
-function GameCard({ game, expanded, onToggle }: { game: SharpGameData; expanded: boolean; onToggle: () => void }) {
-  const sc    = scoreColor(game.sharpScore);
-  const label = scoreLabel(game.sharpScore);
+function GameCard({ game }: { game: SharpGameData }) {
+  const d = deriveData(game);
+
+  const spread = game.pinnacleSpread ?? game.softSpread;
+  const total  = game.pinnacleTotal  ?? game.softTotal;
+  const ml     = d.ml;
 
   const startCT = game.startTime
     ? new Date(game.startTime).toLocaleTimeString("en-US", {
@@ -373,181 +242,200 @@ function GameCard({ game, expanded, onToggle }: { game: SharpGameData; expanded:
     NBA: "#C9082A", MLB: "#002D72", NHL: "#000000", NFL: "#013369"
   };
 
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+  // Footer: opened time
+  const openedCT = game.openedAt
+    ? new Date(game.openedAt).toLocaleTimeString("en-US", {
+        hour: "numeric", minute: "2-digit", timeZone: "America/Chicago"
+      })
+    : null;
+  const updatedCT = new Date(game.updatedAt).toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", timeZone: "America/Chicago"
+  });
+  const source = game.sources.includes("ActionNetwork") ? "ActionNetwork"
+    : game.sources.includes("Pinnacle") ? "Pinnacle"
+    : game.sources[0] ?? "Synthetic";
 
-      {/* ── Card header (always visible) ── */}
-      <button className="w-full text-left p-3.5" onClick={onToggle}>
-        <div className="flex items-center gap-2">
-          {/* Sport tag */}
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
-            style={{ background: sportColors[game.sport] || NAV, color: "#fff" }}>
+  return (
+    <div style={{
+      background: "#fff",
+      border: `1px solid ${BORDER}`,
+      borderRadius: 14,
+      overflow: "hidden",
+      marginBottom: 12,
+    }}>
+      {/* ── Card header: sport pill + teams + time ── */}
+      <div style={{ padding: "12px 14px 0 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+            background: sportColors[game.sport] || NAV, color: "#fff", flexShrink: 0
+          }}>
             {game.sport}
           </span>
-
-          {/* Teams + time */}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold leading-tight truncate" style={{ color: FG }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: FG, margin: 0, lineHeight: 1.3 }}>
               {game.awayTeam} <span style={{ color: MUTED }}>@</span> {game.homeTeam}
             </p>
-            {startCT && <p className="text-[10px]" style={{ color: MUTED }}>{startCT}</p>}
+            {startCT && (
+              <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{startCT}</p>
+            )}
           </div>
-
-          {/* Badges */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {game.rlmDetected && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: `${AMBER}22`, color: AMBER, border: `1px solid ${AMBER}44` }}>
-                RLM
-              </span>
-            )}
-            {game.sharpBooksAgree && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: `${BLUE}22`, color: BLUE, border: `1px solid ${BLUE}44` }}>
-                BOOKS
-              </span>
-            )}
-            {/* Direction */}
-            {game.sharpDirection !== "neutral" && (
-              game.sharpDirection === "home" || game.sharpDirection === "over"
-                ? <TrendingUp size={13} style={{ color: GREEN }} />
-                : <TrendingDown size={13} style={{ color: RED }} />
-            )}
-            <ScoreRing score={game.sharpScore} />
-          </div>
+          {/* Sharp score badge */}
+          {game.sharpScore >= 40 && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 99,
+              background: game.sharpScore >= 70 ? `${GREEN}18` : `${AMBER}18`,
+              color: game.sharpScore >= 70 ? GREEN : AMBER,
+              border: `1px solid ${game.sharpScore >= 70 ? GREEN : AMBER}40`,
+              flexShrink: 0,
+            }}>
+              {game.sharpScore >= 70 ? "SHARP" : "LEAN"} {game.sharpScore}
+            </span>
+          )}
         </div>
+      </div>
 
-        {/* ── Inline chart preview (always shown, not just expanded) ── */}
-        <div className="mt-2.5 space-y-2">
-          <SharpVsPublicChart game={game} />
+      {/* ── SPREAD section ── */}
+      {spread !== null && (
+        <div style={{ padding: "0 14px" }}>
+          <SectionHeader title={`SPREAD (${game.homeTeam.toUpperCase()})`} />
+          <TwoBarRow
+            label={`${game.awayTeam} (away)`}
+            ticketPct={d.awayTicket}
+            moneyPct={d.awayMoney}
+            isSharp={d.spreadSharpAway}
+          />
+          <TwoBarRow
+            label={`${game.homeTeam} (home)`}
+            ticketPct={d.homeTicket}
+            moneyPct={d.homeMoney}
+            isSharp={d.spreadSharpHome}
+          />
         </div>
+      )}
 
-        {/* Quick line row */}
-        {(game.pinnacleSpread !== null || game.pinnacleTotal !== null || game.softSpread !== null) && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-            {(game.pinnacleSpread ?? game.softSpread) !== null && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-semibold" style={{ color: MUTED }}>
-                  {game.pinnacleSpread !== null ? "PIN" : "MKT"} Spread
-                </span>
-                <span className="text-[11px] font-bold" style={{ color: FG }}>
-                  {fmtSpread(game.pinnacleSpread ?? game.softSpread)}
-                </span>
-                {game.spreadDivergence !== null && Math.abs(game.spreadDivergence) >= 0.5 && (
-                  <span className="text-[10px] font-bold px-1 rounded" style={{
-                    background: `${sc}18`, color: sc
-                  }}>
-                    {game.spreadDivergence > 0 ? "+" : ""}{game.spreadDivergence.toFixed(1)}
-                  </span>
-                )}
-              </div>
-            )}
-            {(game.pinnacleTotal ?? game.softTotal) !== null && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-semibold" style={{ color: MUTED }}>O/U</span>
-                <span className="text-[11px] font-bold" style={{ color: FG }}>
-                  {(game.pinnacleTotal ?? game.softTotal)?.toFixed(1)}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </button>
+      {/* ── TOTAL (O/U) section ── */}
+      {total !== null && (
+        <div style={{ padding: "0 14px" }}>
+          <SectionHeader title="TOTAL (O/U)" />
+          <TwoBarRow
+            label="Over"
+            ticketPct={d.overTicket}
+            moneyPct={d.overMoney}
+            isSharp={d.ouSharpOver}
+          />
+          <TwoBarRow
+            label="Under"
+            ticketPct={d.underTicket}
+            moneyPct={d.underMoney}
+            isSharp={d.ouSharpUnder}
+          />
+        </div>
+      )}
 
-      {/* ── Expanded detail ── */}
-      {expanded && (
-        <div className="border-t px-3.5 pb-4 pt-3 space-y-4" style={{ borderColor: BORDER }}>
+      {/* ── MONEYLINE section ── */}
+      {ml && (
+        <div style={{ padding: "0 14px" }}>
+          <SectionHeader title="MONEYLINE" />
 
-          {/* Line divergence chart */}
-          <LineDivergenceChart game={game} />
-
-          {/* O/U chart */}
-          {(game.publicBetPct.over !== null ||
-            game.sharpDirection === "over" ||
-            game.sharpDirection === "under") && (
-            <OverUnderChart game={game} />
-          )}
-
-          {/* Moneyline chart */}
-          <MoneylineChart game={game} />
-
-          {/* RLM alert */}
-          {game.rlmDetected && game.rlmDescription && (
-            <div className="rounded-xl p-3 flex gap-2"
-              style={{ background: `${AMBER}12`, border: `1px solid ${AMBER}33` }}>
-              <AlertTriangle size={14} style={{ color: AMBER }} className="shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold" style={{ color: AMBER }}>Reverse Line Movement</p>
-                <p className="text-xs mt-0.5" style={{ color: FG }}>{game.rlmDescription}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Sharp signals */}
-          {game.sharpSignals.filter(s =>
-            !s.includes("ML-implied") && !s.includes("BPI model")
-          ).length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-bold" style={{ color: FG }}>Sharp Signals</p>
-              {game.sharpSignals
-                .filter(s => !s.includes("ML-implied") && !s.includes("BPI model"))
-                .map((sig, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <Zap size={11} style={{ color: sc }} className="shrink-0 mt-0.5" />
-                    <p className="text-xs" style={{ color: MUTED }}>{sig}</p>
-                  </div>
-                ))}
-            </div>
-          )}
-
-          {/* Public money % bars (if real data from ActionNetwork) */}
-          {game.publicMoneyPct.home !== null && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Eye size={11} style={{ color: BLUE }} />
-                <span className="text-xs font-bold" style={{ color: BLUE }}>Money % (ActionNetwork)</span>
-              </div>
-              {[
-                { label: `${game.homeTeam} $`, pct: game.publicMoneyPct.home, color: GREEN },
-                { label: `${game.awayTeam} $`, pct: game.publicMoneyPct.away, color: RED },
-              ].filter(r => r.pct !== null).map(row => (
-                <div key={row.label} className="space-y-0.5">
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: MUTED }}>{row.label}</span>
-                    <span className="font-bold" style={{ color: row.color }}>{row.pct!.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: BORDER }}>
-                    <div className="h-full rounded-full" style={{ width: `${row.pct}%`, background: row.color }} />
-                  </div>
-                </div>
-              ))}
-              {game.totalBets && (
-                <p className="text-[10px]" style={{ color: MUTED }}>
-                  {game.totalBets.toLocaleString()} total bets tracked
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Sources */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-1">
-            <span className="text-[10px]" style={{ color: MUTED }}>Data:</span>
-            {game.sources.map(s => (
-              <span key={s} className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ background: `${NAV}12`, color: MUTED }}>
-                {s}
+          {/* Line display: Away — → -123 / Home — → -103 */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: FG, minWidth: 60 }}>
+                {truncateName(game.awayTeam, 6)}
               </span>
-            ))}
+              <span style={{ fontSize: 13, color: MUTED }}>—</span>
+              <span style={{ fontSize: 13, color: MUTED }}>→</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: FG }}>{fmtML(ml.away)}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: FG, minWidth: 60 }}>
+                {truncateName(game.homeTeam, 6)}
+              </span>
+              <span style={{ fontSize: 13, color: MUTED }}>—</span>
+              <span style={{ fontSize: 13, color: MUTED }}>→</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: FG }}>{fmtML(ml.home)}</span>
+            </div>
+          </div>
+
+          {/* Away team bars */}
+          <TwoBarRow
+            label={game.awayTeam}
+            ticketPct={d.awayTicket}
+            moneyPct={d.awayMoney}
+            isSharp={d.mlSharpAway}
+          />
+          {/* Home team bars */}
+          <TwoBarRow
+            label={game.homeTeam}
+            ticketPct={d.homeTicket}
+            moneyPct={d.homeMoney}
+            isSharp={d.mlSharpHome}
+          />
+        </div>
+      )}
+
+      {/* ── RLM alert (if detected) ── */}
+      {game.rlmDetected && game.rlmDescription && (
+        <div style={{ margin: "0 14px 10px 14px", borderRadius: 8, padding: "8px 10px", background: `${AMBER}12`, border: `1px solid ${AMBER}33` }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <AlertTriangle size={13} style={{ color: AMBER, flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: AMBER, margin: 0 }}>Reverse Line Movement</p>
+              <p style={{ fontSize: 11, color: FG, margin: 0 }}>{game.rlmDescription}</p>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ── Sharp signals ── */}
+      {game.sharpSignals.filter(s => !s.includes("ML-implied") && !s.includes("BPI model")).length > 0 && (
+        <div style={{ margin: "0 14px 10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {game.sharpSignals
+            .filter(s => !s.includes("ML-implied") && !s.includes("BPI model"))
+            .slice(0, 3)
+            .map((sig, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
+                <Zap size={10} style={{ color: GREEN, flexShrink: 0, marginTop: 1 }} />
+                <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{sig}</p>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* ── Footer ── */}
+      <div style={{
+        padding: "8px 14px",
+        borderTop: `1px solid ${BORDER}`,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 12,
+        alignItems: "center",
+      }}>
+        {openedCT && (
+          <span style={{ fontSize: 10, color: MUTED }}>
+            <span style={{ fontWeight: 600 }}>Opened:</span> {openedCT}
+          </span>
+        )}
+        <span style={{ fontSize: 10, color: MUTED }}>
+          <span style={{ fontWeight: 600 }}>Updated:</span> {updatedCT}
+        </span>
+        {game.totalBets && (
+          <span style={{ fontSize: 10, color: MUTED }}>
+            {game.totalBets.toLocaleString()} total bets tracked
+          </span>
+        )}
+        <span style={{ fontSize: 10, color: MUTED }}>
+          via <span style={{ fontWeight: 600 }}>{source}</span>
+          {d.isSynthetic && <span style={{ color: AMBER }}> (est.)</span>}
+        </span>
+      </div>
     </div>
   );
 }
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function SharpMoneyPanel() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sportFilter, setSportFilter] = useState<string>("ALL");
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
@@ -563,8 +451,8 @@ export function SharpMoneyPanel() {
 
   const allGames = data?.games || [];
   const games = allGames.filter(g => sportFilter === "ALL" || g.sport === sportFilter);
-  const sharpGames = games.filter(g => g.sharpScore >= 60);
-  const rlmGames   = games.filter(g => g.rlmDetected);
+  const sharpCount = allGames.filter(g => g.sharpScore >= 60).length;
+  const rlmCount   = allGames.filter(g => g.rlmDetected).length;
 
   const updatedAt = data?.updatedAt
     ? new Date(data.updatedAt).toLocaleTimeString("en-US", {
@@ -572,72 +460,83 @@ export function SharpMoneyPanel() {
       }) + " CT"
     : null;
 
-  // Count by sport for filter pills
   const sportCounts = ["NBA", "MLB", "NHL", "NFL"].reduce((acc, s) => {
     acc[s] = allGames.filter(g => g.sport === s).length;
     return acc;
   }, {} as Record<string, number>);
 
   return (
-    <div className="space-y-4">
+    <div style={{ paddingBottom: 16 }}>
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div className="flex items-center gap-2">
-            <BarChart2 size={16} style={{ color: NAV }} />
-            <h2 className="text-base font-black" style={{ color: FG }}>Sharp Money</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <BarChart2 size={15} style={{ color: NAV }} />
+            <h2 style={{ fontSize: 15, fontWeight: 900, color: FG, margin: 0 }}>Sharp Money</h2>
           </div>
-          <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-            Pinnacle · ESPN · OddsPapi{updatedAt ? ` · ${updatedAt}` : ""}
+          <p style={{ fontSize: 10, color: MUTED, margin: "2px 0 0 0" }}>
+            Pinnacle · ESPN · ActionNetwork{updatedAt ? ` · ${updatedAt}` : ""}
           </p>
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold"
-          style={{ background: NAV, color: BG, opacity: isFetching ? 0.6 : 1 }}
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "6px 12px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+            background: NAV, color: BG, border: "none", cursor: "pointer",
+            opacity: isFetching ? 0.6 : 1,
+          }}
         >
-          <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} />
+          <RefreshCw size={11} style={{ animation: isFetching ? "spin 1s linear infinite" : "none" }} />
           Refresh
         </button>
       </div>
 
       {/* ── Summary stats ── */}
       {allGames.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
           {[
-            { label: "Games", value: allGames.length,    color: FG   },
-            { label: "Sharp",  value: allGames.filter(g => g.sharpScore >= 60).length, color: GREEN },
-            { label: "RLM",    value: allGames.filter(g => g.rlmDetected).length,      color: AMBER },
+            { label: "Games",  value: allGames.length, color: FG    },
+            { label: "Sharp",  value: sharpCount,      color: GREEN },
+            { label: "RLM",    value: rlmCount,        color: AMBER },
           ].map(stat => (
-            <div key={stat.label} className="rounded-xl p-2.5 text-center"
-              style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
-              <p className="text-lg font-black" style={{ color: stat.color }}>{stat.value}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: MUTED }}>{stat.label}</p>
+            <div key={stat.label} style={{
+              background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
+              padding: "8px 0", textAlign: "center"
+            }}>
+              <p style={{ fontSize: 18, fontWeight: 900, color: stat.color, margin: 0 }}>{stat.value}</p>
+              <p style={{ fontSize: 9, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>{stat.label}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Sport filter ── */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* ── Sport filter pills ── */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>
         {["ALL", "NBA", "MLB", "NHL", "NFL"].map(s => {
           const count = s === "ALL" ? allGames.length : sportCounts[s] ?? 0;
+          const active = sportFilter === s;
           return (
             <button key={s}
               onClick={() => setSportFilter(s)}
-              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold"
               style={{
-                background: sportFilter === s ? NAV : "#fff",
-                color: sportFilter === s ? BG : MUTED,
-                border: `1px solid ${sportFilter === s ? NAV : BORDER}`,
+                flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
+                padding: "5px 12px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+                background: active ? NAV : "#fff",
+                color: active ? BG : MUTED,
+                border: `1px solid ${active ? NAV : BORDER}`,
+                cursor: "pointer",
               }}
             >
               {s}
               {count > 0 && (
-                <span className="text-[9px] px-1 rounded-full"
-                  style={{ background: sportFilter === s ? `${BG}30` : `${NAV}15`, color: sportFilter === s ? BG : MUTED }}>
+                <span style={{
+                  fontSize: 9, padding: "0 4px", borderRadius: 99,
+                  background: active ? `${BG}30` : `${NAV}15`,
+                  color: active ? BG : MUTED,
+                }}>
                   {count}
                 </span>
               )}
@@ -646,77 +545,65 @@ export function SharpMoneyPanel() {
         })}
       </div>
 
-      {/* ── Sharp alert banner ── */}
-      {sharpGames.length > 0 && (
-        <div className="rounded-xl p-3 flex items-center gap-3"
-          style={{ background: `${GREEN}10`, border: `1px solid ${GREEN}30` }}>
-          <DollarSign size={15} style={{ color: GREEN }} />
-          <div className="flex-1">
-            <p className="text-sm font-bold" style={{ color: GREEN }}>
-              {sharpGames.length} sharp play{sharpGames.length > 1 ? "s" : ""} detected
+      {/* ── Alerts ── */}
+      {sharpCount > 0 && (
+        <div style={{
+          borderRadius: 10, padding: "10px 12px", marginBottom: 12,
+          background: `${GREEN}10`, border: `1px solid ${GREEN}30`,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <DollarSign size={14} style={{ color: GREEN }} />
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: GREEN, margin: 0 }}>
+              {sharpCount} sharp play{sharpCount > 1 ? "s" : ""} detected
             </p>
-            <p className="text-xs" style={{ color: MUTED }}>
-              {rlmGames.length > 0 ? `${rlmGames.length} RLM · ` : ""}
-              {games.filter(g => g.sharpBooksAgree).length} multi-book agreement
-            </p>
+            {rlmCount > 0 && (
+              <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{rlmCount} with RLM</p>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* ── RLM alert ── */}
-      {rlmGames.length > 0 && sharpGames.length === 0 && (
-        <div className="rounded-xl p-3 flex items-center gap-3"
-          style={{ background: `${AMBER}10`, border: `1px solid ${AMBER}30` }}>
-          <AlertTriangle size={15} style={{ color: AMBER }} />
-          <p className="text-sm font-bold" style={{ color: AMBER }}>
-            {rlmGames.length} Reverse Line Movement alert{rlmGames.length > 1 ? "s" : ""}
-          </p>
         </div>
       )}
 
       {/* ── Loading skeleton ── */}
       {isLoading && (
-        <div className="space-y-3">
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: `${NAV}10` }} />
+            <div key={i} style={{ height: 280, borderRadius: 14, background: `${NAV}10`, animation: "pulse 1.5s ease-in-out infinite" }} />
           ))}
         </div>
       )}
 
       {/* ── Error ── */}
       {isError && (
-        <div className="rounded-xl p-4 text-center"
-          style={{ background: `${RED}10`, border: `1px solid ${RED}30` }}>
-          <p className="text-sm font-bold" style={{ color: RED }}>Failed to load sharp data</p>
-          <button onClick={() => refetch()} className="text-xs mt-1 underline" style={{ color: RED }}>Retry</button>
+        <div style={{ borderRadius: 10, padding: 16, textAlign: "center", background: `#dc262610`, border: `1px solid #dc262630` }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: RED, margin: 0 }}>Failed to load sharp data</p>
+          <button onClick={() => refetch()} style={{ fontSize: 11, color: RED, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", marginTop: 4 }}>Retry</button>
         </div>
       )}
 
       {/* ── Empty ── */}
       {!isLoading && !isError && games.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-sm font-bold" style={{ color: FG }}>No games found</p>
-          <p className="text-xs mt-1" style={{ color: MUTED }}>
-            {sportFilter !== "ALL"
-              ? `No ${sportFilter} games today`
-              : "No games found across all sports"}
+        <div style={{ textAlign: "center", padding: "32px 0" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: FG, margin: 0 }}>No games found</p>
+          <p style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+            {sportFilter !== "ALL" ? `No ${sportFilter} games today` : "No games found across all sports"}
           </p>
         </div>
       )}
 
       {/* ── Game cards ── */}
       {!isLoading && games.length > 0 && (
-        <div className="space-y-3">
+        <div>
           {games.map(g => (
-            <GameCard
-              key={g.gameId}
-              game={g}
-              expanded={expandedId === g.gameId}
-              onToggle={() => setExpandedId(expandedId === g.gameId ? null : g.gameId)}
-            />
+            <GameCard key={g.gameId} game={g} />
           ))}
         </div>
       )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      `}</style>
     </div>
   );
 }
