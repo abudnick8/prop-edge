@@ -847,18 +847,33 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               )}
 
               {/* ── Sharp Money Detail Row ───────────────────────────────────────── */}
-              {(bet as any).isSharpMoney && (bet as any).sharpMoneyScore != null && (
-                <div className="mt-2 rounded-lg px-3 py-1.5 border flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", borderColor: "rgba(139,92,246,0.25)" }}>
-                  <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Money Detected</span>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.49)" }}>Signal Strength</p>
-                      <p className="font-mono font-bold text-xs" style={{ color: "#c4b5fd" }}>{Math.round((bet as any).sharpMoneyScore)}/100</p>
-                    </div>
-                    <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(bet as any).sharpMoneyScore}%`, background: "linear-gradient(90deg, #7c3aed, #a855f7)" }} />
-                    </div>
+              {((bet as any).isSharpMoney || (bet as any).sharpMoneyScore > 0) && (bet as any).sharpMoneyScore != null && (
+                <div className="mt-2 rounded-lg px-3 py-2 border" style={{ background: "rgba(139,92,246,0.07)", borderColor: "rgba(139,92,246,0.25)" }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Signal</span>
+                    <span className="font-mono font-bold text-xs" style={{ color: "#c4b5fd" }}>{Math.round((bet as any).sharpMoneyScore)}/100</span>
                   </div>
+                  {/* Bar */}
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(139,92,246,0.15)" }}>
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${(bet as any).sharpMoneyScore}%`, background: "linear-gradient(90deg, #7c3aed, #a855f7)" }} />
+                  </div>
+                  {/* Public lean from ML odds if available */}
+                  {(bet as any).pinnacleML && (() => {
+                    const ml = (bet as any).pinnacleML as { home: number; away: number };
+                    const rawH = ml.home < 0 ? (-ml.home)/(-ml.home+100)*100 : 100/(ml.home+100)*100;
+                    const rawA = ml.away < 0 ? (-ml.away)/(-ml.away+100)*100 : 100/(ml.away+100)*100;
+                    const tot = rawH + rawA;
+                    const homeImp = (rawH/tot)*100;
+                    return (
+                      <div className="flex gap-2 mt-1.5">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(139,92,246,0.15)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${homeImp}%`, background: "#a855f7" }} />
+                        </div>
+                        <span className="text-[9px]" style={{ color: "#a78bfa" }}>{homeImp.toFixed(0)}% home implied</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
