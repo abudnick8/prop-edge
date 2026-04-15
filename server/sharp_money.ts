@@ -577,8 +577,17 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
   }
 
   if (matchups.length === 0) {
-    SPORT_CACHE.set(sport, { games: [], ts: Date.now() });
-    return [];
+    // ── Fallback: ESPN/DraftKings odds (free, no key) ──────────────────────
+    console.log(`[SharpMoney] ${sport}: Pinnacle returned 0 matchups — trying ESPN fallback`);
+    try {
+      const fallbackGames = await fetchSharpMoneyFallback(sport);
+      SPORT_CACHE.set(sport, { games: fallbackGames, ts: Date.now() });
+      return fallbackGames;
+    } catch (e: any) {
+      console.warn(`[SharpMoney] ${sport}: ESPN fallback also failed: ${e.message}`);
+      SPORT_CACHE.set(sport, { games: [], ts: Date.now() });
+      return [];
+    }
   }
 
   console.log(`[SharpMoney] ${sport}: ${matchups.length} matchups from Pinnacle`);
@@ -668,6 +677,24 @@ export async function fetchSharpMoneyBySport(sport: string): Promise<SharpGameDa
     results.push(gameData);
   }
 
+  // ── Gap-fill: add ESPN games that Pinnacle didn't cover ────────────────
+  try {
+    const espnGames = await fetchEspnOdds(sport);
+    for (const eg of espnGames) {
+      const alreadyCovered = results.some(r =>
+        teamMatch(r.homeTeam, eg.homeTeam) || teamMatch(r.awayTeam, eg.awayTeam)
+      );
+      if (!alreadyCovered) {
+        console.log(`[SharpMoney] ${sport}: gap-filling ${eg.awayTeam} @ ${eg.homeTeam} from ESPN`);
+        const fallback = await fetchSharpMoneyFallback(sport);
+        const match = fallback.find(f =>
+          teamMatch(f.homeTeam, eg.homeTeam) || teamMatch(f.awayTeam, eg.awayTeam)
+        );
+        if (match) results.push(match);
+      }
+    }
+  } catch { /* gap-fill is best-effort */ }
+
   const sorted = results.sort((a, b) => b.sharpScore - a.sharpScore);
   SPORT_CACHE.set(sport, { games: sorted, ts: Date.now() });
   return sorted;
@@ -679,4 +706,207 @@ export async function fetchSharpMoneyForGame(sport: string, homeTeam: string, aw
     (teamMatch(g.homeTeam, homeTeam) || teamMatch(g.awayTeam, homeTeam)) &&
     (teamMatch(g.homeTeam, awayTeam) || teamMatch(g.awayTeam, awayTeam))
   ) ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FALLBACK: ESPN DraftKings Odds
+// Free, no key, no quota. Used when Pinnacle Guest API returns no games.
+// Provides: spread, total, ML, open line (for RLM calc without ActionNetwork)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ESPN_SPORT_PATHS: Record<string, { sport: string; league: string }> = {
+  NBA: { sport: "basketball", league: "nba" },
+  MLB: { sport: "baseball",   league: "mlb" },
+  NHL: { sport: "hockey",     league: "nhl" },
+  NFL: { sport: "football",   league: "nfl" },
+};
+
+interface EspnGameOdds {
+  eventId:   string;
+  homeTeam:  string;
+  awayTeam:  string;
+  startTime: string | null;
+  spread:    number | null;   // home spread (DraftKings)
+  total:     number | null;
+  mlHome:    number | null;
+  mlAway:    number | null;
+  openSpread: number | null;  // for RLM detection
+  currSpread: number | null;
+  openTotal:  number | null;
+  currTotal:  number | null;
+}
+
+async function fetchEspnOdds(sport: string): Promise<EspnGameOdds[]> {
+  const paths = ESPN_SPORT_PATHS[sport];
+  if (!paths) return [];
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const sbUrl = `https://site.api.espn.com/apis/site/v2/sports/${paths.sport}/${paths.league}/scoreboard?dates=${today}`;
+
+  const sbRes = await fetch(sbUrl, {
+    headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!sbRes.ok) return [];
+
+  const sbData: any = await sbRes.json();
+  const events: any[] = sbData.events || [];
+  const results: EspnGameOdds[] = [];
+
+  for (const ev of events) {
+    const comp = (ev.competitions || [])[0];
+    if (!comp) continue;
+
+    const competitors: any[] = comp.competitors || [];
+    const homeComp = competitors.find((c: any) => c.homeAway === "home");
+    const awayComp = competitors.find((c: any) => c.homeAway === "away");
+    if (!homeComp || !awayComp) continue;
+
+    const homeTeam = homeComp.team?.displayName || homeComp.team?.name || "";
+    const awayTeam = awayComp.team?.displayName || awayComp.team?.name || "";
+    const eventId  = ev.id;
+
+    // Fetch odds from ESPN core API
+    try {
+      const oddsUrl = `https://sports.core.api.espn.com/v2/sports/${paths.sport}/leagues/${paths.league}/events/${eventId}/competitions/${eventId}/odds?limit=5`;
+      const oddsRes = await fetch(oddsUrl, {
+        headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!oddsRes.ok) continue;
+
+      const oddsData: any = await oddsRes.json();
+      const items: any[] = oddsData.items || [];
+      if (!items.length) continue;
+
+      // Use first provider (DraftKings)
+      const odds = items[0];
+      const homeOdds = odds.homeTeamOdds || {};
+      const awayOdds = odds.awayTeamOdds || {};
+
+      // Parse open/current spread from home perspective
+      const parseAmerican = (v: any): number | null => {
+        if (v == null) return null;
+        const n = parseFloat(String(v).replace(/[^0-9.\-+]/g, ""));
+        return isNaN(n) ? null : n;
+      };
+
+      const openSpreadRaw  = homeOdds.open?.pointSpread?.american  ?? awayOdds.open?.pointSpread?.american;
+      const currSpreadRaw  = homeOdds.current?.pointSpread?.american ?? awayOdds.current?.pointSpread?.american;
+
+      results.push({
+        eventId,
+        homeTeam,
+        awayTeam,
+        startTime: ev.date || null,
+        spread:    typeof odds.spread    === "number" ? odds.spread    : null,
+        total:     typeof odds.overUnder === "number" ? odds.overUnder : null,
+        mlHome:    typeof homeOdds.moneyLine === "number" ? homeOdds.moneyLine : null,
+        mlAway:    typeof awayOdds.moneyLine === "number" ? awayOdds.moneyLine : null,
+        openSpread: parseAmerican(openSpreadRaw),
+        currSpread: parseAmerican(currSpreadRaw),
+        openTotal:  null, // ESPN doesn't expose open total
+        currTotal:  null,
+      });
+    } catch {
+      // skip this game's odds on error
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Fallback sharp scoring when Pinnacle is unavailable.
+ * Uses ESPN/DraftKings as the "soft book" baseline and calculates
+ * RLM purely from open vs current line movement.
+ */
+async function fetchSharpMoneyFallback(sport: string): Promise<SharpGameData[]> {
+  const espnGames = await fetchEspnOdds(sport);
+  if (!espnGames.length) return [];
+
+  console.log(`[SharpMoney] ${sport}: using ESPN fallback — ${espnGames.length} games`);
+  const results: SharpGameData[] = [];
+
+  for (const eg of espnGames) {
+    const actionResult = await Promise.allSettled([
+      fetchActionData(sport, eg.homeTeam, eg.awayTeam),
+    ]);
+    const action = actionResult[0].status === "fulfilled" ? actionResult[0].value : null;
+
+    // Build a synthetic PinnacleOdds from DraftKings (no divergence, only RLM)
+    const syntheticPin = { spread: eg.spread, total: eg.total, mlHome: eg.mlHome, mlAway: eg.mlAway };
+
+    // Build synthetic action data from ESPN open/current if ActionNetwork fails
+    const syntheticAction: ActionData | null = action ?? (
+      eg.openSpread !== null && eg.currSpread !== null ? {
+        spreadHomePct: null, spreadHomeMoneyPct: null,
+        overPct: null, overMoneyPct: null,
+        mlHomePct: null, mlHomeMoneyPct: null,
+        openSpread: eg.openSpread,
+        currentSpread: eg.currSpread,
+        openTotal: eg.openTotal,
+        currentTotal: eg.currTotal,
+        totalBets: null,
+      } : null
+    );
+
+    const { score, signals, direction, rlmDetected, rlmSide, rlmDescription, spreadDivergence, totalDivergence } =
+      buildSharpScore(syntheticPin, null, syntheticAction);
+
+    const sources: string[] = ["ESPN/DraftKings (fallback)"];
+    if (action) sources.push("ActionNetwork");
+
+    results.push({
+      gameId:    `${sport}-espn-${eg.eventId}`,
+      sport,
+      homeTeam:  eg.homeTeam,
+      awayTeam:  eg.awayTeam,
+      startTime: eg.startTime,
+
+      pinnacleSpread: null,
+      pinnacleTotal:  null,
+      pinnacleML:     null,
+
+      softSpread: eg.spread,
+      softTotal:  eg.total,
+      softML:     (eg.mlHome !== null && eg.mlAway !== null)
+                    ? { home: eg.mlHome, away: eg.mlAway }
+                    : null,
+
+      spreadDivergence,
+      totalDivergence,
+      mlDivergence: null,
+
+      sharpBooksAgree: false,
+      sharpSide: direction === "neutral" ? null : (direction as "home" | "away" | "over" | "under"),
+
+      publicBetPct: {
+        home:  action?.mlHomePct    ?? action?.spreadHomePct ?? null,
+        away:  action ? (action.spreadHomePct != null ? 100 - action.spreadHomePct : null) : null,
+        over:  action?.overPct      ?? null,
+        under: action?.overPct != null ? 100 - action.overPct : null,
+      },
+      publicMoneyPct: {
+        home:  action?.mlHomeMoneyPct ?? action?.spreadHomeMoneyPct ?? null,
+        away:  action ? (action.mlHomeMoneyPct != null ? 100 - action.mlHomeMoneyPct : null) : null,
+        over:  action?.overMoneyPct  ?? null,
+        under: action?.overMoneyPct != null ? 100 - action.overMoneyPct : null,
+      },
+      totalBets: action?.totalBets ?? null,
+
+      rlmDetected,
+      rlmSide,
+      rlmDescription,
+
+      sharpScore:      score,
+      sharpSignals:    signals.length ? signals : [`DraftKings line: ${eg.spread ?? "N/A"} | total: ${eg.total ?? "N/A"} | ML: ${eg.mlHome ?? "N/A"} / ${eg.mlAway ?? "N/A"}`],
+      sharpDirection:  direction,
+
+      sources,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return results.sort((a, b) => b.sharpScore - a.sharpScore);
 }
