@@ -92,18 +92,22 @@ async function syncMLDataToGitHub(): Promise<void> {
       const content64 = fs.readFileSync(filepath).toString("base64");
       const remotePath = `server/ml_data/${filename}`;
       const apiUrl = `https://api.github.com/repos/${repo}/contents/${remotePath}`;
+      const ghHeaders = {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "clubhouse-iq-ml-sync",
+      };
 
-      // Get current SHA (needed for update)
+      // Get current SHA (needed for update — file may or may not exist)
       let sha: string | undefined;
       try {
-        const getResp = await fetch(`${apiUrl}?ref=${branch}`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-        });
+        const getResp = await fetch(`${apiUrl}?ref=${branch}`, { headers: ghHeaders });
         if (getResp.ok) {
           const getJson = await getResp.json() as any;
           sha = getJson.sha;
         }
-      } catch { /* file doesn't exist yet */ }
+      } catch { /* file doesn't exist yet — create new */ }
 
       const body: Record<string, any> = {
         message: `[ML Auto-sync] Update ${filename}`,
@@ -114,19 +118,15 @@ async function syncMLDataToGitHub(): Promise<void> {
 
       const putResp = await fetch(apiUrl, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-        },
+        headers: ghHeaders,
         body: JSON.stringify(body),
       });
 
       if (putResp.ok) {
-        console.log(`[MLSync] Synced ${filename} to GitHub`);
+        console.log(`[MLSync] ✓ Synced ${filename} to GitHub`);
       } else {
         const err = await putResp.text();
-        console.warn(`[MLSync] Failed to sync ${filename}: ${err.slice(0, 200)}`);
+        console.warn(`[MLSync] ✗ Failed to sync ${filename}: ${putResp.status} ${err.slice(0, 300)}`);
       }
     } catch (e: any) {
       console.warn(`[MLSync] Error syncing ${filename}:`, e.message);
@@ -190,7 +190,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
     try {
       const apiUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
       const resp    = await fetch(apiUrl, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" },
       });
       if (!resp.ok) continue;
       const json    = await resp.json() as any;
