@@ -1,0 +1,42 @@
+{
+  "sport_weights": {
+    "NBA": 0.0,
+    "NFL": 0.0,
+    "MLB": 0.0,
+    "NHL": 0.0
+  },
+  "bettype_weights": {
+    "player_prop": 0.0,
+    "spread": 0.0,
+    "total": 0.0,
+    "moneyline": 0.0
+  },
+  "conf_tier_cal": {
+    "elite": 0.0,
+    "high": 0.0,
+    "medium": 0.0,
+    "low": 0.0
+  },
+  "edge_tier_weights": {
+    "strong_over": 0.0,
+    "moderate_over": 0.0,
+    "flat": 0.0,
+    "moderate_under": 0.0,
+    "strong_under": 0.0
+  },
+  "form_tier_weights": {
+    "hot": 0.0,
+    "above_avg": 0.0,
+    "neutral": 0.0,
+    "cold": 0.0
+  },
+  "pick_side_weights": {
+    "OVER": 0.0,
+    "UNDER": 0.0
+  },
+  "combo_weights": {},
+  "overall_win_rate": null,
+  "sample_size": 0,
+  "last_run": null,
+  "version": "1.0"
+}
