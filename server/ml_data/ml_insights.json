@@ -1,0 +1,18 @@
+{
+  "overall": {
+    "total": 0,
+    "won": 0,
+    "lost": 0,
+    "push": 0,
+    "win_rate": null
+  },
+  "by_sport": {},
+  "by_bet_type": {},
+  "by_conf_tier": {},
+  "by_week": [],
+  "strengths": [],
+  "weaknesses": [],
+  "patterns": [],
+  "last_run": null,
+  "sample_size": 0
+}
