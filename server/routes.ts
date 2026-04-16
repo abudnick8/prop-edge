@@ -1220,6 +1220,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // GET /api/ml/export — dump all ml_data files as JSON for backup
+  app.get("/api/ml/export", (_req, res) => {
+    try {
+      const dir = path.join(__dirname, "ml_data");
+      const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
+      const result: Record<string, any> = {};
+      for (const f of files) {
+        const fp = path.join(dir, f);
+        result[f] = fs.existsSync(fp) ? JSON.parse(fs.readFileSync(fp, "utf8")) : null;
+      }
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Scanner ──────────────────────────────────────────────────────────────
   app.post("/api/scan", async (req, res) => {
     try {
