@@ -12358,5 +12358,25 @@
     "sport": "MLB",
     "statCategory": null,
     "title": "[TAKE UNDER 1.5 @ -317] Sal Frelick — Home Runs"
+  },
+  {
+    "awayTeam": "Milwaukee vs Miami: Home Runs",
+    "betId": "kalshi-prop-KXMLBHR-26APR171910MILMIA-MILSFRELICK10-1",
+    "betType": "player_prop",
+    "confidenceScore": 60,
+    "edgeGrade": null,
+    "edgeScore": null,
+    "edgeSizing": null,
+    "formEdgePct": null,
+    "gameTime": "2026-04-18T01:00:00.000Z",
+    "hitRate": null,
+    "homeTeam": null,
+    "line": 0.5,
+    "loggedAt": "2026-04-17T11:33:02.074Z",
+    "pickSide": null,
+    "playerName": "Sal Frelick",
+    "sport": "MLB",
+    "statCategory": null,
+    "title": "[TAKE UNDER 0.5 @ -1011] Sal Frelick — Home Runs"
   }
 ]
