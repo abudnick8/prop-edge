@@ -24,7 +24,7 @@ type PickSnapshot = {
   homeTeam:        string | null;
   awayTeam:        string | null;
   playerName:      string | null;
-  statCategory:    string | null;
+  statCategory:    string | null;    // e.g. "hits", "home_runs" from teamStats.statType
   line:            number | null;
   pickSide:        string | null;    // "home" | "away" | "over" | "under"
   confidenceScore: number | null;
@@ -109,7 +109,7 @@ export function logPicks(bets: any[]): void {
       homeTeam:        bet.homeTeam   ?? null,
       awayTeam:        bet.awayTeam   ?? null,
       playerName:      bet.playerName ?? null,
-      statCategory:    bet.statCategory ?? null,
+      statCategory:    bet.statCategory ?? (bet.teamStats as any)?.statType ?? null,
       line:            bet.line        ?? null,
       pickSide,
       confidenceScore: bet.confidenceScore ?? null,
