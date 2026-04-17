@@ -3,22 +3,22 @@
     "moneyline": 0,
     "player_prop": 0,
     "spread": 9.38,
-    "total": 0
+    "total": -3.12
   },
   "combo_weights": {
     "bet_type:spread|conf_tier:low": 5,
     "bet_type:spread|conf_tier:medium": 11.36,
     "sport:MLB|conf_tier:medium": 6.25,
-    "sport:NHL|conf_tier:medium": 5
+    "sport:MLB|edge_tier:flat": 5
   },
   "conf_tier_cal": {
     "elite": 0,
     "high": 0,
     "low": 0,
-    "medium": 5.77
+    "medium": 3.85
   },
   "edge_tier_weights": {
-    "flat": 4.69,
+    "flat": 3.12,
     "moderate_over": 0,
     "moderate_under": 0,
     "strong_over": 0,
@@ -28,20 +28,21 @@
     "above_avg": 0,
     "cold": 0,
     "hot": 0,
-    "neutral": 4.69
+    "neutral": 3.12
   },
-  "last_run": "2026-04-17T18:54:58.470289",
-  "overall_win_rate": 0.594,
+  "last_run": "2026-04-17T20:57:23.706561",
+  "overall_win_rate": 0.562,
   "pick_side_weights": {
-    "OVER": 0,
-    "UNDER": 0
+    "OVER": -3.57,
+    "UNDER": -2.78
   },
   "sample_size": 32,
   "sport_weights": {
     "MLB": 5,
     "NBA": 0,
     "NFL": 0,
-    "NHL": 4.17
+    "NHL": 0
   },
-  "version": "1.0"
+  "stat_category_weights": {},
+  "version": "2.0"
 }
