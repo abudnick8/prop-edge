@@ -11,6 +11,7 @@ import { startSmartWalletTracker, getSmartWallets, getSignalMap, getSignalForMar
 import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
+import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
 
 // ── ML Engine helpers ────────────────────────────────────────────────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
@@ -54,7 +55,7 @@ function runMLEngine(): Promise<Record<string, any>> {
 // Run any Python script in the server/ dir and return its JSON output
 function runPythonScript(scriptName: string, args: string[] = []): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), "server", scriptName);
+    const scriptPath = path.join(__dirname, scriptName);
     const proc = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
@@ -76,12 +77,17 @@ function runPythonScript(scriptName: string, args: string[] = []): Promise<Recor
 // Sync ml_data/ to GitHub so outcomes survive Railway redeploys
 // Uses the GitHub API to upsert files — no git CLI needed on Railway
 async function syncMLDataToGitHub(): Promise<void> {
-  const token  = process.env.GITHUB_TOKEN;
-  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";   // owner/repo
+  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
-  if (!token) { console.warn("[MLSync] GITHUB_TOKEN not set — skipping sync"); return; }
+  if (!token) {
+    console.error("[MLSync] CRITICAL: GITHUB_TOKEN env var not set on Railway — ML data will be lost on redeploy!");
+    console.error("[MLSync] Set GITHUB_TOKEN in Railway dashboard > Variables > Add variable");
+    return;
+  }
+  console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
-  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const DATA_DIR = path.join(__dirname, "ml_data");
   const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
 
   for (const filename of files) {
@@ -91,18 +97,22 @@ async function syncMLDataToGitHub(): Promise<void> {
       const content64 = fs.readFileSync(filepath).toString("base64");
       const remotePath = `server/ml_data/${filename}`;
       const apiUrl = `https://api.github.com/repos/${repo}/contents/${remotePath}`;
+      const ghHeaders = {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "clubhouse-iq-ml-sync",
+      };
 
-      // Get current SHA (needed for update)
+      // Get current SHA (needed for update — file may or may not exist)
       let sha: string | undefined;
       try {
-        const getResp = await fetch(`${apiUrl}?ref=${branch}`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-        });
+        const getResp = await fetch(`${apiUrl}?ref=${branch}`, { headers: ghHeaders });
         if (getResp.ok) {
           const getJson = await getResp.json() as any;
           sha = getJson.sha;
         }
-      } catch { /* file doesn't exist yet */ }
+      } catch { /* file doesn't exist yet — create new */ }
 
       const body: Record<string, any> = {
         message: `[ML Auto-sync] Update ${filename}`,
@@ -113,19 +123,15 @@ async function syncMLDataToGitHub(): Promise<void> {
 
       const putResp = await fetch(apiUrl, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-        },
+        headers: ghHeaders,
         body: JSON.stringify(body),
       });
 
       if (putResp.ok) {
-        console.log(`[MLSync] Synced ${filename} to GitHub`);
+        console.log(`[MLSync] ✓ Synced ${filename} to GitHub`);
       } else {
         const err = await putResp.text();
-        console.warn(`[MLSync] Failed to sync ${filename}: ${err.slice(0, 200)}`);
+        console.warn(`[MLSync] ✗ Failed to sync ${filename}: ${putResp.status} ${err.slice(0, 300)}`);
       }
     } catch (e: any) {
       console.warn(`[MLSync] Error syncing ${filename}:`, e.message);
@@ -133,14 +139,54 @@ async function syncMLDataToGitHub(): Promise<void> {
   }
 }
 
+// Lightweight snapshot-only sync — runs after every scanner pick log
+// Keeps pick_snapshots.json backed up on GitHub so restarts don't lose picks
+async function syncSnapshotsToGitHub(): Promise<void> {
+  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
+  const branch = "main";
+  if (!token) return;
+
+  const DATA_DIR = path.join(__dirname, "ml_data");
+  const filename = "pick_snapshots.json";
+  const localPath = path.join(DATA_DIR, filename);
+  if (!fs.existsSync(localPath)) return;
+
+  try {
+    const content  = fs.readFileSync(localPath);
+    const b64      = content.toString("base64");
+    const apiUrl   = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}`;
+    const headers  = { Authorization: `token ${token}`, "Content-Type": "application/json", "User-Agent": "clubhouse-iq" };
+
+    // Get current SHA (needed for update)
+    let sha: string | undefined;
+    const getResp = await fetch(`${apiUrl}?ref=${branch}`, { headers });
+    if (getResp.ok) {
+      const j = await getResp.json() as any;
+      sha = j.sha;
+    }
+
+    const body: any = { message: "chore: sync pick_snapshots", content: b64, branch };
+    if (sha) body.sha = sha;
+
+    const putResp = await fetch(apiUrl, { method: "PUT", headers, body: JSON.stringify(body) });
+    if (!putResp.ok) {
+      const err = await putResp.text();
+      console.warn(`[MLSync] snapshot sync failed: ${err.slice(0, 120)}`);
+    }
+  } catch (e: any) {
+    console.warn(`[MLSync] snapshot sync error: ${e.message}`);
+  }
+}
+
 // Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
 async function pullMLDataFromGitHub(): Promise<void> {
-  const token  = process.env.GITHUB_TOKEN;
+  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
   if (!token) return;
 
-  const DATA_DIR = path.join(process.cwd(), "server", "ml_data");
+  const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
   const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
@@ -149,7 +195,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
     try {
       const apiUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
       const resp    = await fetch(apiUrl, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" },
       });
       if (!resp.ok) continue;
       const json    = await resp.json() as any;
@@ -319,8 +365,8 @@ const ESPN_ID_CACHE: Record<string, string> = {
   "Sidney Crosby": "3114",              "Evgeni Malkin": "3124",
   "Erik Karlsson": "5164",              "Cale Makar": "4233563",
   "Charlie McAvoy": "3988803",          "Sam Bennett": "3114732",
-  "David Pastrnak": "3114778",          "Roman Josi": "5180",
-  "John Tavares": "5160",               "Nathan MacKinnon": "3041969",
+  "Roman Josi": "5180",
+  "John Tavares": "5160",
   "Alex Ovechkin": "3101",              "Mitch Marner": "4063404",
   // ── MLB (verified via ESPN site v2 team roster scan) ─────────────────────
   "Shohei Ohtani": "39832",            "Mike Trout": "30836",
@@ -472,7 +518,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
             if (seenEventIds.has(eid)) continue; // deduplicate across seasons
             seenEventIds.add(eid);
             const evInfo = eventsMap[eid] ?? {};
-            entries.push({ entry: ev, eventInfo: evInfo, labels });
+            entries.push({ entry: ev, eventInfo: evInfo, labels: labels ?? [] });
           }
         }
       }
@@ -491,7 +537,7 @@ async function fetchESPNGameLog(playerName: string, sport: string): Promise<any>
         )
       );
 
-      let allGameEntries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+      let allGameEntries: Array<{ entry: any; eventInfo: any; labels?: string[] }> = [];
       for (const result of seasonFetches) {
         if (result.status === "fulfilled") {
           allGameEntries.push(...parseV3Response(result.value.data));
@@ -835,7 +881,7 @@ let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
   // Ensure ml_data directory exists
-  const ML_DATA_RUNTIME = path.join(process.cwd(), "server", "ml_data");
+  const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");
   if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
   ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json"].forEach(f => {
     const p = path.join(ML_DATA_RUNTIME, f);
@@ -843,7 +889,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Pull ML data from GitHub on startup so outcomes survive redeploys
-  pullMLDataFromGitHub().catch((e: any) => console.warn("[MLSync] startup pull error:", e.message));
+  // We await this before scheduling the startup scan so graded picks are ready immediately
+  let mlPullDone = false;
+  pullMLDataFromGitHub()
+    .then(() => { mlPullDone = true; console.log("[MLSync] startup pull complete"); })
+    .catch((e: any) => { mlPullDone = true; console.warn("[MLSync] startup pull error:", e.message); });
 
   // Start smart wallet tracker at server boot (fire-and-forget)
   startSmartWalletTracker();
@@ -888,7 +938,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Merge lotto + regular props per sport
       const limitedProps: any[] = [];
-      const allSports = new Set([...Object.keys(propsBySport), ...Object.keys(lottoBySport)]);
+      const allSports = Array.from(new Set([...Object.keys(propsBySport), ...Object.keys(lottoBySport)]));
       for (const sport of allSports) {
         limitedProps.push(...(lottoBySport[sport] ?? []));
         limitedProps.push(...(propsBySport[sport] ?? []));
@@ -931,7 +981,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             const awayLast = (b.awayTeam.split(" ").pop() ?? "").toLowerCase();
             const homeLast = (b.homeTeam.split(" ").pop() ?? "").toLowerCase();
             if (awayLast.length > 3 && homeLast.length > 3) {
-              for (const [k, v] of GAME_TIME_LOOKUP) {
+              for (const [k, v] of Array.from(GAME_TIME_LOOKUP)) {
                 if (k.includes(awayLast) && k.includes(homeLast)) {
                   matched = v;
                   break;
@@ -1160,8 +1210,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/snapshots — how many picks have been logged
   app.get("/api/ml/snapshots", (_req, res) => {
     try {
-      const snapFile = path.join(process.cwd(), "server", "ml_data", "pick_snapshots.json");
-      const outFile  = path.join(process.cwd(), "server", "ml_data", "bet_outcome_log.json");
+      const snapFile = path.join(__dirname, "ml_data", "pick_snapshots.json");
+      const outFile  = path.join(__dirname, "ml_data", "bet_outcome_log.json");
       const snaps    = fs.existsSync(snapFile)  ? JSON.parse(fs.readFileSync(snapFile,  "utf8")) : [];
       const outcomes = fs.existsSync(outFile)   ? JSON.parse(fs.readFileSync(outFile,   "utf8")) : [];
       const graded   = outcomes.filter((o: any) => o.result && o.result !== "open");
@@ -1174,6 +1224,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         won, lost,
         win_rate:  graded.length > 0 ? Math.round((won / (won + lost || 1)) * 1000) / 10 : null,
       });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/ml/export — dump all ml_data files as JSON for backup
+  app.get("/api/ml/export", (_req, res) => {
+    try {
+      const dir = path.join(__dirname, "ml_data");
+      const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
+      const result: Record<string, any> = {};
+      for (const f of files) {
+        const fp = path.join(dir, f);
+        result[f] = fs.existsSync(fp) ? JSON.parse(fs.readFileSync(fp, "utf8")) : null;
+      }
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -1276,7 +1342,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (words.length < 2) return null;
     let best: number | null = null;
     let bestScore = 0;
-    for (const [key, prob] of manifoldMap) {
+    for (const [key, prob] of Array.from(manifoldMap)) {
       const overlap = words.filter(w => key.includes(w)).length;
       const score = overlap / words.length;
       if (score >= 0.55 && score > bestScore) {
@@ -1321,12 +1387,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       //   - High-confluence (multi-signal): 20–25%
       //   - Single-source only (no Manifold/CLOB confirmation): use 10% floor
       //   - Overpriced markets: fade target = entry - same ROI (price must fall)
-      function rateMarket(
+      const rateMarket = (
         title: string,
         marketPrice: number,
         clobMid: number | null,
         extraSignals?: { isWhale?: boolean; crossValidated?: boolean }
-      ) {
+      ) => {
         const signals: number[] = [marketPrice];
         if (clobMid !== null) signals.push(clobMid);
         const manifoldProb = findManifoldMatch(title, manifoldMap);
@@ -1556,7 +1622,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Resolve a raw city/nickname string to its full franchise name.
       // Tries sport-specific lookup first, then all other sports if sport is OTHER/unknown.
-      function resolveFullTeamName(raw: string, sport: string): string {
+      const resolveFullTeamName = (raw: string, sport: string): string  =>{
         const s = (sport || "OTHER").toUpperCase();
         const key = raw.trim();
         // Direct match in sport-specific table
@@ -1580,7 +1646,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // ── Sport classifier ──────────────────────────────────────────────────
-      function classifySport(title: string, tags: string[], category: string): string {
+      const classifySport = (title: string, tags: string[], category: string): string  =>{
         const t = title.toLowerCase();
         const c = (category ?? "").toLowerCase();
         const allText = t + " " + tags.join(" ").toLowerCase() + " " + c;
@@ -1611,7 +1677,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Resolve a raw Polymarket question/title so city-only or nickname team references
       // become full franchise names.  e.g. "Will Boston win?" → "Will Boston Celtics win?"
-      function resolvePolymarketTitle(rawTitle: string): string {
+      const resolvePolymarketTitle = (rawTitle: string): string  =>{
         if (!rawTitle) return rawTitle;
         const tLow = rawTitle.toLowerCase();
 
@@ -1832,7 +1898,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       //   "yes Derrick White: 2+,yes DeMar DeRozan: 10+,yes Julius Randle: 15+"
       // We parse these into a human-readable label + structured legs array.
       // Decode Kalshi ticker prefix → human-readable stat category
-      function kalshiStatFromTicker(ticker: string): string {
+      const kalshiStatFromTicker = (ticker: string): string  =>{
         const t = (ticker ?? "").toUpperCase();
         // NBA player props
         if (t.includes("NBAREBAST")) return "REB+AST";  // must check before REB/AST
@@ -1878,7 +1944,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return "";  // Non-player-prop — don't append anything
       }
 
-      function annotateTeamLeg(legText: string, dir: string, sport: string): string {
+      const annotateTeamLeg = (legText: string, dir: string, sport: string): string  =>{
         // If the leg is just a team name (no colon, no stat number, no condition words)
         // e.g. "Boston", "Minnesota", "Arsenal", "Oklahoma City"
         const hasColon      = legText.includes(":");
@@ -1965,7 +2031,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Extract a human-readable game matchup from a Kalshi event ticker.
       // Tickers look like: KXNBA-25-BOS-LAL, KXNHL-26-TOR-BOS, KXMLB-25-NYM-ATL, etc.
-      function gameFromEventTicker(ticker: string, sport?: string): string | null {
+      const gameFromEventTicker = (ticker: string, sport?: string): string | null  =>{
         if (!ticker) return null;
         // Strip the leading "KX<SPORT>-YY-" prefix, leaving "AWAY-HOME" team codes
         const m = ticker.match(/^KX(?:NBA|NHL|MLB|NFL|NCAAB|NCAAF)?[-_]?\d*[-_]?([A-Z]{2,4})[-_]([A-Z]{2,4})/i);
@@ -1991,15 +2057,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Detect a bare game total leg: "Over 205.5 points scored", "Under 6.5 runs", etc.
       // Returns true if the leg text is a game-level total with no team context.
-      function isBareTotal(legText: string): boolean {
+      const isBareTotal = (legText: string): boolean  =>{
         return /^(?:over|under)\s+[\d.]+\s+(?:points?|runs?|goals?|runs?|pts?)(?:\s+scored)?$/i.test(legText.trim());
       }
 
-      function cleanKalshiTitle(
+      const cleanKalshiTitle = (
         raw: string,
         mveLegs?: Array<{ market_ticker: string; event_ticker: string; side: string }>,
         sport?: string
-      ): { title: string; legs: string[] | null; isParlay: boolean } {
+      ): { title: string; legs: string[] | null; isParlay: boolean } => {
         if (!raw) return { title: raw, legs: null, isParlay: false };
 
         // ── Pattern A: player-prop parlay — starts with "yes/no Name: line"
@@ -2292,7 +2358,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Sort: today/within-24h markets FIRST, then whale alerts, then rating
       // isTodaySrv: fires if gameTime closes within next 24 hours OR is today's date
-      function isTodaySrv(gt: string | null): boolean {
+      const isTodaySrv = (gt: string | null): boolean  =>{
         if (!gt) return false;
         try {
           const t = new Date(gt).getTime();
@@ -3054,7 +3120,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Flatten all entries across all conference/division children
       const allEntries: any[] = [];
-      function extractEntries(node: any) {
+      const extractEntries = (node: any)  =>{
         const entries = node?.standings?.entries;
         if (Array.isArray(entries)) {
           allEntries.push(...entries);
@@ -3075,11 +3141,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // Parse each team's stats
-      function getStat(stats: any[], name: string): number {
+      const getStat = (stats: any[], name: string): number  =>{
         const s = stats.find((x: any) => x.name === name);
         return s ? parseFloat(s.value ?? s.displayValue ?? "0") || 0 : 0;
       }
-      function getStatStr(stats: any[], name: string): string {
+      const getStatStr = (stats: any[], name: string): string  =>{
         const s = stats.find((x: any) => x.name === name);
         return s ? (s.displayValue ?? "") : "";
       }
@@ -3120,7 +3186,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // Assign conference from standings children structure
-      function assignConference(node: any, confName: string) {
+      const assignConference = (node: any, confName: string)  =>{
         const entries = node?.standings?.entries;
         if (Array.isArray(entries)) {
           entries.forEach((e: any) => { e._conf = confName; });
@@ -4044,7 +4110,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const highConfCount = bets.filter((b) => (b.confidenceScore ?? 0) >= 85).length;
 
       // Helper: format a single bet for display/text
-      function betSummary(b: any, idx: number): string {
+      const betSummary = (b: any, idx: number): string  =>{
         const line = b.line != null ? ` | Line: ${b.line}` : "";
         const over = b.overOdds != null ? ` | Over: ${b.overOdds > 0 ? "+" : ""}${b.overOdds}` : "";
         const under = b.underOdds != null ? ` / Under: ${b.underOdds > 0 ? "+" : ""}${b.underOdds}` : "";
@@ -4056,7 +4122,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // Helper: serialize a bet for the relatedBets response
-      function serializeBet(b: any, reason: string) {
+      const serializeBet = (b: any, reason: string)  =>{
         return {
           id: b.id, title: b.title, sport: b.sport, betType: b.betType,
           playerName: b.playerName ?? null, homeTeam: b.homeTeam ?? null, awayTeam: b.awayTeam ?? null,
@@ -4549,7 +4615,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
 
     // Map TrackedProp statCategory → ESPN stat key(s) to try
-    function mapStatCategory(statCategory: string, sport: string): string[] {
+    const mapStatCategory = (statCategory: string, sport: string): string[]  =>{
       const cat = statCategory.toLowerCase();
       if (sport === "NBA") {
         if (cat.includes("point")) return ["pts", "points", "avgpoints"];
@@ -4591,7 +4657,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       return [];
     }
 
-    function extractStatValue(statsRecord: Record<string, number>, keys: string[]): number | null {
+    const extractStatValue = (statsRecord: Record<string, number>, keys: string[]): number | null  =>{
       for (const k of keys) {
         if (statsRecord[k] !== undefined) return statsRecord[k];
       }
@@ -4796,7 +4862,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
   };
-  setTimeout(() => startupScan(), 3000); // 3s delay for Railway to fully initialize
+  // Wait for ML pull to complete before first scan (or max 10s)
+  const waitForMLPull = (elapsed = 0) => {
+    if (mlPullDone || elapsed >= 10000) {
+      startupScan();
+    } else {
+      setTimeout(() => waitForMLPull(elapsed + 500), 500);
+    }
+  };
+  setTimeout(() => waitForMLPull(), 3000); // 3s base delay for Railway to fully initialize
 
   // ── 30-second live price poller — Kalshi + Polymarket only, no ESPN ────────
   livePollInterval = setInterval(async () => {
@@ -4874,6 +4948,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       broadcast("bets:updated", { scanned: result.scanned, total: allBets.length, auto: true });
       // Log picks for ML self-learning
       try { logPicks(allBets); } catch(e: any) { console.warn("[PickLogger] error:", e.message); }
+      // Sync snapshots to GitHub so they survive redeploys (fire-and-forget)
+      syncSnapshotsToGitHub().catch((e: any) => console.warn("[MLSync] snapshot sync error:", e.message));
       const highConf = allBets.filter((b: any) => (b.confidenceScore ?? 0) >= 85);
       if (highConf.length > 0) {
         broadcast("bets:highconf", { count: highConf.length, top: highConf.slice(0, 3).map((b: any) => ({ id: b.id, title: b.title, score: b.confidenceScore })) });
@@ -5054,6 +5130,42 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     try {
       await storage.dismissClvAlert(req.params.id);
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Sharp Money endpoints ───────────────────────────────────────────────────
+  // GET /api/sharp-money — all sports, top sharp plays today
+  app.get("/api/sharp-money", async (_req, res) => {
+    try {
+      const data = await fetchSharpMoneyAllSports();
+      res.json({ games: data, updatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/sharp-money/:sport — single sport (NBA/MLB/NHL/NFL)
+  app.get("/api/sharp-money/:sport", async (req, res) => {
+    try {
+      const sport = (req.params.sport || "").toUpperCase();
+      const data  = await fetchSharpMoneyBySport(sport);
+      res.json({ sport, games: data, updatedAt: new Date().toISOString() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/sharp-money/game/:sport/:home/:away — specific game
+  app.get("/api/sharp-money/game/:sport/:home/:away", async (req, res) => {
+    try {
+      const sport = (req.params.sport || "").toUpperCase();
+      const home  = decodeURIComponent(req.params.home || "");
+      const away  = decodeURIComponent(req.params.away || "");
+      const data  = await fetchSharpMoneyForGame(sport, home, away);
+      if (!data) return res.status(404).json({ error: "Game not found" });
+      res.json(data);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -6365,7 +6477,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch {}
 
       // Normalize string for fuzzy matching
-      function normStr(s: string): string {
+      const normStr = (s: string): string  =>{
         return (s ?? "").toLowerCase()
           .replace(/[^a-z0-9 ]/g, " ")
           .replace(/\s+/g, " ")
@@ -6373,7 +6485,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Count word overlap between two normalized strings
-      function wordOverlap(a: string, b: string): number {
+      const wordOverlap = (a: string, b: string): number  =>{
         const wa = new Set(a.split(" ").filter((w: string) => w.length > 2));
         const wb = b.split(" ").filter((w: string) => w.length > 2);
         return wb.filter((w: string) => wa.has(w)).length;

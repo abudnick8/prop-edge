@@ -414,21 +414,53 @@ def build_weights(patterns: dict, stats: dict) -> dict:
             if abs(v) >= 2:
                 combo_weights[k] = v
 
+    # Sport+edge_tier combos (added for MLB props)
+    for sport in sports:
+        for etier in edge_tiers:
+            k = f"sport:{sport}|edge_tier:{etier}"
+            v = get_adj(k)
+            if abs(v) >= 2:
+                combo_weights[k] = v
+
+    # Stat-category weights — MLB prop per-stat ML signal
+    # Track HITS, HOME_RUNS, STRIKEOUTS, RBIS, WALKS, TOTAL_BASES, RUNS, STOLEN_BASES
+    mlb_stat_cats = [
+        "HITS", "HOME_RUNS", "RBIS", "STRIKEOUTS", "WALKS",
+        "TOTAL_BASES", "RUNS", "STOLEN_BASES", "HITS_ALLOWED",
+        "EARNED_RUNS", "OUTS",
+        # NBA
+        "POINTS", "ASSISTS", "REBOUNDS", "BLOCKS", "STEALS",
+        # NHL
+        "GOALS", "SHOTS_ON_GOAL",
+    ]
+    stat_category_weights: dict[str, float] = {}
+    for sc in mlb_stat_cats:
+        v = get_adj(f"stat_category:{sc}")
+        if v != 0:
+            stat_category_weights[sc] = v
+        # Also add sport+stat combos for MLB (higher granularity signal)
+        for sport in ["MLB", "NBA", "NHL"]:
+            k = f"sport:{sport}|stat_category:{sc}"
+            sv = get_adj(k)
+            if abs(sv) >= 2:
+                combo_weights[k] = sv
+
     return {
-        "sport_weights":    {s: get_adj(f"sport:{s}") for s in sports},
-        "bettype_weights":  {t: get_adj(f"bet_type:{t}") for t in bet_types},
-        "conf_tier_cal":    {c: get_adj(f"conf_tier:{c}") for c in conf_tiers},
-        "edge_tier_weights": {e: get_adj(f"edge_tier:{e}") for e in edge_tiers},
-        "form_tier_weights": {f: get_adj(f"form_tier:{f}") for f in form_tiers},
-        "pick_side_weights": {
+        "sport_weights":       {s: get_adj(f"sport:{s}") for s in sports},
+        "bettype_weights":     {t: get_adj(f"bet_type:{t}") for t in bet_types},
+        "conf_tier_cal":       {c: get_adj(f"conf_tier:{c}") for c in conf_tiers},
+        "edge_tier_weights":   {e: get_adj(f"edge_tier:{e}") for e in edge_tiers},
+        "form_tier_weights":   {f: get_adj(f"form_tier:{f}") for f in form_tiers},
+        "pick_side_weights":   {
             "OVER":  get_adj("pick_side:OVER"),
             "UNDER": get_adj("pick_side:UNDER"),
         },
-        "combo_weights":    combo_weights,
-        "overall_win_rate": stats.get("win_rate", 0.5),
-        "sample_size":      stats.get("total", 0),
-        "last_run":         NOW.isoformat(),
-        "version":          "1.0",
+        "stat_category_weights": stat_category_weights,
+        "combo_weights":       combo_weights,
+        "overall_win_rate":    stats.get("win_rate", 0.5),
+        "sample_size":         stats.get("total", 0),
+        "last_run":            NOW.isoformat(),
+        "version":             "2.0",
     }
 
 # ── Main run ──────────────────────────────────────────────────────────────────

@@ -113,7 +113,9 @@ const MARKET_LABELS: Record<string, string> = {
   RECEPTIONS: "Receptions", COMPLETIONS: "Completions", PASSING_ATTEMPTS: "Pass Att",
   // MLB
   STRIKEOUTS: "Strikeouts", HITS: "Hits", TOTAL_BASES: "Total Bases", EARNED_RUNS: "Earned Runs",
-  HOME_RUNS: "Home Runs", WALKS_ALLOWED: "Walks",
+  HOME_RUNS: "Home Runs", WALKS_ALLOWED: "Walks", WALKS: "Walks",
+  RBIS: "RBIs", RBI: "RBIs", RUNS: "Runs", STOLEN_BASES: "Stolen Bases",
+  HITS_ALLOWED: "Hits Allowed", OUTS: "Outs",
   // NHL
   SHOTS_ON_GOAL: "Shots", GOALS: "Goals", SAVES: "Saves",
 };
@@ -200,7 +202,7 @@ function BookLinesRow({ bookLines, consensusLine }: { bookLines: Record<string, 
 }
 
 // ── Prop Card ─────────────────────────────────────────────────────────────────
-function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean }) {
+function PropCard({ prop, showGroup = false, dashboardMatch = null }: { prop: Prop; showGroup?: boolean; dashboardMatch?: { confidenceScore: number; pickSide: string | null } | null }) {
   const [expanded, setExpanded] = useState(false);
   const grpCfg = GROUP_CONFIG[prop.group as keyof typeof GROUP_CONFIG];
   const isOver = prop.outcome === "OVER";
@@ -238,6 +240,12 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded border inline-flex items-center gap-1"
                   style={{ color: "#facc15", background: "rgba(250,204,21,0.12)", borderColor: "rgba(250,204,21,0.30)" }}>
                   ⭐ 100% Club
+                </span>
+              )}
+              {dashboardMatch && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded border inline-flex items-center gap-1"
+                  style={{ color: "#047857", background: "rgba(5,150,105,0.14)", borderColor: "rgba(5,150,105,0.50)" }}>
+                  ✅ Dashboard Pick · {dashboardMatch.confidenceScore}
                 </span>
               )}
               {prop.impactingInjuries?.length > 0 && (
@@ -389,7 +397,7 @@ function PropCard({ prop, showGroup = false }: { prop: Prop; showGroup?: boolean
 }
 
 // ── Market Browser ─────────────────────────────────────────────────────────────
-function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
+function MarketBrowser({ markets, games, getDashboardMatch }: { markets: Prop[]; games: any[]; getDashboardMatch: (p: Prop) => { confidenceScore: number; pickSide: string | null } | null }) {
   const [search, setSearch]         = useState("");
   const [filterMarket, setFilter]   = useState("ALL");
   const [sortBy, setSort]           = useState<"hitRate" | "line" | "player">("hitRate");
@@ -452,7 +460,7 @@ function MarketBrowser({ markets, games }: { markets: Prop[]; games: any[] }) {
 
       <div className="flex flex-col gap-2">
         {filtered.slice(0, 80).map((p, i) => (
-          <PropCard key={`${p.playerName}-${p.marketName}-${i}`} prop={p} showGroup={false} />
+          <PropCard key={`${p.playerName}-${p.marketName}-${i}`} prop={p} showGroup={false} dashboardMatch={getDashboardMatch(p)} />
         ))}
       </div>
     </div>
@@ -473,6 +481,54 @@ export default function LinemateProps() {
     staleTime:       5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
+
+  // Fetch dashboard bets for confluence matching (same player+stat in both = stronger signal)
+  const { data: dashboardBets } = useQuery<any[]>({
+    queryKey:  ["/api/bets"],
+    queryFn:   () => apiRequest("GET", "/api/bets").then(r => r.json()),
+    staleTime: 5 * 60_000,
+  });
+
+  // Build a lookup: "playernamelower:marketupper" → { confidenceScore, pickSide }
+  const dashboardMap = (() => {
+    const map = new Map<string, { confidenceScore: number; pickSide: string | null }>();
+    if (!dashboardBets) return map;
+    for (const bet of dashboardBets) {
+      if (bet.betType !== "player_prop" || !bet.playerName) continue;
+      const ts = bet.teamStats as { statType?: string; pickSide?: string } | null;
+      const statRaw = (ts?.statType ?? "").toLowerCase().trim().replace(/\s+/g, "_");
+      if (!statRaw) continue;
+      const key = `${bet.playerName.toLowerCase().replace(/\s+/g, "")}:${statRaw}`;
+      const existing = map.get(key);
+      if (!existing || (bet.confidenceScore ?? 0) > existing.confidenceScore) {
+        map.set(key, { confidenceScore: bet.confidenceScore ?? 0, pickSide: ts?.pickSide ?? null });
+      }
+    }
+    return map;
+  })();
+
+  // Helper: look up dashboard match for a Linemate prop
+  function getDashboardMatch(prop: Prop) {
+    const playerKey = prop.playerName.toLowerCase().replace(/\s+/g, "");
+    // Map Linemate market name → scanner stat type keys
+    const MARKET_TO_STAT: Record<string, string[]> = {
+      POINTS: ["points"], ASSISTS: ["assists"], REBOUNDS: ["rebounds"],
+      BLOCKS: ["blocks"], STEALS: ["steals"], THREE_POINTERS_MADE: ["threes", "three_pointers_made"],
+      GOALS: ["goals"], SHOTS_ON_GOAL: ["shots", "shots_on_goal"], SAVES: ["saves"],
+      HITS: ["hits"], HOME_RUNS: ["home_runs"], RBIS: ["rbis", "rbi"],
+      STRIKEOUTS: ["strikeouts"], RUNS: ["runs", "runs_scored"],
+      TOTAL_BASES: ["total_bases"], STOLEN_BASES: ["stolen_bases"],
+      WALKS: ["walks"], HITS_ALLOWED: ["hits_allowed"], EARNED_RUNS: ["earned_runs"],
+      PASSING_YARDS: ["passing_yards"], RUSHING_YARDS: ["rushing_yards"],
+      RECEIVING_YARDS: ["receiving_yards"], RECEPTIONS: ["receptions"], TOUCHDOWNS: ["touchdowns"],
+    };
+    const statKeys = MARKET_TO_STAT[prop.marketName] ?? [prop.marketName.toLowerCase()];
+    for (const sk of statKeys) {
+      const match = dashboardMap.get(`${playerKey}:${sk}`);
+      if (match) return match;
+    }
+    return null;
+  }
 
   // All recommended picks flattened
   const allPicks = data
@@ -626,7 +682,7 @@ export default function LinemateProps() {
               ) : (
                 <div className="flex flex-col gap-2">
                   {filteredPicks.map((p, i) => (
-                    <PropCard key={`${p.playerName}-${p.marketName}-${i}`} prop={p} showGroup={pickGroup === "ALL"} />
+                    <PropCard key={`${p.playerName}-${p.marketName}-${i}`} prop={p} showGroup={pickGroup === "ALL"} dashboardMatch={getDashboardMatch(p)} />
                   ))}
                 </div>
               )}
@@ -635,7 +691,7 @@ export default function LinemateProps() {
 
           {/* Markets tab */}
           {pageTab === "markets" && (
-            <MarketBrowser markets={data.markets ?? []} games={data.games ?? []} />
+            <MarketBrowser markets={data.markets ?? []} games={data.games ?? []} getDashboardMatch={getDashboardMatch} />
           )}
         </>
       )}

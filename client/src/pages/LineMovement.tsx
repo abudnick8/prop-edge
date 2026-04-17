@@ -14,6 +14,7 @@ import { CheatSheetButton, CheatSheetInline } from "@/components/CheatSheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SteamIntelBanner } from "@/components/SteamIntelBanner";
+import { SharpMoneyPanel } from "@/components/SharpMoneyPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LineData {
@@ -1284,8 +1285,8 @@ function GameCard({ game }: { game: GameLine }) {
               <div className="rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap" style={{ background: rec.bg, border: `1px solid ${rec.color}30` }}>
                 <span className="text-[10px] font-black" style={{ color: rec.color }}>{rec.signal}</span>
                 <span className="text-xs font-bold text-foreground">{rec.play}</span>
-                <span className="text-[10px] text-muted-foreground flex-1">— {rec.reason}</span>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${rec.color}20`, color: rec.color }}>{rec.action}</span>
+                <span className="text-[10px] text-muted-foreground flex-1">— {rec.why}</span>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${rec.color}20`, color: rec.color }}>{rec.urgency}</span>
               </div>
             </div>
           )}
@@ -1599,6 +1600,11 @@ export default function LineMovement() {
       {showErrorsOnly && (
         <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
+
+      {/* ── Sharp Money Panel ── */}
+      <div className="mt-2">
+        <SharpMoneyPanel />
+      </div>
 
       {/* Content */}
       {isLoading ? (

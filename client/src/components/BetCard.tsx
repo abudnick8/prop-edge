@@ -254,7 +254,7 @@ function ConfidenceRing({ score }: { score: number }) {
             </feMerge>
           </filter>
         </defs>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(19,35,58,0.08)" strokeWidth="3.5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(19,35,58,0.15)" strokeWidth="3.5" />
         <circle
           cx={size/2} cy={size/2} r={r}
           fill="none"
@@ -274,7 +274,7 @@ function ConfidenceRing({ score }: { score: number }) {
         <span className="text-sm font-black font-mono leading-none" style={{ color }}>
           {score}
         </span>
-        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "rgba(19,35,58,0.49)" }}>
+        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "rgba(19,35,58,0.65)" }}>
           conf
         </span>
       </div>
@@ -303,9 +303,9 @@ function SportBadge({ sport }: { sport: string }) {
 function RiskBadge({ risk }: { risk: string | null }) {
   if (!risk) return null;
   const classes: Record<string, string> = {
-    low: "bg-green-500/10 text-green-400 border-green-500/30",
-    medium: "bg-yellow-500/10 text-amber-400 border-yellow-500/30",
-    high: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+    low: "border",
+    medium: "border",
+    high: "border",
   };
   const Icon = risk === "low" ? Shield : risk === "medium" ? TrendingUp : AlertTriangle;
   const riskEmoji = risk === "low" ? "✅" : risk === "medium" ? "⚠️" : "🔥";
@@ -373,12 +373,12 @@ interface SourceEntry {
 }
 
 const SOURCE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  kalshi:        { label: "Kalshi",      color: "#a78bfa", bg: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.30)" },
-  underdog:      { label: "Underdog",    color: "#f97316", bg: "rgba(249,115,22,0.10)",  border: "rgba(249,115,22,0.30)" },
-  draftkings:    { label: "DraftKings",  color: "#22c55e", bg: "rgba(34,197,94,0.10)",   border: "rgba(34,197,94,0.30)" },
-  polymarket:    { label: "Polymarket",  color: "#60a5fa", bg: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.30)" },
-  sportsgameodds:{ label: "SGO",         color: "#facc15", bg: "rgba(250,204,21,0.10)",  border: "rgba(250,204,21,0.30)" },
-  actionnetwork: { label: "ActNet",      color: "#34d399", bg: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.30)" },
+  kalshi:        { label: "Kalshi",      color: "#6d28d9", bg: "rgba(109,40,217,0.12)",  border: "rgba(109,40,217,0.50)" },
+  underdog:      { label: "Underdog",    color: "#c2410c", bg: "rgba(194,65,12,0.12)",   border: "rgba(194,65,12,0.50)" },
+  draftkings:    { label: "DraftKings",  color: "#15803d", bg: "rgba(21,128,61,0.12)",   border: "rgba(21,128,61,0.50)" },
+  polymarket:    { label: "Polymarket",  color: "#1d4ed8", bg: "rgba(29,78,216,0.12)",   border: "rgba(29,78,216,0.50)" },
+  sportsgameodds:{ label: "SGO",         color: "#92400e", bg: "rgba(146,64,14,0.12)",   border: "rgba(146,64,14,0.50)" },
+  actionnetwork: { label: "ActNet",      color: "#065f46", bg: "rgba(6,95,70,0.12)",     border: "rgba(6,95,70,0.50)" },
 };
 
 function fmtOdds(v: number | undefined): string {
@@ -392,21 +392,21 @@ function MultiSourceOddsStrip({ allSources, pickSide }: { allSources: SourceEntr
     <div
       className="flex flex-wrap gap-1.5 mb-3"
       style={{
-        background: "rgba(19,35,58,0.03)",
+        background: "rgba(19,35,58,0.06)",
         borderRadius: "8px",
         padding: "6px 8px",
-        border: "1px solid rgba(19,35,58,0.08)",
+        border: "1px solid rgba(19,35,58,0.18)",
       }}
     >
-      <span className="text-[9px] font-bold uppercase tracking-widest self-center mr-1" style={{ color: "rgba(19,35,58,0.49)" }}>
+      <span className="text-[9px] font-bold uppercase tracking-widest self-center mr-1" style={{ color: "rgba(19,35,58,0.65)" }}>
         Lines
       </span>
       {allSources.map((s, i) => {
         const cfg = SOURCE_CONFIG[s.source.toLowerCase()] ?? {
           label: s.source,
-          color: "#e2e8f0",
-          bg: "rgba(19,35,58,0.11)",
-          border: "rgba(19,35,58,0.21)",
+          color: "#131A24",
+          bg: "rgba(19,35,58,0.10)",
+          border: "rgba(19,35,58,0.30)",
         };
         // pick over or under odds based on pick side
         const relevantOdds = pickSide === "OVER" ? s.overOdds : pickSide === "UNDER" ? s.underOdds : (s.overOdds ?? s.underOdds);
@@ -515,7 +515,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const theme = SPORT_THEME[sport] ?? SPORT_THEME.NBA;
   const sportEmoji = SPORT_EMOJI[sport] ?? "🏅";
 
-  const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
+  const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number; lmHitRateL5?: number | null; lmHitRateL10?: number | null; lmConsensusLine?: number | null } | null;
+  // Linemate confluence: true when Props Hub (Linemate) confirms this pick
+  const hasLinemateConfluence = !!(bet.allSources && bet.allSources.some((s: any) => s.source === "linemate"));
+  const lmHitRateL5 = teamStats?.lmHitRateL5 ?? null;
+  const lmHitRateL10 = teamStats?.lmHitRateL10 ?? null;
   // Primary: teamStats.pickSide (set by Underdog/SGO scanner)
   // Fallback: parse from title "[TAKE OVER 25.5 @ -110] Player — Stat"
   const pickSideRaw = bet.betType === "player_prop" ? (
@@ -542,8 +546,8 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
       data-testid={`bet-card-${bet.id}`}
       className={`bet-card rounded-xl border relative overflow-hidden ${isHigh ? "bet-card-hot" : ""} ${pricePulse ? "ring-1 ring-cyan-400/50" : ""}`}
       style={{
-        background: `linear-gradient(145deg, hsl(265 30% 10%), hsl(265 28% 12%))`,
-        borderColor: isHigh ? "rgba(245,158,11,0.4)" : "hsl(265 20% 18%)",
+        background: isHigh ? "linear-gradient(145deg, #fffdf7, #fdf6e8)" : "#ffffff",
+        borderColor: isHigh ? "rgba(146,64,14,0.45)" : "rgba(19,35,58,0.15)",
       }}
     >
       {/* Sport-colored top gradient strip */}
@@ -555,7 +559,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
       {/* Background sport gradient */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ background: theme.gradient, opacity: isHigh ? 1 : 0.6 }}
+        style={{ background: theme.gradient, opacity: isHigh ? 0.08 : 0.04 }}
       />
 
       {/* Main content — clicking navigates to slug URL (or opens drawer if no slug) */}
@@ -588,7 +592,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
 
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <p className="font-bold text-sm leading-tight line-clamp-2" style={{ color: "hsl(45 100% 92%)" }}>
+                <p className="font-bold text-sm leading-tight line-clamp-2" style={{ color: "#131A24" }}>
                   {bet.title.replace(/^\[TAKE (OVER|UNDER)[^\]]*\]\s*/, "")}
                 </p>
                 {/* Player headshot (NBA props) or team logos */}
@@ -597,7 +601,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                 ) : (homeLogoUrl || awayLogoUrl) ? (
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {awayLogoUrl && <img src={awayLogoUrl} alt={bet.awayTeam ?? ""} width={24} height={24} className="object-contain" style={{ opacity: 0.85, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.5))" }} onError={(e) => (e.currentTarget.style.display = "none")} />}
-                    {homeLogoUrl && awayLogoUrl && <span className="text-[8px] font-bold" style={{ color: "rgba(19,35,58,0.42)" }}>@</span>}
+                    {homeLogoUrl && awayLogoUrl && <span className="text-[8px] font-bold" style={{ color: "#3D4B58" }}>@</span>}
                     {homeLogoUrl && <img src={homeLogoUrl} alt={bet.homeTeam ?? ""} width={24} height={24} className="object-contain" style={{ opacity: 0.85, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.5))" }} onError={(e) => (e.currentTarget.style.display = "none")} />}
                   </div>
                 ) : null}
@@ -606,16 +610,24 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               {/* Badges row */}
               <div className="flex flex-wrap items-center gap-1.5 mb-2">
                 <SourceBadge source={bet.source} />
-                {bet.allSources && bet.allSources.length >= 2 && (
+                {bet.allSources && bet.allSources.length >= 2 && !hasLinemateConfluence && (
                   <span
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide"
-                    style={{ background: "rgba(167,139,250,0.12)", borderColor: "rgba(167,139,250,0.35)", color: "#c4b5fd" }}
+                    style={{ background: "rgba(109,40,217,0.12)", borderColor: "rgba(109,40,217,0.50)", color: "#6d28d9" }}
                   >
                     🔗 {bet.allSources.length} sources
                   </span>
                 )}
+                {hasLinemateConfluence && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide"
+                    style={{ background: "rgba(5,150,105,0.14)", borderColor: "rgba(5,150,105,0.55)", color: "#047857" }}
+                  >
+                    ✅ Props Hub Match{lmHitRateL5 !== null ? ` · L5: ${Math.round((lmHitRateL5 ?? 0) * 100)}%` : lmHitRateL10 !== null ? ` · L10: ${Math.round((lmHitRateL10 ?? 0) * 100)}%` : ""}
+                  </span>
+                )}
                 <SportBadge sport={bet.sport} />
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground capitalize">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold capitalize" style={{ background: "rgba(19,35,58,0.10)", color: "#13233A", border: "1px solid rgba(19,35,58,0.22)" }}>
                   {BET_TYPE_EMOJI[bet.betType] ?? "🎰"} {bet.betType.replace("_", " ")}
                 </span>
                 {isHigh && (
@@ -624,18 +636,18 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   </span>
                 )}
                 {!bet.gameTime && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-500/10 text-amber-400 border border-yellow-500/30 uppercase tracking-wide">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", border: "1px solid rgba(146,64,14,0.40)" }}>
                     📅 Futures
                   </span>
                 )}
                 {/* Live price movement indicator */}
                 {liveMovement && liveMovement !== "neutral" && liveMovementPct !== null && (
                   <span
-                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-                      liveMovement === "up"
-                        ? "bg-green-500/15 text-green-400 border-green-500/30"
-                        : "bg-red-500/15 text-red-400 border-red-500/30"
-                    } ${pricePulse ? "animate-pulse" : ""}`}
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${pricePulse ? "animate-pulse" : ""}`}
+                    style={liveMovement === "up"
+                      ? { background: "rgba(21,128,61,0.14)", color: "#15803d", borderColor: "rgba(21,128,61,0.45)" }
+                      : { background: "rgba(185,28,28,0.12)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.40)" }
+                    }
                   >
                     {liveMovement === "up"
                       ? <ArrowUp size={9} className="shrink-0" />
@@ -646,21 +658,21 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
 
                 {/* Sharp Money badge */}
                 {(bet as any).isSharpMoney && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide" style={{ background: "rgba(109,40,217,0.13)", color: "#6d28d9", border: "1px solid rgba(109,40,217,0.45)" }}>
                     💰 Sharp
                   </span>
                 )}
 
                 {/* Arb Window badge */}
                 {(bet as any).isArbWindow && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide" style={{ background: "rgba(6,95,70,0.12)", color: "#065f46", border: "1px solid rgba(6,95,70,0.45)" }}>
                     ⚡ ARB
                   </span>
                 )}
 
                 {/* Closing Soon badge */}
                 {(bet as any).isClosingSoon && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide bg-orange-500/15 text-orange-300 border border-orange-500/30 animate-pulse">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide animate-pulse" style={{ background: "rgba(194,65,12,0.13)", color: "#c2410c", border: "1px solid rgba(194,65,12,0.45)" }}>
                     ⏰ {(bet as any).minutesToClose <= 60
                       ? `${(bet as any).minutesToClose}m left`
                       : `${Math.floor((bet as any).minutesToClose / 60)}h left`
@@ -673,9 +685,9 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   const tier = (bet as any).edgeTier as string;
                   const edgePct = (bet as any).edgePct as number | undefined;
                   const tierStyle: Record<string, { bg: string; border: string; color: string; glow: string }> = {
-                    "A+": { bg: "rgba(34,197,94,0.15)",  border: "rgba(34,197,94,0.45)",  color: "#4ade80", glow: "0 0 8px rgba(34,197,94,0.3)" },
-                    "A":  { bg: "rgba(250,204,21,0.14)", border: "rgba(250,204,21,0.40)", color: "#facc15", glow: "" },
-                    "B":  { bg: "rgba(96,165,250,0.12)", border: "rgba(96,165,250,0.35)", color: "#93c5fd", glow: "" },
+                    "A+": { bg: "rgba(21,128,61,0.14)",  border: "rgba(21,128,61,0.55)",  color: "#15803d", glow: "" },
+                    "A":  { bg: "rgba(146,64,14,0.13)",  border: "rgba(146,64,14,0.45)",  color: "#92400e", glow: "" },
+                    "B":  { bg: "rgba(29,78,216,0.12)",  border: "rgba(29,78,216,0.40)",  color: "#1d4ed8", glow: "" },
                   };
                   const s = tierStyle[tier] ?? tierStyle["B"];
                   return (
@@ -690,9 +702,9 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               </div>
 
               {!compact && (
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mb-2">
+                <div className="flex flex-wrap gap-3 text-xs mb-2" style={{ color: "#3D4B58" }}>
                   {bet.playerName && (
-                    <span className="flex items-center gap-1 font-medium text-foreground/70">
+                    <span className="flex items-center gap-1 font-semibold" style={{ color: "#131A24" }}>
                       👤 {bet.playerName}
                     </span>
                   )}
@@ -712,11 +724,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                   )}
                   {bet.gameTime && countdown.text && !countdown.isStarted && (
                     countdown.isLive ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-400 border border-green-500/30 uppercase tracking-wide animate-pulse">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide animate-pulse" style={{ background: "rgba(21,128,61,0.14)", color: "#15803d", border: "1px solid rgba(21,128,61,0.45)" }}>
                         ● LIVE &mdash; {countdown.text}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase tracking-wide">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide" style={{ background: "rgba(29,78,216,0.11)", color: "#1d4ed8", border: "1px solid rgba(29,78,216,0.35)" }}>
                         <Clock size={9} />
                         {countdown.text}
                       </span>
@@ -732,12 +744,12 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
             <>
               <div className="mt-3 mb-2">
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-muted-foreground">Confidence</span>
+                  <span style={{ color: "#3D4B58", fontWeight: 600 }}>Confidence</span>
                   <span className="font-mono font-bold" style={{
                     color: score >= 85 ? "#22c55e" : score >= 70 ? "#eab308" : "#f97316"
                   }}>{score}/100</span>
                 </div>
-                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.12)" }}>
                   <div
                     className="h-full confidence-bar"
                     style={{ width: `${score}%` }}
@@ -768,7 +780,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                       {(bet as any).mispricingDirection === "underpriced" ? "⚡ UNDERPRICED" : "⚠️ OVERPRICED"}
                       {" "}— {(bet as any).mispricingEdge !== null ? `${Math.abs(Math.round((bet as any).mispricingEdge * 100))}% edge` : ""}
                     </span>
-                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.49)" }}>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.65)" }}>
                       fair {Math.round(((bet as any).fairValue ?? 0) * 100)}¢
                     </span>
                   </div>
@@ -811,7 +823,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
                     <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#22d3ee" }}>
                       ⚡ ARB WINDOW — {(bet as any).arbSpreadPct?.toFixed(1)}% spread
                     </span>
-                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.49)" }}>cross-market</span>
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(19,35,58,0.65)" }}>cross-market</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <div>
@@ -847,18 +859,33 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               )}
 
               {/* ── Sharp Money Detail Row ───────────────────────────────────────── */}
-              {(bet as any).isSharpMoney && (bet as any).sharpMoneyScore != null && (
-                <div className="mt-2 rounded-lg px-3 py-1.5 border flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", borderColor: "rgba(139,92,246,0.25)" }}>
-                  <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Money Detected</span>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(19,35,58,0.49)" }}>Signal Strength</p>
-                      <p className="font-mono font-bold text-xs" style={{ color: "#c4b5fd" }}>{Math.round((bet as any).sharpMoneyScore)}/100</p>
-                    </div>
-                    <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(bet as any).sharpMoneyScore}%`, background: "linear-gradient(90deg, #7c3aed, #a855f7)" }} />
-                    </div>
+              {((bet as any).isSharpMoney || (bet as any).sharpMoneyScore > 0) && (bet as any).sharpMoneyScore != null && (
+                <div className="mt-2 rounded-lg px-3 py-2 border" style={{ background: "rgba(139,92,246,0.07)", borderColor: "rgba(139,92,246,0.25)" }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#a78bfa" }}>💰 Sharp Signal</span>
+                    <span className="font-mono font-bold text-xs" style={{ color: "#6d28d9" }}>{Math.round((bet as any).sharpMoneyScore)}/100</span>
                   </div>
+                  {/* Bar */}
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(109,40,217,0.15)" }}>
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${(bet as any).sharpMoneyScore}%`, background: "linear-gradient(90deg, #7c3aed, #a855f7)" }} />
+                  </div>
+                  {/* Public lean from ML odds if available */}
+                  {(bet as any).pinnacleML && (() => {
+                    const ml = (bet as any).pinnacleML as { home: number; away: number };
+                    const rawH = ml.home < 0 ? (-ml.home)/(-ml.home+100)*100 : 100/(ml.home+100)*100;
+                    const rawA = ml.away < 0 ? (-ml.away)/(-ml.away+100)*100 : 100/(ml.away+100)*100;
+                    const tot = rawH + rawA;
+                    const homeImp = (rawH/tot)*100;
+                    return (
+                      <div className="flex gap-2 mt-1.5">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(109,40,217,0.15)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${homeImp}%`, background: "#a855f7" }} />
+                        </div>
+                        <span className="text-[9px]" style={{ color: "#a78bfa" }}>{homeImp.toFixed(0)}% home implied</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
