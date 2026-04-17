@@ -78,9 +78,14 @@ function runPythonScript(scriptName: string, args: string[] = []): Promise<Recor
 // Uses the GitHub API to upsert files — no git CLI needed on Railway
 async function syncMLDataToGitHub(): Promise<void> {
   const token  = process.env.GITHUB_TOKEN;
-  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";   // owner/repo
+  const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
-  if (!token) { console.warn("[MLSync] GITHUB_TOKEN not set — skipping sync"); return; }
+  if (!token) {
+    console.error("[MLSync] CRITICAL: GITHUB_TOKEN env var not set on Railway — ML data will be lost on redeploy!");
+    console.error("[MLSync] Set GITHUB_TOKEN in Railway dashboard > Variables > Add variable");
+    return;
+  }
+  console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
   const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
