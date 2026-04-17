@@ -2486,6 +2486,9 @@ interface ScoreInput {
   formFlipped?: boolean;       // true if analytic side disagrees with market side
   // C7: Book line value (edge %) — added after edge analysis pass
   edgePctHint?: number | null;  // pre-computed edge % from multi-book comparison
+  // ML priority signals
+  statCategory?: string | null;      // e.g. "hits", "home_runs" — feeds per-stat ML weights
+  linematePriority?: boolean;        // true = Props Hub (Linemate) confirmed this pick
 }
 
 interface ScoreResult {
@@ -3260,12 +3263,14 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
 // ─── Main scanner ─────────────────────────────────────────────────────────────
 function computeConfidence(input: ScoreInput): ScoreResult {
   const result = computeConfidenceRaw(input);
-  // Apply ML weight nudge — no-op until ≥10 graded outcomes exist
+  // Apply ML weight nudge — MLB gets lower sample threshold + higher multiplier
   const mlScore = applyMLWeights(result.score, {
-    sport:   input.sport,
-    betType: input.betType,
-    formEdgePct: typeof input.formEdge === "number" ? input.formEdge * 100 : undefined,
-    hitRate: undefined,
+    sport:            input.sport,
+    betType:          input.betType,
+    formEdgePct:      typeof input.formEdge === "number" ? input.formEdge * 100 : undefined,
+    hitRate:          undefined,
+    statCategory:     input.statCategory ?? undefined,
+    linematePriority: input.linematePriority ?? false,
   });
   return { ...result, score: mlScore };
 }
@@ -3442,14 +3447,29 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
       // NBA
       points: "POINTS", assists: "ASSISTS", rebounds: "REBOUNDS",
       blocks: "BLOCKS", steals: "STEALS", threes: "THREE_POINTERS_MADE",
+      "three pointers made": "THREE_POINTERS_MADE",
+      "points rebounds assists": "PTS_REB_AST",
       // NHL
       goals: "GOALS", shots: "SHOTS_ON_GOAL", saves: "SAVES",
-      // MLB
-      hits: "HITS", home_runs: "HOME_RUNS", rbi: "RBIS", rbis: "RBIS",
-      strikeouts: "STRIKEOUTS", runs: "RUNS",
+      "shots on goal": "SHOTS_ON_GOAL",
+      // MLB — statType comes from market.key stripped of batter_/pitcher_ prefix, spaces not underscores
+      hits: "HITS",
+      home_runs: "HOME_RUNS", "home runs": "HOME_RUNS",
+      rbi: "RBIS", rbis: "RBIS",
+      strikeouts: "STRIKEOUTS",
+      runs: "RUNS",
+      "runs scored": "RUNS", runs_scored: "RUNS",
+      "total bases": "TOTAL_BASES", total_bases: "TOTAL_BASES",
+      "stolen bases": "STOLEN_BASES", stolen_bases: "STOLEN_BASES",
+      walks: "WALKS",
+      "hits allowed": "HITS_ALLOWED", hits_allowed: "HITS_ALLOWED",
+      "earned runs": "EARNED_RUNS", earned_runs: "EARNED_RUNS",
+      outs: "OUTS",
       // NFL
-      passing_yards: "PASSING_YARDS", rushing_yards: "RUSHING_YARDS",
-      receiving_yards: "RECEIVING_YARDS", receptions: "RECEPTIONS",
+      passing_yards: "PASSING_YARDS", "passing yards": "PASSING_YARDS",
+      rushing_yards: "RUSHING_YARDS", "rushing yards": "RUSHING_YARDS",
+      receiving_yards: "RECEIVING_YARDS", "receiving yards": "RECEIVING_YARDS",
+      receptions: "RECEPTIONS",
       touchdowns: "TOUCHDOWNS",
     };
 
@@ -3580,6 +3600,10 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
               pickSide: ts?.pickSide ?? undefined,
             });
           }
+          // Tag bet as Props Hub confirmed — picked up by applyMLWeights for extra boost
+          if (b.teamStats && typeof b.teamStats === "object") {
+            (b.teamStats as any).linematePriority = true;
+          }
           lmEnriched++;
         }
       }
@@ -3587,6 +3611,206 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   } catch (e: any) {
     console.warn(`[scanner/linemate] Enrichment skipped: ${e.message}`);
+  }
+
+
+  // ── MLB Platoon Split Enrichment ─────────────────────────────────────────────
+  // For every MLB batter prop, look up today's starting pitcher handedness and
+  // their batting average allowed vs R vs L batters.
+  // → Batter is R + pitcher's BAA vs R is high (≥.270) = confidence boost +4-6
+  // → Batter is R + pitcher's BAA vs R is low  (≤.220) = confidence penalty -4-6
+  // → Same logic for lefties.
+  // Uses ESPN's free public API — no key required.
+  try {
+    const mlbBatterProps = results.filter(b =>
+      b.sport === "MLB" && b.betType === "player_prop" &&
+      b.playerName && b.homeTeam && b.awayTeam
+    );
+
+    if (mlbBatterProps.length > 0) {
+      // Collect unique games that have batter props
+      const gameKeys = new Set<string>();
+      for (const b of mlbBatterProps) {
+        const gk = `${b.awayTeam}|${b.homeTeam}`;
+        gameKeys.add(gk);
+      }
+
+      // Fetch today's MLB scoreboard from ESPN to get game IDs + starting pitchers
+      type PitcherInfo = { name: string; hand: "L" | "R" | null; baaVsR: number | null; baaVsL: number | null };
+      const gamePitcherMap = new Map<string, { home: PitcherInfo | null; away: PitcherInfo | null }>();
+
+      try {
+        const today = new Date().toISOString().split("T")[0].replace(/-/g, "");
+        const sbRes = await axios.get(
+          `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${today}`,
+          { timeout: 8000 }
+        );
+        const events: any[] = sbRes.data?.events ?? [];
+
+        for (const ev of events) {
+          const comp = ev.competitions?.[0];
+          if (!comp) continue;
+          const homeComp = comp.competitors?.find((c: any) => c.homeAway === "home");
+          const awayComp = comp.competitors?.find((c: any) => c.homeAway === "away");
+          const homeTeamName = homeComp?.team?.abbreviation ?? homeComp?.team?.displayName ?? "";
+          const awayTeamName = awayComp?.team?.displayName ?? awayComp?.team?.abbreviation ?? "";
+          const gameId = ev.id;
+
+          // Get probable pitchers from the game summary leaders/probables endpoint
+          let homePitcher: PitcherInfo | null = null;
+          let awayPitcher: PitcherInfo | null = null;
+          try {
+            const summaryRes = await axios.get(
+              `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=${gameId}`,
+              { timeout: 8000 }
+            );
+            const probables: any[] = summaryRes.data?.probables ?? [];
+            for (const p of probables) {
+              const hand = p.athlete?.displayName ? null : null; // ESPN doesn't expose handedness in summary
+              const teamId = p.team?.id;
+              const isHome = homeComp?.team?.id === teamId;
+              const pitcherInfo: PitcherInfo = {
+                name: p.athlete?.displayName ?? p.athlete?.fullName ?? "",
+                hand: null, // will try to enrich below
+                baaVsR: null,
+                baaVsL: null,
+              };
+              // Try athlete stats endpoint for splits
+              const athleteId = p.athlete?.id;
+              if (athleteId) {
+                try {
+                  const statsRes = await axios.get(
+                    `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/athletes/${athleteId}/splits`,
+                    { timeout: 6000 }
+                  );
+                  const splitCats: any[] = statsRes.data?.splitCategories ?? [];
+                  for (const cat of splitCats) {
+                    if (!cat.displayName?.toLowerCase().includes("batter hand")) continue;
+                    for (const split of cat.splits ?? []) {
+                      // split.displayName e.g. "vs. Right-Handed Batters", "vs. Left-Handed Batters"
+                      const dn: string = (split.displayName ?? "").toLowerCase();
+                      const stats: any[] = split.stats ?? [];
+                      // Find BAA (batting average against) — usually index 6 in ESPN pitcher splits
+                      const baaRaw = stats.find((s: any) => s.name === "avg" || s.abbreviation === "AVG" || s.abbreviation === "BAA");
+                      const baa = baaRaw ? parseFloat(baaRaw.value ?? baaRaw.displayValue ?? "0") : null;
+                      if (dn.includes("right")) pitcherInfo.baaVsR = baa;
+                      else if (dn.includes("left")) pitcherInfo.baaVsL = baa;
+                    }
+                  }
+                  // Get handedness from athlete profile
+                  const profileRes = await axios.get(
+                    `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/athletes/${athleteId}`,
+                    { timeout: 5000 }
+                  );
+                  const throwHand = profileRes.data?.athlete?.throwingHand?.abbreviation ?? null;
+                  pitcherInfo.hand = throwHand === "R" ? "R" : throwHand === "L" ? "L" : null;
+                } catch { /* stats fetch failed — use pitcher without splits */ }
+              }
+              if (isHome) homePitcher = pitcherInfo;
+              else awayPitcher = pitcherInfo;
+            }
+          } catch { /* summary fetch failed for this game */ }
+
+          // Store by home+away team name combo
+          const gk = `${awayTeamName}|${homeTeamName}`;
+          gamePitcherMap.set(gk, { home: homePitcher, away: awayPitcher });
+        }
+      } catch (e: any) {
+        console.warn(`[PlatoonSplit] ESPN scoreboard fetch failed: ${e.message}`);
+      }
+
+      // Now enrich batter props
+      let platoonEnriched = 0;
+      for (const b of mlbBatterProps) {
+        const gk = `${b.awayTeam}|${b.homeTeam}`;
+        const pitchers = gamePitcherMap.get(gk);
+        if (!pitchers) continue;
+
+        // Which pitcher does this batter face?
+        // If batter's team is away → they face the home pitcher (and vice versa)
+        const ts = b.teamStats as { playerName?: string; gameTitle?: string; batterHand?: "L" | "R"; platoonNote?: string } | null;
+        const isHomeBatter = b.homeTeam && b.awayTeam &&
+          (b.playerName ?? "").length > 0;  // we'll use team assignment below
+
+        // Determine batter team from description (away @ home format)
+        const descTeam = (b.description ?? "").includes(b.awayTeam ?? "!!") ? "away" : "home";
+        const facingPitcher = descTeam === "away" ? pitchers.home : pitchers.away;
+        if (!facingPitcher) continue;
+
+        // Get batter handedness — try to determine from name patterns or default to unknown
+        // ESPN athlete endpoint would have this, but to avoid per-player API calls
+        // we use the statType as a proxy: if stat is batter-specific, try to look up
+        const statRaw = (ts as any)?.statType ?? "";
+        const isBatterStat = ["hits", "home runs", "rbis", "runs scored", "total bases", "stolen bases", "walks"].some(s => statRaw.toLowerCase().includes(s));
+        if (!isBatterStat) continue;
+
+        // We don't know batter hand without an extra API call per player.
+        // Use aggregate BAA as a fallback (if pitcher has very high or low overall BAA).
+        // When we DO know hand (from previous ML enrichment or stored data), use split.
+        const batterHand: "L" | "R" | null = (ts as any)?.batterHand ?? null;
+
+        let platoonAdj = 0;
+        let platoonNote = "";
+
+        if (batterHand && (facingPitcher.baaVsR !== null || facingPitcher.baaVsL !== null)) {
+          // Full split data available
+          const baa = batterHand === "R" ? facingPitcher.baaVsR : facingPitcher.baaVsL;
+          if (baa !== null) {
+            if (baa >= 0.290) {
+              platoonAdj = 7;
+              platoonNote = `Pitcher allows .${Math.round(baa * 1000)} BAA vs ${batterHand}HB — strong platoon advantage`;
+            } else if (baa >= 0.270) {
+              platoonAdj = 4;
+              platoonNote = `Pitcher allows .${Math.round(baa * 1000)} BAA vs ${batterHand}HB — favorable matchup`;
+            } else if (baa >= 0.250) {
+              platoonAdj = 1;
+              platoonNote = `Pitcher allows .${Math.round(baa * 1000)} BAA vs ${batterHand}HB — neutral matchup`;
+            } else if (baa <= 0.200) {
+              platoonAdj = -7;
+              platoonNote = `Pitcher holds ${batterHand}HB to .${Math.round(baa * 1000)} — tough platoon matchup`;
+            } else if (baa <= 0.220) {
+              platoonAdj = -4;
+              platoonNote = `Pitcher tough vs ${batterHand}HB (.${Math.round(baa * 1000)} BAA) — slight downgrade`;
+            } else {
+              platoonAdj = 0;
+              platoonNote = `Pitcher BAA .${Math.round(baa * 1000)} vs ${batterHand}HB — roughly league-average`;
+            }
+          }
+        } else if (facingPitcher.baaVsR !== null && facingPitcher.baaVsL !== null) {
+          // Know both splits but not batter hand — use average as rough signal
+          const avgBaa = (facingPitcher.baaVsR + facingPitcher.baaVsL) / 2;
+          if (avgBaa >= 0.280) {
+            platoonAdj = 3;
+            platoonNote = `${facingPitcher.name ?? "Starter"} overall BAA .${Math.round(avgBaa * 1000)} — pitcher trending soft`;
+          } else if (avgBaa <= 0.215) {
+            platoonAdj = -3;
+            platoonNote = `${facingPitcher.name ?? "Starter"} overall BAA .${Math.round(avgBaa * 1000)} — dominant pitcher`;
+          }
+        } else if (facingPitcher.name) {
+          // Only have pitcher name — at least note the matchup
+          platoonNote = `Facing ${facingPitcher.name}`;
+        }
+
+        if (platoonAdj !== 0 || platoonNote) {
+          if (platoonAdj !== 0) {
+            b.confidenceScore = Math.min(98, Math.max(10, (b.confidenceScore ?? 50) + platoonAdj));
+            b.isHighConfidence = (b.confidenceScore ?? 0) >= 85;
+          }
+          if (platoonNote) {
+            b.keyFactors = [...(b.keyFactors ?? []), platoonNote].slice(0, 8);
+          }
+          if (b.teamStats && typeof b.teamStats === "object") {
+            (b.teamStats as any).platoonNote = platoonNote;
+            (b.teamStats as any).platoonAdj = platoonAdj;
+            if (facingPitcher.name) (b.teamStats as any).facingPitcher = facingPitcher.name;
+          }
+          platoonEnriched++;
+        }
+      }
+      console.log(`[PlatoonSplit] Enriched ${platoonEnriched} MLB batter props with pitcher split data`);
+    }
+  } catch (e: any) {
+    console.warn(`[PlatoonSplit] MLB platoon enrichment failed: ${e.message}`);
   }
 
   // Apply Apify DFS salary boosts to player props (budget-aware, 30-min cache)
