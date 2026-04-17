@@ -108,7 +108,7 @@
       "type": "weakness"
     }
   ],
-  "last_run": "2026-04-17T07:00:03.674995",
+  "last_run": "2026-04-17T12:07:51.752454",
   "patterns": {
     "bet_type:spread": {
       "losses": 10,
@@ -348,7 +348,7 @@
       "hot": 0,
       "neutral": 4.69
     },
-    "last_run": "2026-04-17T07:00:03.674995",
+    "last_run": "2026-04-17T12:07:51.752454",
     "overall_win_rate": 0.594,
     "pick_side_weights": {
       "OVER": 0,
