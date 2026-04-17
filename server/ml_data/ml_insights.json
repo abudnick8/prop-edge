@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "last_run": "2026-04-17T03:23:37.112058",
+  "last_run": "2026-04-17T03:37:50.265811",
   "sample_size": 24,
   "accuracy": {
     "total": 24,
@@ -255,90 +255,90 @@
     {
       "type": "strength",
       "pattern": "conf_tier:low",
-      "title": "100.0% win rate \u2014 conf tier: low",
+      "title": "100.0% win rate — conf tier: low",
       "detail": "6W-0L (100.0% hit rate). The model should weight this pattern higher.",
       "adj": 25,
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     {
       "type": "strength",
       "pattern": "bet_type:spread|conf_tier:low",
-      "title": "100.0% win rate \u2014 bet type: spread + conf tier: low",
+      "title": "100.0% win rate — bet type: spread + conf tier: low",
       "detail": "6W-0L (100.0% hit rate). The model should weight this pattern higher.",
       "adj": 25,
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     {
       "type": "strength",
       "pattern": "sport:NHL",
-      "title": "100.0% win rate \u2014 sport: NHL",
+      "title": "100.0% win rate — sport: NHL",
       "detail": "12W-0L (100.0% hit rate). The model should weight this pattern higher.",
       "adj": 25,
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     {
       "type": "strength",
       "pattern": "sport:NHL|bet_type:spread",
-      "title": "100.0% win rate \u2014 sport: NHL + bet type: spread",
+      "title": "100.0% win rate — sport: NHL + bet type: spread",
       "detail": "6W-0L (100.0% hit rate). The model should weight this pattern higher.",
       "adj": 25,
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     {
       "type": "strength",
       "pattern": "sport:NHL|conf_tier:medium",
-      "title": "100.0% win rate \u2014 sport: NHL + conf tier: medium",
+      "title": "100.0% win rate — sport: NHL + conf tier: medium",
       "detail": "10W-0L (100.0% hit rate). The model should weight this pattern higher.",
       "adj": 25,
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     {
       "type": "weakness",
       "pattern": "sport:MLB|pick_side:OVER",
-      "title": "44.4% win rate \u2014 sport: MLB + pick side: OVER",
-      "detail": "8W-10L (44.4%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "title": "44.4% win rate — sport: MLB + pick side: OVER",
+      "detail": "8W-10L (44.4%). The model has been overconfident here — reducing scores in this pattern.",
       "adj": -2.78,
-      "icon": "\ud83d\udd34"
+      "icon": "🔴"
     },
     {
       "type": "weakness",
       "pattern": "sport:MLB|bet_type:total",
-      "title": "44.4% win rate \u2014 sport: MLB + bet type: total",
-      "detail": "8W-10L (44.4%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "title": "44.4% win rate — sport: MLB + bet type: total",
+      "detail": "8W-10L (44.4%). The model has been overconfident here — reducing scores in this pattern.",
       "adj": -2.78,
-      "icon": "\ud83d\udd34"
+      "icon": "🔴"
     },
     {
       "type": "calibration",
       "pattern": "conf_tier:medium",
-      "title": "\ud83d\udcc8 Medium confidence picks: 71.4% actual vs 58% expected",
+      "title": "📈 Medium confidence picks: 71.4% actual vs 58% expected",
       "detail": "Model overperforms at medium confidence by 13pp. Calibration good.",
       "adj": 10.71,
-      "icon": "\ud83d\udcc8"
+      "icon": "📈"
     },
     {
       "type": "calibration",
       "pattern": "conf_tier:low",
-      "title": "\ud83d\udcc8 Low confidence picks: 100.0% actual vs 45% expected",
+      "title": "📈 Low confidence picks: 100.0% actual vs 45% expected",
       "detail": "Model overperforms at low confidence by 55pp. Calibration good.",
       "adj": 25,
-      "icon": "\ud83d\udcc8"
+      "icon": "📈"
     },
     {
       "type": "sport",
       "pattern": "sport:MLB",
-      "title": "\u2705 MLB: 66.7% win rate (24W-12L)",
+      "title": "✅ MLB: 66.7% win rate (24W-12L)",
       "detail": "Model strong in MLB. Keep prioritizing.",
       "adj": 8.33,
-      "icon": "\u2705"
+      "icon": "✅"
     },
     {
       "type": "sport",
       "pattern": "sport:NHL",
-      "title": "\u2705 NHL: 100.0% win rate (12W-0L)",
+      "title": "✅ NHL: 100.0% win rate (12W-0L)",
       "detail": "Model strong in NHL. Keep prioritizing.",
       "adj": 25,
-      "icon": "\u2705"
+      "icon": "✅"
     }
   ],
   "weights": {
@@ -387,7 +387,7 @@
     },
     "overall_win_rate": 0.75,
     "sample_size": 24,
-    "last_run": "2026-04-17T03:23:37.112058",
+    "last_run": "2026-04-17T03:37:50.265811",
     "version": "1.0"
   }
 }
