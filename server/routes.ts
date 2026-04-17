@@ -889,7 +889,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Pull ML data from GitHub on startup so outcomes survive redeploys
-  pullMLDataFromGitHub().catch((e: any) => console.warn("[MLSync] startup pull error:", e.message));
+  // We await this before scheduling the startup scan so graded picks are ready immediately
+  let mlPullDone = false;
+  pullMLDataFromGitHub()
+    .then(() => { mlPullDone = true; console.log("[MLSync] startup pull complete"); })
+    .catch((e: any) => { mlPullDone = true; console.warn("[MLSync] startup pull error:", e.message); });
 
   // Start smart wallet tracker at server boot (fire-and-forget)
   startSmartWalletTracker();
@@ -4858,7 +4862,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
   };
-  setTimeout(() => startupScan(), 3000); // 3s delay for Railway to fully initialize
+  // Wait for ML pull to complete before first scan (or max 10s)
+  const waitForMLPull = (elapsed = 0) => {
+    if (mlPullDone || elapsed >= 10000) {
+      startupScan();
+    } else {
+      setTimeout(() => waitForMLPull(elapsed + 500), 500);
+    }
+  };
+  setTimeout(() => waitForMLPull(), 3000); // 3s base delay for Railway to fully initialize
 
   // ── 30-second live price poller — Kalshi + Polymarket only, no ESPN ────────
   livePollInterval = setInterval(async () => {
