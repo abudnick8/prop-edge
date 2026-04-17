@@ -3426,15 +3426,34 @@ export async function registerRoutes(httpServer: Server, app: Express) {
                           : grp === "RISKY" ? "RISKY"
                           : null;
           if (!propGroup) continue;
-          picks[propGroup] = (items ?? []).map(p => normalisePick(p, propGroup, sport.toUpperCase()));
+          const raw = (items ?? []).map(p => normalisePick(p, propGroup, sport.toUpperCase()));
+          picks[propGroup] = sport === "mlb"
+            ? raw.filter((p: any) => {
+                const mn = (p.marketName ?? "").toUpperCase();
+                if (mn === "HITTER_TRIPLES" || mn === "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN") return false;
+                if ((mn === "HITTER_STOLEN_BASES" || mn === "HITTER_HOME_RUNS") && (p.pickSide ?? "").toUpperCase() === "UNDER") return false;
+                return true;
+              })
+            : raw;
         }
       }
 
       // ── Full market browser ──────────────────────────────────────────────
+      // MLB banned market names — triples and H+R+RBI combo are not displayed
+      const MLB_BANNED_MARKETS = new Set([
+        "HITTER_TRIPLES",
+        "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN",
+      ]);
+
       let markets: any[] = [];
       if (marketsRes.status === "fulfilled" && Array.isArray(marketsRes.value.data)) {
         markets = marketsRes.value.data
-          .filter((m: any) => m.player && m.name)
+          .filter((m: any) => {
+            if (!m.player || !m.name) return false;
+            // For MLB: strip banned market types
+            if (sport === "mlb" && MLB_BANNED_MARKETS.has(m.name)) return false;
+            return true;
+          })
           .map((m: any) => normalisePick(
             {
               gameId:         m.gameId,
@@ -3450,6 +3469,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             "MARKET",
             sport.toUpperCase()
           ));
+
+        // MLB: also filter stolen bases UNDER and HR UNDER from market browser
+        if (sport === "mlb") {
+          markets = markets.filter((m: any) => {
+            const mn = (m.marketName ?? "").toUpperCase();
+            if ((mn === "HITTER_STOLEN_BASES" || mn === "HITTER_HOME_RUNS") && (m.pickSide ?? "").toUpperCase() === "UNDER") return false;
+            return true;
+          });
+        }
       }
 
       // ── Today's games ────────────────────────────────────────────────────
