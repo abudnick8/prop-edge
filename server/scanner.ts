@@ -3386,8 +3386,8 @@ async function fetchLinemateMLBProps(): Promise<InsertBet[]> {
       const pickedOdds = side === "over" ? overOdds : underOdds;
       const oddsDisplay = pickedOdds != null ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : "";
 
-      // Stolen Bases: only display OVER picks (UNDER stolen base props are not useful)
-      if (marketName === "HITTER_STOLEN_BASES" && side !== "over") { skipped++; continue; }
+      // Stolen Bases + Home Runs: only display OVER picks
+      if ((marketName === "HITTER_STOLEN_BASES" || marketName === "HITTER_HOME_RUNS") && side !== "over") { skipped++; continue; }
 
       // Form edge: hit rate vs 50% baseline
       const formEdge = hitRateL5 != null ? hitRateL5 - 0.5 : null;
