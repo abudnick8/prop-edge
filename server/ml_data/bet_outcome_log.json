@@ -22,7 +22,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Cincinnati Reds — Cincinnati Reds +1.5 (-196)"
+    "title": "San Francisco Giants @ Cincinnati Reds \u2014 Cincinnati Reds +1.5 (-196)"
   },
   {
     "awayScore": 1,
@@ -47,7 +47,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Cincinnati Reds — OVER 8 (-115)"
+    "title": "San Francisco Giants @ Cincinnati Reds \u2014 OVER 8 (-115)"
   },
   {
     "awayScore": 7,
@@ -72,7 +72,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Angels @ New York Yankees — New York Yankees -1.5 (-149)"
+    "title": "Los Angeles Angels @ New York Yankees \u2014 New York Yankees -1.5 (-149)"
   },
   {
     "awayScore": 7,
@@ -92,12 +92,12 @@
     "homeScore": 1,
     "homeTeam": "New York Yankees",
     "line": 10,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "lost",
+    "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Angels @ New York Yankees — UNDER 10 (-115)"
+    "title": "Los Angeles Angels @ New York Yankees \u2014 UNDER 10 (-115)"
   },
   {
     "awayScore": 5,
@@ -117,12 +117,12 @@
     "homeScore": 4,
     "homeTeam": "Pittsburgh Pirates",
     "line": 8.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "won",
+    "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Washington Nationals @ Pittsburgh Pirates — UNDER 8.5 (-115)"
+    "title": "Washington Nationals @ Pittsburgh Pirates \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -147,7 +147,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ Detroit Tigers — Detroit Tigers +1.5 (-163)"
+    "title": "Kansas City Royals @ Detroit Tigers \u2014 Detroit Tigers +1.5 (-163)"
   },
   {
     "awayScore": 1,
@@ -172,7 +172,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ Detroit Tigers — OVER 8.5 (-115)"
+    "title": "Kansas City Royals @ Detroit Tigers \u2014 OVER 8.5 (-115)"
   },
   {
     "awayScore": 9,
@@ -197,7 +197,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Milwaukee Brewers — Milwaukee Brewers +1.5 (-183)"
+    "title": "Toronto Blue Jays @ Milwaukee Brewers \u2014 Milwaukee Brewers +1.5 (-183)"
   },
   {
     "awayScore": 9,
@@ -222,7 +222,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Milwaukee Brewers — OVER 8.5 (-112)"
+    "title": "Toronto Blue Jays @ Milwaukee Brewers \u2014 OVER 8.5 (-112)"
   },
   {
     "awayScore": 5,
@@ -247,7 +247,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Washington Nationals @ Pittsburgh Pirates — Washington Nationals +1.5 (-144)"
+    "title": "Washington Nationals @ Pittsburgh Pirates \u2014 Washington Nationals +1.5 (-144)"
   },
   {
     "awayScore": 8,
@@ -272,7 +272,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Chicago White Sox — Chicago White Sox +1.5 (-149)"
+    "title": "Tampa Bay Rays @ Chicago White Sox \u2014 Chicago White Sox +1.5 (-149)"
   },
   {
     "awayScore": 8,
@@ -292,12 +292,12 @@
     "homeScore": 5,
     "homeTeam": "Chicago White Sox",
     "line": 8.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "won",
+    "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Chicago White Sox — UNDER 8.5 (-115)"
+    "title": "Tampa Bay Rays @ Chicago White Sox \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -322,7 +322,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Athletics — Athletics +1.5 (-175)"
+    "title": "Texas Rangers @ Athletics \u2014 Athletics +1.5 (-175)"
   },
   {
     "awayScore": 1,
@@ -342,12 +342,12 @@
     "homeScore": 2,
     "homeTeam": "Athletics",
     "line": 8.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "lost",
+    "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Athletics — UNDER 8.5 (-115)"
+    "title": "Texas Rangers @ Athletics \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 2,
@@ -372,7 +372,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — Cleveland Guardians +1.5 (-198)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 Cleveland Guardians +1.5 (-198)"
   },
   {
     "awayScore": 2,
@@ -397,7 +397,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — OVER 8 (-112)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 OVER 8 (-112)"
   },
   {
     "awayScore": 5,
@@ -422,7 +422,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "St. Louis Blues @ Utah Mammoth — Utah Mammoth +1.5 (-245)"
+    "title": "St. Louis Blues @ Utah Mammoth \u2014 Utah Mammoth +1.5 (-245)"
   },
   {
     "awayScore": 5,
@@ -442,12 +442,12 @@
     "homeScore": 3,
     "homeTeam": "Utah Mammoth",
     "line": 6.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "won",
+    "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "St. Louis Blues @ Utah Mammoth — UNDER 6.5 (-135)"
+    "title": "St. Louis Blues @ Utah Mammoth \u2014 UNDER 6.5 (-135)"
   },
   {
     "awayScore": 5,
@@ -472,7 +472,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Anaheim Ducks @ Nashville Predators — Nashville Predators +1.5 (-238)"
+    "title": "Anaheim Ducks @ Nashville Predators \u2014 Nashville Predators +1.5 (-238)"
   },
   {
     "awayScore": 5,
@@ -492,12 +492,12 @@
     "homeScore": 4,
     "homeTeam": "Nashville Predators",
     "line": 6.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "won",
+    "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Anaheim Ducks @ Nashville Predators — UNDER 6.5 (-112)"
+    "title": "Anaheim Ducks @ Nashville Predators \u2014 UNDER 6.5 (-112)"
   },
   {
     "awayScore": 6,
@@ -517,12 +517,12 @@
     "homeScore": 1,
     "homeTeam": "Winnipeg Jets",
     "line": 6.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "won",
+    "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "San Jose Sharks @ Winnipeg Jets — UNDER 6.5 (-118)"
+    "title": "San Jose Sharks @ Winnipeg Jets \u2014 UNDER 6.5 (-118)"
   },
   {
     "awayScore": 6,
@@ -547,7 +547,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "San Jose Sharks @ Winnipeg Jets — San Jose Sharks +1.5 (-192)"
+    "title": "San Jose Sharks @ Winnipeg Jets \u2014 San Jose Sharks +1.5 (-192)"
   },
   {
     "awayScore": 6,
@@ -572,7 +572,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Colorado Rockies @ Houston Astros — OVER 8.5 (-112)"
+    "title": "Colorado Rockies @ Houston Astros \u2014 OVER 8.5 (-112)"
   },
   {
     "awayScore": 6,
@@ -597,7 +597,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Colorado Rockies @ Houston Astros — Colorado Rockies +1.5 (-149)"
+    "title": "Colorado Rockies @ Houston Astros \u2014 Colorado Rockies +1.5 (-149)"
   },
   {
     "awayScore": 1,
@@ -622,7 +622,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Seattle Mariners @ San Diego Padres — San Diego Padres +1.5 (-168)"
+    "title": "Seattle Mariners @ San Diego Padres \u2014 San Diego Padres +1.5 (-168)"
   },
   {
     "awayScore": 1,
@@ -647,7 +647,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Seattle Mariners @ San Diego Padres — OVER 8.5 (-110)"
+    "title": "Seattle Mariners @ San Diego Padres \u2014 OVER 8.5 (-110)"
   },
   {
     "awayScore": 1,
@@ -672,7 +672,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Vancouver Canucks @ Edmonton Oilers — Edmonton Oilers -1.5 (-125)"
+    "title": "Vancouver Canucks @ Edmonton Oilers \u2014 Edmonton Oilers -1.5 (-125)"
   },
   {
     "awayScore": 1,
@@ -697,7 +697,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Vancouver Canucks @ Edmonton Oilers — OVER 6.5 (-122)"
+    "title": "Vancouver Canucks @ Edmonton Oilers \u2014 OVER 6.5 (-122)"
   },
   {
     "awayScore": 1,
@@ -722,7 +722,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Los Angeles Kings @ Calgary Flames — Calgary Flames +1.5 (-198)"
+    "title": "Los Angeles Kings @ Calgary Flames \u2014 Calgary Flames +1.5 (-198)"
   },
   {
     "awayScore": 1,
@@ -742,12 +742,12 @@
     "homeScore": 3,
     "homeTeam": "Calgary Flames",
     "line": 6.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "lost",
+    "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Los Angeles Kings @ Calgary Flames — UNDER 6.5 (-125)"
+    "title": "Los Angeles Kings @ Calgary Flames \u2014 UNDER 6.5 (-125)"
   },
   {
     "awayScore": 0,
@@ -767,12 +767,12 @@
     "homeScore": 2,
     "homeTeam": "Colorado Avalanche",
     "line": 6.5,
-    "pickSide": "over",
+    "pickSide": "under",
     "playerName": null,
-    "result": "lost",
+    "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Seattle Kraken @ Colorado Avalanche — UNDER 6.5 (-125)"
+    "title": "Seattle Kraken @ Colorado Avalanche \u2014 UNDER 6.5 (-125)"
   },
   {
     "awayScore": 0,
@@ -797,6 +797,6 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Seattle Kraken @ Colorado Avalanche — Seattle Kraken +1.5 (-162)"
+    "title": "Seattle Kraken @ Colorado Avalanche \u2014 Seattle Kraken +1.5 (-162)"
   }
 ]
