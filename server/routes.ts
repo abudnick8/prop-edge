@@ -1245,6 +1245,46 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // GET /api/ml/graded-picks — full list of graded picks for the ML history log
+  app.get("/api/ml/graded-picks", (_req, res) => {
+    try {
+      const outFile = path.join(__dirname, "ml_data", "bet_outcome_log.json");
+      if (!fs.existsSync(outFile)) return res.json([]);
+      const outcomes: any[] = JSON.parse(fs.readFileSync(outFile, "utf8"));
+      // Return newest first, include all fields the UI needs
+      const picks = outcomes
+        .filter((o: any) => o.result && o.result !== "open")
+        .sort((a: any, b: any) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? ""))
+        .map((o: any) => ({
+          id:              o.betId ?? o.id ?? null,
+          title:           o.title ?? null,
+          sport:           o.sport ?? null,
+          betType:         o.betType ?? null,
+          playerName:      o.playerName ?? null,
+          statCategory:    o.statCategory ?? null,
+          line:            o.line ?? null,
+          pickSide:        o.pickSide ?? null,
+          result:          o.result,             // "won" | "lost" | "push"
+          confidenceScore: o.confidenceScore ?? null,
+          gameTime:        o.gameTime ?? null,
+          gameDate:        o.gameDate ?? null,
+          gradedAt:        o.gradedAt ?? null,
+          homeTeam:        o.homeTeam ?? null,
+          awayTeam:        o.awayTeam ?? null,
+          homeScore:       o.homeScore ?? null,
+          awayScore:       o.awayScore ?? null,
+          source:          o.source ?? (o.betId?.startsWith("action") ? "ActionNetwork"
+                           : o.betId?.startsWith("lm-") ? "Linemate"
+                           : o.betId?.startsWith("pinnacle") ? "Pinnacle"
+                           : o.betId?.startsWith("kalshi") ? "Kalshi"
+                           : "Internal"),
+        }));
+      res.json(picks);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
     try {
