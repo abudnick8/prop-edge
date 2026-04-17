@@ -3262,9 +3262,10 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
 
 
 // ─── Linemate MLB Player Props (primary source when Odds API unavailable) ─────
-// Fetches all MLB player prop markets from Linemate's free public API.
-// Covers: Hits, Runs, Total Bases, RBIs, HRs, Stolen Bases, Singles, Doubles,
-//         Pitcher Strikeouts, Pitcher Earned Runs, Pitcher Hits Allowed, etc.
+// Fetches allowed MLB player prop markets from Linemate's free public API.
+// Allowed: Hits, HR, Runs, RBIs, Total Bases, Singles, Doubles, Stolen Bases (OVER only),
+//          Pitcher Strikeouts, Pitcher Outs, Pitcher Hits Allowed, Pitcher Earned Runs, Pitcher Walks
+// Banned: Triples, H+R+RBI combos
 // Returns full bet cards with DraftKings/FanDuel/BetMGM lines + hit rate history.
 const LINEMATE_MARKET_MAP: Record<string, { statType: string; label: string }> = {
   HITTER_HITS:                   { statType: "hits",          label: "Hits" },
@@ -3275,8 +3276,6 @@ const LINEMATE_MARKET_MAP: Record<string, { statType: string; label: string }> =
   HITTER_STOLEN_BASES:           { statType: "stolen bases",  label: "Stolen Bases" },
   HITTER_SINGLES:                { statType: "singles",       label: "Singles" },
   HITTER_DOUBLES:                { statType: "doubles",       label: "Doubles" },
-  HITTER_TRIPLES:                { statType: "triples",       label: "Triples" },
-  HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN: { statType: "hits+runs+rbis", label: "H+R+RBI" },
   PITCHER_STRIKEOUTS:            { statType: "strikeouts",    label: "Strikeouts" },
   PITCHER_EARNED_RUNS:           { statType: "earned runs",   label: "Earned Runs" },
   PITCHER_HITS_ALLOWED:          { statType: "hits allowed",  label: "Hits Allowed" },
@@ -3312,6 +3311,10 @@ async function fetchLinemateMLBProps(): Promise<InsertBet[]> {
       const marketName: string = mkt.name ?? "";
       const mapping = LINEMATE_MARKET_MAP[marketName];
       if (!mapping) { skipped++; continue; }
+
+      // Stolen Bases: only show OVER picks — UNDER is not useful for display
+      // (we still need to compute the side first, so we defer this check to after side calc)
+      // Triples and H+R+RBI are removed from LINEMATE_MARKET_MAP entirely — no further check needed
 
       // Player info
       const player = mkt.player ?? {};
@@ -3382,6 +3385,9 @@ async function fetchLinemateMLBProps(): Promise<InsertBet[]> {
       const pickedProb = side === "over" ? overProb : underProb;
       const pickedOdds = side === "over" ? overOdds : underOdds;
       const oddsDisplay = pickedOdds != null ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : "";
+
+      // Stolen Bases: only display OVER picks (UNDER stolen base props are not useful)
+      if (marketName === "HITTER_STOLEN_BASES" && side !== "over") { skipped++; continue; }
 
       // Form edge: hit rate vs 50% baseline
       const formEdge = hitRateL5 != null ? hitRateL5 - 0.5 : null;
