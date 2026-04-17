@@ -515,7 +515,11 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
   const theme = SPORT_THEME[sport] ?? SPORT_THEME.NBA;
   const sportEmoji = SPORT_EMOJI[sport] ?? "🏅";
 
-  const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number } | null;
+  const teamStats = bet.teamStats as { pickSide?: string; pickedOdds?: number; lmHitRateL5?: number | null; lmHitRateL10?: number | null; lmConsensusLine?: number | null } | null;
+  // Linemate confluence: true when Props Hub (Linemate) confirms this pick
+  const hasLinemateConfluence = !!(bet.allSources && bet.allSources.some((s: any) => s.source === "linemate"));
+  const lmHitRateL5 = teamStats?.lmHitRateL5 ?? null;
+  const lmHitRateL10 = teamStats?.lmHitRateL10 ?? null;
   // Primary: teamStats.pickSide (set by Underdog/SGO scanner)
   // Fallback: parse from title "[TAKE OVER 25.5 @ -110] Player — Stat"
   const pickSideRaw = bet.betType === "player_prop" ? (
@@ -606,12 +610,20 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
               {/* Badges row */}
               <div className="flex flex-wrap items-center gap-1.5 mb-2">
                 <SourceBadge source={bet.source} />
-                {bet.allSources && bet.allSources.length >= 2 && (
+                {bet.allSources && bet.allSources.length >= 2 && !hasLinemateConfluence && (
                   <span
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide"
                     style={{ background: "rgba(109,40,217,0.12)", borderColor: "rgba(109,40,217,0.50)", color: "#6d28d9" }}
                   >
                     🔗 {bet.allSources.length} sources
+                  </span>
+                )}
+                {hasLinemateConfluence && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wide"
+                    style={{ background: "rgba(5,150,105,0.14)", borderColor: "rgba(5,150,105,0.55)", color: "#047857" }}
+                  >
+                    ✅ Props Hub Match{lmHitRateL5 !== null ? ` · L5: ${Math.round((lmHitRateL5 ?? 0) * 100)}%` : lmHitRateL10 !== null ? ` · L10: ${Math.round((lmHitRateL10 ?? 0) * 100)}%` : ""}
                   </span>
                 )}
                 <SportBadge sport={bet.sport} />
