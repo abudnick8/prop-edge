@@ -901,7 +901,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // ─── Bets ─────────────────────────────────────────────────────────────────
   app.get("/api/bets", async (req, res) => {
     try {
-      const bets = await storage.getBets();
+      const betsRaw = await storage.getBets();
+
+      // ── MLB prop filter: only allowed stat types, stolen bases OVER only ──────
+      const MLB_BANNED_STATS = new Set([
+        "triples", "hits+runs+rbis", "h+r+rbi",
+      ]);
+      const bets = betsRaw.filter(bet => {
+        if (bet.sport !== "MLB" || bet.betType !== "player_prop") return true;
+        const statRaw = ((bet.teamStats as any)?.statType ?? "").toLowerCase();
+        if (MLB_BANNED_STATS.has(statRaw)) return false;
+        // Stolen Bases: only show OVER
+        if (statRaw === "stolen bases" || statRaw === "stolen_bases") {
+          const side = ((bet.teamStats as any)?.pickSide ?? "").toUpperCase();
+          if (side === "UNDER") return false;
+        }
+        return true;
+      });
 
       // Sort all bets by confidenceScore descending (fix: was using 'confidence' which is always undefined)
       const sorted = [...bets].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
