@@ -76,6 +76,15 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
   const statName  = (bet as any).statName   as string | undefined;
   const bestBook  = (bet as any).bestBook   as string | undefined;
   const line      = bet.line;
+  // MLB platoon + Props Hub data from teamStats
+  const ts = bet.teamStats as any | null;
+  const platoonNote      = ts?.platoonNote    as string | undefined;
+  const platoonAdj       = ts?.platoonAdj     as number | undefined;
+  const facingPitcher    = ts?.facingPitcher  as string | undefined;
+  const linematePriority = ts?.linematePriority as boolean | undefined;
+  const lmHitRateL5      = ts?.lmHitRateL5   as number | null | undefined;
+  const lmHitRateL10     = ts?.lmHitRateL10  as number | null | undefined;
+  const lmConsensusLine  = ts?.lmConsensusLine as number | null | undefined;
 
   const scoreColor = score >= 85 ? "#22c55e" : score >= 70 ? "#eab308" : "#f97316";
   const scoreLabel = score >= 85 ? "HIGH CONFIDENCE" : score >= 70 ? "Moderate" : "Low";
@@ -217,6 +226,39 @@ function ScoreExplainer({ bet }: { bet: Bet }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Props Hub + Linemate confluence signal ── */}
+        {linematePriority && (
+          <div className="flex items-start gap-2 p-2.5 rounded-lg" style={{ background: "rgba(5,150,105,0.07)", border: "1px solid rgba(5,150,105,0.30)" }}>
+            <span className="text-sm flex-shrink-0">✅</span>
+            <div>
+              <p className="text-[11px] font-bold" style={{ color: "#047857" }}>Props Hub Match</p>
+              <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.65)" }}>
+                This pick is confirmed by Props Hub (Linemate)
+                {lmHitRateL5 != null ? ` · L5 hit rate: ${Math.round(lmHitRateL5 * 100)}%` : ""}
+                {lmHitRateL10 != null && lmHitRateL5 == null ? ` · L10 hit rate: ${Math.round(lmHitRateL10 * 100)}%` : ""}
+                {lmConsensusLine != null ? ` · Consensus line: ${lmConsensusLine}` : ""}
+                . Cross-source confirmation raises confidence score.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── MLB platoon split signal ── */}
+        {platoonNote && bet.sport === "MLB" && (
+          <div className="flex items-start gap-2 p-2.5 rounded-lg" style={{
+            background: platoonAdj != null && platoonAdj > 0 ? "rgba(34,197,94,0.06)" : platoonAdj != null && platoonAdj < 0 ? "rgba(239,68,68,0.06)" : "rgba(19,35,58,0.04)",
+            border: `1px solid ${platoonAdj != null && platoonAdj > 0 ? "rgba(34,197,94,0.25)" : platoonAdj != null && platoonAdj < 0 ? "rgba(239,68,68,0.22)" : "rgba(19,35,58,0.12)"}`,
+          }}>
+            <span className="text-sm flex-shrink-0">{platoonAdj != null && platoonAdj > 0 ? "⚾" : platoonAdj != null && platoonAdj < 0 ? "⚠️" : "📊"}</span>
+            <div>
+              <p className="text-[11px] font-bold" style={{ color: platoonAdj != null && platoonAdj > 0 ? "#15803d" : platoonAdj != null && platoonAdj < 0 ? "#b91c1c" : "#131A24" }}>
+                Platoon Split{platoonAdj != null && platoonAdj !== 0 ? ` (${platoonAdj > 0 ? "+" : ""}${platoonAdj} pts)` : ""}
+              </p>
+              <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.65)" }}>{platoonNote}</p>
+            </div>
           </div>
         )}
 
