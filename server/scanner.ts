@@ -3260,6 +3260,228 @@ async function fetchSportsGameOddsProps(enabledSports?: string[]): Promise<Inser
   return bets;
 }
 
+
+// ─── Linemate MLB Player Props (primary source when Odds API unavailable) ─────
+// Fetches all MLB player prop markets from Linemate's free public API.
+// Covers: Hits, Runs, Total Bases, RBIs, HRs, Stolen Bases, Singles, Doubles,
+//         Pitcher Strikeouts, Pitcher Earned Runs, Pitcher Hits Allowed, etc.
+// Returns full bet cards with DraftKings/FanDuel/BetMGM lines + hit rate history.
+const LINEMATE_MARKET_MAP: Record<string, { statType: string; label: string }> = {
+  HITTER_HITS:                   { statType: "hits",          label: "Hits" },
+  HITTER_HOME_RUNS:              { statType: "home runs",     label: "Home Runs" },
+  HITTER_RUNS:                   { statType: "runs scored",   label: "Runs Scored" },
+  HITTER_RUNS_BATTED_IN:         { statType: "rbis",          label: "RBIs" },
+  HITTER_TOTAL_BASES:            { statType: "total bases",   label: "Total Bases" },
+  HITTER_STOLEN_BASES:           { statType: "stolen bases",  label: "Stolen Bases" },
+  HITTER_SINGLES:                { statType: "singles",       label: "Singles" },
+  HITTER_DOUBLES:                { statType: "doubles",       label: "Doubles" },
+  HITTER_TRIPLES:                { statType: "triples",       label: "Triples" },
+  HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN: { statType: "hits+runs+rbis", label: "H+R+RBI" },
+  PITCHER_STRIKEOUTS:            { statType: "strikeouts",    label: "Strikeouts" },
+  PITCHER_EARNED_RUNS:           { statType: "earned runs",   label: "Earned Runs" },
+  PITCHER_HITS_ALLOWED:          { statType: "hits allowed",  label: "Hits Allowed" },
+  PITCHER_WALKS_ALLOWED:         { statType: "walks",         label: "Walks" },
+  PITCHER_OUTS:                  { statType: "outs",          label: "Pitcher Outs" },
+};
+// US-facing books in priority order
+const LM_US_BOOKS = ["draftkings", "fanduel", "betmgm", "fanatics", "caesars", "bet365"];
+
+async function fetchLinemateMLBProps(): Promise<InsertBet[]> {
+  const bets: InsertBet[] = [];
+  try {
+    const LINEMATE_HEADERS = {
+      "Origin":     "https://linemate.io",
+      "Referer":    "https://linemate.io/",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept":     "application/json",
+    };
+    const { data } = await axios.get(
+      "https://api.linemate.io/api/mlb/v2/markets?levelsToInclude=player",
+      { headers: LINEMATE_HEADERS, timeout: 20000 }
+    );
+    const markets: any[] = Array.isArray(data) ? data : (data?.markets ?? data?.data?.markets ?? []);
+    if (!markets.length) {
+      console.log("[Linemate/MLB] No markets returned");
+      return bets;
+    }
+
+    const seen = new Set<string>();
+    let parsed = 0, skipped = 0;
+
+    for (const mkt of markets) {
+      const marketName: string = mkt.name ?? "";
+      const mapping = LINEMATE_MARKET_MAP[marketName];
+      if (!mapping) { skipped++; continue; }
+
+      // Player info
+      const player = mkt.player ?? {};
+      const playerName: string = player.fullName ?? `${player.firstName ?? ""} ${player.lastName ?? ""}`.trim();
+      if (!playerName) { skipped++; continue; }
+
+      const team    = mkt.team ?? {};
+      const opp     = mkt.opposingTeam ?? {};
+      const teamCode = team.code ?? team.name ?? "";
+      const oppCode  = opp.code ?? opp.name ?? "";
+      const isHome: boolean = mkt.isHome ?? false;
+      const homeTeam = isHome ? teamCode : oppCode;
+      const awayTeam = isHome ? oppCode : teamCode;
+      const gameId: string = mkt.gameId ?? `${awayTeam}-${homeTeam}`;
+      const batterHand: "L" | "R" | null = player.battingHand === "Right" ? "R" : player.battingHand === "Left" ? "L" : null;
+
+      // Find best US book line — prefer DraftKings, fallback down list
+      let bestBook = "";
+      let overLine: number | null = null;
+      let overOdds: number | null = null;
+      let underOdds: number | null = null;
+      const books: Record<string, any> = mkt.books ?? {};
+      for (const book of LM_US_BOOKS) {
+        const bk = books[book];
+        if (!bk) continue;
+        const ov = bk.over?.current;
+        if (ov?.value != null) {
+          bestBook = book;
+          overLine = ov.value;
+          overOdds = ov.odds?.american ?? null;
+          underOdds = bk.under?.current?.odds?.american ?? null;
+          break;
+        }
+      }
+      // If no US book, try any book
+      if (overLine === null) {
+        for (const [book, bk] of Object.entries(books)) {
+          const ov = (bk as any).over?.current;
+          if (ov?.value != null) {
+            bestBook = book;
+            overLine = ov.value;
+            overOdds = ov.odds?.american ?? null;
+            underOdds = (bk as any).under?.current?.odds?.american ?? null;
+            break;
+          }
+        }
+      }
+      if (overLine === null) { skipped++; continue; }
+
+      // Deduplicate: one card per player+stat
+      const dedupeKey = `lm-mlb-${playerName}-${mapping.statType}-${gameId}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      // Hit rate — find records for the overLine threshold
+      const hitRecords: Record<string, any> = mkt.pregameHitRecords ?? {};
+      const lineKey = String(overLine);
+      const nearKey = Object.keys(hitRecords).find(k => Math.abs(parseFloat(k) - overLine!) <= 0.5) ?? null;
+      const rec = hitRecords[lineKey] ?? (nearKey ? hitRecords[nearKey] : null);
+      const hitRateL5  = rec?.LAST_5?.all?.hitRate  != null ? rec.LAST_5.all.hitRate / 100  : null;
+      const hitRateL10 = rec?.LAST_10?.all?.hitRate != null ? rec.LAST_10.all.hitRate / 100 : null;
+      const hitRateL20 = rec?.LAST_20?.all?.hitRate != null ? rec.LAST_20.all.hitRate / 100 : null;
+
+      // Compute implied prob + pick side
+      const overProb  = overOdds  != null ? americanToImplied(overOdds)  : 0.5;
+      const underProb = underOdds != null ? americanToImplied(underOdds) : 1 - overProb;
+      const side = overProb >= underProb ? "over" : "under";
+      const pickedProb = side === "over" ? overProb : underProb;
+      const pickedOdds = side === "over" ? overOdds : underOdds;
+      const oddsDisplay = pickedOdds != null ? (pickedOdds > 0 ? `+${pickedOdds}` : `${pickedOdds}`) : "";
+
+      // Form edge: hit rate vs 50% baseline
+      const formEdge = hitRateL5 != null ? hitRateL5 - 0.5 : null;
+
+      const title = `[TAKE ${side.toUpperCase()}${overLine != null ? ` ${overLine}` : ""}${oddsDisplay ? ` @ ${oddsDisplay}` : ""}] ${playerName} — ${mapping.label}`;
+      const gameTitle = `${awayTeam} @ ${homeTeam}`;
+
+      const scoreInput: ScoreInput = {
+        impliedProb:     pickedProb,
+        source:          bestBook || "linemate",
+        betType:         "player_prop",
+        sport:           "MLB",
+        title,
+        odds:            pickedOdds ?? undefined,
+        line:            overLine,
+        formEdge:        formEdge,
+        formFlipped:     false,
+        recentAvg:       hitRateL5 != null ? overLine * (0.5 + hitRateL5) : null,
+        statCategory:    mapping.statType,
+        linematePriority: true,  // always true — this IS the Linemate source
+      };
+      const score = computeConfidence(scoreInput);
+
+      // Build allSources from all US books that have this line
+      const allSources: any[] = [];
+      for (const book of LM_US_BOOKS) {
+        const bk = books[book];
+        const ov = bk?.over?.current;
+        if (!ov?.value) continue;
+        allSources.push({
+          source:      book,
+          line:        ov.value,
+          overOdds:    ov.odds?.american ?? null,
+          underOdds:   bk?.under?.current?.odds?.american ?? null,
+          impliedProb: ov.odds?.american != null ? americanToImplied(ov.odds.american) : null,
+          pickSide:    side.toUpperCase(),
+        });
+      }
+      if (!allSources.length) {
+        allSources.push({ source: bestBook || "linemate", line: overLine, overOdds, underOdds, pickSide: side.toUpperCase() });
+      }
+
+      const keyFactors: string[] = [];
+      if (hitRateL5  != null) keyFactors.push(`L5 hit rate: ${Math.round(hitRateL5 * 100)}% vs ${overLine} line`);
+      if (hitRateL10 != null) keyFactors.push(`L10 hit rate: ${Math.round(hitRateL10 * 100)}%`);
+      if (allSources.length >= 2) keyFactors.push(`${allSources.length} books agree on line ${overLine}`);
+      keyFactors.push(...(score.factors ?? []));
+
+      bets.push({
+        id:                 dedupeKey,
+        source:             "linemate",
+        sport:              "MLB",
+        betType:            "player_prop",
+        title,
+        description:        `${gameTitle} · ${mapping.label} O/U ${overLine}`,
+        line:               overLine,
+        overOdds:           overOdds ?? null,
+        underOdds:          underOdds ?? null,
+        impliedProbability: pickedProb,
+        confidenceScore:    score.score,
+        riskLevel:          score.risk,
+        recommendedAllocation: score.allocation,
+        keyFactors:         keyFactors.slice(0, 8),
+        researchSummary:    score.summary,
+        isHighConfidence:   score.score >= 85,
+        status:             "open",
+        homeTeam:           homeTeam || null,
+        awayTeam:           awayTeam || null,
+        playerName,
+        gameTime:           null, // ESPN scoreboard enriches this
+        notificationSent:   false,
+        playerStats:        null,
+        teamStats: {
+          pickSide:        side.toUpperCase(),
+          pickedOdds:      pickedOdds ?? null,
+          overProb:        Math.round(overProb * 100),
+          underProb:       Math.round(underProb * 100),
+          playerName,
+          statType:        mapping.statType,
+          statValue:       overLine,
+          gameTitle,
+          lmHitRateL5:     hitRateL5,
+          lmHitRateL10:    hitRateL10,
+          lmConsensusLine: overLine,
+          linematePriority: true,
+          batterHand,
+        },
+        allSources,
+        yesPrice: null,
+        noPrice:  null,
+      });
+      parsed++;
+    }
+    console.log(`[Linemate/MLB] Parsed ${parsed} props, skipped ${skipped} (${markets.length} total markets)`);
+  } catch (e: any) {
+    console.warn(`[Linemate/MLB] Fetch failed: ${e.message}`);
+  }
+  return bets;
+}
+
 // ─── Main scanner ─────────────────────────────────────────────────────────────
 function computeConfidence(input: ScoreInput): ScoreResult {
   const result = computeConfidenceRaw(input);
@@ -3290,7 +3512,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   // Fetch all live sources in parallel
   // Underdog and SportsGameOdds provide NHL/MLB/NFL player props (Kalshi only has NBA active)
-  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet, underdogProps, sgoProps] = await Promise.all([
+  const [kalshi, kalshiWBC, kalshiAwards, kalshiProps, poly, actionNet, underdogProps, sgoProps, linemateMlbProps] = await Promise.all([
     fetchKalshiSports(),
     fetchKalshiWBC(),
     fetchKalshiSeasonAwards(),
@@ -3299,6 +3521,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     fetchActionNetwork(),
     fetchUnderdogProps(allEnabledSports),
     fetchSportsGameOddsProps(allEnabledSports),
+    allEnabledSports.includes("MLB") ? fetchLinemateMLBProps() : Promise.resolve([]),
   ]);
 
   // Merge all Kalshi results, deduplicating by ID
@@ -3313,6 +3536,7 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
 
   results.push(...kalshiAll, ...poly, ...actionNet);
   console.log(`Kalshi sources: ${kalshi.length} generic + ${kalshiWBC.length} WBC + ${kalshiAwards.length} season awards + ${kalshiProps.length} player props = ${kalshiAll.length} unique`);
+  console.log(`Linemate MLB props fetched: ${linemateMlbProps.length}`);
   console.log(`Underdog player props fetched: ${underdogProps.length}`);
 
   // ── Multi-source player prop aggregation ──────────────────────────────────
@@ -3432,6 +3656,49 @@ export async function runScan(apiKey?: string | null): Promise<{ scanned: number
     }
   }
   console.log(`SGO merge: ${sgoMerged} merged into existing props, ${sgoAdded} new props added`);
+
+  // ── Linemate MLB props merge ───────────────────────────────────────────────
+  // These are primary bet cards built directly from Linemate. Merge into existing
+  // cards if same player+stat already exists (e.g. from Kalshi HR), otherwise add new.
+  let lmMlbMerged = 0, lmMlbAdded = 0;
+  for (const b of linemateMlbProps) {
+    const key = `${b.playerName}::${b.sport}::${getStatTypeKey(b)}`;
+    const primary = propByPlayerSport.get(key);
+    if (primary) {
+      // Already have a card for this player+stat — attach Linemate book lines as allSources
+      if (!primary.allSources) primary.allSources = [];
+      for (const src of (b.allSources ?? [])) {
+        if (!primary.allSources.some(s => s.source === src.source)) {
+          primary.allSources.push(src);
+        }
+      }
+      // Copy hit rate data onto existing card's teamStats
+      if (primary.teamStats && typeof primary.teamStats === "object") {
+        const lmTs = b.teamStats as any;
+        const pTs = primary.teamStats as any;
+        if (pTs.lmHitRateL5 == null && lmTs.lmHitRateL5 != null) pTs.lmHitRateL5 = lmTs.lmHitRateL5;
+        if (pTs.lmHitRateL10 == null && lmTs.lmHitRateL10 != null) pTs.lmHitRateL10 = lmTs.lmHitRateL10;
+        if (!pTs.lmConsensusLine && lmTs.lmConsensusLine != null) pTs.lmConsensusLine = lmTs.lmConsensusLine;
+        if (!pTs.linematePriority) pTs.linematePriority = true;
+        // Carry batting hand for platoon splits
+        if (!pTs.batterHand && lmTs.batterHand) pTs.batterHand = lmTs.batterHand;
+      }
+      // Boost confidence for multi-source confirmation
+      if (primary.confidenceScore != null) {
+        primary.confidenceScore = Math.min(98, primary.confidenceScore + 4);
+      }
+      if (!primary.gameTime && b.gameTime) primary.gameTime = b.gameTime;
+      if (!primary.homeTeam && b.homeTeam) primary.homeTeam = b.homeTeam;
+      if (!primary.awayTeam && b.awayTeam) primary.awayTeam = b.awayTeam;
+      lmMlbMerged++;
+    } else {
+      // New player+stat card from Linemate — this IS primary
+      results.push(b);
+      propByPlayerSport.set(key, b);
+      lmMlbAdded++;
+    }
+  }
+  console.log(`Linemate MLB merge: ${lmMlbMerged} merged, ${lmMlbAdded} new props added`);
 
   // ── Linemate enrichment ─────────────────────────────────────────────────────
   // Fetch consensus lines + hit rates from Linemate (PrizePicks/DraftKings/Sleeper/etc.)
