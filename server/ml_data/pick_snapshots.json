@@ -12378,5 +12378,25 @@
     "sport": "MLB",
     "statCategory": null,
     "title": "[TAKE UNDER 0.5 @ -1011] Sal Frelick — Home Runs"
+  },
+  {
+    "awayTeam": "Golden State",
+    "betId": "kalshi-prop-KXNBABLK-26APR17GSWPHX-PHXMWILLIAMS15-1",
+    "betType": "player_prop",
+    "confidenceScore": 67,
+    "edgeGrade": null,
+    "edgeScore": null,
+    "edgeSizing": null,
+    "formEdgePct": null,
+    "gameTime": "2026-04-18T01:00:00.000Z",
+    "hitRate": null,
+    "homeTeam": "Phoenix",
+    "line": 0.5,
+    "loggedAt": "2026-04-17T13:48:54.946Z",
+    "pickSide": null,
+    "playerName": "Mark Williams",
+    "sport": "NBA",
+    "statCategory": null,
+    "title": "[TAKE OVER 0.5 @ -194] Mark Williams — Blocks"
   }
 ]
