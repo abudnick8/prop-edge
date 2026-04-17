@@ -911,8 +911,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         if (bet.sport !== "MLB" || bet.betType !== "player_prop") return true;
         const statRaw = ((bet.teamStats as any)?.statType ?? "").toLowerCase();
         if (MLB_BANNED_STATS.has(statRaw)) return false;
-        // Stolen Bases: only show OVER
-        if (statRaw === "stolen bases" || statRaw === "stolen_bases") {
+        // Stolen Bases + Home Runs: only show OVER
+        if (statRaw === "stolen bases" || statRaw === "stolen_bases" || statRaw === "home runs" || statRaw === "home_runs") {
           const side = ((bet.teamStats as any)?.pickSide ?? "").toUpperCase();
           if (side === "UNDER") return false;
         }
