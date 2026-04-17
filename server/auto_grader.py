@@ -533,8 +533,25 @@ def grade_team_bet(snap: dict, game: dict) -> str | None:
     Returns 'won', 'lost', or 'push'. None if unresolvable.
     """
     bet_type  = (snap.get("betType") or "").lower()
-    pick_side = (snap.get("pickSide") or "").lower()
     line      = snap.get("line")
+
+    # For totals: always derive pickSide from the title — the stored pickSide field
+    # was historically unreliable (defaulted to "over" when formEdgePct was 0).
+    # Title always contains the keyword OVER or UNDER and is the ground truth.
+    raw_pick_side = (snap.get("pickSide") or "").lower()
+    if bet_type == "total":
+        title_upper = (snap.get("title") or "").upper()
+        import re as _re
+        if _re.search(r"\bUNDER\b", title_upper):
+            pick_side = "under"
+        elif _re.search(r"\bOVER\b", title_upper):
+            pick_side = "over"
+        else:
+            pick_side = raw_pick_side  # fallback to stored value if title unclear
+        if pick_side != raw_pick_side and raw_pick_side:
+            print(f"    [Grader] pickSide corrected from title: {raw_pick_side!r} → {pick_side!r} | {snap.get('title','')[:60]}")
+    else:
+        pick_side = raw_pick_side
     home      = snap.get("homeTeam", "")
     away      = snap.get("awayTeam", "")
 
