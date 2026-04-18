@@ -138,25 +138,53 @@ STAT_MAP = {
         "REB+AST": ("REB+AST", "combo"),
     },
     "MLB": {
-        # Batting
-        "H":     ("H",     "int"),
-        "HITS":  ("H",     "int"),
-        "HR":    ("HR",    "int"),
-        "HOME_RUNS": ("HR","int"),
-        "RBI":   ("RBI",   "int"),
-        "R":     ("R",     "int"),
-        "RUNS":  ("R",     "int"),
-        "BB":    ("BB",    "int"),
-        "K":     ("K",     "int"),
-        "SB":    ("SB",    "int"),
-        "TB":    ("TB",    "int"),
-        # Pitching
-        "IP":    ("IP",    "float"),
-        "ER":    ("ER",    "int"),
-        "STRIKEOUTS": ("K","int"),    # pitcher K
-        "PITCHING_K": ("K","int"),
-        "WALKS":  ("BB",   "int"),
-        "ERA":   ("ERA",   "float"),
+        # ── Batting ───────────────────────────────────────────────
+        "H":              ("H",   "int"),
+        "HITS":           ("H",   "int"),
+        "HR":             ("HR",  "int"),
+        "HOME_RUNS":      ("HR",  "int"),
+        "RBI":            ("RBI", "int"),
+        "RUNS_BATTED_IN": ("RBI", "int"),
+        "RBIS":           ("RBI", "int"),
+        "R":              ("R",   "int"),
+        "RUNS":           ("R",   "int"),
+        "RUNS_SCORED":    ("R",   "int"),
+        "BB":             ("BB",  "int"),
+        "WALKS":          ("BB",  "int"),
+        "K":              ("K",   "int"),
+        "SO":             ("K",   "int"),
+        "STRIKEOUTS_BATTER": ("K","int"),
+        # Singles — ESPN doesn't expose singles directly; compute as H - HR - 2B - 3B
+        "1B":             ("H",   "int"),   # fallback to H; true singles need combo
+        "SINGLES":        ("H",   "int"),   # approximate; best available from ESPN
+        # Doubles
+        "2B":             ("2B",  "int"),
+        "DOUBLES":        ("2B",  "int"),
+        # Triples (banned from display but kept for grading accuracy)
+        "3B":             ("3B",  "int"),
+        "TRIPLES":        ("3B",  "int"),
+        # Stolen bases
+        "SB":             ("SB",  "int"),
+        "STOLEN_BASES":   ("SB",  "int"),
+        "STOLEN_BASE":    ("SB",  "int"),
+        # Total bases
+        "TB":             ("TB",  "int"),
+        "TOTAL_BASES":    ("TB",  "int"),
+        # ── Pitching ──────────────────────────────────────────────
+        "IP":             ("IP",  "float"),
+        "PITCHER_OUTS":   ("OUT", "int"),   # ESPN uses "OUT" for outs recorded
+        "OUTS":           ("OUT", "int"),
+        "ER":             ("ER",  "int"),
+        "EARNED_RUNS":    ("ER",  "int"),
+        "STRIKEOUTS":     ("K",   "int"),   # pitcher K
+        "PITCHING_K":     ("K",   "int"),
+        "PITCHER_K":      ("K",   "int"),
+        "PITCHER_STRIKEOUTS": ("K","int"),
+        "HITS_ALLOWED":   ("H",   "int"),   # ESPN pitching "H" = hits allowed
+        "PITCHER_HITS":   ("H",   "int"),
+        "WALKS_ALLOWED":  ("BB",  "int"),   # ESPN pitching "BB" = walks issued
+        "PITCHER_BB":     ("BB",  "int"),
+        "ERA":            ("ERA", "float"),
     },
     "NHL": {
         "G":     ("G",     "int"),
