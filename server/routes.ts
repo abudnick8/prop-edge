@@ -887,6 +887,14 @@ let livePollInterval: NodeJS.Timeout | null = null;
 let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
+  // ── Build version endpoint — used by PWA to detect stale cache and force reload ──
+  // BUILD_HASH is set at build time; falls back to timestamp so it's always unique
+  const BUILD_HASH = process.env.BUILD_HASH ?? Date.now().toString(36);
+  app.get("/api/version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ version: BUILD_HASH });
+  });
+
   // Ensure ml_data directory exists
   const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");
   if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
