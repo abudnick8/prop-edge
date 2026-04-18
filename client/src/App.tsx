@@ -25,6 +25,7 @@ import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useVersionCheck } from "@/hooks/useVersionCheck";
 import { useEffect } from "react";
 
 function ScrollToTop() {
@@ -41,6 +42,7 @@ function ScrollToTop() {
 
 function AppInner() {
   const { isConnected } = useWebSocket();
+  useVersionCheck(); // force reload PWA if server has newer build
 
   return (
     <WouterRouter hook={useHashLocation}>
