@@ -383,18 +383,20 @@ function buildConvictionPlays(
       const playerName = extractPlayerName(bet);
       const statRaw    = extractStatType(bet);
 
-      const lmMatch = linematePicks.find((lm: any) => {
-        if (!playerName || !lm.playerName) return false;
-        const nameLower = playerName.toLowerCase();
-        const lmLower   = lm.playerName.toLowerCase();
-        // Match on last name at minimum
-        const lastName = nameLower.split(" ").slice(-1)[0];
-        if (!lmLower.includes(lastName) && !nameLower.includes(lm.playerName.split(" ").slice(-1)[0]?.toLowerCase())) return false;
-        // Stat type match (loose)
-        const betStat  = statRaw.toLowerCase();
-        const lmStat   = (lm.marketName ?? "").toLowerCase();
-        const statWords = betStat.split(/[\s_]+/);
-        return statWords.some((w: string) => w.length > 2 && lmStat.includes(w));
+      const lmMatch = (linematePicks ?? []).find((lm: any) => {
+        try {
+          if (!lm || !playerName || !lm.playerName) return false;
+          const nameLower = playerName.toLowerCase();
+          const lmLower   = lm.playerName.toLowerCase();
+          const lastName = nameLower.split(" ").slice(-1)[0] ?? "";
+          const lmLast   = lmLower.split(" ").slice(-1)[0] ?? "";
+          if (lastName.length < 2) return false;
+          if (!lmLower.includes(lastName) && !lmLast.includes(lastName)) return false;
+          const betStat  = statRaw.toLowerCase();
+          const lmStat   = (lm.marketName ?? "").toLowerCase();
+          const statWords = betStat.split(" ").filter((w: string) => w.length > 2);
+          return statWords.some((w: string) => lmStat.includes(w));
+        } catch { return false; }
       });
 
       if (lmMatch) {
@@ -693,15 +695,18 @@ function buildWatchingPlays(
       const playerName = extractPlayerName(bet);
       const statRaw    = extractStatType(bet);
 
-      const lmMatch = linematePicks.find((lm: any) => {
-        if (!playerName || !lm.playerName) return false;
-        const lastName = playerName.toLowerCase().split(" ").slice(-1)[0];
-        const lmLast   = lm.playerName.toLowerCase().split(" ").slice(-1)[0];
-        if (lastName !== lmLast && !lm.playerName.toLowerCase().includes(playerName.split(" ").slice(-1)[0].toLowerCase())) return false;
-        const betStat  = statRaw.toLowerCase();
-        const lmStat   = (lm.marketName ?? "").toLowerCase();
-        const statWords = betStat.split(/\s+/);
-        return statWords.some((w: string) => w.length > 2 && lmStat.includes(w));
+      const lmMatch = (linematePicks ?? []).find((lm: any) => {
+        try {
+          if (!lm || !playerName || !lm.playerName) return false;
+          const lastName = playerName.toLowerCase().split(" ").slice(-1)[0] ?? "";
+          const lmLast   = lm.playerName.toLowerCase().split(" ").slice(-1)[0] ?? "";
+          if (lastName.length < 2) return false;
+          if (lastName !== lmLast && !lmLast.includes(lastName) && !lastName.includes(lmLast)) return false;
+          const betStat  = statRaw.toLowerCase();
+          const lmStat   = (lm.marketName ?? "").toLowerCase();
+          const statWords = betStat.split(" ").filter((w: string) => w.length > 2);
+          return statWords.some((w: string) => lmStat.includes(w));
+        } catch { return false; }
       });
 
       if (lmMatch) {
@@ -1367,19 +1372,39 @@ export default function HighConviction() {
   // Fetch Linemate picks for all MLB + NBA props to cross-reference
   const { data: lmMlb = [] } = useQuery<any[]>({
     queryKey: ["/api/linemate-props", "mlb"],
-    queryFn: () => fetch("/api/linemate-props?sport=mlb").then(r => r.json()).then(d => [
-      ...(d.picks?.SAFE ?? []), ...(d.picks?.RISKY ?? []), ...(d.picks?.["100_CLUB"] ?? []), ...(d.markets ?? [])
-    ]),
+    queryFn: async () => {
+      try {
+        const d = await fetch("/api/linemate-props?sport=mlb").then(r => r.json());
+        if (!d || typeof d !== "object") return [];
+        const picks = d.picks ?? {};
+        return [
+          ...(Array.isArray(picks.SAFE)        ? picks.SAFE        : []),
+          ...(Array.isArray(picks.RISKY)       ? picks.RISKY       : []),
+          ...(Array.isArray(picks["100_CLUB"]) ? picks["100_CLUB"] : []),
+          ...(Array.isArray(d.markets)         ? d.markets         : []),
+        ];
+      } catch { return []; }
+    },
     staleTime: 5 * 60 * 1000,
   });
   const { data: lmNba = [] } = useQuery<any[]>({
     queryKey: ["/api/linemate-props", "nba"],
-    queryFn: () => fetch("/api/linemate-props?sport=nba").then(r => r.json()).then(d => [
-      ...(d.picks?.SAFE ?? []), ...(d.picks?.RISKY ?? []), ...(d.picks?.["100_CLUB"] ?? []), ...(d.markets ?? [])
-    ]),
+    queryFn: async () => {
+      try {
+        const d = await fetch("/api/linemate-props?sport=nba").then(r => r.json());
+        if (!d || typeof d !== "object") return [];
+        const picks = d.picks ?? {};
+        return [
+          ...(Array.isArray(picks.SAFE)        ? picks.SAFE        : []),
+          ...(Array.isArray(picks.RISKY)       ? picks.RISKY       : []),
+          ...(Array.isArray(picks["100_CLUB"]) ? picks["100_CLUB"] : []),
+          ...(Array.isArray(d.markets)         ? d.markets         : []),
+        ];
+      } catch { return []; }
+    },
     staleTime: 5 * 60 * 1000,
   });
-  const linematePicks = useMemo(() => [...lmMlb, ...lmNba], [lmMlb, lmNba]);
+  const linematePicks = useMemo(() => [...(lmMlb ?? []), ...(lmNba ?? [])], [lmMlb, lmNba]);
 
   const allPlays = useMemo(
     () => buildConvictionPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], linematePicks),
