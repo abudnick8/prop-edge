@@ -1287,18 +1287,25 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
-    try {
-      const dir = path.join(__dirname, "ml_data");
-      const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
-      const result: Record<string, any> = {};
-      for (const f of files) {
+    const dir = path.join(__dirname, "ml_data");
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
+    const result: Record<string, any> = {};
+    const errors: Record<string, string> = {};
+    for (const f of files) {
+      try {
         const fp = path.join(dir, f);
         result[f] = fs.existsSync(fp) ? JSON.parse(fs.readFileSync(fp, "utf8")) : null;
+      } catch (e: any) {
+        // Return empty fallback so the export never 500s due to one bad file
+        console.error(`[ml/export] Failed to read ${f}: ${e.message}`);
+        errors[f] = e.message;
+        result[f] = f.includes("snapshots") || f.includes("outcome") || f.includes("graded_ids") ? [] : {};
       }
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
+    if (Object.keys(errors).length > 0) {
+      (result as any)._errors = errors;
+    }
+    res.json(result);
   });
 
   // ─── Scanner ──────────────────────────────────────────────────────────────
