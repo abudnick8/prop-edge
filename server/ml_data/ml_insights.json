@@ -64,97 +64,97 @@
     {
       "adj": 13.89,
       "detail": "28W-8L (77.8% hit rate). The model should weight this pattern higher.",
-      "icon": "🟢",
+      "icon": "\ud83d\udfe2",
       "pattern": "sport:MLB|bet_type:spread",
-      "title": "77.8% win rate — sport: MLB + bet type: spread",
+      "title": "77.8% win rate \u2014 sport: MLB + bet type: spread",
       "type": "strength"
     },
     {
       "adj": 13.89,
       "detail": "28W-8L (77.8% hit rate). The model should weight this pattern higher.",
-      "icon": "🟢",
+      "icon": "\ud83d\udfe2",
       "pattern": "sport:MLB|pick_side:",
-      "title": "77.8% win rate — sport: MLB + pick side: ",
+      "title": "77.8% win rate \u2014 sport: MLB + pick side: ",
       "type": "strength"
     },
     {
       "adj": 12.5,
       "detail": "24W-8L (75.0% hit rate). The model should weight this pattern higher.",
-      "icon": "🟢",
+      "icon": "\ud83d\udfe2",
       "pattern": "bet_type:spread|conf_tier:medium",
-      "title": "75.0% win rate — bet type: spread + conf tier: medium",
+      "title": "75.0% win rate \u2014 bet type: spread + conf tier: medium",
       "type": "strength"
     },
     {
       "adj": 10,
       "detail": "14W-6L (70.0% hit rate). The model should weight this pattern higher.",
-      "icon": "🟢",
+      "icon": "\ud83d\udfe2",
       "pattern": "sport:MLB|pick_side:UNDER",
-      "title": "70.0% win rate — sport: MLB + pick side: UNDER",
+      "title": "70.0% win rate \u2014 sport: MLB + pick side: UNDER",
       "type": "strength"
     },
     {
       "adj": 9.62,
       "detail": "36W-16L (69.2% hit rate). The model should weight this pattern higher.",
-      "icon": "🟢",
+      "icon": "\ud83d\udfe2",
       "pattern": "bet_type:spread",
-      "title": "69.2% win rate — bet type: spread",
+      "title": "69.2% win rate \u2014 bet type: spread",
       "type": "strength"
     },
     {
       "adj": -25,
-      "detail": "0W-10L (0.0%). The model has been overconfident here — reducing scores in this pattern.",
-      "icon": "🔴",
+      "detail": "0W-10L (0.0%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "icon": "\ud83d\udd34",
       "pattern": "sport:NBA|stat_category:BLOCKS|form_tier:neutral",
-      "title": "0.0% win rate — sport: NBA + stat category: BLOCKS + form tier: neutral",
+      "title": "0.0% win rate \u2014 sport: NBA + stat category: BLOCKS + form tier: neutral",
       "type": "weakness"
     },
     {
       "adj": -25,
-      "detail": "0W-10L (0.0%). The model has been overconfident here — reducing scores in this pattern.",
-      "icon": "🔴",
+      "detail": "0W-10L (0.0%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "icon": "\ud83d\udd34",
       "pattern": "stat_category:BLOCKS|pick_side:",
-      "title": "0.0% win rate — stat category: BLOCKS + pick side: ",
+      "title": "0.0% win rate \u2014 stat category: BLOCKS + pick side: ",
       "type": "weakness"
     },
     {
       "adj": -25,
-      "detail": "0W-8L (0.0%). The model has been overconfident here — reducing scores in this pattern.",
-      "icon": "🔴",
+      "detail": "0W-8L (0.0%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "icon": "\ud83d\udd34",
       "pattern": "stat_category:BLOCKS|conf_tier:medium",
-      "title": "0.0% win rate — stat category: BLOCKS + conf tier: medium",
+      "title": "0.0% win rate \u2014 stat category: BLOCKS + conf tier: medium",
       "type": "weakness"
     },
     {
       "adj": -25,
-      "detail": "0W-10L (0.0%). The model has been overconfident here — reducing scores in this pattern.",
-      "icon": "🔴",
+      "detail": "0W-10L (0.0%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "icon": "\ud83d\udd34",
       "pattern": "sport:NBA|stat_category:BLOCKS",
-      "title": "0.0% win rate — sport: NBA + stat category: BLOCKS",
+      "title": "0.0% win rate \u2014 sport: NBA + stat category: BLOCKS",
       "type": "weakness"
     },
     {
       "adj": -25,
-      "detail": "0W-10L (0.0%). The model has been overconfident here — reducing scores in this pattern.",
-      "icon": "🔴",
+      "detail": "0W-10L (0.0%). The model has been overconfident here \u2014 reducing scores in this pattern.",
+      "icon": "\ud83d\udd34",
       "pattern": "stat_category:BLOCKS",
-      "title": "0.0% win rate — stat category: BLOCKS",
+      "title": "0.0% win rate \u2014 stat category: BLOCKS",
       "type": "weakness"
     },
     {
       "adj": 3,
       "detail": "Model overperforms at low confidence by 11pp. Calibration good.",
-      "icon": "📈",
+      "icon": "\ud83d\udcc8",
       "pattern": "conf_tier:low",
-      "title": "📈 Low confidence picks: 56.0% actual vs 45% expected",
+      "title": "\ud83d\udcc8 Low confidence picks: 56.0% actual vs 45% expected",
       "type": "calibration"
     },
     {
       "adj": 8.72,
       "detail": "Model strong in MLB. Keep prioritizing.",
-      "icon": "✅",
+      "icon": "\u2705",
       "pattern": "sport:MLB",
-      "title": "✅ MLB: 67.4% win rate (58W-28L)",
+      "title": "\u2705 MLB: 67.4% win rate (58W-28L)",
       "type": "sport"
     }
   ],
