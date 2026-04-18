@@ -2734,7 +2734,20 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       : pickedSide === "no"
         ? `${Math.round(noPrice * 100)}¢`
         : "—";
-    const pick_label = pickedSide === "pass" ? "PASS — No Clear Edge" : `${sideLabel} @ ${priceLabel}`;
+
+    // For O/U markets, clarify whether YES = OVER or YES = UNDER in the label
+    // Title pattern: "Team A vs Team B: O/U 6.5" → YES = OVER, NO = UNDER
+    const titleUpper = (title ?? "").toUpperCase();
+    const isOUMarket = /O\/U|OVER.UNDER|OVER\/UNDER|OU/.test(titleUpper)
+                    || /^(OVER|UNDER)\s+[\d.]+/.test(titleUpper);
+    // YES contract on an O/U = betting the OVER; NO = betting the UNDER
+    const ouSuffix = isOUMarket && pickedSide !== "pass"
+      ? pickedSide === "yes" ? " (OVER)" : " (UNDER)"
+      : "";
+
+    const pick_label = pickedSide === "pass"
+      ? "PASS — No Clear Edge"
+      : `${sideLabel} @ ${priceLabel}${ouSuffix}`;
 
     // ── Natural-language reasoning ──
     const parts: string[] = [];
@@ -3026,6 +3039,52 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // a concrete, actionable sports pick with full reasoning.
       const pick = buildKronosPick(result, market);
       const enriched = { ...result, ...pick, cached: false };
+
+      // ── Save pick to ML snapshot log so the grader can track prediction market grades ──
+      if (pick.pick_side !== "pass" && market) {
+        try {
+          const mlDataDir = path.join(__dirname, "ml_data");
+          const snapFile  = path.join(mlDataDir, "pick_snapshots.json");
+          const snaps: any[] = fs.existsSync(snapFile)
+            ? JSON.parse(fs.readFileSync(snapFile, "utf8"))
+            : [];
+
+          const snapId = `kronos-${marketId}-${pick.pick_side}-${Date.now()}`;
+          const alreadyLogged = snaps.some((s: any) =>
+            s.betId?.startsWith(`kronos-${marketId}-${pick.pick_side}`)
+          );
+
+          if (!alreadyLogged) {
+            snaps.push({
+              betId:           snapId,
+              betType:         "prediction_market",
+              sport:           market.sport ?? "Sports",
+              title:           market.title ?? marketId,
+              playerName:      null,
+              statCategory:    null,
+              line:            null,
+              pickSide:        pick.pick_side,
+              confidenceScore: pick.pick_confidence,
+              edgeGrade:       pick.pick_grade,
+              edgeScore:       pick.pick_confidence,
+              gameTime:        market.endDate ?? null,
+              homeTeam:        null,
+              awayTeam:        null,
+              loggedAt:        new Date().toISOString(),
+              source:          market.source ?? "polymarket",
+              pick_label:      pick.pick_label,
+              pick_roi_est:    pick.pick_roi_est,
+              yesPrice:        market.yesPrice ?? null,
+            });
+            // Keep cap at 2000
+            const trimmed = snaps.slice(-2000);
+            fs.writeFileSync(snapFile, JSON.stringify(trimmed, null, 2));
+            console.log(`[Kronos] Saved pick snap: ${snapId} grade=${pick.pick_grade} conf=${pick.pick_confidence}`);
+          }
+        } catch (saveErr: any) {
+          console.warn("[Kronos] Failed to save pick snap:", saveErr.message);
+        }
+      }
 
       kronosCache.set(cacheKey, { data: enriched, ts: Date.now() });
       return res.json(enriched);
