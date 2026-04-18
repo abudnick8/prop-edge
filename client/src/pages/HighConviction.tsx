@@ -688,6 +688,62 @@ function buildWatchingPlays(
       });
     }
 
+    // ── Props Hub signal (player props only) ─────────────────────────────────
+    if (bet.betType === "player_prop" && linematePicks.length > 0) {
+      const playerName = extractPlayerName(bet);
+      const statRaw    = extractStatType(bet);
+
+      const lmMatch = linematePicks.find((lm: any) => {
+        if (!playerName || !lm.playerName) return false;
+        const lastName = playerName.toLowerCase().split(" ").slice(-1)[0];
+        const lmLast   = lm.playerName.toLowerCase().split(" ").slice(-1)[0];
+        if (lastName !== lmLast && !lm.playerName.toLowerCase().includes(playerName.split(" ").slice(-1)[0].toLowerCase())) return false;
+        const betStat  = statRaw.toLowerCase();
+        const lmStat   = (lm.marketName ?? "").toLowerCase();
+        const statWords = betStat.split(/\s+/);
+        return statWords.some((w: string) => w.length > 2 && lmStat.includes(w));
+      });
+
+      if (lmMatch) {
+        const hitRate = lmMatch.hitRateL5 ?? lmMatch.hitRateL10 ?? lmMatch.bestHitRate;
+        const is100   = lmMatch.is100Club || hitRate === 100;
+        const hitPct  = hitRate != null ? Math.round(hitRate) : null;
+
+        if (is100 || (hitPct != null && hitPct >= 80)) {
+          confirmedSignals.push({
+            type: "props_hub",
+            label: is100 ? "Props Hub — 100% Club" : `Props Hub — ${hitPct}% Hit Rate`,
+            detail: is100
+              ? `${lmMatch.playerName} is in the Props Hub 100% Club. Strong recurring trend confirms the model signal.`
+              : `${lmMatch.playerName} has a ${hitPct}% hit rate on this prop in Props Hub data.`,
+            strength: is100 ? "strong" : "moderate",
+            color: "#8b5cf6",
+            bg: "rgba(139,92,246,0.10)",
+            icon: is100 ? "💯" : "📊",
+          });
+          proximity += is100 ? 12 : 7;
+        } else {
+          // Has a Props Hub entry but below threshold — show as watching signal
+          missingSignals.push({
+            type: "props_hub" as any,
+            label: "Watching Props Hub Hit Rate",
+            hint: hitPct != null
+              ? `${lmMatch.playerName} is at ${hitPct}% hit rate in Props Hub — watching for ≥80% to confirm.`
+              : "Found in Props Hub but insufficient hit rate data yet.",
+            icon: "💯",
+          });
+          proximity += 3;
+        }
+      } else {
+        missingSignals.push({
+          type: "props_hub" as any,
+          label: "Not in Props Hub 100% Club",
+          hint: "No matching Props Hub entry found yet. A 100% Club match would boost this play's conviction.",
+          icon: "💯",
+        });
+      }
+    }
+
     // ── Only include if there's at least one missing signal (not already full HC) ──
     if (missingSignals.length === 0) continue;
     // Must have at least one near-miss OR confirmed 2nd signal
@@ -1023,11 +1079,11 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
             {/* Signal count badge + sport */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               {(() => {
-                const hasWhale   = play.signals.some(s => s.type === "whale");
+                const hasWhale    = play.signals.some(s => s.type === "whale");
                 const hasPropsHub = play.signals.some(s => s.type === "props_hub");
-                const hasLineMov = play.signals.some(s => s.type === "line_movement");
-                const hasModel   = play.signals.some(s => s.type === "model");
-                // 🔥 = whale + at least one other aligned signal
+                const hasLineMov  = play.signals.some(s => s.type === "line_movement");
+                const hasModel    = play.signals.some(s => s.type === "model");
+                // 🔥 = whale + at least one other aligned signal, OR all 4 signals
                 const isOnFire = hasWhale && (hasPropsHub || hasLineMov || hasModel);
                 if (isOnFire) return (
                   <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.55)" }}>
