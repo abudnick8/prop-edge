@@ -546,7 +546,8 @@ function buildWatchingPlays(
   bets: Bet[],
   markets: PredMkt[],
   games: GameLine[],
-  convictionIds: Set<string>   // exclude anything already in High Conviction
+  convictionIds: Set<string>,   // exclude anything already in High Conviction
+  linematePicks: any[] = []
 ): WatchingPlay[] {
   const candidates: WatchingPlay[] = [];
 
