@@ -25,12 +25,26 @@ import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useEffect } from "react";
+
+function ScrollToTop() {
+  const [location] = useHashLocation();
+
+  useEffect(() => {
+    // Find the scrollable main container and reset to top on route change
+    const main = document.querySelector("main");
+    if (main) main.scrollTop = 0;
+  }, [location]);
+
+  return null;
+}
 
 function AppInner() {
   const { isConnected } = useWebSocket();
 
   return (
     <WouterRouter hook={useHashLocation}>
+      <ScrollToTop />
       <div
         className="flex overflow-hidden"
         style={{
