@@ -1459,7 +1459,7 @@ export default function HighConviction() {
       {!isLoading && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "All 3 Signals", value: tripleCount, color: "#f87171", bg: "rgba(248,113,113,0.08)", icon: "🔥" },
+            { label: "3+ Signals", value: tripleCount, color: "#f87171", bg: "rgba(248,113,113,0.08)", icon: "🔥" },
             { label: "2 Signals", value: doubleCount, color: "#facc15", bg: "rgba(250,204,21,0.08)", icon: "⚡" },
             { label: "Total Plays", value: allPlays.length, color: "#94a3b8", bg: "rgba(148,163,184,0.06)", icon: "📋" },
           ].map(k => (
@@ -1471,43 +1471,42 @@ export default function HighConviction() {
         </div>
       )}
 
-      {/* Signal filter */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {/* Sport filters */}
-        <div className="flex gap-1 flex-wrap">
-          {sports.map(s => (
-            <button key={s} onClick={() => setSportFilter(s)}
-              className="px-2.5 py-1 rounded-full text-xs font-bold transition-all"
-              style={{
-                background: sportFilter === s ? "#facc15" : "rgba(19,35,58,0.06)",
-                color: sportFilter === s ? "#1a1a1a" : "var(--muted-foreground)",
-                border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
-                boxShadow: sportFilter === s ? "0 0 8px #facc1580" : "none",
-              }}>
-              {s}
-            </button>
-          ))}
-        </div>
+      {/* Filters — sport + signal count in one row */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Sport pills */}
+        {sports.map(s => (
+          <button key={s} onClick={() => setSportFilter(s)}
+            className="px-2.5 py-1 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: sportFilter === s ? "#facc15" : "rgba(19,35,58,0.06)",
+              color: sportFilter === s ? "#1a1a1a" : "var(--muted-foreground)",
+              border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
+              boxShadow: sportFilter === s ? "0 0 8px #facc1580" : "none",
+            }}>
+            {s}
+          </button>
+        ))}
 
-        {/* Signal count filter */}
-        <div className="flex gap-1 ml-auto">
-          {[
-            { val: 0, label: "All Signals" },
-            { val: 3, label: "🔥 3 Only" },
-            { val: 2, label: "⚡ 2 Only" },
-          ].map(f => (
-            <button key={f.val} onClick={() => setSignalFilter(f.val)}
-              className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
-              style={{
-                background: signalFilter === f.val ? "#facc15" : "rgba(19,35,58,0.06)",
-                color: signalFilter === f.val ? "#1a1a1a" : "var(--muted-foreground)",
-                border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
-                boxShadow: signalFilter === f.val ? "0 0 8px #facc1580" : "none",
-              }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {/* Divider */}
+        <div className="w-px h-4 mx-0.5" style={{ background: "rgba(19,35,58,0.15)" }} />
+
+        {/* Signal count pills */}
+        {[
+          { val: 0, label: "All" },
+          { val: 3, label: "🔥 3+" },
+          { val: 2, label: "⚡ 2" },
+        ].map(f => (
+          <button key={f.val} onClick={() => setSignalFilter(f.val)}
+            className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
+            style={{
+              background: signalFilter === f.val ? "#facc15" : "rgba(19,35,58,0.06)",
+              color: signalFilter === f.val ? "#1a1a1a" : "var(--muted-foreground)",
+              border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
+              boxShadow: signalFilter === f.val ? "0 0 8px #facc1580" : "none",
+            }}>
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Loading */}
