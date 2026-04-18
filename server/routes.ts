@@ -200,8 +200,15 @@ async function pullMLDataFromGitHub(): Promise<void> {
       if (!resp.ok) continue;
       const json    = await resp.json() as any;
       const decoded = Buffer.from(json.content, "base64").toString("utf8");
+      // Validate JSON before writing — a truncated GitHub push leaves corrupt data
+      try {
+        JSON.parse(decoded);
+      } catch (_e) {
+        console.warn(`[MLSync] ${filename} from GitHub is corrupt JSON — skipping write`);
+        continue;
+      }
       fs.writeFileSync(path.join(DATA_DIR, filename), decoded);
-      console.log(`[MLSync] Pulled ${filename} from GitHub`);
+      console.log(`[MLSync] Pulled ${filename} from GitHub (${Math.round(decoded.length/1024)}KB)`);
     } catch (e: any) {
       console.warn(`[MLSync] Could not pull ${filename}:`, e.message);
     }
