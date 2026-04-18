@@ -46,7 +46,7 @@ interface GameLine {
 // ─────────────────────────────────────────────────────────────────────────────
 // Confluence Signal Types
 // ─────────────────────────────────────────────────────────────────────────────
-type SignalType = "model" | "line_movement" | "whale";
+type SignalType = "model" | "line_movement" | "whale" | "props_hub";
 
 interface ConvictionSignal {
   type: SignalType;
@@ -313,7 +313,8 @@ function extractStatType(bet: Bet): string {
 function buildConvictionPlays(
   bets: Bet[],
   markets: PredMkt[],
-  games: GameLine[]
+  games: GameLine[],
+  linematePicks: any[]
 ): ConvictionPlay[] {
   const plays: ConvictionPlay[] = [];
 
@@ -375,6 +376,92 @@ function buildConvictionPlays(
         bg: "rgba(52,211,153,0.10)",
         icon: "🐋",
       });
+    }
+
+    // ── Signal 4: Props Hub — 100% Club or high hit rate match ───────────
+    if (bet.betType === "player_prop") {
+      const playerName = extractPlayerName(bet);
+      const statRaw    = extractStatType(bet);
+
+      const lmMatch = linematePicks.find((lm: any) => {
+        if (!playerName || !lm.playerName) return false;
+        const nameLower = playerName.toLowerCase();
+        const lmLower   = lm.playerName.toLowerCase();
+        // Match on last name at minimum
+        const lastName = nameLower.split(" ").slice(-1)[0];
+        if (!lmLower.includes(lastName) && !nameLower.includes(lm.playerName.split(" ").slice(-1)[0]?.toLowerCase())) return false;
+        // Stat type match (loose)
+        const betStat  = statRaw.toLowerCase();
+        const lmStat   = (lm.marketName ?? "").toLowerCase();
+        const statWords = betStat.split(/[\s_]+/);
+        return statWords.some((w: string) => w.length > 2 && lmStat.includes(w));
+      });
+
+      if (lmMatch) {
+        const hitRate = lmMatch.hitRateL5 ?? lmMatch.hitRateL10 ?? lmMatch.bestHitRate;
+        const is100   = lmMatch.is100Club || hitRate === 100;
+        const hitPct  = hitRate != null ? Math.round(hitRate) : null;
+
+        if (is100 || (hitPct != null && hitPct >= 80)) {
+          signals.push({
+            type: "props_hub",
+            label: is100 ? "Props Hub — 100% Club" : `Props Hub — ${hitPct}% Hit Rate`,
+            detail: is100
+              ? `${lmMatch.playerName} is in the Props Hub 100% Club — hit this prop in 100% of recent tracked games${lmMatch.hitRateL5 === 100 ? " (L5)" : lmMatch.hitRateL10 === 100 ? " (L10)" : ""}. Strong recurring trend.`
+              : `${lmMatch.playerName} has a ${hitPct}% hit rate on this prop type recently. Props Hub data reinforces the model signal.`,
+            strength: is100 ? "strong" : "moderate",
+            color: "#8b5cf6",
+            bg: "rgba(139,92,246,0.10)",
+            icon: is100 ? "💯" : "📊",
+          });
+        }
+
+        // Line movement in player's team favor — check team's game line
+        const playerTeam = lmMatch.teamCode ?? "";
+        const matchedForProp = games.find(g => {
+          const teams = [g.homeTeam, g.awayTeam].join(" ").toLowerCase();
+          const teamWords = playerTeam.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+          return teamWords.some((w: string) => teams.includes(w));
+        });
+
+        if (matchedForProp && !signals.find(s => s.type === "line_movement")) {
+          // Favorable line movement = team ML shortened (favorite getting more action)
+          const awayML  = matchedForProp.moneyline.awayCurrent ?? matchedForProp.moneyline.awayOpen;
+          const homeML  = matchedForProp.moneyline.homeCurrent ?? matchedForProp.moneyline.homeOpen;
+          const awayOpen = matchedForProp.moneyline.awayOpen;
+          const homeOpen = matchedForProp.moneyline.homeOpen;
+          const isHome   = lmMatch.isHome;
+
+          let lineMoveFavorable = false;
+          let lineMoveDetail = "";
+
+          if (isHome && homeML != null && homeOpen != null) {
+            const shift = homeML - homeOpen;
+            if ((homeOpen < 0 && shift < -3) || (homeOpen > 0 && shift < -5)) {
+              lineMoveFavorable = true;
+              lineMoveDetail = `Home ML shortened from ${fmtOdds(homeOpen)} → ${fmtOdds(homeML)} (money flowing in on ${matchedForProp.homeTeam})`;
+            }
+          } else if (!isHome && awayML != null && awayOpen != null) {
+            const shift = awayML - awayOpen;
+            if ((awayOpen < 0 && shift < -3) || (awayOpen > 0 && shift < -5)) {
+              lineMoveFavorable = true;
+              lineMoveDetail = `Away ML shortened from ${fmtOdds(awayOpen)} → ${fmtOdds(awayML)} (money flowing in on ${matchedForProp.awayTeam})`;
+            }
+          }
+
+          if (lineMoveFavorable) {
+            signals.push({
+              type: "line_movement",
+              label: "Line Movement — Team Favored",
+              detail: lineMoveDetail + ". Sharp money supporting the player's team increases prop hit probability.",
+              strength: "moderate",
+              color: "#0ea5e9",
+              bg: "rgba(14,165,233,0.10)",
+              icon: "📈",
+            });
+          }
+        }
+      }
     }
 
     // ── Only include if at least 2 signals (model + 1 more) ──────────────
@@ -935,16 +1022,29 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           <div className="flex-1 min-w-0">
             {/* Signal count badge + sport */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              {allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.45)" }}>
-                  🔥 ALL 3 SIGNALS
-                </span>
-              )}
-              {!allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", borderColor: "rgba(146,64,14,0.40)" }}>
-                  ⚡ {signalCount} SIGNALS
-                </span>
-              )}
+              {(() => {
+                const hasWhale   = play.signals.some(s => s.type === "whale");
+                const hasPropsHub = play.signals.some(s => s.type === "props_hub");
+                const hasLineMov = play.signals.some(s => s.type === "line_movement");
+                const hasModel   = play.signals.some(s => s.type === "model");
+                // 🔥 = whale + at least one other aligned signal
+                const isOnFire = hasWhale && (hasPropsHub || hasLineMov || hasModel);
+                if (isOnFire) return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.55)" }}>
+                    🔥 WHALE ALERT
+                  </span>
+                );
+                if (allThree) return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.45)" }}>
+                    🔥 ALL SIGNALS
+                  </span>
+                );
+                return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", borderColor: "rgba(146,64,14,0.40)" }}>
+                    ⚡ {signalCount} SIGNALS
+                  </span>
+                );
+              })()}
               <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>
                 {SPORT_EMOJI[play.sport] ?? "🏟"} {play.sport}
               </span>
@@ -1208,9 +1308,26 @@ export default function HighConviction() {
 
   const isLoading = betsLoading || mktLoading || linesLoading;
 
+  // Fetch Linemate picks for all MLB + NBA props to cross-reference
+  const { data: lmMlb = [] } = useQuery<any[]>({
+    queryKey: ["/api/linemate-props", "mlb"],
+    queryFn: () => fetch("/api/linemate-props?sport=mlb").then(r => r.json()).then(d => [
+      ...(d.picks?.SAFE ?? []), ...(d.picks?.RISKY ?? []), ...(d.picks?.["100_CLUB"] ?? []), ...(d.markets ?? [])
+    ]),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: lmNba = [] } = useQuery<any[]>({
+    queryKey: ["/api/linemate-props", "nba"],
+    queryFn: () => fetch("/api/linemate-props?sport=nba").then(r => r.json()).then(d => [
+      ...(d.picks?.SAFE ?? []), ...(d.picks?.RISKY ?? []), ...(d.picks?.["100_CLUB"] ?? []), ...(d.markets ?? [])
+    ]),
+    staleTime: 5 * 60 * 1000,
+  });
+  const linematePicks = useMemo(() => [...lmMlb, ...lmNba], [lmMlb, lmNba]);
+
   const allPlays = useMemo(
-    () => buildConvictionPlays(bets as Bet[], markets as PredMkt[], games as GameLine[]),
-    [bets, markets, games]
+    () => buildConvictionPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], linematePicks),
+    [bets, markets, games, linematePicks]
   );
 
   const filtered = useMemo(() => {
@@ -1227,8 +1344,8 @@ export default function HighConviction() {
   const convictionIds = useMemo(() => new Set(allPlays.map(p => p.id)), [allPlays]);
 
   const watchingPlays = useMemo(
-    () => buildWatchingPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], convictionIds),
-    [bets, markets, games, convictionIds]
+    () => buildWatchingPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], convictionIds, linematePicks),
+    [bets, markets, games, convictionIds, linematePicks]
   );
 
   const sports = ["All", ...Array.from(new Set(allPlays.map(p => p.sport))).sort()];
