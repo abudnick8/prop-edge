@@ -5673,17 +5673,125 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch { return []; }
   }
 
+  // ── MLB city map for RotoGrinders / NFLWeather lookup ───────────────────────
+  const TEAM_CITY: Record<string, string> = {
+    // MLB
+    "Yankees": "New York", "Mets": "New York", "Red Sox": "Boston", "Blue Jays": "Toronto",
+    "Rays": "Tampa", "Orioles": "Baltimore", "White Sox": "Chicago", "Cubs": "Chicago",
+    "Indians": "Cleveland", "Guardians": "Cleveland", "Tigers": "Detroit", "Royals": "Kansas City",
+    "Twins": "Minneapolis", "Astros": "Houston", "Athletics": "Oakland", "Angels": "Anaheim",
+    "Mariners": "Seattle", "Rangers": "Arlington", "Dodgers": "Los Angeles", "Giants": "San Francisco",
+    "Padres": "San Diego", "Rockies": "Denver", "Diamondbacks": "Phoenix", "Braves": "Atlanta",
+    "Marlins": "Miami", "Phillies": "Philadelphia", "Nationals": "Washington", "Mets": "New York",
+    "Reds": "Cincinnati", "Brewers": "Milwaukee", "Cardinals": "St. Louis", "Pirates": "Pittsburgh",
+    // NFL
+    "Bears": "Chicago", "Lions": "Detroit", "Packers": "Green Bay", "Vikings": "Minneapolis",
+    "Falcons": "Atlanta", "Panthers": "Charlotte", "Saints": "New Orleans", "Buccaneers": "Tampa",
+    "Cardinals": "Phoenix", "Rams": "Los Angeles", "49ers": "San Francisco", "Seahawks": "Seattle",
+    "Cowboys": "Dallas", "Giants": "New York", "Eagles": "Philadelphia", "Commanders": "Washington",
+    "Browns": "Cleveland", "Steelers": "Pittsburgh", "Ravens": "Baltimore", "Bengals": "Cincinnati",
+    "Texans": "Houston", "Colts": "Indianapolis", "Titans": "Nashville", "Jaguars": "Jacksonville",
+    "Chiefs": "Kansas City", "Raiders": "Las Vegas", "Chargers": "Los Angeles", "Broncos": "Denver",
+    "Bills": "Buffalo", "Dolphins": "Miami", "Patriots": "Boston", "Jets": "New York",
+  };
+
+  function getCityFromTeam(teamName: string): string {
+    for (const [team, city] of Object.entries(TEAM_CITY)) {
+      if (teamName.includes(team)) return city;
+    }
+    // Fallback: strip last word (team nickname) to get city
+    const words = teamName.trim().split(/\s+/);
+    return words.slice(0, -1).join(" ") || teamName;
+  }
+
   async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
     // Only outdoor sports need weather: MLB, NFL
     if (sport !== "MLB" && sport !== "NFL") return null;
+
+    const city = getCityFromTeam(homeTeam);
+
+    // ── Try RotoGrinders for MLB (best source for ballpark weather + wind) ───
+    if (sport === "MLB") {
+      try {
+        const { data: html } = await axios.get("https://rotogrinders.com/weather/mlb", {
+          timeout: 6000,
+          headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+        });
+        // Parse: look for the city/team name and nearby temp/wind data
+        const cityLower = city.toLowerCase();
+        const teamLower = homeTeam.toLowerCase().split(" ").pop() ?? "";
+        // RotoGrinders HTML: <div class="weather-card"> ... team name ... temp ... wind ...
+        const cardRegex = new RegExp(
+          `(${teamLower}|${cityLower})[^]*?([0-9]+)°F[^]*?([0-9]+\s*mph[^<]*)?`,
+          "i"
+        );
+        const match = html.match(cardRegex);
+        if (match) {
+          const temp = match[2];
+          const wind = match[3] ? ` · Wind: ${match[3].trim()}` : "";
+          return `${city}: ☀ ${temp}°F${wind}`;
+        }
+        // Second pass: look for simpler temp pattern near the team
+        const teamIdx = (html as string).toLowerCase().indexOf(teamLower);
+        if (teamIdx > -1) {
+          const nearby = (html as string).slice(teamIdx, teamIdx + 500);
+          const tempM = nearby.match(/([0-9]{2,3})°F/);
+          const windM = nearby.match(/([0-9]+)\s*mph/);
+          if (tempM) {
+            const wind = windM ? ` · Wind: ${windM[1]} mph` : "";
+            return `${city}: ☀ ${tempM[1]}°F${wind}`;
+          }
+        }
+      } catch { /* fall through to wttr */ }
+    }
+
+    // ── Try NFLWeather.com for NFL ────────────────────────────────────────────
+    if (sport === "NFL") {
+      try {
+        const { data: html } = await axios.get("https://www.nflweather.com", {
+          timeout: 6000,
+          headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+        });
+        const teamLower = homeTeam.toLowerCase().split(" ").pop() ?? "";
+        const cityLower = city.toLowerCase();
+        const nflReg = new RegExp(
+          `(${teamLower}|${cityLower})[^]*?([0-9]+)°F[^]*?([0-9]+\s*mph[^<]*)?`,
+          "i"
+        );
+        const match = (html as string).match(nflReg);
+        if (match) {
+          const temp = match[2];
+          const wind = match[3] ? ` · Wind: ${match[3].trim()}` : "";
+          return `${city}: ☀ ${temp}°F${wind}`;
+        }
+        // Second pass near team
+        const tidx = (html as string).toLowerCase().indexOf(teamLower);
+        if (tidx > -1) {
+          const nearby = (html as string).slice(tidx, tidx + 500);
+          const tempM = nearby.match(/([0-9]{2,3})°F/);
+          const windM = nearby.match(/([0-9]+)\s*mph/);
+          if (tempM) {
+            const wind = windM ? ` · Wind: ${windM[1]} mph` : "";
+            return `${city}: ☀ ${tempM[1]}°F${wind}`;
+          }
+        }
+      } catch { /* fall through to wttr */ }
+    }
+
+    // ── Fallback: wttr.in in imperial (°F) ────────────────────────────────────
     try {
-      // Use wttr.in free weather API with the team city inferred from name
-      // Extract city from team name (last word usually isn't city — use whole name)
-      const encoded = encodeURIComponent(homeTeam.replace(/\s+(Bears|Lions|Packers|Vikings|Falcons|Panthers|Saints|Buccaneers|Cardinals|Rams|49ers|Seahawks|Cowboys|Giants|Eagles|Commanders|Bears|Browns|Steelers|Ravens|Bengals|Texans|Colts|Titans|Jaguars|Chiefs|Raiders|Chargers|Broncos|Bills|Dolphins|Patriots|Jets|Cubs|White Sox|Cardinals|Reds|Brewers|Pirates|Braves|Marlins|Mets|Phillies|Nationals|Dodgers|Giants|Padres|Rockies|Diamondbacks|Red Sox|Yankees|Blue Jays|Rays|Orioles|Royals|Indians|Tigers|Twins|White Sox|Angels|Athletics|Mariners|Rangers|Astros).*/, "").trim());
-      const url = `https://wttr.in/${encoded}?format=3&m`;
+      const encoded = encodeURIComponent(city);
+      // &u = imperial/Fahrenheit (no &m which is metric/Celsius)
+      const url = `https://wttr.in/${encoded}?format=3&u`;
       const { data } = await axios.get(url, { timeout: 5000, headers: { "User-Agent": "curl/7.64" } });
-      return typeof data === "string" ? data.trim().slice(0, 80) : null;
+      if (typeof data === "string") {
+        // Convert any remaining °C to °F just in case
+        const clean = data.trim().replace(/\+?(-?[0-9]+)°C/g, (_, n) => `${Math.round(+n * 9/5 + 32)}°F`);
+        return clean.slice(0, 80);
+      }
     } catch { return null; }
+
+    return null;
   }
 
   function buildMovementSummary(game: any): string {
@@ -5919,7 +6027,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Weather
       if (weatherInfo) {
-        summaryParts.push(`🌤 **Weather**: ${weatherInfo}`);
+        const weatherF = weatherInfo.replace(/\+?(-?\d+)°C/g, (_: string, n: string) => `${Math.round(+n * 9/5 + 32)}°F`);
+        summaryParts.push(`🌤 **Weather**: ${weatherF}`);
       }
 
       // Sharp money signal
@@ -6142,12 +6251,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // 3. Weather (outdoor sports)
       const weatherInfo = weather.status === "fulfilled" ? weather.value : null;
       if (weatherInfo) {
-        const hasWind = /wind/i.test(weatherInfo);
-        const hasRain = /rain|storm|snow/i.test(weatherInfo);
+        const weatherInfo2 = weatherInfo.replace(/\+?(-?\d+)°C/g, (_: string, n: string) => `${Math.round(+n * 9/5 + 32)}°F`);
+        const hasWind = /wind/i.test(weatherInfo2);
+        const hasRain = /rain|storm|snow/i.test(weatherInfo2);
         reasons.push({
           icon: hasWind ? "💨" : hasRain ? "🌧" : "🌤",
           type: "weather",
-          text: `Weather: ${weatherInfo}`,
+          text: `Weather: ${weatherInfo2}`,
           severity: (hasWind || hasRain) ? "high" : "low",
         });
       }
