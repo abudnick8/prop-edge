@@ -166,7 +166,7 @@
       "type": "sport"
     }
   ],
-  "last_run": "2026-04-18T03:58:53.742316",
+  "last_run": "2026-04-18T04:23:38.723661",
   "patterns": {
     "bet_type:player_prop": {
       "losses": 34,
@@ -663,7 +663,7 @@
       "hot": 0,
       "neutral": 2.65
     },
-    "last_run": "2026-04-18T03:58:53.742316",
+    "last_run": "2026-04-18T04:23:38.723661",
     "overall_win_rate": 0.553,
     "pick_side_weights": {
       "OVER": 4.41,
