@@ -1321,7 +1321,7 @@ function EmptyState() {
       <div>
         <p className="font-bold text-foreground">No High Conviction Plays Right Now</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-          This tab only surfaces plays where the Clubhouse IQ model, line movement, AND a prediction market whale signal all point the same direction. Check back closer to game time.
+          This tab surfaces plays where at least 2 of 4 signals align: Clubhouse IQ model, line movement, Props Hub hit rate, or a prediction market whale. Check back closer to game time.
         </p>
       </div>
       <div className="rounded-xl p-4 text-left max-w-sm border border-border/40 space-y-2" style={{ background: "rgba(19,35,58,0.03)" }}>
@@ -1329,7 +1329,8 @@ function EmptyState() {
         <div className="space-y-1.5">
           {[
             { icon: "⭐", text: "Clubhouse IQ model ≥82/100 confidence" },
-            { icon: "🔥", text: "Line movement aligned (steam or RLM)" },
+            { icon: "📈", text: "Line movement aligned (steam or RLM)" },
+            { icon: "💯", text: "Props Hub — 100% Club or ≥80% hit rate" },
             { icon: "🐋", text: "Prediction market whale buying same side" },
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -1445,7 +1446,7 @@ export default function HighConviction() {
             <h1 className="text-xl font-black text-foreground">High Conviction Plays</h1>
           </div>
           <p className="text-xs text-muted-foreground max-w-md">
-            Only shows plays where Clubhouse IQ model, line movement, AND prediction market whale signals all align. Minimum 2 of 3 signals required.
+            Surfaces plays where at least 2 of 4 signals align: model, line movement, Props Hub hit rate, or whale buy.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refetchAll} className="gap-1.5 flex-shrink-0">
@@ -1615,7 +1616,7 @@ export default function HighConviction() {
               <Eye size={22} className="text-foreground/70" />
               <p className="text-sm font-semibold text-foreground/70">Nothing on the watchlist</p>
               <p className="text-[11px] text-foreground/70 max-w-xs">
-                Plays appear here when the Clubhouse IQ model likes them but they're still waiting on a line movement or whale signal.
+                Plays appear here when the model likes them but still need a 2nd signal — line movement, Props Hub, or a whale buy.
               </p>
             </div>
           )}
@@ -1625,13 +1626,14 @@ export default function HighConviction() {
       {/* How it works */}
       <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(19,35,58,0.01)" }}>
         <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#3D4B58" }}>
-          <AlertCircle size={10} /> How Confluence Works
+          <AlertCircle size={10} /> How Signals Work (need 2 of 4)
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+        <div className="grid grid-cols-2 gap-3 text-[11px]">
           {[
-            { icon: "⭐", title: "Clubhouse IQ Model", desc: "Must score ≥82/100. The model factors in recent stats, opponent matchup, line value, and historical trends." },
-            { icon: "🔥", title: "Line Movement", desc: "Spread or total must move ≥1.5 pts in the same direction as the pick, OR reverse line movement detected." },
-            { icon: "🐋", title: "Whale Signal", desc: "A prediction market (Kalshi or Polymarket) must show a whale buying YES on the same outcome — $100K+ size or 5¢+ price move." },
+            { icon: "⭐", title: "Clubhouse IQ Model", desc: "Must score ≥82/100. Factors in recent stats, opponent matchup, line value, and historical trends." },
+            { icon: "📈", title: "Line Movement", desc: "Spread or total moves ≥1.5 pts in the pick's direction, OR reverse line movement detected." },
+            { icon: "💯", title: "Props Hub", desc: "Player is in the 100% Club or hits ≥80% on this prop type in L5/L10 games per Props Hub data." },
+            { icon: "🐋", title: "Whale Signal", desc: "A prediction market (Kalshi or Polymarket) shows a whale buying YES — $100K+ size or 5¢+ price move." },
           ].map((item, i) => (
             <div key={i} className="space-y-1">
               <p className="font-bold text-foreground flex items-center gap-1.5">{item.icon} {item.title}</p>
