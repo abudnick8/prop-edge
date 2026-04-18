@@ -1,62 +1,66 @@
 {
-  "bettype_weights": {
-    "moneyline": 0,
-    "player_prop": -1.39,
-    "spread": 8.33,
-    "total": 5.3
+  "sport_weights": {
+    "NBA": -2.63,
+    "NFL": 0,
+    "MLB": 6.41,
+    "NHL": 2.59
   },
-  "combo_weights": {
-    "bet_type:player_prop|conf_tier:medium": -3.26,
-    "bet_type:spread|conf_tier:low": 7.14,
-    "bet_type:spread|conf_tier:medium": 9.21,
-    "bet_type:total|conf_tier:low": 8.33,
-    "bet_type:total|conf_tier:medium": 5,
-    "sport:MLB|conf_tier:low": 9.62,
-    "sport:MLB|conf_tier:medium": 7.43,
-    "sport:MLB|edge_tier:flat": 8,
-    "sport:NBA|conf_tier:medium": -3.26,
-    "sport:NBA|stat_category:BLOCKS": -25,
-    "sport:NBA|stat_category:POINTS": 2.78,
-    "sport:NBA|stat_category:STEALS": 6.25,
-    "sport:NHL|conf_tier:medium": 4.17,
-    "sport:NHL|edge_tier:flat": 3.12
+  "bettype_weights": {
+    "player_prop": 0.53,
+    "spread": 5.61,
+    "total": 3.57,
+    "moneyline": 0
   },
   "conf_tier_cal": {
     "elite": 0,
     "high": 0,
-    "low": 5,
-    "medium": 3.47
+    "medium": 2.32,
+    "low": 5.21
   },
   "edge_tier_weights": {
-    "flat": 3.92,
-    "moderate_over": 0,
-    "moderate_under": 0,
     "strong_over": 0,
+    "moderate_over": 0,
+    "flat": 3.28,
+    "moderate_under": 0,
     "strong_under": 0
   },
   "form_tier_weights": {
-    "above_avg": 0,
-    "cold": 0,
     "hot": 0,
-    "neutral": 3.92
+    "above_avg": 0,
+    "neutral": 3.28,
+    "cold": 0
   },
-  "last_run": "2026-04-18T15:47:09.749497",
-  "overall_win_rate": 0.578,
   "pick_side_weights": {
-    "OVER": 4.41,
-    "UNDER": 6.25
-  },
-  "sample_size": 102,
-  "sport_weights": {
-    "MLB": 8,
-    "NBA": -1.39,
-    "NFL": 0,
-    "NHL": 3.12
+    "OVER": 1.09,
+    "UNDER": 5.77
   },
   "stat_category_weights": {
+    "POINTS": 3.57,
+    "ASSISTS": 4.17,
     "BLOCKS": -25,
-    "POINTS": 2.78,
     "STEALS": 6.25
   },
+  "combo_weights": {
+    "sport:NBA|conf_tier:medium": -4.17,
+    "sport:MLB|conf_tier:medium": 4.46,
+    "sport:MLB|conf_tier:low": 11.36,
+    "sport:NHL|conf_tier:medium": 4.41,
+    "bet_type:player_prop|conf_tier:low": 2.5,
+    "bet_type:spread|conf_tier:medium": 5.77,
+    "bet_type:spread|conf_tier:low": 5.43,
+    "bet_type:total|conf_tier:medium": 2.27,
+    "bet_type:total|conf_tier:low": 15,
+    "sport:NBA|edge_tier:flat": -2.63,
+    "sport:MLB|edge_tier:flat": 6.41,
+    "sport:NHL|edge_tier:flat": 2.59,
+    "sport:NBA|stat_category:POINTS": 2.78,
+    "sport:NHL|stat_category:POINTS": 5,
+    "sport:NHL|stat_category:ASSISTS": 8.33,
+    "sport:NBA|stat_category:BLOCKS": -25,
+    "sport:NBA|stat_category:STEALS": 6.25
+  },
+  "overall_win_rate": 0.566,
+  "sample_size": 145,
+  "last_run": "2026-04-18T20:42:30.902001",
   "version": "2.0"
 }
