@@ -22,7 +22,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Cincinnati Reds — Cincinnati Reds +1.5 (-196)"
+    "title": "San Francisco Giants @ Cincinnati Reds \u2014 Cincinnati Reds +1.5 (-196)"
   },
   {
     "awayScore": 1,
@@ -47,7 +47,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Cincinnati Reds — OVER 8 (-115)"
+    "title": "San Francisco Giants @ Cincinnati Reds \u2014 OVER 8 (-115)"
   },
   {
     "awayScore": 7,
@@ -72,7 +72,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Angels @ New York Yankees — New York Yankees -1.5 (-149)"
+    "title": "Los Angeles Angels @ New York Yankees \u2014 New York Yankees -1.5 (-149)"
   },
   {
     "awayScore": 7,
@@ -97,7 +97,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Angels @ New York Yankees — UNDER 10 (-115)"
+    "title": "Los Angeles Angels @ New York Yankees \u2014 UNDER 10 (-115)"
   },
   {
     "awayScore": 5,
@@ -122,7 +122,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Washington Nationals @ Pittsburgh Pirates — UNDER 8.5 (-115)"
+    "title": "Washington Nationals @ Pittsburgh Pirates \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -147,7 +147,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ Detroit Tigers — Detroit Tigers +1.5 (-163)"
+    "title": "Kansas City Royals @ Detroit Tigers \u2014 Detroit Tigers +1.5 (-163)"
   },
   {
     "awayScore": 1,
@@ -172,7 +172,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ Detroit Tigers — OVER 8.5 (-115)"
+    "title": "Kansas City Royals @ Detroit Tigers \u2014 OVER 8.5 (-115)"
   },
   {
     "awayScore": 9,
@@ -197,7 +197,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Milwaukee Brewers — Milwaukee Brewers +1.5 (-183)"
+    "title": "Toronto Blue Jays @ Milwaukee Brewers \u2014 Milwaukee Brewers +1.5 (-183)"
   },
   {
     "awayScore": 9,
@@ -222,7 +222,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Milwaukee Brewers — OVER 8.5 (-112)"
+    "title": "Toronto Blue Jays @ Milwaukee Brewers \u2014 OVER 8.5 (-112)"
   },
   {
     "awayScore": 5,
@@ -247,7 +247,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Washington Nationals @ Pittsburgh Pirates — Washington Nationals +1.5 (-144)"
+    "title": "Washington Nationals @ Pittsburgh Pirates \u2014 Washington Nationals +1.5 (-144)"
   },
   {
     "awayScore": 8,
@@ -272,7 +272,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Chicago White Sox — Chicago White Sox +1.5 (-149)"
+    "title": "Tampa Bay Rays @ Chicago White Sox \u2014 Chicago White Sox +1.5 (-149)"
   },
   {
     "awayScore": 8,
@@ -297,7 +297,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Chicago White Sox — UNDER 8.5 (-115)"
+    "title": "Tampa Bay Rays @ Chicago White Sox \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -322,7 +322,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Athletics — Athletics +1.5 (-175)"
+    "title": "Texas Rangers @ Athletics \u2014 Athletics +1.5 (-175)"
   },
   {
     "awayScore": 1,
@@ -347,7 +347,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Athletics — UNDER 8.5 (-115)"
+    "title": "Texas Rangers @ Athletics \u2014 UNDER 8.5 (-115)"
   },
   {
     "awayScore": 2,
@@ -372,7 +372,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — Cleveland Guardians +1.5 (-198)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 Cleveland Guardians +1.5 (-198)"
   },
   {
     "awayScore": 2,
@@ -397,7 +397,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — OVER 8 (-112)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 OVER 8 (-112)"
   },
   {
     "awayScore": 5,
@@ -422,7 +422,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "St. Louis Blues @ Utah Mammoth — Utah Mammoth +1.5 (-245)"
+    "title": "St. Louis Blues @ Utah Mammoth \u2014 Utah Mammoth +1.5 (-245)"
   },
   {
     "awayScore": 5,
@@ -447,7 +447,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "St. Louis Blues @ Utah Mammoth — UNDER 6.5 (-135)"
+    "title": "St. Louis Blues @ Utah Mammoth \u2014 UNDER 6.5 (-135)"
   },
   {
     "awayScore": 5,
@@ -472,7 +472,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Anaheim Ducks @ Nashville Predators — Nashville Predators +1.5 (-238)"
+    "title": "Anaheim Ducks @ Nashville Predators \u2014 Nashville Predators +1.5 (-238)"
   },
   {
     "awayScore": 5,
@@ -497,7 +497,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Anaheim Ducks @ Nashville Predators — UNDER 6.5 (-112)"
+    "title": "Anaheim Ducks @ Nashville Predators \u2014 UNDER 6.5 (-112)"
   },
   {
     "awayScore": 6,
@@ -522,7 +522,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "San Jose Sharks @ Winnipeg Jets — UNDER 6.5 (-118)"
+    "title": "San Jose Sharks @ Winnipeg Jets \u2014 UNDER 6.5 (-118)"
   },
   {
     "awayScore": 6,
@@ -547,7 +547,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "San Jose Sharks @ Winnipeg Jets — San Jose Sharks +1.5 (-192)"
+    "title": "San Jose Sharks @ Winnipeg Jets \u2014 San Jose Sharks +1.5 (-192)"
   },
   {
     "awayScore": 6,
@@ -572,7 +572,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Colorado Rockies @ Houston Astros — OVER 8.5 (-112)"
+    "title": "Colorado Rockies @ Houston Astros \u2014 OVER 8.5 (-112)"
   },
   {
     "awayScore": 6,
@@ -597,7 +597,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Colorado Rockies @ Houston Astros — Colorado Rockies +1.5 (-149)"
+    "title": "Colorado Rockies @ Houston Astros \u2014 Colorado Rockies +1.5 (-149)"
   },
   {
     "awayScore": 1,
@@ -622,7 +622,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Seattle Mariners @ San Diego Padres — San Diego Padres +1.5 (-168)"
+    "title": "Seattle Mariners @ San Diego Padres \u2014 San Diego Padres +1.5 (-168)"
   },
   {
     "awayScore": 1,
@@ -647,7 +647,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Seattle Mariners @ San Diego Padres — OVER 8.5 (-110)"
+    "title": "Seattle Mariners @ San Diego Padres \u2014 OVER 8.5 (-110)"
   },
   {
     "awayScore": 1,
@@ -672,7 +672,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Vancouver Canucks @ Edmonton Oilers — Edmonton Oilers -1.5 (-125)"
+    "title": "Vancouver Canucks @ Edmonton Oilers \u2014 Edmonton Oilers -1.5 (-125)"
   },
   {
     "awayScore": 1,
@@ -697,7 +697,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Vancouver Canucks @ Edmonton Oilers — OVER 6.5 (-122)"
+    "title": "Vancouver Canucks @ Edmonton Oilers \u2014 OVER 6.5 (-122)"
   },
   {
     "awayScore": 1,
@@ -722,7 +722,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Los Angeles Kings @ Calgary Flames — Calgary Flames +1.5 (-198)"
+    "title": "Los Angeles Kings @ Calgary Flames \u2014 Calgary Flames +1.5 (-198)"
   },
   {
     "awayScore": 1,
@@ -747,7 +747,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Los Angeles Kings @ Calgary Flames — UNDER 6.5 (-125)"
+    "title": "Los Angeles Kings @ Calgary Flames \u2014 UNDER 6.5 (-125)"
   },
   {
     "awayScore": 0,
@@ -772,7 +772,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Seattle Kraken @ Colorado Avalanche — UNDER 6.5 (-125)"
+    "title": "Seattle Kraken @ Colorado Avalanche \u2014 UNDER 6.5 (-125)"
   },
   {
     "awayScore": 0,
@@ -797,7 +797,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Seattle Kraken @ Colorado Avalanche — Seattle Kraken +1.5 (-162)"
+    "title": "Seattle Kraken @ Colorado Avalanche \u2014 Seattle Kraken +1.5 (-162)"
   },
   {
     "awayScore": 1,
@@ -822,7 +822,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Dodgers @ Colorado Rockies — UNDER 11.5 (-115)"
+    "title": "Los Angeles Dodgers @ Colorado Rockies \u2014 UNDER 11.5 (-115)"
   },
   {
     "awayScore": 2,
@@ -847,7 +847,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ New York Yankees — OVER 8 (-112)"
+    "title": "Kansas City Royals @ New York Yankees \u2014 OVER 8 (-112)"
   },
   {
     "awayScore": 4,
@@ -872,7 +872,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "New York Mets @ Chicago Cubs — Chicago Cubs +1.5 (-205)"
+    "title": "New York Mets @ Chicago Cubs \u2014 Chicago Cubs +1.5 (-205)"
   },
   {
     "awayScore": 4,
@@ -897,7 +897,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "New York Mets @ Chicago Cubs — OVER 8 (-117)"
+    "title": "New York Mets @ Chicago Cubs \u2014 OVER 8 (-117)"
   },
   {
     "awayScore": 0,
@@ -922,7 +922,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Detroit Tigers @ Boston Red Sox — UNDER 7.5 (-112)"
+    "title": "Detroit Tigers @ Boston Red Sox \u2014 UNDER 7.5 (-112)"
   },
   {
     "awayScore": 9,
@@ -947,7 +947,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Atlanta Braves @ Philadelphia Phillies — OVER 7 (-115)"
+    "title": "Atlanta Braves @ Philadelphia Phillies \u2014 OVER 7 (-115)"
   },
   {
     "awayScore": 2,
@@ -972,7 +972,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Cincinnati Reds @ Minnesota Twins — UNDER 8 (-115)"
+    "title": "Cincinnati Reds @ Minnesota Twins \u2014 UNDER 8 (-115)"
   },
   {
     "awayScore": 10,
@@ -997,7 +997,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Washington Nationals — Washington Nationals +1.5 (-165)"
+    "title": "San Francisco Giants @ Washington Nationals \u2014 Washington Nationals +1.5 (-165)"
   },
   {
     "awayScore": 10,
@@ -1022,7 +1022,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Francisco Giants @ Washington Nationals — OVER 9.5 (-115)"
+    "title": "San Francisco Giants @ Washington Nationals \u2014 OVER 9.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -1047,7 +1047,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Pittsburgh Pirates — OVER 7 (-118)"
+    "title": "Tampa Bay Rays @ Pittsburgh Pirates \u2014 OVER 7 (-118)"
   },
   {
     "awayScore": 5,
@@ -1072,7 +1072,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Chicago White Sox @ Athletics — OVER 9.5 (-112)"
+    "title": "Chicago White Sox @ Athletics \u2014 OVER 9.5 (-112)"
   },
   {
     "awayScore": 2,
@@ -1097,7 +1097,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — UNDER 7.5 (-115)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 UNDER 7.5 (-115)"
   },
   {
     "awayScore": 1,
@@ -1122,7 +1122,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "St. Louis Cardinals @ Houston Astros — UNDER 9 (-115)"
+    "title": "St. Louis Cardinals @ Houston Astros \u2014 UNDER 9 (-115)"
   },
   {
     "awayScore": 8,
@@ -1147,7 +1147,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Arizona Diamondbacks — Arizona Diamondbacks +1.5 (-190)"
+    "title": "Toronto Blue Jays @ Arizona Diamondbacks \u2014 Arizona Diamondbacks +1.5 (-190)"
   },
   {
     "awayScore": 8,
@@ -1172,7 +1172,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Toronto Blue Jays @ Arizona Diamondbacks — UNDER 9 (-118)"
+    "title": "Toronto Blue Jays @ Arizona Diamondbacks \u2014 UNDER 9 (-118)"
   },
   {
     "awayScore": 4,
@@ -1197,7 +1197,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Diego Padres @ Los Angeles Angels — OVER 9.5 (-110)"
+    "title": "San Diego Padres @ Los Angeles Angels \u2014 OVER 9.5 (-110)"
   },
   {
     "awayScore": 2,
@@ -1222,7 +1222,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Cincinnati Reds @ Minnesota Twins — Cincinnati Reds +1.5 (-190)"
+    "title": "Cincinnati Reds @ Minnesota Twins \u2014 Cincinnati Reds +1.5 (-190)"
   },
   {
     "awayScore": 7,
@@ -1247,7 +1247,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Milwaukee Brewers @ Miami Marlins — OVER 7.5 (-112)"
+    "title": "Milwaukee Brewers @ Miami Marlins \u2014 OVER 7.5 (-112)"
   },
   {
     "awayScore": 2,
@@ -1272,7 +1272,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Baltimore Orioles @ Cleveland Guardians — Baltimore Orioles +1.5 (-200)"
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 Baltimore Orioles +1.5 (-200)"
   },
   {
     "awayScore": 6,
@@ -1297,7 +1297,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Seattle Mariners — OVER 7 (-118)"
+    "title": "Texas Rangers @ Seattle Mariners \u2014 OVER 7 (-118)"
   },
   {
     "awayScore": 1,
@@ -1322,7 +1322,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Ottawa Senators @ Carolina Hurricanes — UNDER 6.5 (-135)"
+    "title": "Ottawa Senators @ Carolina Hurricanes \u2014 UNDER 6.5 (-135)"
   },
   {
     "awayScore": 4,
@@ -1347,7 +1347,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Minnesota Wild @ Dallas Stars — OVER 5.5 (-120)"
+    "title": "Minnesota Wild @ Dallas Stars \u2014 OVER 5.5 (-120)"
   },
   {
     "awayScore": 1,
@@ -1372,7 +1372,7 @@
     "result": "lost",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Ottawa Senators @ Carolina Hurricanes — Ottawa Senators +1.5 (-198)"
+    "title": "Ottawa Senators @ Carolina Hurricanes \u2014 Ottawa Senators +1.5 (-198)"
   },
   {
     "awayScore": 4,
@@ -1397,7 +1397,7 @@
     "result": "won",
     "sport": "NHL",
     "statCategory": null,
-    "title": "Minnesota Wild @ Dallas Stars — Minnesota Wild +1.5 (-250)"
+    "title": "Minnesota Wild @ Dallas Stars \u2014 Minnesota Wild +1.5 (-250)"
   },
   {
     "awayScore": 90,
@@ -1422,7 +1422,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 29.5 @ -133] Paolo Banchero — Points"
+    "title": "[TAKE UNDER 29.5 @ -133] Paolo Banchero \u2014 Points"
   },
   {
     "awayScore": 90,
@@ -1447,7 +1447,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE OVER 1.5 @ -138] Brandon Miller — Assists"
+    "title": "[TAKE OVER 1.5 @ -138] Brandon Miller \u2014 Assists"
   },
   {
     "awayScore": 126,
@@ -1472,7 +1472,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Blocks",
-    "title": "[TAKE OVER 0.5 @ -186] Al Horford — Blocks"
+    "title": "[TAKE OVER 0.5 @ -186] Al Horford \u2014 Blocks"
   },
   {
     "awayScore": 90,
@@ -1497,7 +1497,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE OVER 24.5 @ -138] Franz Wagner — Points"
+    "title": "[TAKE OVER 24.5 @ -138] Franz Wagner \u2014 Points"
   },
   {
     "awayScore": 126,
@@ -1522,7 +1522,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE OVER 4.5 @ -117] Jalen Green — Rebounds"
+    "title": "[TAKE OVER 4.5 @ -117] Jalen Green \u2014 Rebounds"
   },
   {
     "awayScore": 90,
@@ -1547,7 +1547,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Blocks",
-    "title": "[TAKE OVER 1.5 @ -233] Paolo Banchero — Blocks"
+    "title": "[TAKE OVER 1.5 @ -233] Paolo Banchero \u2014 Blocks"
   },
   {
     "awayScore": 90,
@@ -1572,7 +1572,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 19.5 @ -113] Wendell Carter Jr. — Points"
+    "title": "[TAKE UNDER 19.5 @ -113] Wendell Carter Jr. \u2014 Points"
   },
   {
     "awayScore": 90,
@@ -1597,7 +1597,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE OVER 7.5 @ -104] Franz Wagner — Rebounds"
+    "title": "[TAKE OVER 7.5 @ -104] Franz Wagner \u2014 Rebounds"
   },
   {
     "awayScore": 90,
@@ -1622,7 +1622,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE OVER 14.5 @ -104] Jalen Suggs — Points"
+    "title": "[TAKE OVER 14.5 @ -104] Jalen Suggs \u2014 Points"
   },
   {
     "awayScore": 90,
@@ -1647,7 +1647,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 19.5 @ -104] Brandon Miller — Points"
+    "title": "[TAKE UNDER 19.5 @ -104] Brandon Miller \u2014 Points"
   },
   {
     "awayScore": 90,
@@ -1672,7 +1672,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE UNDER 5.5 @ -108] Wendell Carter Jr. — Rebounds"
+    "title": "[TAKE UNDER 5.5 @ -108] Wendell Carter Jr. \u2014 Rebounds"
   },
   {
     "awayScore": 90,
@@ -1697,7 +1697,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE OVER 3.5 @ -104] Kon Knueppel — Rebounds"
+    "title": "[TAKE OVER 3.5 @ -104] Kon Knueppel \u2014 Rebounds"
   },
   {
     "awayScore": 126,
@@ -1722,7 +1722,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE OVER 4.5 @ -104] Al Horford — Rebounds"
+    "title": "[TAKE OVER 4.5 @ -104] Al Horford \u2014 Rebounds"
   },
   {
     "awayScore": 126,
@@ -1747,7 +1747,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Blocks",
-    "title": "[TAKE OVER 0.5 @ -113] Draymond Green — Blocks"
+    "title": "[TAKE OVER 0.5 @ -113] Draymond Green \u2014 Blocks"
   },
   {
     "awayScore": 0,
@@ -1772,7 +1772,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Detroit Tigers @ Boston Red Sox — Boston Red Sox +1.5 (-125)"
+    "title": "Detroit Tigers @ Boston Red Sox \u2014 Boston Red Sox +1.5 (-125)"
   },
   {
     "awayScore": 7,
@@ -1797,7 +1797,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Los Angeles Dodgers @ Colorado Rockies — Los Angeles Dodgers -2.5 (-125)"
+    "title": "Los Angeles Dodgers @ Colorado Rockies \u2014 Los Angeles Dodgers -2.5 (-125)"
   },
   {
     "awayScore": 126,
@@ -1822,7 +1822,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Blocks",
-    "title": "[TAKE OVER 1.5 @ -4900] Draymond Green — Blocks"
+    "title": "[TAKE OVER 1.5 @ -4900] Draymond Green \u2014 Blocks"
   },
   {
     "awayScore": 126,
@@ -1847,7 +1847,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Blocks",
-    "title": "[TAKE OVER 2.5 @ -3233] Al Horford — Blocks"
+    "title": "[TAKE OVER 2.5 @ -3233] Al Horford \u2014 Blocks"
   },
   {
     "awayScore": 126,
@@ -1872,7 +1872,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE OVER 2.5 @ -614] Draymond Green — Steals"
+    "title": "[TAKE OVER 2.5 @ -614] Draymond Green \u2014 Steals"
   },
   {
     "awayScore": 126,
@@ -1897,7 +1897,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE OVER 0.5 @ -614] Jalen Green — Steals"
+    "title": "[TAKE OVER 0.5 @ -614] Jalen Green \u2014 Steals"
   },
   {
     "awayScore": 126,
@@ -1922,7 +1922,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE OVER 2.5 @ -809] Stephen Curry — Steals"
+    "title": "[TAKE OVER 2.5 @ -809] Stephen Curry \u2014 Steals"
   },
   {
     "awayScore": 97,
@@ -1947,7 +1947,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 29.5 @ -138] Tyrese Maxey — Points"
+    "title": "[TAKE UNDER 29.5 @ -138] Tyrese Maxey \u2014 Points"
   },
   {
     "awayScore": 97,
@@ -1972,7 +1972,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 14.5 @ -122] Kelly Oubre Jr. — Points"
+    "title": "[TAKE UNDER 14.5 @ -122] Kelly Oubre Jr. \u2014 Points"
   },
   {
     "awayScore": 97,
@@ -1997,7 +1997,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE OVER 14.5 @ -113] VJ Edgecombe — Points"
+    "title": "[TAKE OVER 14.5 @ -113] VJ Edgecombe \u2014 Points"
   },
   {
     "awayScore": 97,
@@ -2022,7 +2022,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Points",
-    "title": "[TAKE UNDER 19.5 @ -108] Paul George — Points"
+    "title": "[TAKE UNDER 19.5 @ -108] Paul George \u2014 Points"
   },
   {
     "awayScore": 97,
@@ -2047,7 +2047,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE UNDER 1.5 @ -170] Kelly Oubre Jr. — Steals"
+    "title": "[TAKE UNDER 1.5 @ -170] Kelly Oubre Jr. \u2014 Steals"
   },
   {
     "awayScore": 97,
@@ -2072,7 +2072,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE OVER 1.5 @ -122] VJ Edgecombe — Steals"
+    "title": "[TAKE OVER 1.5 @ -122] VJ Edgecombe \u2014 Steals"
   },
   {
     "awayScore": 97,
@@ -2097,7 +2097,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE UNDER 1.5 @ -163] Tyrese Maxey — Steals"
+    "title": "[TAKE UNDER 1.5 @ -163] Tyrese Maxey \u2014 Steals"
   },
   {
     "awayScore": 97,
@@ -2122,7 +2122,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE UNDER 1.5 @ -138] Paul George — Steals"
+    "title": "[TAKE UNDER 1.5 @ -138] Paul George \u2014 Steals"
   },
   {
     "awayScore": 97,
@@ -2147,7 +2147,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE UNDER 4.5 @ -127] VJ Edgecombe — Assists"
+    "title": "[TAKE UNDER 4.5 @ -127] VJ Edgecombe \u2014 Assists"
   },
   {
     "awayScore": 97,
@@ -2172,7 +2172,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE UNDER 5.5 @ -133] Kelly Oubre Jr. — Rebounds"
+    "title": "[TAKE UNDER 5.5 @ -133] Kelly Oubre Jr. \u2014 Rebounds"
   },
   {
     "awayScore": 97,
@@ -2197,7 +2197,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE OVER 5.5 @ -138] Tyrese Maxey — Assists"
+    "title": "[TAKE OVER 5.5 @ -138] Tyrese Maxey \u2014 Assists"
   },
   {
     "awayScore": 97,
@@ -2222,7 +2222,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE OVER 5.5 @ -138] VJ Edgecombe — Rebounds"
+    "title": "[TAKE OVER 5.5 @ -138] VJ Edgecombe \u2014 Rebounds"
   },
   {
     "awayScore": 97,
@@ -2247,7 +2247,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE OVER 3.5 @ -108] Paul George — Assists"
+    "title": "[TAKE OVER 3.5 @ -108] Paul George \u2014 Assists"
   },
   {
     "awayScore": 97,
@@ -2272,7 +2272,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE OVER 7.5 @ -100] Kelly Oubre Jr. — Assists"
+    "title": "[TAKE OVER 7.5 @ -100] Kelly Oubre Jr. \u2014 Assists"
   },
   {
     "awayScore": 97,
@@ -2297,7 +2297,7 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Rebounds",
-    "title": "[TAKE UNDER 5.5 @ -108] Paul George — Rebounds"
+    "title": "[TAKE UNDER 5.5 @ -108] Paul George \u2014 Rebounds"
   },
   {
     "awayScore": 7,
@@ -2322,7 +2322,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Milwaukee Brewers @ Miami Marlins — Miami Marlins +1.5 (-200)"
+    "title": "Milwaukee Brewers @ Miami Marlins \u2014 Miami Marlins +1.5 (-200)"
   },
   {
     "awayScore": 9,
@@ -2347,7 +2347,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Atlanta Braves @ Philadelphia Phillies — Philadelphia Phillies +1.5 (-220)"
+    "title": "Atlanta Braves @ Philadelphia Phillies \u2014 Philadelphia Phillies +1.5 (-220)"
   },
   {
     "awayScore": 2,
@@ -2372,7 +2372,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Kansas City Royals @ New York Yankees — Kansas City Royals +1.5 (-156)"
+    "title": "Kansas City Royals @ New York Yankees \u2014 Kansas City Royals +1.5 (-156)"
   },
   {
     "awayScore": 0,
@@ -2397,7 +2397,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "San Diego Padres @ Los Angeles Angels — Los Angeles Angels +1.5 (-181)"
+    "title": "San Diego Padres @ Los Angeles Angels \u2014 Los Angeles Angels +1.5 (-181)"
   },
   {
     "awayScore": 1,
@@ -2422,7 +2422,7 @@
     "result": "lost",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Tampa Bay Rays @ Pittsburgh Pirates — Tampa Bay Rays +1.5 (-168)"
+    "title": "Tampa Bay Rays @ Pittsburgh Pirates \u2014 Tampa Bay Rays +1.5 (-168)"
   },
   {
     "awayScore": 9,
@@ -2447,7 +2447,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Chicago White Sox @ Athletics — Chicago White Sox +1.5 (-143)"
+    "title": "Chicago White Sox @ Athletics \u2014 Chicago White Sox +1.5 (-143)"
   },
   {
     "awayScore": 9,
@@ -2472,7 +2472,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "St. Louis Cardinals @ Houston Astros — St. Louis Cardinals +1.5 (-175)"
+    "title": "St. Louis Cardinals @ Houston Astros \u2014 St. Louis Cardinals +1.5 (-175)"
   },
   {
     "awayScore": 5,
@@ -2497,7 +2497,7 @@
     "result": "won",
     "sport": "MLB",
     "statCategory": null,
-    "title": "Texas Rangers @ Seattle Mariners — Texas Rangers +1.5 (-199)"
+    "title": "Texas Rangers @ Seattle Mariners \u2014 Texas Rangers +1.5 (-199)"
   },
   {
     "awayScore": 97,
@@ -2522,7 +2522,7 @@
     "result": "lost",
     "sport": "NBA",
     "statCategory": "Assists",
-    "title": "[TAKE OVER 1.5 @ -122] Kelly Oubre Jr. — Assists"
+    "title": "[TAKE OVER 1.5 @ -122] Kelly Oubre Jr. \u2014 Assists"
   },
   {
     "awayScore": 97,
@@ -2547,6 +2547,1081 @@
     "result": "won",
     "sport": "NBA",
     "statCategory": "Steals",
-    "title": "[TAKE OVER 0.5 @ -156] VJ Edgecombe — Steals"
+    "title": "[TAKE OVER 0.5 @ -156] VJ Edgecombe \u2014 Steals"
+  },
+  {
+    "betId": "action-mlb-287125-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Los Angeles Dodgers @ Colorado Rockies \u2014 UNDER 11.5 (-119)",
+    "pickSide": "under",
+    "line": 11.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Colorado Rockies",
+    "awayTeam": "Los Angeles Dodgers",
+    "homeScore": 1,
+    "awayScore": 7,
+    "confidenceScore": 57,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T19:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814981"
+  },
+  {
+    "betId": "action-mlb-287118-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Detroit Tigers @ Boston Red Sox \u2014 OVER 7 (-122)",
+    "pickSide": "over",
+    "line": 7,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Boston Red Sox",
+    "awayTeam": "Detroit Tigers",
+    "homeScore": 1,
+    "awayScore": 0,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814973"
+  },
+  {
+    "betId": "action-mlb-287119-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Kansas City Royals @ New York Yankees \u2014 UNDER 7.5 (-116)",
+    "pickSide": "under",
+    "line": 7.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "New York Yankees",
+    "awayTeam": "Kansas City Royals",
+    "homeScore": 4,
+    "awayScore": 2,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814974"
+  },
+  {
+    "betId": "action-mlb-287124-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "New York Mets @ Chicago Cubs \u2014 UNDER 8.5 (-115)",
+    "pickSide": "under",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Chicago Cubs",
+    "awayTeam": "New York Mets",
+    "homeScore": 12,
+    "awayScore": 4,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:20:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814979"
+  },
+  {
+    "betId": "action-mlb-287125-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Los Angeles Dodgers @ Colorado Rockies \u2014 Los Angeles Dodgers -1.5 (-176)",
+    "pickSide": null,
+    "line": -1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Colorado Rockies",
+    "awayTeam": "Los Angeles Dodgers",
+    "homeScore": 1,
+    "awayScore": 7,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T19:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814981"
+  },
+  {
+    "betId": "action-mlb-287116-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Tampa Bay Rays @ Pittsburgh Pirates \u2014 Pittsburgh Pirates 0 (-113)",
+    "pickSide": null,
+    "line": 0,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Pittsburgh Pirates",
+    "awayTeam": "Tampa Bay Rays",
+    "homeScore": 5,
+    "awayScore": 1,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814977"
+  },
+  {
+    "betId": "action-mlb-287116-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Tampa Bay Rays @ Pittsburgh Pirates \u2014 OVER 7.5 (-123)",
+    "pickSide": "over",
+    "line": 7.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Pittsburgh Pirates",
+    "awayTeam": "Tampa Bay Rays",
+    "homeScore": 5,
+    "awayScore": 1,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814977"
+  },
+  {
+    "betId": "action-mlb-287117-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "San Francisco Giants @ Washington Nationals \u2014 Washington Nationals +1.5 (-139)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Washington Nationals",
+    "awayTeam": "San Francisco Giants",
+    "homeScore": 5,
+    "awayScore": 10,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814976"
+  },
+  {
+    "betId": "action-mlb-287117-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "San Francisco Giants @ Washington Nationals \u2014 UNDER 8.5 (-115)",
+    "pickSide": "under",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Washington Nationals",
+    "awayTeam": "San Francisco Giants",
+    "homeScore": 5,
+    "awayScore": 10,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814976"
+  },
+  {
+    "betId": "action-mlb-287118-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Detroit Tigers @ Boston Red Sox \u2014 Detroit Tigers +1.5 (-184)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Boston Red Sox",
+    "awayTeam": "Detroit Tigers",
+    "homeScore": 1,
+    "awayScore": 0,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814973"
+  },
+  {
+    "betId": "action-mlb-287119-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Kansas City Royals @ New York Yankees \u2014 Kansas City Royals +1.5 (-200)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "New York Yankees",
+    "awayTeam": "Kansas City Royals",
+    "homeScore": 4,
+    "awayScore": 2,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:35:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814974"
+  },
+  {
+    "betId": "action-mlb-287120-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 UNDER 7.5 (-122)",
+    "pickSide": "under",
+    "line": 7.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Cleveland Guardians",
+    "awayTeam": "Baltimore Orioles",
+    "homeScore": 4,
+    "awayScore": 2,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:40:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260416",
+    "espnGameId": "401814962"
+  },
+  {
+    "betId": "action-mlb-287122-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Cincinnati Reds @ Minnesota Twins \u2014 UNDER 8.5 (-115)",
+    "pickSide": "under",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Minnesota Twins",
+    "awayTeam": "Cincinnati Reds",
+    "homeScore": 1,
+    "awayScore": 2,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814978"
+  },
+  {
+    "betId": "action-mlb-287123-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "St. Louis Cardinals @ Houston Astros \u2014 OVER 8.5 (-110)",
+    "pickSide": "over",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Houston Astros",
+    "awayTeam": "St. Louis Cardinals",
+    "homeScore": 4,
+    "awayScore": 9,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814980"
+  },
+  {
+    "betId": "action-mlb-287124-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "New York Mets @ Chicago Cubs \u2014 New York Mets 0 (-110)",
+    "pickSide": null,
+    "line": 0,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Chicago Cubs",
+    "awayTeam": "New York Mets",
+    "homeScore": 12,
+    "awayScore": 4,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:20:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814979"
+  },
+  {
+    "betId": "action-mlb-287126-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Chicago White Sox @ Athletics \u2014 UNDER 9.5 (-122)",
+    "pickSide": "under",
+    "line": 9.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Athletics",
+    "awayTeam": "Chicago White Sox",
+    "homeScore": 2,
+    "awayScore": 9,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:05:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814982"
+  },
+  {
+    "betId": "action-mlb-287127-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "San Diego Padres @ Los Angeles Angels \u2014 Los Angeles Angels +1.5 (-175)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Los Angeles Angels",
+    "awayTeam": "San Diego Padres",
+    "homeScore": 8,
+    "awayScore": 0,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:07:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814983"
+  },
+  {
+    "betId": "action-mlb-287127-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "San Diego Padres @ Los Angeles Angels \u2014 UNDER 8.5 (-115)",
+    "pickSide": "under",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Los Angeles Angels",
+    "awayTeam": "San Diego Padres",
+    "homeScore": 8,
+    "awayScore": 0,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:07:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814983"
+  },
+  {
+    "betId": "action-mlb-287129-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Toronto Blue Jays @ Arizona Diamondbacks \u2014 UNDER 8.5 (-115)",
+    "pickSide": "under",
+    "line": 8.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Arizona Diamondbacks",
+    "awayTeam": "Toronto Blue Jays",
+    "homeScore": 6,
+    "awayScore": 3,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814985"
+  },
+  {
+    "betId": "action-mlb-287120-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Baltimore Orioles @ Cleveland Guardians \u2014 Baltimore Orioles 0 (-112)",
+    "pickSide": null,
+    "line": 0,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Cleveland Guardians",
+    "awayTeam": "Baltimore Orioles",
+    "homeScore": 4,
+    "awayScore": 2,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:40:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260416",
+    "espnGameId": "401814962"
+  },
+  {
+    "betId": "action-mlb-287121-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Milwaukee Brewers @ Miami Marlins \u2014 Miami Marlins +1.5 (-173)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Miami Marlins",
+    "awayTeam": "Milwaukee Brewers",
+    "homeScore": 5,
+    "awayScore": 7,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:40:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814975"
+  },
+  {
+    "betId": "action-mlb-287121-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Milwaukee Brewers @ Miami Marlins \u2014 OVER 7.5 (-123)",
+    "pickSide": "over",
+    "line": 7.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Miami Marlins",
+    "awayTeam": "Milwaukee Brewers",
+    "homeScore": 5,
+    "awayScore": 7,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:40:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814975"
+  },
+  {
+    "betId": "action-mlb-287122-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Cincinnati Reds @ Minnesota Twins \u2014 Cincinnati Reds +1.5 (-200)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Minnesota Twins",
+    "awayTeam": "Cincinnati Reds",
+    "homeScore": 1,
+    "awayScore": 2,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814978"
+  },
+  {
+    "betId": "action-mlb-287123-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "St. Louis Cardinals @ Houston Astros \u2014 St. Louis Cardinals +1.5 (-176)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Houston Astros",
+    "awayTeam": "St. Louis Cardinals",
+    "homeScore": 4,
+    "awayScore": 9,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T18:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814980"
+  },
+  {
+    "betId": "action-mlb-287126-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Chicago White Sox @ Athletics \u2014 Chicago White Sox +1.5 (-161)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Athletics",
+    "awayTeam": "Chicago White Sox",
+    "homeScore": 2,
+    "awayScore": 9,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:05:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814982"
+  },
+  {
+    "betId": "action-mlb-287128-total",
+    "sport": "MLB",
+    "betType": "total",
+    "title": "Texas Rangers @ Seattle Mariners \u2014 UNDER 7.5 (-127)",
+    "pickSide": "under",
+    "line": 7.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Seattle Mariners",
+    "awayTeam": "Texas Rangers",
+    "homeScore": 0,
+    "awayScore": 5,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814984"
+  },
+  {
+    "betId": "action-mlb-287129-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Toronto Blue Jays @ Arizona Diamondbacks \u2014 Toronto Blue Jays 0 (-119)",
+    "pickSide": null,
+    "line": 0,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Arizona Diamondbacks",
+    "awayTeam": "Toronto Blue Jays",
+    "homeScore": 6,
+    "awayScore": 3,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401814985"
+  },
+  {
+    "betId": "action-mlb-287128-spread",
+    "sport": "MLB",
+    "betType": "spread",
+    "title": "Texas Rangers @ Seattle Mariners \u2014 Texas Rangers +1.5 (-197)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Seattle Mariners",
+    "awayTeam": "Texas Rangers",
+    "homeScore": 0,
+    "awayScore": 5,
+    "confidenceScore": 53,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T20:10:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260417",
+    "espnGameId": "401814984"
+  },
+  {
+    "betId": "action-nba-288430-total",
+    "sport": "NBA",
+    "betType": "total",
+    "title": "Philadelphia 76ers @ Boston Celtics \u2014 OVER 213.5 (-110)",
+    "pickSide": "over",
+    "line": 213.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Boston Celtics",
+    "awayTeam": "Philadelphia 76ers",
+    "homeScore": 109,
+    "awayScore": 97,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T17:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260415",
+    "espnGameId": "401866757"
+  },
+  {
+    "betId": "action-nba-288541-spread",
+    "sport": "NBA",
+    "betType": "spread",
+    "title": "Phoenix Suns @ Oklahoma City Thunder \u2014 Phoenix Suns +14.5 (-118)",
+    "pickSide": null,
+    "line": 14.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Oklahoma City Thunder",
+    "awayTeam": "Phoenix Suns",
+    "homeScore": 111,
+    "awayScore": 96,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T19:30:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260417",
+    "espnGameId": "401866759"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18MINDAL-DALWJOHNSTON53-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -186] Wyatt Johnston \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Wyatt Johnston",
+    "statCategory": "Assists",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 58,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLPTS-26APR18MINDAL-DALJROBERTSON21-2",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 1.5 @ -186] Jason Robertson \u2014 Points",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": "Jason Robertson",
+    "statCategory": "Points",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLPTS-26APR18MINDAL-DALMRANTANEN96-2",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 1.5 @ -212] Mikko Rantanen \u2014 Points",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": "Mikko Rantanen",
+    "statCategory": "Points",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 56,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18OTTCAR-OTTSPINTO12-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -245] Shane Pinto \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Shane Pinto",
+    "statCategory": "Assists",
+    "homeTeam": "CAR Hurricanes",
+    "awayTeam": "OTT Senators",
+    "homeScore": 3,
+    "awayScore": 1,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260415",
+    "espnGameId": "401803655"
+  },
+  {
+    "betId": "action-nhl-288464-total",
+    "sport": "NHL",
+    "betType": "total",
+    "title": "Los Angeles Kings @ Colorado Avalanche \u2014 OVER 5.5 (-130)",
+    "pickSide": "over",
+    "line": 5.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Colorado Avalanche",
+    "awayTeam": "Los Angeles Kings",
+    "homeScore": 2,
+    "awayScore": 0,
+    "confidenceScore": 55,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T19:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260416",
+    "espnGameId": "401803663"
+  },
+  {
+    "betId": "action-nhl-288464-spread",
+    "sport": "NHL",
+    "betType": "spread",
+    "title": "Los Angeles Kings @ Colorado Avalanche \u2014 Los Angeles Kings +1.5 (-125)",
+    "pickSide": null,
+    "line": 1.5,
+    "playerName": null,
+    "statCategory": null,
+    "homeTeam": "Colorado Avalanche",
+    "awayTeam": "Los Angeles Kings",
+    "homeScore": 2,
+    "awayScore": 0,
+    "confidenceScore": 54,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T19:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260416",
+    "espnGameId": "401803663"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLPTS-26APR18MINDAL-DALWJOHNSTON53-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE OVER 0.5 @ -156] Wyatt Johnston \u2014 Points",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Wyatt Johnston",
+    "statCategory": "Points",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 53,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18MINDAL-DALTHARLEY55-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -150] Thomas Harley \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Thomas Harley",
+    "statCategory": "Assists",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 51,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18MINDAL-DALMDUCHENE95-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -150] Matt Duchene \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Matt Duchene",
+    "statCategory": "Assists",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 50,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18MINDAL-DALMRANTANEN96-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE OVER 0.5 @ -122] Mikko Rantanen \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Mikko Rantanen",
+    "statCategory": "Assists",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 48,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLAST-26APR18MINDAL-DALJROBERTSON21-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -138] Jason Robertson \u2014 Assists",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Jason Robertson",
+    "statCategory": "Assists",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 47,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLPTS-26APR18MINDAL-DALMDUCHENE95-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE OVER 0.5 @ -122] Matt Duchene \u2014 Points",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Matt Duchene",
+    "statCategory": "Points",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 47,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "lost",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
+  },
+  {
+    "betId": "kalshi-prop-KXNHLPTS-26APR18MINDAL-DALTHARLEY55-1",
+    "sport": "NHL",
+    "betType": "player_prop",
+    "title": "[TAKE UNDER 0.5 @ -122] Thomas Harley \u2014 Points",
+    "pickSide": null,
+    "line": 0.5,
+    "playerName": "Thomas Harley",
+    "statCategory": "Points",
+    "homeTeam": "DAL Stars",
+    "awayTeam": "MIN Wild",
+    "homeScore": 3,
+    "awayScore": 4,
+    "confidenceScore": 46,
+    "formEdgePct": null,
+    "hitRate": null,
+    "edgeScore": null,
+    "edgeGrade": null,
+    "edgeSizing": null,
+    "gameTime": "2026-04-19T01:00:00.000Z",
+    "gradedAt": "2026-04-18T20:42:24.116667",
+    "result": "won",
+    "gameDate": "20260415",
+    "espnGameId": "401803652"
   }
 ]
