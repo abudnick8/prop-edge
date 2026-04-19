@@ -3,13 +3,13 @@
     "by_conf_tier": {
       "low": {
         "lost": 23,
-        "win_rate": 0.582,
-        "won": 32
+        "win_rate": 0.603,
+        "won": 35
       },
       "medium": {
-        "lost": 85,
-        "win_rate": 0.55,
-        "won": 104
+        "lost": 88,
+        "win_rate": 0.56,
+        "won": 112
       }
     },
     "by_sport": {
@@ -19,9 +19,9 @@
         "won": 50
       },
       "NBA": {
-        "lost": 64,
-        "win_rate": 0.519,
-        "won": 69
+        "lost": 67,
+        "win_rate": 0.544,
+        "won": 80
       },
       "NHL": {
         "lost": 14,
@@ -31,9 +31,9 @@
     },
     "by_type": {
       "player_prop": {
-        "lost": 64,
-        "win_rate": 0.543,
-        "won": 76
+        "lost": 67,
+        "win_rate": 0.565,
+        "won": 87
       },
       "spread": {
         "lost": 20,
@@ -46,19 +46,19 @@
         "won": 28
       }
     },
-    "lost": 108,
+    "lost": 111,
     "push": 0,
-    "roi_est": 6.4,
-    "total": 244,
+    "roi_est": 8.8,
+    "total": 258,
     "weekly": {
       "2026-W16": {
-        "lost": 108,
-        "win_rate": 0.557,
-        "won": 136
+        "lost": 111,
+        "win_rate": 0.57,
+        "won": 147
       }
     },
-    "win_rate": 0.557,
-    "won": 136
+    "win_rate": 0.57,
+    "won": 147
   },
   "insights": [
     {
@@ -86,11 +86,11 @@
       "type": "strength"
     },
     {
-      "adj": 10.14,
-      "detail": "52W-22L (70.3% hit rate). The model should weight this pattern higher.",
+      "adj": 10.37,
+      "detail": "58W-24L (70.7% hit rate). The model should weight this pattern higher.",
       "icon": "🟢",
       "pattern": "stat_category:POINTS|conf_tier:medium",
-      "title": "70.3% win rate — stat category: POINTS + conf tier: medium",
+      "title": "70.7% win rate — stat category: POINTS + conf tier: medium",
       "type": "strength"
     },
     {
@@ -142,11 +142,11 @@
       "type": "weakness"
     },
     {
-      "adj": 4.09,
-      "detail": "Model overperforms at low confidence by 13pp. Calibration good.",
+      "adj": 5.17,
+      "detail": "Model overperforms at low confidence by 15pp. Calibration good.",
       "icon": "📈",
       "pattern": "conf_tier:low",
-      "title": "📈 Low confidence picks: 58.2% actual vs 45% expected",
+      "title": "📈 Low confidence picks: 60.3% actual vs 45% expected",
       "type": "calibration"
     },
     {
@@ -158,35 +158,35 @@
       "type": "sport"
     }
   ],
-  "last_run": "2026-04-19T08:56:34.777373",
+  "last_run": "2026-04-19T12:59:14.871458",
   "patterns": {
     "bet_type:player_prop": {
-      "losses": 128,
-      "total": 280,
-      "weight_adj": 2.14,
-      "win_rate": 0.543,
-      "wins": 152
+      "losses": 134,
+      "total": 308,
+      "weight_adj": 3.25,
+      "win_rate": 0.565,
+      "wins": 174
     },
     "bet_type:player_prop|conf_tier:low": {
       "losses": 26,
-      "total": 52,
-      "weight_adj": 0,
-      "win_rate": 0.5,
-      "wins": 26
+      "total": 58,
+      "weight_adj": 2.59,
+      "win_rate": 0.552,
+      "wins": 32
     },
     "bet_type:player_prop|conf_tier:medium": {
-      "losses": 102,
-      "total": 228,
-      "weight_adj": 2.63,
-      "win_rate": 0.553,
-      "wins": 126
+      "losses": 108,
+      "total": 250,
+      "weight_adj": 3.4,
+      "win_rate": 0.568,
+      "wins": 142
     },
     "bet_type:player_prop|form_tier:neutral": {
-      "losses": 128,
-      "total": 280,
-      "weight_adj": 2.14,
-      "win_rate": 0.543,
-      "wins": 152
+      "losses": 134,
+      "total": 308,
+      "weight_adj": 3.25,
+      "win_rate": 0.565,
+      "wins": 174
     },
     "bet_type:spread": {
       "losses": 40,
@@ -246,38 +246,38 @@
     },
     "conf_tier:low": {
       "losses": 46,
-      "total": 110,
-      "weight_adj": 4.09,
-      "win_rate": 0.582,
-      "wins": 64
+      "total": 116,
+      "weight_adj": 5.17,
+      "win_rate": 0.603,
+      "wins": 70
     },
     "conf_tier:medium": {
-      "losses": 170,
-      "total": 378,
-      "weight_adj": 2.51,
-      "win_rate": 0.55,
-      "wins": 208
+      "losses": 176,
+      "total": 400,
+      "weight_adj": 3,
+      "win_rate": 0.56,
+      "wins": 224
     },
     "edge_tier:flat": {
-      "losses": 216,
-      "total": 488,
-      "weight_adj": 2.87,
-      "win_rate": 0.557,
-      "wins": 272
+      "losses": 222,
+      "total": 516,
+      "weight_adj": 3.49,
+      "win_rate": 0.57,
+      "wins": 294
     },
     "form_tier:neutral": {
-      "losses": 216,
-      "total": 488,
-      "weight_adj": 2.87,
-      "win_rate": 0.557,
-      "wins": 272
+      "losses": 222,
+      "total": 516,
+      "weight_adj": 3.49,
+      "win_rate": 0.57,
+      "wins": 294
     },
     "pick_side:": {
-      "losses": 168,
-      "total": 384,
-      "weight_adj": 3.12,
-      "win_rate": 0.562,
-      "wins": 216
+      "losses": 174,
+      "total": 412,
+      "weight_adj": 3.88,
+      "win_rate": 0.578,
+      "wins": 238
     },
     "pick_side:OVER": {
       "losses": 24,
@@ -357,18 +357,18 @@
       "wins": 26
     },
     "sport:NBA": {
-      "losses": 128,
-      "total": 266,
-      "weight_adj": 0.94,
-      "win_rate": 0.519,
-      "wins": 138
+      "losses": 134,
+      "total": 294,
+      "weight_adj": 2.21,
+      "win_rate": 0.544,
+      "wins": 160
     },
     "sport:NBA|bet_type:player_prop": {
-      "losses": 120,
-      "total": 258,
-      "weight_adj": 1.74,
-      "win_rate": 0.535,
-      "wins": 138
+      "losses": 126,
+      "total": 286,
+      "weight_adj": 2.97,
+      "win_rate": 0.559,
+      "wins": 160
     },
     "sport:NBA|bet_type:spread": {
       "losses": 4,
@@ -386,31 +386,31 @@
     },
     "sport:NBA|conf_tier:low": {
       "losses": 22,
-      "total": 40,
-      "weight_adj": -2.5,
-      "win_rate": 0.45,
-      "wins": 18
+      "total": 46,
+      "weight_adj": 1.09,
+      "win_rate": 0.522,
+      "wins": 24
     },
     "sport:NBA|conf_tier:medium": {
-      "losses": 106,
-      "total": 226,
-      "weight_adj": 1.55,
-      "win_rate": 0.531,
-      "wins": 120
+      "losses": 112,
+      "total": 248,
+      "weight_adj": 2.42,
+      "win_rate": 0.548,
+      "wins": 136
     },
     "sport:NBA|edge_tier:flat": {
-      "losses": 128,
-      "total": 266,
-      "weight_adj": 0.94,
-      "win_rate": 0.519,
-      "wins": 138
+      "losses": 134,
+      "total": 294,
+      "weight_adj": 2.21,
+      "win_rate": 0.544,
+      "wins": 160
     },
     "sport:NBA|pick_side:": {
-      "losses": 124,
-      "total": 262,
-      "weight_adj": 1.34,
-      "win_rate": 0.527,
-      "wins": 138
+      "losses": 130,
+      "total": 290,
+      "weight_adj": 2.59,
+      "win_rate": 0.552,
+      "wins": 160
     },
     "sport:NBA|pick_side:OVER": {
       "losses": 4,
@@ -420,18 +420,18 @@
       "wins": 0
     },
     "sport:NBA|stat_category:ASSISTS": {
-      "losses": 26,
-      "total": 58,
-      "weight_adj": 2.59,
-      "win_rate": 0.552,
-      "wins": 32
+      "losses": 28,
+      "total": 64,
+      "weight_adj": 3.12,
+      "win_rate": 0.562,
+      "wins": 36
     },
     "sport:NBA|stat_category:ASSISTS|form_tier:neutral": {
-      "losses": 26,
-      "total": 58,
-      "weight_adj": 2.59,
-      "win_rate": 0.552,
-      "wins": 32
+      "losses": 28,
+      "total": 64,
+      "weight_adj": 3.12,
+      "win_rate": 0.562,
+      "wins": 36
     },
     "sport:NBA|stat_category:BLOCKS": {
       "losses": 12,
@@ -448,46 +448,46 @@
       "wins": 2
     },
     "sport:NBA|stat_category:POINTS": {
-      "losses": 26,
-      "total": 78,
-      "weight_adj": 8.33,
-      "win_rate": 0.667,
-      "wins": 52
+      "losses": 28,
+      "total": 86,
+      "weight_adj": 8.72,
+      "win_rate": 0.674,
+      "wins": 58
     },
     "sport:NBA|stat_category:POINTS|form_tier:neutral": {
-      "losses": 26,
-      "total": 78,
-      "weight_adj": 8.33,
-      "win_rate": 0.667,
-      "wins": 52
+      "losses": 28,
+      "total": 86,
+      "weight_adj": 8.72,
+      "win_rate": 0.674,
+      "wins": 58
     },
     "sport:NBA|stat_category:REBOUNDS": {
-      "losses": 40,
-      "total": 74,
-      "weight_adj": -2.03,
-      "win_rate": 0.459,
-      "wins": 34
+      "losses": 42,
+      "total": 82,
+      "weight_adj": -0.61,
+      "win_rate": 0.488,
+      "wins": 40
     },
     "sport:NBA|stat_category:REBOUNDS|form_tier:neutral": {
-      "losses": 40,
-      "total": 74,
-      "weight_adj": -2.03,
-      "win_rate": 0.459,
-      "wins": 34
+      "losses": 42,
+      "total": 82,
+      "weight_adj": -0.61,
+      "win_rate": 0.488,
+      "wins": 40
     },
     "sport:NBA|stat_category:STEALS": {
       "losses": 16,
-      "total": 34,
-      "weight_adj": 1.47,
-      "win_rate": 0.529,
-      "wins": 18
+      "total": 40,
+      "weight_adj": 5,
+      "win_rate": 0.6,
+      "wins": 24
     },
     "sport:NBA|stat_category:STEALS|form_tier:neutral": {
       "losses": 16,
-      "total": 34,
-      "weight_adj": 1.47,
-      "win_rate": 0.529,
-      "wins": 18
+      "total": 40,
+      "weight_adj": 5,
+      "win_rate": 0.6,
+      "wins": 24
     },
     "sport:NHL": {
       "losses": 28,
@@ -588,11 +588,11 @@
       "wins": 6
     },
     "stat_category:ASSISTS": {
-      "losses": 30,
-      "total": 70,
-      "weight_adj": 3.57,
-      "win_rate": 0.571,
-      "wins": 40
+      "losses": 32,
+      "total": 76,
+      "weight_adj": 3.95,
+      "win_rate": 0.579,
+      "wins": 44
     },
     "stat_category:ASSISTS|conf_tier:low": {
       "losses": 2,
@@ -602,18 +602,18 @@
       "wins": 6
     },
     "stat_category:ASSISTS|conf_tier:medium": {
-      "losses": 28,
-      "total": 62,
-      "weight_adj": 2.42,
-      "win_rate": 0.548,
-      "wins": 34
+      "losses": 30,
+      "total": 68,
+      "weight_adj": 2.94,
+      "win_rate": 0.559,
+      "wins": 38
     },
     "stat_category:ASSISTS|pick_side:": {
-      "losses": 30,
-      "total": 70,
-      "weight_adj": 3.57,
-      "win_rate": 0.571,
-      "wins": 40
+      "losses": 32,
+      "total": 76,
+      "weight_adj": 3.95,
+      "win_rate": 0.579,
+      "wins": 44
     },
     "stat_category:BLOCKS": {
       "losses": 12,
@@ -644,11 +644,11 @@
       "wins": 2
     },
     "stat_category:POINTS": {
-      "losses": 30,
-      "total": 88,
-      "weight_adj": 7.95,
-      "win_rate": 0.659,
-      "wins": 58
+      "losses": 32,
+      "total": 96,
+      "weight_adj": 8.33,
+      "win_rate": 0.667,
+      "wins": 64
     },
     "stat_category:POINTS|conf_tier:low": {
       "losses": 8,
@@ -658,53 +658,53 @@
       "wins": 6
     },
     "stat_category:POINTS|conf_tier:medium": {
-      "losses": 22,
-      "total": 74,
-      "weight_adj": 10.14,
-      "win_rate": 0.703,
-      "wins": 52
-    },
-    "stat_category:POINTS|pick_side:": {
-      "losses": 30,
-      "total": 88,
-      "weight_adj": 7.95,
-      "win_rate": 0.659,
+      "losses": 24,
+      "total": 82,
+      "weight_adj": 10.37,
+      "win_rate": 0.707,
       "wins": 58
     },
+    "stat_category:POINTS|pick_side:": {
+      "losses": 32,
+      "total": 96,
+      "weight_adj": 8.33,
+      "win_rate": 0.667,
+      "wins": 64
+    },
     "stat_category:REBOUNDS": {
-      "losses": 40,
-      "total": 74,
-      "weight_adj": -2.03,
-      "win_rate": 0.459,
-      "wins": 34
+      "losses": 42,
+      "total": 82,
+      "weight_adj": -0.61,
+      "win_rate": 0.488,
+      "wins": 40
     },
     "stat_category:REBOUNDS|conf_tier:medium": {
-      "losses": 40,
-      "total": 74,
-      "weight_adj": -2.03,
-      "win_rate": 0.459,
-      "wins": 34
+      "losses": 42,
+      "total": 82,
+      "weight_adj": -0.61,
+      "win_rate": 0.488,
+      "wins": 40
     },
     "stat_category:REBOUNDS|pick_side:": {
-      "losses": 40,
-      "total": 74,
-      "weight_adj": -2.03,
-      "win_rate": 0.459,
-      "wins": 34
+      "losses": 42,
+      "total": 82,
+      "weight_adj": -0.61,
+      "win_rate": 0.488,
+      "wins": 40
     },
     "stat_category:STEALS": {
       "losses": 16,
-      "total": 34,
-      "weight_adj": 1.47,
-      "win_rate": 0.529,
-      "wins": 18
+      "total": 40,
+      "weight_adj": 5,
+      "win_rate": 0.6,
+      "wins": 24
     },
     "stat_category:STEALS|conf_tier:low": {
       "losses": 12,
-      "total": 26,
-      "weight_adj": 1.92,
-      "win_rate": 0.538,
-      "wins": 14
+      "total": 32,
+      "weight_adj": 6.25,
+      "win_rate": 0.625,
+      "wins": 20
     },
     "stat_category:STEALS|conf_tier:medium": {
       "losses": 4,
@@ -715,34 +715,36 @@
     },
     "stat_category:STEALS|pick_side:": {
       "losses": 16,
-      "total": 34,
-      "weight_adj": 1.47,
-      "win_rate": 0.529,
-      "wins": 18
+      "total": 40,
+      "weight_adj": 5,
+      "win_rate": 0.6,
+      "wins": 24
     }
   },
-  "sample_size": 244,
+  "sample_size": 258,
   "status": "ok",
   "weights": {
     "bettype_weights": {
       "moneyline": 0,
-      "player_prop": 2.14,
+      "player_prop": 3.25,
       "spread": 5.77,
       "total": 1.92
     },
     "combo_weights": {
-      "bet_type:player_prop|conf_tier:medium": 2.63,
+      "bet_type:player_prop|conf_tier:low": 2.59,
+      "bet_type:player_prop|conf_tier:medium": 3.4,
       "bet_type:spread|conf_tier:low": 6.25,
       "bet_type:spread|conf_tier:medium": 5.36,
       "bet_type:total|conf_tier:low": 15,
       "sport:MLB|conf_tier:low": 11.36,
       "sport:MLB|conf_tier:medium": 4.31,
       "sport:MLB|edge_tier:flat": 6.25,
-      "sport:NBA|conf_tier:low": -2.5,
-      "sport:NBA|stat_category:ASSISTS": 2.59,
+      "sport:NBA|conf_tier:medium": 2.42,
+      "sport:NBA|edge_tier:flat": 2.21,
+      "sport:NBA|stat_category:ASSISTS": 3.12,
       "sport:NBA|stat_category:BLOCKS": -17.86,
-      "sport:NBA|stat_category:POINTS": 8.33,
-      "sport:NBA|stat_category:REBOUNDS": -2.03,
+      "sport:NBA|stat_category:POINTS": 8.72,
+      "sport:NBA|stat_category:STEALS": 5,
       "sport:NHL|conf_tier:medium": 2.78,
       "sport:NHL|edge_tier:flat": 2.42,
       "sport:NHL|stat_category:ASSISTS": 8.33,
@@ -751,11 +753,11 @@
     "conf_tier_cal": {
       "elite": 0,
       "high": 0,
-      "low": 4.09,
-      "medium": 2.51
+      "low": 5.17,
+      "medium": 3
     },
     "edge_tier_weights": {
-      "flat": 2.87,
+      "flat": 3.49,
       "moderate_over": 0,
       "moderate_under": 0,
       "strong_over": 0,
@@ -765,27 +767,27 @@
       "above_avg": 0,
       "cold": 0,
       "hot": 0,
-      "neutral": 2.87
+      "neutral": 3.49
     },
-    "last_run": "2026-04-19T08:56:34.777373",
-    "overall_win_rate": 0.557,
+    "last_run": "2026-04-19T12:59:14.871458",
+    "overall_win_rate": 0.57,
     "pick_side_weights": {
       "OVER": 0,
       "UNDER": 3.57
     },
-    "sample_size": 244,
+    "sample_size": 258,
     "sport_weights": {
       "MLB": 6.25,
-      "NBA": 0.94,
+      "NBA": 2.21,
       "NFL": 0,
       "NHL": 2.42
     },
     "stat_category_weights": {
-      "ASSISTS": 3.57,
+      "ASSISTS": 3.95,
       "BLOCKS": -17.86,
-      "POINTS": 7.95,
-      "REBOUNDS": -2.03,
-      "STEALS": 1.47
+      "POINTS": 8.33,
+      "REBOUNDS": -0.61,
+      "STEALS": 5
     },
     "version": "2.0"
   }
