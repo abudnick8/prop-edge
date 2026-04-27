@@ -614,16 +614,16 @@ export default function BTS() {
   const queryClient = useQueryClient();
 
   const today = new Date().toISOString().slice(0, 10);
-  // Before 11:45 AM CT refresh every 15 min to catch lineup updates;
-  // after deadline stop auto-refreshing (picks are locked)
-  const nowCT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-  const isPastDeadline = nowCT.getHours() > 11 || (nowCT.getHours() === 11 && nowCT.getMinutes() >= 45);
 
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
     queryFn: () => apiRequest("GET", `/api/bts-picks?date=${today}`).then(r => r.json()),
-    staleTime: 15 * 60_000,
-    refetchInterval: isPastDeadline ? false : 15 * 60_000, // every 15 min until deadline
+    // staleTime 0 so manual Refresh always hits the server
+    staleTime: 0,
+    // Auto-refresh every 15 min all day — even after 11:45 so later-game picks
+    // can still be added (they lock per-game 30 min before first pitch)
+    refetchInterval: 15 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const slate: any[] = data?.slate ?? [];
