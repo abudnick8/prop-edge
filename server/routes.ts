@@ -7626,12 +7626,79 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         // Get confirmed or projected lineups
         const lineups = game.lineups ?? {};
-        const homePlayers: any[] = lineups.homePlayers ?? [];
-        const awayPlayers: any[] = lineups.awayPlayers ?? [];
+        const confirmedHome: any[] = lineups.homePlayers ?? [];
+        const confirmedAway: any[] = lineups.awayPlayers ?? [];
 
-        // If no confirmed lineups, fetch from ESPN depth chart or skip that team
-        // We'll still process whoever is in the lineup
-        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string) => {
+        // ── Projected lineup fallback via recent boxscores ──────────
+        async function getProjectedLineup(teamId: number, preferHome: boolean): Promise<any[]> {
+          try {
+            const recentSched = await axios.get(
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&season=2026&gameType=R&limit=8`
+            );
+            const recentDates: any[] = recentSched.data?.dates ?? [];
+            const recentGames: any[] = recentDates
+              .flatMap((d: any) => d.games ?? [])
+              .filter((g: any) => g.status?.abstractGameState === "Final")
+              .slice(0, 3);
+
+            const orderTally: Record<number, number[]> = {};
+            for (const rg of recentGames) {
+              try {
+                const box = await axios.get(`https://statsapi.mlb.com/api/v1/game/${rg.gamePk}/boxscore`);
+                // Figure out which side this team was
+                const homeId = box.data?.teams?.home?.team?.id;
+                const boxSide = homeId === teamId ? "home" : "away";
+                const teamBox = box.data?.teams?.[boxSide] ?? {};
+                const battingOrder: number[] = teamBox.battingOrder ?? [];
+                battingOrder.forEach((pid: number, idx: number) => {
+                  if (!orderTally[pid]) orderTally[pid] = [];
+                  orderTally[pid].push(idx + 1);
+                });
+              } catch { /* skip */ }
+            }
+
+            if (!Object.keys(orderTally).length) return [];
+
+            return Object.entries(orderTally)
+              .map(([pid, slots]) => ({
+                id: parseInt(pid),
+                person: { id: parseInt(pid) },
+                lineupSource: "projected" as const,
+                medianSlot: slots.sort((a, b) => a - b)[Math.floor(slots.length / 2)],
+              }))
+              .filter(p => p.medianSlot <= 5)
+              .sort((a, b) => a.medianSlot - b.medianSlot)
+              .slice(0, 5);
+          } catch { return []; }
+        }
+
+        let homePlayers: any[];
+        let awayPlayers: any[];
+        let homeLineupSource: string;
+        let awayLineupSource: string;
+
+        if (confirmedHome.length > 0) {
+          homePlayers = confirmedHome.map((p: any) => ({ ...p, lineupSource: "confirmed" }));
+          homeLineupSource = "confirmed";
+        } else {
+          homePlayers = await getProjectedLineup(homeTeam.team?.id, true);
+          homeLineupSource = homePlayers.length > 0 ? "projected" : "unavailable";
+        }
+
+        if (confirmedAway.length > 0) {
+          awayPlayers = confirmedAway.map((p: any) => ({ ...p, lineupSource: "confirmed" }));
+          awayLineupSource = "confirmed";
+        } else {
+          awayPlayers = await getProjectedLineup(awayTeam.team?.id, false);
+          awayLineupSource = awayPlayers.length > 0 ? "projected" : "unavailable";
+        }
+
+        // Scratch detection: if we previously had a projected pick whose ID
+        // is NOT in the now-confirmed lineup, it gets flagged as scratched
+        const confirmedHomeIds = new Set(confirmedHome.map((p: any) => p.id ?? p.person?.id));
+        const confirmedAwayIds = new Set(confirmedAway.map((p: any) => p.id ?? p.person?.id));
+
+        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string) => {
           const candidates: any[] = [];
           for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
             const p = players[slotIdx];
@@ -7645,13 +7712,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const bats = person.batSide?.code ?? "R";
               const fullName = person.fullName ?? p.fullName ?? "Unknown";
 
-              // Apply platoon filter: pitcher BA allowed vs this batter's side must be > .255
+              // Apply platoon filter
               const pitcherAvgVsMe = bats === "L" ? pitcherSplits.vsLeft : pitcherSplits.vsRight;
-              const passesFilter = pitcherAvgVsMe >= 0.240; // slightly loose for more candidates
-
+              const passesFilter = pitcherAvgVsMe >= 0.240;
               if (!passesFilter) continue;
 
-              // Fetch hitter stats
+              // Scratch detection: was this a projected player who's now absent from confirmed lineup?
+              const confirmedIds = side === "home" ? confirmedHomeIds : confirmedAwayIds;
+              const hasConfirmedLineup = side === "home" ? confirmedHome.length > 0 : confirmedAway.length > 0;
+              const isScratched = lineupSrc === "projected" && hasConfirmedLineup && !confirmedIds.has(pid);
+
               const stats = await getHitterStats(pid);
               const savant = savantMap[String(pid)] ?? {};
 
@@ -7664,6 +7734,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               );
 
               const hitProbability = Math.min(0.75, rawScore * 1.333);
+              const playerLineupSource = p.lineupSource ?? lineupSrc;
 
               candidates.push({
                 playerId: pid,
@@ -7671,7 +7742,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 team: teamName,
                 side,
                 bats,
-                lineupSlot: slotIdx + 1,
+                lineupSlot: p.medianSlot ?? (slotIdx + 1),
+                lineupSource: playerLineupSource,   // "confirmed" | "projected"
+                isScratched,                         // true if projected but now missing from official lineup
                 opponentPitcher: side === "home"
                   ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
                   : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
@@ -7706,8 +7779,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         };
 
         const [homeCandidates, awayCandidates] = await Promise.all([
-          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? ""),
-          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? ""),
+          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? "", homeLineupSource),
+          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? "", awayLineupSource),
         ]);
 
         candidatePicks.push(...homeCandidates, ...awayCandidates);
@@ -7738,9 +7811,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pick.rationale = parts.join(" · ");
       }
 
+      // ── 11:45 AM CT deadline: mark if picks are final vs still projections ──
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctHour = ctNow.getHours();
+      const ctMin  = ctNow.getMinutes();
+      const pastDeadline = ctHour > 11 || (ctHour === 11 && ctMin >= 45);
+      const confirmedCount = topPicks.filter(p => p.lineupSource === "confirmed").length;
+      const projectedCount = topPicks.filter(p => p.lineupSource === "projected").length;
+      const scratchedCount = topPicks.filter(p => p.isScratched).length;
+
       res.json({
         date: targetDate,
         generatedAt: new Date().toISOString(),
+        pastDeadline,           // true after 11:45 AM CT — picks locked in regardless of lineup status
+        confirmedCount,
+        projectedCount,
+        scratchedCount,
         slate: slateGames,
         picks: topPicks,
         bestPick: topPicks[0] ?? null,
