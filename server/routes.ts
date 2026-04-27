@@ -7582,7 +7582,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // A player must pass ALL three soft gates OR qualify via the override.
       // If they fail the soft gates but every extreme-metric fires, they
       // can still appear — but this should be rare (maybe 1-2 players/day).
-      const MIN_TOTAL          = 9.0;   // game O/U floor — only offensive games
+      const MIN_TOTAL          = 8.0;   // game O/U floor — adjusted: total is a scoring signal, not a hard gate
       const MIN_AVG14          = 0.220; // must have hit at least .220 over L14
       const MIN_GHP14          = 0.50;  // hit in at least 50% of L14 games
       const MIN_SEASON_AVG     = 0.200; // above Mendoza line for the season
