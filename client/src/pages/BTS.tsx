@@ -173,12 +173,84 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
         )}
       </div>
 
-      {/* Quick stat row */}
-      <div className="px-4 pb-3 grid grid-cols-4 gap-1.5">
+      {/* Quick stat row — hitter */}
+      <div className="px-4 pb-1.5 grid grid-cols-4 gap-1.5">
         <Chip label="14d BA" value={fmtAvg(pick.stats?.avg14)} highlight={(pick.stats?.avg14 ?? 0) >= 0.280} />
         <Chip label="GHP" value={fmtPct(pick.stats?.ghp14)} highlight={(pick.stats?.ghp14 ?? 0) >= 0.70} />
         <Chip label="K%" value={fmtPct(pick.stats?.kPct)} />
         <Chip label="xBA" value={fmtAvg(pick.stats?.xba)} highlight={(pick.stats?.xba ?? 0) >= 0.300} />
+      </div>
+
+      {/* Pitcher matchup summary strip */}
+      <div className="px-4 pb-3">
+        <div
+          className="rounded-xl px-3 py-2 flex items-start gap-2"
+          style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}
+        >
+          {/* Label */}
+          <span className="text-[9px] font-black uppercase tracking-wider mt-0.5 flex-shrink-0" style={{ color: "#3D4B58" }}>⚾ P</span>
+          <div className="flex-1 min-w-0">
+            {/* Pitcher name + BA allowed */}
+            <p className="text-[11px] font-semibold text-foreground leading-tight truncate">
+              {pick.opponentPitcher?.name ?? "TBD"}
+              {pick.pitcherAvgAllowed ? (
+                <span
+                  className="ml-1.5 font-black"
+                  style={{ color: pick.pitcherAvgAllowed >= 0.280 ? "#22c55e" : pick.pitcherAvgAllowed >= 0.260 ? "#facc15" : "#f87171" }}
+                >
+                  {fmtAvg(pick.pitcherAvgAllowed)} vs {pick.bats === "L" ? "LHB" : "RHB"}
+                </span>
+              ) : null}
+            </p>
+            {/* ERA / xBA / K9 inline */}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {pick.pitcherStats?.era != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  ERA{" "}
+                  <span
+                    className="font-bold"
+                    style={{ color: pick.pitcherStats.era <= 3.50 ? "#f87171" : pick.pitcherStats.era <= 4.50 ? "#facc15" : "#22c55e" }}
+                  >
+                    {pick.pitcherStats.era.toFixed(2)}
+                  </span>
+                </span>
+              )}
+              {pick.pitcherStats?.xba != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  xBA{" "}
+                  <span
+                    className="font-bold"
+                    style={{ color: pick.pitcherStats.xba >= 0.290 ? "#22c55e" : pick.pitcherStats.xba >= 0.260 ? "#facc15" : "#f87171" }}
+                  >
+                    {fmtAvg(pick.pitcherStats.xba)}
+                  </span>
+                </span>
+              )}
+              {pick.pitcherStats?.k9 != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  K/9{" "}
+                  <span
+                    className="font-bold"
+                    style={{ color: pick.pitcherStats.k9 >= 9.0 ? "#f87171" : pick.pitcherStats.k9 >= 7.0 ? "#facc15" : "#22c55e" }}
+                  >
+                    {pick.pitcherStats.k9.toFixed(1)}
+                  </span>
+                </span>
+              )}
+              {pick.pitcherStats?.whip != null && (
+                <span className="text-[10px] text-muted-foreground">
+                  WHIP{" "}
+                  <span
+                    className="font-bold"
+                    style={{ color: pick.pitcherStats.whip <= 1.10 ? "#f87171" : pick.pitcherStats.whip <= 1.30 ? "#facc15" : "#22c55e" }}
+                  >
+                    {pick.pitcherStats.whip.toFixed(2)}
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Rationale */}
@@ -242,10 +314,10 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
             </div>
           </div>
 
-          {/* Pitcher splits */}
+          {/* Pitcher matchup — full detail */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Pitcher vs {pick.bats === "L" ? "LHB" : "RHB"}</p>
-            <p className="text-xs">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">⚾ Pitcher Matchup</p>
+            <p className="text-xs mb-2">
               <span className="font-bold text-foreground">{pick.opponentPitcher?.name ?? "TBD"}</span> allows{" "}
               <span
                 className="font-black"
@@ -255,6 +327,57 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
               </span>
               {" "}BA vs {pick.bats === "L" ? "left-handed" : "right-handed"} batters
             </p>
+            {/* Pitcher stat chips */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {pick.pitcherStats?.era != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">ERA</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.era <= 3.50 ? "#f87171" : pick.pitcherStats.era <= 4.50 ? "#facc15" : "#22c55e" }}>
+                    {pick.pitcherStats.era.toFixed(2)}
+                  </p>
+                </div>
+              )}
+              {pick.pitcherStats?.xba != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">xBA Allowed</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.xba >= 0.290 ? "#22c55e" : pick.pitcherStats.xba >= 0.260 ? "#facc15" : "#f87171" }}>
+                    {fmtAvg(pick.pitcherStats.xba)}
+                  </p>
+                </div>
+              )}
+              {pick.pitcherStats?.k9 != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">K/9</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.k9 >= 9.0 ? "#f87171" : pick.pitcherStats.k9 >= 7.0 ? "#facc15" : "#22c55e" }}>
+                    {pick.pitcherStats.k9.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {pick.pitcherStats?.whip != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">WHIP</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.whip <= 1.10 ? "#f87171" : pick.pitcherStats.whip <= 1.30 ? "#facc15" : "#22c55e" }}>
+                    {pick.pitcherStats.whip.toFixed(2)}
+                  </p>
+                </div>
+              )}
+              {pick.pitcherStats?.xwoba != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">xwOBA</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.xwoba >= 0.350 ? "#22c55e" : pick.pitcherStats.xwoba >= 0.310 ? "#facc15" : "#f87171" }}>
+                    {pick.pitcherStats.xwoba.toFixed(3)}
+                  </p>
+                </div>
+              )}
+              {pick.pitcherStats?.hardHitPct != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Hard Hit%</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.hardHitPct >= 42 ? "#22c55e" : pick.pitcherStats.hardHitPct >= 35 ? "#facc15" : "#f87171" }}>
+                    {pick.pitcherStats.hardHitPct.toFixed(0)}%
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Game log */}
