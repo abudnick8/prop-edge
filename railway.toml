@@ -1,7 +1,7 @@
-# Clubhouse IQ Railway Config — updated 2026-04-11
+# Clubhouse IQ Railway Config
 [build]
 builder = "nixpacks"
-buildCommand = "npm run build"
+buildCommand = "npm install --legacy-peer-deps --omit=dev"
 
 [deploy]
 startCommand = "node dist/index.cjs"

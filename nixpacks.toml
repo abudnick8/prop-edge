@@ -1,12 +1,9 @@
-# Cache bust: 1777327847
+# Cache bust: 1777328200
 [phases.setup]
 nixPkgs = ["nodejs_20", "python312", "python312Packages.numpy", "python312Packages.scipy"]
 
 [phases.install]
-cmds = ["npm install --legacy-peer-deps"]
-
-[phases.build]
-cmds = ["npm run build"]
+cmds = ["npm install --legacy-peer-deps --omit=dev"]
 
 [start]
 cmd = "node dist/index.cjs"
