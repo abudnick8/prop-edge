@@ -7797,18 +7797,99 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (topPicks.length >= 10) break; // return top 10, UI shows top 5
       }
 
-      // ── 9. Generate rationale for each pick ────────────────────────
+      // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
       for (const pick of topPicks) {
-        const parts: string[] = [];
-        if (pick.stats.avg14 >= 0.280) parts.push(`🔥 .${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days`);
-        else if (pick.stats.avg14 >= 0.250) parts.push(`.${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days`);
-        else parts.push(`❄️ .${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days (cold)`);
-        if (pick.stats.ghp14 >= 0.70) parts.push(`hit in ${Math.round(pick.stats.ghp14*100)}% of L14 games`);
-        if (pick.pitcherAvgAllowed >= 0.280) parts.push(`pitcher allows .${Math.round(pick.pitcherAvgAllowed*1000)} vs ${pick.bats === "L" ? "lefties" : "righties"}`);
-        if (pick.stats.xba && pick.stats.xba >= 0.300) parts.push(`xBA .${Math.round(pick.stats.xba*1000)}`);
-        if (pick.stats.hardHitPct && pick.stats.hardHitPct >= 40) parts.push(`${pick.stats.hardHitPct.toFixed(0)}% hard-hit rate`);
-        if (pick.game.total >= 9.5) parts.push(`high-scoring game (${pick.game.total} total)`);
-        pick.rationale = parts.join(" · ");
+        const p = pick;
+        const avg14Str  = p.stats.avg14  ? "." + Math.round(p.stats.avg14  * 1000).toString().padStart(3, "0") : null;
+        const avg7Str   = p.stats.avg7   ? "." + Math.round(p.stats.avg7   * 1000).toString().padStart(3, "0") : null;
+        const xbaStr    = p.stats.xba    ? "." + Math.round(p.stats.xba    * 1000).toString().padStart(3, "0") : null;
+        const pitcherStr = p.pitcherAvgAllowed ? "." + Math.round(p.pitcherAvgAllowed * 1000).toString().padStart(3, "0") : null;
+        const side = p.bats === "L" ? "left-handed batters" : "right-handed batters";
+        const pitcherName = p.opponentPitcher?.name ?? "today's starter";
+
+        // ─ Opening sentence ─
+        let opening = "";
+        if (p.stats.avg14 >= 0.300) {
+          opening = `🔥 ${p.name} is absolutely locked in, hitting ${avg14Str} over the last 14 days — one of the hottest bats on today's slate.`;
+        } else if (p.stats.avg14 >= 0.280) {
+          opening = `⚡ ${p.name} is in strong form, raking at ${avg14Str} over the last 14 days with consistent plate appearances.`;
+        } else if (p.stats.avg14 >= 0.250) {
+          opening = `📊 ${p.name} is putting together solid numbers, batting ${avg14Str} across the last two weeks.`;
+        } else {
+          opening = `🧊 ${p.name} is in a bit of a cold stretch at ${avg14Str} over the last 14 days, but the matchup and underlying metrics still offer value today.`;
+        }
+
+        // ─ Bullet points (collect the strongest signals) ─
+        const bullets: string[] = [];
+
+        // GHP
+        if (p.stats.ghp14 !== undefined && p.stats.ghp14 !== null) {
+          const ghpPct = Math.round(p.stats.ghp14 * 100);
+          if (ghpPct >= 80) bullets.push(`💥 Hit in **${ghpPct}%** of the last 14 games (elite streak consistency)`);
+          else if (ghpPct >= 65) bullets.push(`✅ Recorded a hit in **${ghpPct}%** of the last 14 games`);
+          else if (ghpPct >= 50) bullets.push(`📅 Got a hit in **${ghpPct}%** of L14 games`);
+        }
+
+        // 7d hot streak
+        if (avg7Str && p.stats.avg7 >= 0.300) {
+          bullets.push(`🔥 Hitting **${avg7Str}** over the last 7 days — currently in peak hot-streak territory`);
+        }
+
+        // Pitcher matchup
+        if (pitcherStr) {
+          if (p.pitcherAvgAllowed >= 0.290) {
+            bullets.push(`🎯 Faces **${pitcherName}**, who allows **.${Math.round(p.pitcherAvgAllowed*1000).toString().padStart(3,"0")}** BA vs ${side} — a highly favorable matchup`);
+          } else if (p.pitcherAvgAllowed >= 0.260) {
+            bullets.push(`⚡ Opponent **${pitcherName}** allows **${pitcherStr}** to ${side} this season`);
+          } else if (p.pitcherAvgAllowed < 0.230) {
+            bullets.push(`⚠️ **${pitcherName}** is tough on ${side} (**${pitcherStr}** BA allowed) — matchup is the key risk here`);
+          }
+        }
+
+        // Statcast quality
+        if (xbaStr && p.stats.xba >= 0.310) {
+          bullets.push(`📊 Statcast xBA of **${xbaStr}** confirms he's hitting the ball with elite quality, not just luck`);
+        } else if (xbaStr && p.stats.xba >= 0.290) {
+          bullets.push(`📊 Strong Statcast xBA **${xbaStr}** — quality of contact backs up the surface stats`);
+        }
+        if (p.stats.hardHitPct && p.stats.hardHitPct >= 45) {
+          bullets.push(`🔨 **${p.stats.hardHitPct.toFixed(0)}%** hard-hit rate — consistently barreling the ball at 95+ mph`);
+        } else if (p.stats.hardHitPct && p.stats.hardHitPct >= 38) {
+          bullets.push(`🔨 **${p.stats.hardHitPct.toFixed(0)}%** hard-hit rate keeps him in play as a quality-contact pick`);
+        }
+
+        // xwOBA
+        if (p.stats.xwoba && p.stats.xwoba >= 0.370) {
+          bullets.push(`🎯 xwOBA of **.${Math.round(p.stats.xwoba*1000).toString().padStart(3,"0")}** ranks him among the best hitters in the game right now`);
+        }
+
+        // Game environment
+        if (p.game?.total >= 10) {
+          bullets.push(`🏙️ High-total game (O/U ${p.game.total}) — offenses are expected to produce today`);
+        } else if (p.game?.total >= 9) {
+          bullets.push(`🏙️ Game total set at ${p.game.total} — favorable run environment`);
+        }
+
+        // Weather note
+        if (p.game?.weather?.tempF) {
+          const temp = p.game.weather.tempF;
+          const wind = p.game.weather.wind ?? "";
+          if (temp >= 75) bullets.push(`☀️ Warm ${temp}°F weather today${wind ? " · " + wind : ""} — hitter-friendly conditions`);
+          else if (temp <= 50) bullets.push(`❄️ Cold ${temp}°F at first pitch${wind ? " with " + wind : ""} — something to watch`);
+        }
+
+        // Lineup confirmation bonus
+        if (p.lineupSource === "confirmed") {
+          bullets.push(`✅ Officially confirmed in today's batting order — no lineup risk`);
+        } else {
+          bullets.push(`📡 Projected in lineup based on recent batting order — confirm before locking in`);
+        }
+
+        // Cap bullets to 4 for readability
+        const finalBullets = bullets.slice(0, 4);
+
+        // Assemble full summary
+        pick.rationale = opening + "\n" + finalBullets.map(b => `• ${b}`).join("\n");
       }
 
       // ── 11:45 AM CT deadline: mark if picks are final vs still projections ──
