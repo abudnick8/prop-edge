@@ -7578,7 +7578,29 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // ── 7. Build slate of high-total games ──────────────────────────
-      const MIN_TOTAL = 8.5; // slightly looser than 9.5 to ensure results
+      // ── Strict BTS eligibility thresholds ─────────────────────────
+      // A player must pass ALL three soft gates OR qualify via the override.
+      // If they fail the soft gates but every extreme-metric fires, they
+      // can still appear — but this should be rare (maybe 1-2 players/day).
+      const MIN_TOTAL          = 9.0;   // game O/U floor — only offensive games
+      const MIN_AVG14          = 0.220; // must have hit at least .220 over L14
+      const MIN_GHP14          = 0.50;  // hit in at least 50% of L14 games
+      const MIN_SEASON_AVG     = 0.200; // above Mendoza line for the season
+      const MIN_PLATOON_AVG    = 0.250; // pitcher must allow ≥.250 to that handedness
+      const MIN_HIT_PROBABILITY = 62;   // minimum hit probability % to qualify
+
+      // Override: player fails soft gates but ALL extreme metrics fire
+      // avg14 < MIN_AVG14 but: xBA ≥ .310 AND hardHit ≥ 45% AND ghp14 ≥ 0.78 AND pitcherAvg ≥ .290
+      function passesOverride(stats: any, savant: any, pitcherAvg: number): boolean {
+        const xba       = parseFloat(savant?.xba ?? "0") || 0;
+        const hardHit   = parseFloat(savant?.hard_hit_percent ?? "0") || 0;
+        return (
+          xba >= 0.310 &&
+          hardHit >= 45 &&
+          (stats.ghp14 ?? 0) >= 0.78 &&
+          pitcherAvg >= 0.290
+        );
+      }
       const slateGames: any[] = [];
       const candidatePicks: any[] = [];
 
@@ -7712,10 +7734,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const bats = person.batSide?.code ?? "R";
               const fullName = person.fullName ?? p.fullName ?? "Unknown";
 
-              // Apply platoon filter
+              // ── Gate 1: Platoon filter ─ pitcher must be hittable vs this handedness
               const pitcherAvgVsMe = bats === "L" ? pitcherSplits.vsLeft : pitcherSplits.vsRight;
-              const passesFilter = pitcherAvgVsMe >= 0.240;
-              if (!passesFilter) continue;
+              if (pitcherAvgVsMe < MIN_PLATOON_AVG) continue;
 
               // Scratch detection: was this a projected player who's now absent from confirmed lineup?
               const confirmedIds = side === "home" ? confirmedHomeIds : confirmedAwayIds;
@@ -7724,6 +7745,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
               const stats = await getHitterStats(pid);
               const savant = savantMap[String(pid)] ?? {};
+
+              // ── Gate 2: Soft stat gates ─ all three must pass OR override fires
+              const softGatePass =
+                (stats.avg14     ?? 0) >= MIN_AVG14     &&
+                (stats.ghp14     ?? 0) >= MIN_GHP14     &&
+                (stats.avgSeason ?? 0) >= MIN_SEASON_AVG;
+
+              if (!softGatePass && !passesOverride(stats, savant, pitcherAvgVsMe)) continue;
+
+              // Tag override candidates so the AI summary can call them out
+              const isOverridePick = !softGatePass;
 
               const rawScore = scoreHitter(
                 { ...stats, bats },
@@ -7734,6 +7766,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               );
 
               const hitProbability = Math.min(0.75, rawScore * 1.333);
+              const hitProbabilityPct = Math.round(hitProbability * 100);
+
+              // ── Gate 3: Minimum hit probability ─ discard weak qualifiers
+              if (hitProbabilityPct < MIN_HIT_PROBABILITY) continue;
+
               const playerLineupSource = p.lineupSource ?? lineupSrc;
 
               candidates.push({
@@ -7743,8 +7780,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 side,
                 bats,
                 lineupSlot: p.medianSlot ?? (slotIdx + 1),
-                lineupSource: playerLineupSource,   // "confirmed" | "projected"
-                isScratched,                         // true if projected but now missing from official lineup
+                lineupSource: playerLineupSource,
+                isScratched,
+                isOverridePick,  // flagged: failed soft gates but extreme metrics justified inclusion
                 opponentPitcher: side === "home"
                   ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
                   : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
@@ -7770,8 +7808,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   weather: { tempF, wind },
                 },
                 rawScore,
-                hitProbability: Math.round(hitProbability * 100),
-                inTargetRange: hitProbability >= 0.60 && hitProbability <= 0.75,
+                hitProbability: hitProbabilityPct,
+                inTargetRange: hitProbability >= 0.62 && hitProbability <= 0.75,
               });
             } catch { /* skip player */ }
           }
@@ -7786,15 +7824,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         candidatePicks.push(...homeCandidates, ...awayCandidates);
       }
 
-      // ── 8. One-per-team rule + rank by hitProbability ──────────────
-      candidatePicks.sort((a, b) => b.hitProbability - a.hitProbability);
+      // ── 8. One-per-team rule + hard 10-pick cap ─────────────────────
+      // Sort override picks to the BOTTOM (show normal picks first)
+      candidatePicks.sort((a, b) => {
+        if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
+        return b.hitProbability - a.hitProbability;
+      });
       const seenTeams = new Set<string>();
       const topPicks: any[] = [];
       for (const p of candidatePicks) {
         if (seenTeams.has(p.team)) continue;
         seenTeams.add(p.team);
         topPicks.push(p);
-        if (topPicks.length >= 10) break; // return top 10, UI shows top 5
+        if (topPicks.length >= 10) break; // hard 10-pick ceiling — quality > quantity
       }
 
       // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
@@ -7815,6 +7857,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           opening = `⚡ ${p.name} is in strong form, raking at ${avg14Str} over the last 14 days with consistent plate appearances.`;
         } else if (p.stats.avg14 >= 0.250) {
           opening = `📊 ${p.name} is putting together solid numbers, batting ${avg14Str} across the last two weeks.`;
+        } else if (p.isOverridePick) {
+          opening = `⚠️ ${p.name} is in a cold stretch at ${avg14Str} over the last 14 days but is here on a **Statcast override** — elite underlying contact metrics and a highly hittable matchup forced the model’s hand.`;
         } else {
           opening = `🧊 ${p.name} is in a bit of a cold stretch at ${avg14Str} over the last 14 days, but the matchup and underlying metrics still offer value today.`;
         }
