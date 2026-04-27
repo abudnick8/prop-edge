@@ -1,32 +1,38 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, ChevronRight } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, ChevronRight, Code2 } from "lucide-react";
 
-type View = "login" | "signup" | "forgot";
+type View = "login" | "signup" | "forgot" | "dev";
 
 export default function Login() {
   const { login } = useAuth();
-  const [view,      setView]      = useState<View>("login");
-  const [email,     setEmail]     = useState("");
-  const [pin,       setPin]       = useState(["", "", "", ""]);
-  const [confirmPin, setConfirmPin] = useState(["", "", "", ""]);
-  const [tier,      setTier]      = useState<"basic" | "pro">("basic");
-  const [showPin,   setShowPin]   = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [success,   setSuccess]   = useState("");
+  const [view,        setView]        = useState<View>("login");
+  const [email,       setEmail]       = useState("");
+  const [pin,         setPin]         = useState(["", "", "", ""]);
+  const [confirmPin,  setConfirmPin]  = useState(["", "", "", ""]);
+  const [devCode,     setDevCode]     = useState("");
+  const [tier,        setTier]        = useState<"basic" | "pro">("basic");
+  const [showPin,     setShowPin]     = useState(false);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState("");
+  const [success,     setSuccess]     = useState("");
 
   const pinRefs    = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
   const confirmRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+  const devInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-focus first PIN box
-  useEffect(() => { pinRefs[0].current?.focus(); }, [view]);
+  useEffect(() => {
+    if (view === "dev") {
+      setDevCode("");
+      setTimeout(() => devInputRef.current?.focus(), 50);
+    } else {
+      pinRefs[0].current?.focus();
+    }
+  }, [view]);
 
   function handlePinInput(val: string, idx: number, arr: string[], setArr: (a: string[]) => void, refs: typeof pinRefs) {
     const char = val.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-1);
-    const next = [...arr];
-    next[idx] = char;
-    setArr(next);
+    const next = [...arr]; next[idx] = char; setArr(next);
     if (char && idx < 3) refs[idx + 1].current?.focus();
   }
 
@@ -40,6 +46,25 @@ export default function Login() {
   const pinValue    = pin.join("");
   const confirmValue = confirmPin.join("");
 
+  // ── Dev / BREW access ────────────────────────────────────────────────────────
+  function handleDevAccess(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (devCode.trim().toUpperCase() !== "BREW") {
+      setError("Invalid access code.");
+      return;
+    }
+    // Inject a synthetic guest token into AuthContext — full pro access, no DB needed
+    const guestUser = {
+      id: 0,
+      email: "guest@clubhouseiq.app",
+      tier: "pro" as const,
+      subStatus: "active",
+      isOwner: false,
+    };
+    login("guest-brew-token", guestUser);
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(""); setLoading(true);
@@ -51,8 +76,6 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Login failed"); return; }
-
-      // Fetch full user profile
       const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${data.token}` } });
       const me = await meRes.json();
       login(data.token, me);
@@ -63,7 +86,7 @@ export default function Login() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (pinValue.length !== 4)   { setError("PIN must be 4 characters"); return; }
+    if (pinValue.length !== 4)    { setError("PIN must be 4 characters"); return; }
     if (pinValue !== confirmValue) { setError("PINs don't match"); return; }
     setLoading(true);
     try {
@@ -74,12 +97,9 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Signup failed"); return; }
-
       if (data.checkoutUrl) {
-        // Redirect to Stripe Checkout
         window.location.href = data.checkoutUrl;
       } else {
-        // Dev mode — no Stripe, auto-logged in
         setSuccess("Account created! Please log in.");
         setView("login");
       }
@@ -101,38 +121,34 @@ export default function Login() {
     finally { setLoading(false); }
   }
 
-  // ── PIN input component ─────────────────────────────────────────────────────
+  // ── PIN boxes ─────────────────────────────────────────────────────────────
   function PINBoxes({ arr, setArr, refs }: { arr: string[], setArr: (a: string[]) => void, refs: typeof pinRefs }) {
     return (
       <div className="flex items-center gap-3 justify-center">
         {arr.map((val, i) => (
           <input
-            key={i}
-            ref={refs[i]}
+            key={i} ref={refs[i]}
             type={showPin ? "text" : "password"}
-            inputMode="text"
-            maxLength={1}
-            value={val}
+            inputMode="text" maxLength={1} value={val}
             onChange={e => handlePinInput(e.target.value, i, arr, setArr, refs)}
             onKeyDown={e => handlePinKey(e, i, arr, setArr, refs)}
             className="w-12 h-14 text-center text-xl font-black rounded-xl border-2 outline-none transition-all"
-            style={{
-              background: "#F6F1E7",
-              borderColor: val ? "#13233A" : "rgba(19,35,58,0.2)",
-              color: "#131A24",
-            }}
+            style={{ background: "#F6F1E7", borderColor: val ? "#13233A" : "rgba(19,35,58,0.2)", color: "#131A24" }}
           />
         ))}
       </div>
     );
   }
 
-  // ── Layout ───────────────────────────────────────────────────────────────────
+  const tabs: { id: View; label: string }[] = [
+    { id: "login",  label: "Log In"  },
+    { id: "signup", label: "Sign Up" },
+    { id: "dev",    label: "Dev"     },
+  ];
+
+  // ── Layout ────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: "#F6F1E7" }}
-    >
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#F6F1E7" }}>
       <div className="w-full max-w-sm">
 
         {/* Logo */}
@@ -152,23 +168,24 @@ export default function Login() {
           {/* Tabs */}
           {view !== "forgot" && (
             <div className="flex rounded-xl p-1 mb-6" style={{ background: "rgba(19,35,58,0.05)" }}>
-              {(["login", "signup"] as View[]).map(v => (
+              {tabs.map(t => (
                 <button
-                  key={v}
-                  onClick={() => { setView(v); setError(""); setSuccess(""); setPin(["","","",""]); setConfirmPin(["","","",""]); }}
-                  className="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+                  key={t.id}
+                  onClick={() => { setView(t.id); setError(""); setSuccess(""); setPin(["","","",""]); setConfirmPin(["","","",""]); }}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1"
                   style={{
-                    background: view === v ? "#13233A" : "transparent",
-                    color:      view === v ? "#F6F1E7" : "#3D4B58",
+                    background: view === t.id ? "#13233A" : "transparent",
+                    color:      view === t.id ? "#F6F1E7" : "#3D4B58",
                   }}
                 >
-                  {v === "login" ? "Log In" : "Sign Up"}
+                  {t.id === "dev" && <Code2 size={12} />}
+                  {t.label}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Error / Success */}
+          {/* Error / Success banners */}
           {error && (
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-4 text-sm" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", color: "#dc2626" }}>
               <AlertCircle size={14} className="flex-shrink-0" /> {error}
@@ -178,6 +195,41 @@ export default function Login() {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-4 text-sm" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#16a34a" }}>
               <CheckCircle size={14} className="flex-shrink-0" /> {success}
             </div>
+          )}
+
+          {/* ── DEV ── */}
+          {view === "dev" && (
+            <form onSubmit={handleDevAccess} className="space-y-5">
+              <div className="text-center mb-1">
+                <p className="text-sm font-bold" style={{ color: "#131A24" }}>Access Code</p>
+                <p className="text-xs text-muted-foreground mt-1">Enter your code to get full access.</p>
+              </div>
+              <div>
+                <input
+                  ref={devInputRef}
+                  type="text"
+                  value={devCode}
+                  onChange={e => setDevCode(e.target.value)}
+                  placeholder="Enter code"
+                  autoComplete="off"
+                  className="w-full px-4 py-3 rounded-xl border-2 text-center text-xl font-black tracking-[0.3em] uppercase outline-none transition-all"
+                  style={{
+                    background: "#F6F1E7",
+                    borderColor: devCode ? "#13233A" : "rgba(19,35,58,0.2)",
+                    color: "#131A24",
+                    letterSpacing: "0.3em",
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!devCode.trim()}
+                className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-40"
+                style={{ background: "#13233A", color: "#F6F1E7" }}
+              >
+                <Lock size={14} /> Enter
+              </button>
+            </form>
           )}
 
           {/* ── LOGIN ── */}
@@ -195,7 +247,6 @@ export default function Login() {
                   />
                 </div>
               </div>
-
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">PIN</label>
@@ -205,16 +256,13 @@ export default function Login() {
                 </div>
                 <PINBoxes arr={pin} setArr={setPin} refs={pinRefs} />
               </div>
-
               <button
                 type="submit" disabled={loading || pinValue.length < 4}
                 className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 style={{ background: "#13233A", color: "#F6F1E7" }}
               >
-                <Lock size={14} />
-                {loading ? "Unlocking…" : "Unlock"}
+                <Lock size={14} /> {loading ? "Unlocking…" : "Unlock"}
               </button>
-
               <button type="button" onClick={() => { setView("forgot"); setError(""); setSuccess(""); }}
                 className="w-full text-xs text-center text-muted-foreground hover:underline pt-1">
                 Forgot PIN?
@@ -237,7 +285,6 @@ export default function Login() {
                   />
                 </div>
               </div>
-
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Create PIN</label>
@@ -248,13 +295,10 @@ export default function Login() {
                 <PINBoxes arr={pin} setArr={setPin} refs={pinRefs} />
                 <p className="text-[10px] text-muted-foreground text-center mt-1.5">4 characters — letters or numbers</p>
               </div>
-
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Confirm PIN</label>
                 <PINBoxes arr={confirmPin} setArr={setConfirmPin} refs={confirmRefs} />
               </div>
-
-              {/* Tier selector */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Choose Plan</label>
                 <div className="space-y-2">
@@ -262,15 +306,9 @@ export default function Login() {
                     { value: "basic", label: "Basic", price: "$5 / month", desc: "Dashboard, Live Scores, Line Movement" },
                     { value: "pro",   label: "Pro",   price: "$15 / month", desc: "Full access to everything" },
                   ] as const).map(opt => (
-                    <button
-                      key={opt.value} type="button"
-                      onClick={() => setTier(opt.value)}
+                    <button key={opt.value} type="button" onClick={() => setTier(opt.value)}
                       className="w-full text-left px-3 py-2.5 rounded-xl border-2 transition-all"
-                      style={{
-                        borderColor: tier === opt.value ? "#13233A" : "rgba(19,35,58,0.15)",
-                        background:  tier === opt.value ? "rgba(19,35,58,0.04)" : "transparent",
-                      }}
-                    >
+                      style={{ borderColor: tier === opt.value ? "#13233A" : "rgba(19,35,58,0.15)", background: tier === opt.value ? "rgba(19,35,58,0.04)" : "transparent" }}>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold" style={{ color: "#131A24" }}>{opt.label}</span>
                         <span className="text-sm font-black" style={{ color: "#131A24" }}>{opt.price}</span>
@@ -280,12 +318,9 @@ export default function Login() {
                   ))}
                 </div>
               </div>
-
-              <button
-                type="submit" disabled={loading || pinValue.length < 4}
+              <button type="submit" disabled={loading || pinValue.length < 4}
                 className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: "#13233A", color: "#F6F1E7" }}
-              >
+                style={{ background: "#13233A", color: "#F6F1E7" }}>
                 {loading ? "Creating account…" : <><span>Create Account</span><ChevronRight size={14} /></>}
               </button>
             </form>
@@ -302,19 +337,16 @@ export default function Login() {
                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Email</label>
                 <div className="relative">
                   <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                     placeholder="you@example.com" required
                     className="w-full pl-8 pr-3 py-2.5 rounded-xl border text-sm outline-none"
                     style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)", color: "#131A24" }}
                   />
                 </div>
               </div>
-              <button
-                type="submit" disabled={loading}
+              <button type="submit" disabled={loading}
                 className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50"
-                style={{ background: "#13233A", color: "#F6F1E7" }}
-              >
+                style={{ background: "#13233A", color: "#F6F1E7" }}>
                 {loading ? "Sending…" : "Send Reset Link"}
               </button>
               <button type="button" onClick={() => { setView("login"); setError(""); setSuccess(""); }}
@@ -323,6 +355,7 @@ export default function Login() {
               </button>
             </form>
           )}
+
         </div>
 
         <p className="text-center text-[10px] text-muted-foreground mt-6">
