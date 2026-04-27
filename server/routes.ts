@@ -7383,5 +7383,374 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts-picks  — Beat‑the‑Streak daily hitter recommendations
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/bts-picks", async (req, res) => {
+    try {
+      const targetDate = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+
+      // ── 1. MLB Schedule (probable pitchers, lineups, venue) ──────────
+      const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${targetDate}&hydrate=probablePitcher,lineups,linescore,venue,weather,team`;
+      const schedResp = await axios.get(scheduleUrl);
+      const schedDates = schedResp.data?.dates ?? [];
+      const games: any[] = schedDates[0]?.games ?? [];
+
+      if (!games.length) {
+        return res.json({ date: targetDate, slate: [], picks: [], error: "No MLB games scheduled" });
+      }
+
+      // ── 2. ESPN odds → game totals per matchup ──────────────────────
+      // ESPN scoreboard gives us event IDs; then fetch odds per event
+      const espnBoard = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${targetDate.replace(/-/g, "")}`);
+      const espnEvents: any[] = espnBoard.data?.events ?? [];
+      const espnOddsMap: Record<string, number> = {}; // "AWAY_HOME" -> total
+      for (const ev of espnEvents) {
+        try {
+          const comp = ev.competitions?.[0];
+          const eventId = comp?.id;
+          if (!eventId) continue;
+          const oddsResp = await axios.get(
+            `https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/events/${eventId}/competitions/${eventId}/odds`
+          );
+          const oddsItems: any[] = oddsResp.data?.items ?? [];
+          const total = oddsItems[0]?.overUnder;
+          if (total) {
+            const teams = comp.competitors?.map((c: any) => c.team?.abbreviation?.toUpperCase()) ?? [];
+            const key = teams.sort().join("_");
+            espnOddsMap[key] = parseFloat(total);
+          }
+        } catch { /* skip */ }
+      }
+
+      // ── 3. Baseball Savant Statcast leaderboard (xBA, xwOBA, HH%) ──
+      let savantMap: Record<string, any> = {}; // keyed by mlbam player_id
+      try {
+        const savantResp = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,exit_velocity_avg,hard_hit_percent,bb_percent,k_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const csvText: string = savantResp.data;
+        const lines = csvText.replace(/^\uFEFF/, "").split("\n");
+        const header = lines[0].replace(/^"|"$/g, "").split(",").map((h: string) => h.trim().replace(/^"|"$/g, ""));
+        for (let i = 1; i < lines.length; i++) {
+          const row = lines[i].split(",");
+          if (row.length < 4) continue;
+          const obj: any = {};
+          header.forEach((h, idx) => { obj[h] = row[idx]?.trim().replace(/^"|"$/g, ""); });
+          // Savant CSV has mangled header — col 1=last,first, col 2=player_id
+          const pid = row[1]?.trim().replace(/^"|"$/g, "");
+          if (pid) savantMap[pid] = obj;
+        }
+      } catch { /* savant unavailable */ }
+
+      // ── 4. Helper: fetch pitcher vs LHB/RHB splits ──────────────────
+      async function getPitcherSplits(pitcherId: number) {
+        try {
+          const r = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=statSplits&group=pitching&season=2026&sitCodes=vl,vr`
+          );
+          const result: Record<string, number> = { vsLeft: 0.250, vsRight: 0.250 };
+          for (const stat of r.data?.stats ?? []) {
+            for (const sp of stat?.splits ?? []) {
+              const desc = sp.split?.description ?? "";
+              const avg = parseFloat(sp.stat?.avg ?? "0");
+              const ab = parseInt(sp.stat?.atBats ?? "0");
+              if (ab < 5) continue; // too few ABs — skip
+              if (desc.includes("Left")) result.vsLeft = avg;
+              if (desc.includes("Right")) result.vsRight = avg;
+            }
+          }
+          return result;
+        } catch { return { vsLeft: 0.250, vsRight: 0.250 }; }
+      }
+
+      // ── 5. Helper: fetch hitter stats (30d, 14d, 7d, season, gamelog) ─
+      async function getHitterStats(hitterId: number) {
+        const today = new Date();
+        const fmt = (d: Date) => d.toISOString().slice(0, 10);
+        const d30 = new Date(today); d30.setDate(today.getDate() - 30);
+        const d14 = new Date(today); d14.setDate(today.getDate() - 14);
+        const d7  = new Date(today); d7.setDate(today.getDate()  - 7);
+
+        const [r30, r14, r7, rSeason, rLog] = await Promise.allSettled([
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d30)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d14)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d7)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=season&group=hitting&season=2026`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=gameLog&group=hitting&season=2026&limit=14`),
+        ]);
+
+        function extractStat(result: PromiseSettledResult<any>) {
+          if (result.status !== "fulfilled") return {};
+          return result.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {};
+        }
+        function extractSplits(result: PromiseSettledResult<any>): any[] {
+          if (result.status !== "fulfilled") return [];
+          return result.value.data?.stats?.[0]?.splits ?? [];
+        }
+
+        const s30     = extractStat(r30);
+        const s14     = extractStat(r14);
+        const s7      = extractStat(r7);
+        const sSeason = extractStat(rSeason);
+        const gamelog = extractSplits(rLog);
+
+        // Games with hit % (last 14 games from game log)
+        const last14Games = gamelog.slice(0, 14);
+        const ghp14 = last14Games.length > 0
+          ? last14Games.filter((g: any) => parseInt(g.stat?.hits ?? "0") > 0).length / last14Games.length
+          : 0.5;
+
+        return {
+          avg30: parseFloat(s30.avg ?? "0") || 0,
+          avg14: parseFloat(s14.avg ?? "0") || 0,
+          avg7:  parseFloat(s7.avg  ?? "0") || 0,
+          avgSeason: parseFloat(sSeason.avg ?? "0") || 0,
+          kPct: parseFloat(sSeason.strikePercentage ?? "0") / 100 || 0.20,
+          bbPct: parseFloat(sSeason.walkPercentage ?? "0") / 100 || 0.08,
+          obp: parseFloat(sSeason.obp ?? "0") || 0,
+          slg: parseFloat(sSeason.slg ?? "0") || 0,
+          ghp14,
+          gamelog: last14Games.slice(0, 5).map((g: any) => ({
+            date: g.date,
+            hits: parseInt(g.stat?.hits ?? "0"),
+            ab:   parseInt(g.stat?.atBats ?? "0"),
+          })),
+        };
+      }
+
+      // ── 6. Score a single hitter ────────────────────────────────────
+      function scoreHitter(hitter: any, pitcherSplits: any, savant: any, total: number, weather: any): number {
+        const bats = hitter.bats; // "L", "R", "S"
+        const pitcherAvgAllowed = bats === "L"
+          ? (pitcherSplits.vsLeft  || 0.250)
+          : (pitcherSplits.vsRight || 0.250);
+
+        // ── Component 1: Recent Form (0.20 weight) ──
+        const norm = (v: number, min: number, max: number) => Math.max(0, Math.min(1, (v - min) / (max - min)));
+        const form = (
+          norm(hitter.avg14 ?? 0, 0.15, 0.380) * 0.35 +
+          norm(hitter.avg30 ?? 0, 0.15, 0.380) * 0.30 +
+          norm(hitter.avg7  ?? 0, 0.15, 0.380) * 0.20 +
+          norm(hitter.ghp14 ?? 0.5, 0.30, 0.90) * 0.15
+        );
+
+        // ── Component 2: Season Consistency (0.20 weight) ──
+        const kPct  = hitter.kPct  ?? 0.20;
+        const bbPct = hitter.bbPct ?? 0.08;
+        const consistency = (
+          norm(1 - kPct, 0.70, 0.95) * 0.50 +
+          norm(bbPct, 0.04, 0.18)    * 0.25 +
+          norm(hitter.avgSeason ?? 0, 0.20, 0.370) * 0.25
+        );
+
+        // ── Component 3: Statcast Quality (0.20 weight) ──
+        const xba  = parseFloat(savant?.xba  ?? "0") || hitter.avgSeason || 0.250;
+        const xwoba= parseFloat(savant?.xwoba ?? "0") || 0.320;
+        const hhPct= parseFloat(savant?.hard_hit_percent ?? "0") / 100 || 0.35;
+        const statcast = (
+          norm(xba,   0.200, 0.380) * 0.35 +
+          norm(xwoba, 0.280, 0.420) * 0.35 +
+          norm(hhPct, 0.25,  0.55)  * 0.30
+        );
+
+        // ── Component 4: Matchup & External (0.20 weight) ──
+        const platoon  = norm(pitcherAvgAllowed, 0.220, 0.340);
+        const totalBoost = norm(total, 7.5, 11.5);
+        // Weather: warm (>=65F) + outward wind >= 5mph = +0.15
+        const tempF  = weather?.tempF  ?? 70;
+        const windMph = weather?.windMph ?? 5;
+        const windOut = weather?.windOut ?? false;
+        const weatherBoost = (tempF >= 65 && windOut && windMph >= 5) ? 0.15 : 0;
+        const matchup = Math.min(1,
+          platoon  * 0.55 +
+          totalBoost * 0.30 +
+          weatherBoost * 0.15
+        );
+
+        // ── Component 5: Market / Confluence (0.20 weight) ──
+        // No hit prop price available from free sources — use neutral 0.5
+        const market = 0.50;
+
+        const raw = form * 0.20 + consistency * 0.20 + statcast * 0.20 + matchup * 0.20 + market * 0.20;
+        return raw;
+      }
+
+      // ── 7. Build slate of high-total games ──────────────────────────
+      const MIN_TOTAL = 8.5; // slightly looser than 9.5 to ensure results
+      const slateGames: any[] = [];
+      const candidatePicks: any[] = [];
+
+      for (const game of games) {
+        const homeTeam = game.teams?.home;
+        const awayTeam = game.teams?.away;
+        if (!homeTeam || !awayTeam) continue;
+
+        const homeAbbr = homeTeam.team?.abbreviation?.toUpperCase() ?? "";
+        const awayAbbr = awayTeam.team?.abbreviation?.toUpperCase() ?? "";
+        const oddsKey  = [homeAbbr, awayAbbr].sort().join("_");
+        const total    = espnOddsMap[oddsKey] ?? 8.5;
+
+        const venue    = game.venue?.name ?? "";
+        const weather  = game.weather ?? {};
+        const tempF    = parseFloat(weather.temp ?? "70");
+        const wind     = weather.wind ?? "";
+        const windMph  = parseFloat((wind.match(/(\d+) mph/) ?? ["0","0"])[1]);
+        const windOut  = wind.toLowerCase().includes("out");
+
+        const gameDate  = game.gameDate ?? "";
+        const gmtOffset = -5; // CDT
+        const localTime = gameDate ? new Date(gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) : "TBD";
+
+        const slateEntry = {
+          gameId: game.gamePk,
+          matchup: `${awayTeam.team?.name} @ ${homeTeam.team?.name}`,
+          venue,
+          total,
+          meetsFilter: total >= MIN_TOTAL,
+          weather: { tempF, wind, windMph, windOut },
+          gameTime: localTime,
+          homePitcher: homeTeam.probablePitcher ? { id: homeTeam.probablePitcher.id, name: homeTeam.probablePitcher.fullName } : null,
+          awayPitcher: awayTeam.probablePitcher ? { id: awayTeam.probablePitcher.id, name: awayTeam.probablePitcher.fullName } : null,
+        };
+        slateGames.push(slateEntry);
+
+        if (!slateEntry.meetsFilter) continue;
+
+        // Get pitcher splits for both pitchers
+        const [homeSplits, awaySplits] = await Promise.all([
+          homeTeam.probablePitcher?.id ? getPitcherSplits(homeTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
+          awayTeam.probablePitcher?.id ? getPitcherSplits(awayTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
+        ]);
+
+        // Get confirmed or projected lineups
+        const lineups = game.lineups ?? {};
+        const homePlayers: any[] = lineups.homePlayers ?? [];
+        const awayPlayers: any[] = lineups.awayPlayers ?? [];
+
+        // If no confirmed lineups, fetch from ESPN depth chart or skip that team
+        // We'll still process whoever is in the lineup
+        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string) => {
+          const candidates: any[] = [];
+          for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
+            const p = players[slotIdx];
+            const pid = p.id ?? p.person?.id;
+            if (!pid) continue;
+            try {
+              // Fetch player profile for bats (L/R/S)
+              const profileResp = await axios.get(`https://statsapi.mlb.com/api/v1/people/${pid}?hydrate=stats(group=hitting,type=season,season=2026)`);
+              const person = profileResp.data?.people?.[0];
+              if (!person) continue;
+              const bats = person.batSide?.code ?? "R";
+              const fullName = person.fullName ?? p.fullName ?? "Unknown";
+
+              // Apply platoon filter: pitcher BA allowed vs this batter's side must be > .255
+              const pitcherAvgVsMe = bats === "L" ? pitcherSplits.vsLeft : pitcherSplits.vsRight;
+              const passesFilter = pitcherAvgVsMe >= 0.240; // slightly loose for more candidates
+
+              if (!passesFilter) continue;
+
+              // Fetch hitter stats
+              const stats = await getHitterStats(pid);
+              const savant = savantMap[String(pid)] ?? {};
+
+              const rawScore = scoreHitter(
+                { ...stats, bats },
+                pitcherSplits,
+                savant,
+                total,
+                { tempF, windMph, windOut }
+              );
+
+              const hitProbability = Math.min(0.75, rawScore * 1.333);
+
+              candidates.push({
+                playerId: pid,
+                name: fullName,
+                team: teamName,
+                side,
+                bats,
+                lineupSlot: slotIdx + 1,
+                opponentPitcher: side === "home"
+                  ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
+                  : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
+                pitcherAvgAllowed: pitcherAvgVsMe,
+                stats: {
+                  avg14: stats.avg14,
+                  avg30: stats.avg30,
+                  avg7:  stats.avg7,
+                  avgSeason: stats.avgSeason,
+                  ghp14: stats.ghp14,
+                  kPct:  stats.kPct,
+                  bbPct: stats.bbPct,
+                  xba:   parseFloat(savant?.xba  ?? "0") || null,
+                  xwoba: parseFloat(savant?.xwoba ?? "0") || null,
+                  hardHitPct: parseFloat(savant?.hard_hit_percent ?? "0") || null,
+                },
+                gamelog: stats.gamelog,
+                game: {
+                  matchup: slateEntry.matchup,
+                  total,
+                  venue,
+                  gameTime: localTime,
+                  weather: { tempF, wind },
+                },
+                rawScore,
+                hitProbability: Math.round(hitProbability * 100),
+                inTargetRange: hitProbability >= 0.60 && hitProbability <= 0.75,
+              });
+            } catch { /* skip player */ }
+          }
+          return candidates;
+        };
+
+        const [homeCandidates, awayCandidates] = await Promise.all([
+          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? ""),
+          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? ""),
+        ]);
+
+        candidatePicks.push(...homeCandidates, ...awayCandidates);
+      }
+
+      // ── 8. One-per-team rule + rank by hitProbability ──────────────
+      candidatePicks.sort((a, b) => b.hitProbability - a.hitProbability);
+      const seenTeams = new Set<string>();
+      const topPicks: any[] = [];
+      for (const p of candidatePicks) {
+        if (seenTeams.has(p.team)) continue;
+        seenTeams.add(p.team);
+        topPicks.push(p);
+        if (topPicks.length >= 10) break; // return top 10, UI shows top 5
+      }
+
+      // ── 9. Generate rationale for each pick ────────────────────────
+      for (const pick of topPicks) {
+        const parts: string[] = [];
+        if (pick.stats.avg14 >= 0.280) parts.push(`🔥 .${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days`);
+        else if (pick.stats.avg14 >= 0.250) parts.push(`.${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days`);
+        else parts.push(`❄️ .${Math.round(pick.stats.avg14*1000).toString().padStart(3,"0")} BA last 14 days (cold)`);
+        if (pick.stats.ghp14 >= 0.70) parts.push(`hit in ${Math.round(pick.stats.ghp14*100)}% of L14 games`);
+        if (pick.pitcherAvgAllowed >= 0.280) parts.push(`pitcher allows .${Math.round(pick.pitcherAvgAllowed*1000)} vs ${pick.bats === "L" ? "lefties" : "righties"}`);
+        if (pick.stats.xba && pick.stats.xba >= 0.300) parts.push(`xBA .${Math.round(pick.stats.xba*1000)}`);
+        if (pick.stats.hardHitPct && pick.stats.hardHitPct >= 40) parts.push(`${pick.stats.hardHitPct.toFixed(0)}% hard-hit rate`);
+        if (pick.game.total >= 9.5) parts.push(`high-scoring game (${pick.game.total} total)`);
+        pick.rationale = parts.join(" · ");
+      }
+
+      res.json({
+        date: targetDate,
+        generatedAt: new Date().toISOString(),
+        slate: slateGames,
+        picks: topPicks,
+        bestPick: topPicks[0] ?? null,
+        doubleDowns: topPicks.slice(1, 4),
+        dataLimited: games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return httpServer;
 }
