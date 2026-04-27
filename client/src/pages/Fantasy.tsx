@@ -128,19 +128,41 @@ const SPORT_COLORS: Record<SportTab, string> = {
 // ─── Player Outlook Drawer ────────────────────────────────────────────────────
 function PlayerDrawer({ player, onClose }: { player: LivePlayer; onClose: () => void }) {
   const inj = injuryColor(player.injuryStatus);
+
+  // Lock body scroll while drawer is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
       onClick={onClose}
     >
-      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.45)" }} />
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }} />
+      {/* Sheet panel — flex column so header stays sticky, body scrolls */}
       <div
-        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
-        style={{ background: "#F6F1E7", border: "1px solid rgba(19,35,58,0.12)" }}
+        className="relative w-full max-w-lg rounded-t-3xl sm:rounded-2xl flex flex-col"
+        style={{
+          background: "#F6F1E7",
+          border: "1px solid rgba(19,35,58,0.12)",
+          maxHeight: "min(92dvh, 92vh)",
+          /* DO NOT put overflow here — let the inner body scroll */
+        }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-start gap-3 p-4 border-b" style={{ borderColor: "rgba(19,35,58,0.10)" }}>
+        {/* ── Sticky drag handle + header ── */}
+        <div
+          className="flex-shrink-0 flex items-start gap-3 p-4 border-b"
+          style={{ borderColor: "rgba(19,35,58,0.10)", borderRadius: "inherit" }}
+        >
+          {/* Drag pill */}
+          <div
+            className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full sm:hidden"
+            style={{ width: 36, height: 4, background: "rgba(19,35,58,0.18)" }}
+          />
           <img
             src={player.headshot}
             alt={player.name}
@@ -186,58 +208,69 @@ function PlayerDrawer({ player, onClose }: { player: LivePlayer; onClose: () => 
               )}
             </div>
           </div>
-          <button onClick={onClose} className="flex-shrink-0 p-1 rounded-lg" style={{ color: "#94a3b8" }}>
+          <button onClick={onClose} className="flex-shrink-0 p-1.5 rounded-xl" style={{ color: "#94a3b8", background: "rgba(19,35,58,0.06)" }}>
             <X size={18} />
           </button>
         </div>
 
-        {/* Status + experience */}
-        <div className="px-4 py-3 grid grid-cols-3 gap-2">
-          {[
-            { label: "Status", value: player.injuryStatus || player.status || "Active" },
-            { label: "Experience", value: player.isRookie ? "Rookie" : player.experience !== null ? `${player.experience} yr${player.experience !== 1 ? "s" : ""}` : "—" },
-            { label: "Position", value: player.position },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl p-2.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
-              <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-              <p className="text-xs font-bold text-foreground mt-0.5">{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* News alerts */}
-        {player.newsAlerts.length > 0 ? (
-          <div className="px-4 pb-4 space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">Latest Intel</p>
-            {player.newsAlerts.map((alert, i) => (
-              <div
-                key={i}
-                className="rounded-xl p-3"
-                style={{ background: alertTypeColor(alert.type) + "10", border: `1px solid ${alertTypeColor(alert.type)}30` }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[9px] font-black" style={{ color: alertTypeColor(alert.type) }}>
-                    {alertTypeBadge(alert.type)}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">{timeSince(alert.published)}</span>
-                </div>
-                <p className="text-[11px] text-foreground leading-snug">{alert.headline}</p>
-                {alert.link && (
-                  <a href={alert.link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 mt-1 block">
-                    Read more →
-                  </a>
-                )}
+        {/* ── Scrollable body ── */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            WebkitOverflowScrolling: "touch" as any,
+            overscrollBehavior: "contain",
+          }}
+        >
+          {/* Status + experience */}
+          <div className="px-4 py-3 grid grid-cols-3 gap-2">
+            {[
+              { label: "Status", value: player.injuryStatus || player.status || "Active" },
+              { label: "Experience", value: player.isRookie ? "Rookie" : player.experience !== null ? `${player.experience} yr${player.experience !== 1 ? "s" : ""}` : "—" },
+              { label: "Position", value: player.position },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl p-2.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                <p className="text-xs font-bold text-foreground mt-0.5">{s.value}</p>
               </div>
             ))}
           </div>
-        ) : (
-          <div className="px-4 pb-4">
-            <div className="rounded-xl p-3 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
-              <p className="text-xs text-muted-foreground">No recent news for {player.name}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Check back closer to game time for injury updates</p>
+
+          {/* News alerts */}
+          {player.newsAlerts.length > 0 ? (
+            <div className="px-4 pb-4 space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">Latest Intel</p>
+              {player.newsAlerts.map((alert, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl p-3"
+                  style={{ background: alertTypeColor(alert.type) + "10", border: `1px solid ${alertTypeColor(alert.type)}30` }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[9px] font-black" style={{ color: alertTypeColor(alert.type) }}>
+                      {alertTypeBadge(alert.type)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">{timeSince(alert.published)}</span>
+                  </div>
+                  <p className="text-[11px] text-foreground leading-snug">{alert.headline}</p>
+                  {alert.link && (
+                    <a href={alert.link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 mt-1 block">
+                      Read more →
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="px-4 pb-4">
+              <div className="rounded-xl p-3 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-xs text-muted-foreground">No recent news for {player.name}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Check back closer to game time for injury updates</p>
+              </div>
+            </div>
+          )}
+          {/* Safe-area spacer for iPhone home bar */}
+          <div style={{ height: "max(env(safe-area-inset-bottom, 0px), 24px)" }} />
+        </div>
       </div>
     </div>
   );
