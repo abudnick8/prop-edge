@@ -18,6 +18,7 @@ const navItems = [
   { href: "/lotto",      label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,           emoji: "⬛" },
   { href: "/bracket",    label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,           emoji: "⬛" },
   { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,            emoji: "⬛" },
+  { href: "/bts",         label: "Beat the Streak", mobileLabel: "BTS",      icon: Trophy,           emoji: "⬛" },
   { href: "/settings",   label: "Settings",       mobileLabel: "Settings", icon: Settings,         emoji: "⬛" },
 ];
 
@@ -30,6 +31,7 @@ const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/linemate":   { label: "NEW",  style: "badge-new" },
   "/fantasy":    { label: "NEW",  style: "badge-new" },
   "/ml-insights": { label: "NEW",  style: "badge-new" },
+  "/bts":          { label: "NEW",  style: "badge-new" },
 };
 
 // ── Clubhouse IQ Logo — exact brand image + cursive wordmark ─────────────
