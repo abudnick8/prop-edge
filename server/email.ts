@@ -1,12 +1,18 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy init — don't crash on startup if RESEND_API_KEY isn't set yet
+function getResend(): Resend {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY env var not set");
+  return new Resend(key);
+}
 const FROM_EMAIL = "Clubhouse IQ <noreply@clubhouseiq.app>";
 const APP_URL = process.env.APP_URL || "https://clubhouse-iq.up.railway.app";
 
 export async function sendPINResetEmail(toEmail: string, resetToken: string): Promise<void> {
   const resetUrl = `${APP_URL}/#/reset-pin?token=${resetToken}`;
 
+  const resend = getResend();
   await resend.emails.send({
     from: FROM_EMAIL,
     to: toEmail,
@@ -36,6 +42,7 @@ export async function sendPINResetEmail(toEmail: string, resetToken: string): Pr
 export async function sendWelcomeEmail(toEmail: string, tier: string): Promise<void> {
   const tierLabel = tier === "pro" ? "Pro ($15/mo)" : "Basic ($5/mo)";
 
+  const resend = getResend();
   await resend.emails.send({
     from: FROM_EMAIL,
     to: toEmail,
