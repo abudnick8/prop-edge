@@ -7919,5 +7919,434 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+
+  // ════════════════════════════════════════════════════════════════════
+  // GET /api/fantasy-intel  — Live fantasy intelligence across all sports
+  // Sources: ESPN rosters/news/transactions, Sleeper player DB + trending
+  // Cached 15 min server-side to avoid hammering free APIs
+  // ════════════════════════════════════════════════════════════════════
+  let fantasyIntelCache: { data: any; ts: number } | null = null;
+  const FANTASY_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+  app.get("/api/fantasy-intel", async (req, res) => {
+    try {
+      const sport = (req.query.sport as string || "ALL").toUpperCase();
+      const forceRefresh = req.query.refresh === "1";
+
+      // Serve cached if fresh
+      if (!forceRefresh && fantasyIntelCache && Date.now() - fantasyIntelCache.ts < FANTASY_CACHE_TTL) {
+        const cached = fantasyIntelCache.data;
+        if (sport === "ALL") return res.json(cached);
+        return res.json({ ...cached, players: cached.players.filter((p: any) => p.sport === sport) });
+      }
+
+      // ── 1. Sleeper player DB — full roster with team/position/status ──
+      const [sleeperRes, sleeperTrendAddRes, sleeperTrendDropRes] = await Promise.all([
+        fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(12000) }),
+        fetch("https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours=48&limit=30", { signal: AbortSignal.timeout(8000) }),
+        fetch("https://api.sleeper.app/v1/players/nfl/trending/drop?lookback_hours=48&limit=20", { signal: AbortSignal.timeout(8000) }),
+      ]);
+
+      const sleeperPlayers: Record<string, any> = sleeperRes.ok ? await sleeperRes.json() : {};
+      const trendAdd: any[] = sleeperTrendAddRes.ok ? await sleeperTrendAddRes.json() : [];
+      const trendDrop: any[] = sleeperTrendDropRes.ok ? await sleeperTrendDropRes.json() : [];
+      const trendAddIds = new Set(trendAdd.map((t: any) => t.player_id));
+      const trendDropIds = new Set(trendDrop.map((t: any) => t.player_id));
+
+      // Build Sleeper lookup by full_name
+      const sleeperByName: Record<string, any> = {};
+      const sleeperById: Record<string, any> = {};
+      for (const [pid, p] of Object.entries(sleeperPlayers)) {
+        if (p.full_name) sleeperByName[p.full_name.toLowerCase()] = { ...p, sleeper_id: pid };
+        sleeperById[pid] = { ...p, sleeper_id: pid };
+      }
+
+      // ── 2. ESPN news (all sports) — injuries, transactions, analysis ──
+      const espnSports = [
+        { sport: "NFL", path: "football/nfl" },
+        { sport: "NBA", path: "basketball/nba" },
+        { sport: "MLB", path: "baseball/mlb" },
+        { sport: "NHL", path: "hockey/nhl" },
+      ];
+
+      const newsMap: Record<string, any[]> = {}; // playerName -> alerts[]
+      const teamNewsMap: Record<string, any[]> = {}; // teamName -> alerts[]
+
+      await Promise.all(espnSports.map(async ({ sport: sp, path }) => {
+        try {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/news?limit=50`, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return;
+          const data = await r.json();
+          for (const article of (data.articles || [])) {
+            const headline = article.headline || "";
+            const published = article.published || "";
+            const link = article.links?.web?.href || "";
+            const lower = headline.toLowerCase();
+
+            // Categorize
+            const isInjury = /injur|questionable|out|ruled|day-to-day|il |injured list|concussion|suspend|scratch|dnp/i.test(headline);
+            const isTrade = /trade|deal|acquire|sent to|exchange/i.test(headline);
+            const isDraft = /draft|pick|round|select/i.test(headline);
+            const isSigning = /sign|contract|agree|ink|deal/i.test(headline);
+            const isAnalysis = /outlook|breakout|bust|project|fantasy|must|start|sit|add|waiver/i.test(headline);
+            const type = isInjury ? "injury" : isTrade ? "trade" : isDraft ? "draft" : isSigning ? "signing" : isAnalysis ? "analysis" : "news";
+
+            const alert = { headline, published, type, sport: sp, link };
+
+            // Map to athletes in article
+            for (const cat of (article.categories || [])) {
+              if (cat.type === "athlete") {
+                const name = cat.athlete?.displayName || cat.description;
+                if (name) {
+                  if (!newsMap[name]) newsMap[name] = [];
+                  newsMap[name].push(alert);
+                }
+              }
+              if (cat.type === "team") {
+                const tname = cat.team?.displayName || cat.description;
+                if (tname) {
+                  if (!teamNewsMap[tname]) teamNewsMap[tname] = [];
+                  if (teamNewsMap[tname].length < 5) teamNewsMap[tname].push(alert);
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }));
+
+      // ── 3. ESPN NFL transactions feed ──
+      const transactions: any[] = [];
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/transactions?limit=40", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 30)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+            });
+          }
+        }
+      } catch (_) {}
+
+      // Also get NBA transactions
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=20", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 15)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+              sport: "NBA",
+            });
+          }
+        }
+      } catch (_) {}
+
+      // MLB transactions
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/transactions?limit=20", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 15)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+              sport: "MLB",
+            });
+          }
+        }
+      } catch (_) {}
+
+      transactions.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+      // ── 4. ESPN rosters (NFL + NBA + MLB skill positions) ──
+      // NFL team IDs
+      const NFL_TEAMS: Record<string, string> = {
+        "22":"ARI","1":"ATL","33":"BAL","2":"BUF","29":"CAR","3":"CHI","4":"CIN","5":"CLE",
+        "6":"DAL","7":"DEN","8":"DET","9":"GB","34":"HOU","11":"IND","30":"JAX","12":"KC",
+        "13":"LV","24":"LAC","14":"LAR","15":"MIA","16":"MIN","17":"NE","18":"NO","19":"NYG",
+        "20":"NYJ","21":"PHI","23":"PIT","25":"SF","26":"SEA","27":"TB","10":"TEN","28":"WSH",
+      };
+      const NFL_TEAM_NAMES: Record<string, string> = {
+        "22":"Arizona Cardinals","1":"Atlanta Falcons","33":"Baltimore Ravens","2":"Buffalo Bills",
+        "29":"Carolina Panthers","3":"Chicago Bears","4":"Cincinnati Bengals","5":"Cleveland Browns",
+        "6":"Dallas Cowboys","7":"Denver Broncos","8":"Detroit Lions","9":"Green Bay Packers",
+        "34":"Houston Texans","11":"Indianapolis Colts","30":"Jacksonville Jaguars","12":"Kansas City Chiefs",
+        "13":"Las Vegas Raiders","24":"Los Angeles Chargers","14":"Los Angeles Rams","15":"Miami Dolphins",
+        "16":"Minnesota Vikings","17":"New England Patriots","18":"New Orleans Saints","19":"New York Giants",
+        "20":"New York Jets","21":"Philadelphia Eagles","23":"Pittsburgh Steelers","25":"San Francisco 49ers",
+        "26":"Seattle Seahawks","27":"Tampa Bay Buccaneers","10":"Tennessee Titans","28":"Washington Commanders",
+      };
+
+      const SKILL_POSITIONS_NFL = new Set(["QB","RB","WR","TE","K"]);
+      const SKILL_POSITIONS_NBA = new Set(["PG","SG","SF","PF","C","G","F"]);
+      const SKILL_POSITIONS_MLB = new Set(["SP","RP","C","1B","2B","3B","SS","LF","CF","RF","OF","DH","P"]);
+
+      const players: any[] = [];
+
+      // Fetch NFL rosters in parallel (all 32 teams)
+      const nflRosterResults = await Promise.allSettled(
+        Object.entries(NFL_TEAMS).map(async ([id, abbr]) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamName = NFL_TEAM_NAMES[id] || abbr;
+          const result: any[] = [];
+          for (const group of (data.athletes || [])) {
+            for (const a of (group.items || [])) {
+              const posAbbr = a.position?.abbreviation || "";
+              if (!SKILL_POSITIONS_NFL.has(posAbbr)) continue;
+              const name = a.displayName || "";
+              const sleeperData = sleeperByName[name.toLowerCase()];
+              const playerAlerts = newsMap[name] || [];
+              const isTrendingAdd = sleeperData && trendAddIds.has(sleeperData.sleeper_id);
+              const isTrendingDrop = sleeperData && trendDropIds.has(sleeperData.sleeper_id);
+              const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+              const latestNews = playerAlerts[0] || null;
+              const isRookie = (a.experience?.years ?? 99) === 0;
+
+              result.push({
+                id: `nfl-${a.id}`,
+                espnId: a.id,
+                name,
+                sport: "NFL",
+                team: abbr,
+                teamName,
+                position: posAbbr,
+                jersey: a.jersey || null,
+                status: a.status?.type || "active",
+                injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+                experience: a.experience?.years ?? null,
+                isRookie,
+                isTrendingAdd,
+                isTrendingDrop,
+                sleeperRank: sleeperData?.search_rank || null,
+                newsAlerts: playerAlerts.slice(0, 3),
+                latestNews,
+                headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+              });
+            }
+          }
+          return result;
+        })
+      );
+
+      for (const r of nflRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 5. NBA rosters (sample top teams) ──
+      const NBA_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30"];
+      const nbaRosterResults = await Promise.allSettled(
+        NBA_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            if (!SKILL_POSITIONS_NBA.has(posAbbr)) continue;
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `nba-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "NBA",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of nbaRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 6. MLB rosters ──
+      const MLB_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30"];
+      const mlbRosterResults = await Promise.allSettled(
+        MLB_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `mlb-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "MLB",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/mlb/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of mlbRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 7. NHL rosters ──
+      const NHL_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32"];
+      const nhlRosterResults = await Promise.allSettled(
+        NHL_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            if (posAbbr === "G") return result; // skip goalies for now (not fantasy skill)
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `nhl-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "NHL",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nhl/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of nhlRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 8. Inject trending signals ──
+      // Sleeper trending applies to NFL only (they have Sleeper IDs)
+      // Already flagged isTrendingAdd/Drop above for NFL
+
+      // ── 9. Build team roster map (for team drill-down) ──
+      const teamRosters: Record<string, any[]> = {};
+      for (const p of players) {
+        const key = `${p.sport}-${p.team}`;
+        if (!teamRosters[key]) teamRosters[key] = [];
+        teamRosters[key].push(p);
+      }
+
+      // ── 10. Headlines feed (top 20 fantasy-relevant stories) ──
+      const headlines: any[] = [];
+      for (const [, alerts] of Object.entries(newsMap)) {
+        for (const a of alerts) {
+          if (!headlines.find(h => h.headline === a.headline)) {
+            headlines.push(a);
+          }
+        }
+      }
+      headlines.sort((a: any, b: any) => new Date(b.published || 0).getTime() - new Date(a.published || 0).getTime());
+
+      const result = {
+        generatedAt: new Date().toISOString(),
+        players,
+        transactions: transactions.slice(0, 50),
+        headlines: headlines.slice(0, 40),
+        teamRosters,
+        trendingAdd: trendAdd.slice(0, 10).map((t: any) => ({
+          count: t.count,
+          player: sleeperById[t.player_id] ? {
+            name: sleeperById[t.player_id].full_name,
+            position: sleeperById[t.player_id].position,
+            team: sleeperById[t.player_id].team,
+            sport: "NFL",
+          } : null,
+        })).filter((t: any) => t.player),
+        trendingDrop: trendDrop.slice(0, 10).map((t: any) => ({
+          count: t.count,
+          player: sleeperById[t.player_id] ? {
+            name: sleeperById[t.player_id].full_name,
+            position: sleeperById[t.player_id].position,
+            team: sleeperById[t.player_id].team,
+            sport: "NFL",
+          } : null,
+        })).filter((t: any) => t.player),
+      };
+
+      // Cache it
+      fantasyIntelCache = { data: result, ts: Date.now() };
+
+      if (sport === "ALL") return res.json(result);
+      return res.json({ ...result, players: result.players.filter((p: any) => p.sport === sport) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  function detectFantasyInjury(headline: string): string | null {
+    const h = headline.toLowerCase();
+    if (h.includes("60-day") || h.includes("season-ending") || h.includes("out for season")) return "Out (Season)";
+    if (h.includes("10-day il") || h.includes("15-day il") || h.includes("injured list")) return "IL";
+    if (h.includes("concussion")) return "Concussion Protocol";
+    if (h.includes("ruled out") || h.includes("out indefinitely") || h.includes("placed on")) return "Out";
+    if (h.includes("day-to-day")) return "Day-to-Day";
+    if (h.includes("questionable")) return "Questionable";
+    if (h.includes("doubtful")) return "Doubtful";
+    if (h.includes("activated") || h.includes("returned from")) return "Activated";
+    if (h.includes("suspend")) return "Suspended";
+    return null;
+  }
+
+
   return httpServer;
 }
