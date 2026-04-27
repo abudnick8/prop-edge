@@ -14,11 +14,11 @@ const navItems = [
   { href: "/conviction", label: "Top Plays",      mobileLabel: "Top",      icon: Zap,              emoji: "⬛" },
   { href: "/bets",       label: "All Picks",      mobileLabel: "Picks",    icon: Target,           emoji: "⬛" },
   { href: "/linemate",   label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,        emoji: "⬛" },
+  { href: "/bts",         label: "Beat the Streak", mobileLabel: "BTS",      icon: Trophy,           emoji: "⬛" },
   { href: "/fantasy",    label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,          emoji: "⬛" },
   { href: "/lotto",      label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,           emoji: "⬛" },
   { href: "/bracket",    label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,           emoji: "⬛" },
   { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,            emoji: "⬛" },
-  { href: "/bts",         label: "Beat the Streak", mobileLabel: "BTS",      icon: Trophy,           emoji: "⬛" },
   { href: "/settings",   label: "Settings",       mobileLabel: "Settings", icon: Settings,         emoji: "⬛" },
 ];
 
