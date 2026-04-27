@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -109,7 +109,24 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
                 🏆 BEST PICK
               </span>
             )}
+            {/* Lineup source badge */}
+            {pick.lineupSource === "confirmed" ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>
+                <CheckCircle size={9} /> Confirmed
+              </span>
+            ) : pick.lineupSource === "projected" ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(250,204,21,0.12)", color: "#b8930a" }}>
+                <Clock size={9} /> Projected
+              </span>
+            ) : null}
           </div>
+          {/* Scratch warning */}
+          {pick.isScratched && (
+            <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#f87171" }}>
+              <AlertTriangle size={10} />
+              ⚠️ Original pick not in confirmed lineup — see replacement below
+            </div>
+          )}
           <p className="text-[11px] text-muted-foreground">
             {pick.team} · Slot #{pick.lineupSlot} · Bats {pick.bats}
           </p>
@@ -276,11 +293,16 @@ export default function BTS() {
   const [showAllPicks, setShowAllPicks] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
+  // Before 11:45 AM CT refresh every 15 min to catch lineup updates;
+  // after deadline stop auto-refreshing (picks are locked)
+  const nowCT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+  const isPastDeadline = nowCT.getHours() > 11 || (nowCT.getHours() === 11 && nowCT.getMinutes() >= 45);
+
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
     queryFn: () => apiRequest("GET", `/api/bts-picks?date=${today}`).then(r => r.json()),
-    staleTime: 15 * 60_000, // 15 min cache
-    refetchInterval: 30 * 60_000, // refresh every 30 min
+    staleTime: 15 * 60_000,
+    refetchInterval: isPastDeadline ? false : 15 * 60_000, // every 15 min until deadline
   });
 
   const slate: any[] = data?.slate ?? [];
@@ -319,6 +341,30 @@ export default function BTS() {
           Updated {new Date(dataUpdatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" })} CT
           {data?.dataLimited > 0 && <span className="ml-2 text-amber-500">⚠ {data.dataLimited} games missing probable pitcher</span>}
         </p>
+      )}
+
+      {/* Deadline / lineup status banner */}
+      {!isLoading && data && (
+        data.pastDeadline ? (
+          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+            <CheckCircle size={14} style={{ color: "#22c55e", flexShrink: 0 }} />
+            <div>
+              <p className="text-xs font-bold" style={{ color: "#16a34a" }}>Picks locked in — past 11:45 AM CT</p>
+              <p className="text-[10px] text-muted-foreground">{data.confirmedCount} confirmed · {data.projectedCount} projected{data.scratchedCount > 0 ? ` · ⚠️ ${data.scratchedCount} scratched` : ""}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.25)" }}>
+            <Clock size={14} style={{ color: "#b8930a", flexShrink: 0 }} />
+            <div>
+              <p className="text-xs font-bold" style={{ color: "#b8930a" }}>Picks update until 11:45 AM CT</p>
+              <p className="text-[10px] text-muted-foreground">
+                {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected from recent batting orders` : ""}
+                {" · Projected picks may change as lineups post"}
+              </p>
+            </div>
+          </div>
+        )
       )}
 
       {/* Loading skeleton */}
