@@ -120,6 +120,16 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
                 <Clock size={9} /> Projected
               </span>
             ) : null}
+            {/* Lock badge */}
+            {pick.locked ? (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.25)" }}>
+                🔒 Locked
+              </span>
+            ) : pick.minsToGame != null && pick.minsToGame <= 90 && pick.minsToGame > 30 ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(251,146,60,0.10)", color: "#f97316", border: "1px solid rgba(251,146,60,0.25)" }}>
+                <Clock size={9} /> Locks in {pick.minsToGame}m
+              </span>
+            ) : null}
           </div>
           {/* Scratch warning */}
           {pick.isScratched && (
@@ -660,22 +670,26 @@ export default function BTS() {
       {/* Deadline / lineup status banner */}
       {!isLoading && data && (
         data.pastDeadline ? (
-          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
-            <CheckCircle size={14} style={{ color: "#22c55e", flexShrink: 0 }} />
+          <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+            <CheckCircle size={14} style={{ color: "#22c55e", flexShrink: 0, marginTop: 2 }} />
             <div>
-              <p className="text-xs font-bold" style={{ color: "#16a34a" }}>Picks locked in — past 11:45 AM CT</p>
-              <p className="text-[10px] text-muted-foreground">{data.confirmedCount} confirmed · {data.projectedCount} projected{data.scratchedCount > 0 ? ` · ⚠️ ${data.scratchedCount} scratched` : ""}</p>
+              <p className="text-xs font-bold" style={{ color: "#16a34a" }}>Past 11:45 AM CT — picks are locked in</p>
+              <p className="text-[10px] text-muted-foreground">
+                {data.confirmedCount} confirmed · {data.projectedCount} projected{data.scratchedCount > 0 ? ` · ⚠️ ${data.scratchedCount} scratched` : ""}
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: "#16a34a" }}>Later games can still have picks added until 30 min before first pitch — all picks stay on the card until day is complete.</p>
             </div>
           </div>
         ) : (
-          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.25)" }}>
-            <Clock size={14} style={{ color: "#b8930a", flexShrink: 0 }} />
+          <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.25)" }}>
+            <Clock size={14} style={{ color: "#b8930a", flexShrink: 0, marginTop: 2 }} />
             <div>
               <p className="text-xs font-bold" style={{ color: "#b8930a" }}>Picks update until 11:45 AM CT</p>
               <p className="text-[10px] text-muted-foreground">
-                {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected from recent batting orders` : ""}
-                {" · Projected picks may change as lineups post"}
+                {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected` : ""}
+                {" · Picks refresh as lineups post"}
               </p>
+              <p className="text-[10px] mt-0.5" style={{ color: "#b8930a" }}>After 11:45 AM CT picks lock in — later game picks continue adding up to 30 min before first pitch.</p>
             </div>
           </div>
         )

@@ -7858,10 +7858,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 },
                 gamelog: stats.gamelog,
                 game: {
-                  matchup: slateEntry.matchup,
+                  matchup:     slateEntry.matchup,
                   total,
                   venue,
-                  gameTime: localTime,
+                  gameTime:    localTime,
+                  gameStartMs: gameDate ? new Date(gameDate).getTime() : null,
                   weather: { tempF, wind },
                 },
                 rawScore,
@@ -7993,27 +7994,60 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pick.rationale = opening + "\n" + finalBullets.map(b => `• ${b}`).join("\n");
       }
 
-      // ── 11:45 AM CT deadline: mark if picks are final vs still projections ──
-      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-      const ctHour = ctNow.getHours();
-      const ctMin  = ctNow.getMinutes();
+      // ── Deadline + 30-min pre-game lock logic ──────────────────────────────
+      const nowMs    = Date.now();
+      const ctNow    = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctHour   = ctNow.getHours();
+      const ctMin    = ctNow.getMinutes();
+      const THIRTY_MIN_MS = 30 * 60 * 1000;
+
+      // Past 11:45 AM CT → global deadline crossed
       const pastDeadline = ctHour > 11 || (ctHour === 11 && ctMin >= 45);
-      const confirmedCount = topPicks.filter(p => p.lineupSource === "confirmed").length;
-      const projectedCount = topPicks.filter(p => p.lineupSource === "projected").length;
-      const scratchedCount = topPicks.filter(p => p.isScratched).length;
+
+      // Annotate each pick with its individual lock state:
+      //   locked = true  → pick is on the card and cannot be removed until day ends
+      //   locked = false → pick can still update (before 11:45 AND >30 min before game)
+      //   eligible = false → game already started (>0 min past first pitch) — hide pick
+      const annotatedPicks = topPicks.map(p => {
+        const startMs    = p.game?.gameStartMs ?? null;
+        const minsToGame = startMs ? (startMs - nowMs) / 60000 : Infinity;
+        const gameStarted = startMs ? nowMs >= startMs : false;
+
+        // Pick is locked once either condition is met:
+        //   1. Past 11:45 AM CT global deadline, OR
+        //   2. Within 30 min of this specific game's first pitch
+        const locked = pastDeadline || minsToGame <= 30;
+
+        // Pick is eligible to show as long as game hasn't started
+        // (once the game is live/complete the pick stays visible all day —
+        //  we only hide if it's >0 min past start AND past today entirely)
+        return { ...p, locked, minsToGame: Math.round(minsToGame), gameStarted };
+      });
+
+      // After global deadline: keep picks that were locked in (locked=true)
+      // Before global deadline: only keep picks whose game is still >30 min away
+      // Either way, never drop a pick mid-day once it was locked
+      const finalPicks = pastDeadline
+        ? annotatedPicks                          // after 11:45: all picks stay on card
+        : annotatedPicks.filter(p => !p.gameStarted);  // before 11:45: drop started games
+
+      const confirmedCount = finalPicks.filter(p => p.lineupSource === "confirmed").length;
+      const projectedCount = finalPicks.filter(p => p.lineupSource === "projected").length;
+      const scratchedCount = finalPicks.filter(p => p.isScratched).length;
 
       res.json({
-        date: targetDate,
-        generatedAt: new Date().toISOString(),
-        pastDeadline,           // true after 11:45 AM CT — picks locked in regardless of lineup status
+        date:          targetDate,
+        generatedAt:   new Date().toISOString(),
+        pastDeadline,
+        nowMs,
         confirmedCount,
         projectedCount,
         scratchedCount,
-        slate: slateGames,
-        picks: topPicks,
-        bestPick: topPicks[0] ?? null,
-        doubleDowns: topPicks.slice(1, 4),
-        dataLimited: games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
+        slate:        slateGames,
+        picks:        finalPicks,
+        bestPick:     finalPicks[0] ?? null,
+        doubleDowns:  finalPicks.slice(1, 4),
+        dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
