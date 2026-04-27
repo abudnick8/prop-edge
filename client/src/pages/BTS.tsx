@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, Info } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -173,10 +173,36 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
       {/* Rationale */}
       {pick.rationale && (
         <div
-          className="mx-4 mb-3 rounded-xl px-3 py-2 text-[11px] text-muted-foreground leading-relaxed"
+          className="mx-4 mb-3 rounded-xl px-3 py-2.5 space-y-1.5"
           style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}
         >
-          {pick.rationale}
+          {pick.rationale.split("\n").map((line: string, idx: number) => {
+            if (idx === 0) {
+              // Opening sentence
+              return (
+                <p key={idx} className="text-[11px] font-semibold text-foreground leading-snug">
+                  {line}
+                </p>
+              );
+            }
+            // Bullet lines — strip the leading bullet char, render bold **text** inline
+            const text = line.replace(/^[•\-] /, "");
+            const parts = text.split(/(\*\*[^*]+\*\*)/g);
+            return (
+              <p key={idx} className="text-[10px] text-muted-foreground leading-snug flex items-start gap-1">
+                <span className="mt-0.5 flex-shrink-0" style={{ color: "#facc15" }}>•</span>
+                <span>
+                  {parts.map((part, pi) =>
+                    part.startsWith("**") && part.endsWith("**") ? (
+                      <strong key={pi} className="text-foreground font-bold">{part.slice(2, -2)}</strong>
+                    ) : (
+                      <span key={pi}>{part}</span>
+                    )
+                  )}
+                </span>
+              </p>
+            );
+          })}
         </div>
       )}
 
@@ -288,6 +314,149 @@ function SlateCard({ game }: { game: any }) {
 }
 
 // ─── Main BTS page ───────────────────────────────────────────────────────────
+// ─── How to Read Panel ──────────────────────────────────────────────────
+const BTS_GLOSSARY = [
+  {
+    term: "GHP",
+    label: "Games with Hit %",
+    emoji: "💥",
+    def: "The % of the last 14 games where a player recorded at least 1 hit. GHP ≥ 70% = elite consistency; we look for players with high GHP to minimize cold-streak risk.",
+  },
+  {
+    term: "xBA",
+    label: "Expected Batting Average",
+    emoji: "📊",
+    def: "Statcast's model-predicted BA based on exit velocity and launch angle on contact. xBA ≥ .300 signals a player is hitting the ball well even if the raw numbers haven't caught up.",
+  },
+  {
+    term: "xwOBA",
+    label: "Expected Weighted On-Base",
+    emoji: "🎯",
+    def: "A quality-of-contact metric that weights hits by run value. High xwOBA (≥ .360) means a hitter is making hard, well-placed contact — good BTS indicator.",
+  },
+  {
+    term: "Hard Hit %",
+    label: "Hard Hit Rate",
+    emoji: "🔨",
+    def: "Percentage of batted balls hit at 95+ mph exit velocity (per Statcast). Hard Hit ≥ 40% means a hitter is squaring up regularly. Combined with a pitcher that allows hard contact = high-value target.",
+  },
+  {
+    term: "14d BA",
+    label: "14-Day Batting Average",
+    emoji: "📅",
+    def: "Rolling batting average over the last 14 days. This is our primary form indicator. ≥ .280 = hot, ≥ .250 = solid, < .230 = cold streak.",
+  },
+  {
+    term: "Platoon Adv",
+    label: "Platoon Advantage",
+    emoji: "⚔️",
+    def: "Left-handed batters vs. right-handed pitchers (and vice versa) historically produce higher BA. The model checks the pitcher's BA allowed split vs. your batter's handedness.",
+  },
+  {
+    term: "✓ Confirmed",
+    label: "Lineup Confirmed",
+    emoji: "✅",
+    def: "The player has been officially posted in the day's batting order by the team. Confirmed picks carry no lineup risk.",
+  },
+  {
+    term: "PROJ",
+    label: "Projected Lineup",
+    emoji: "📡",
+    def: "The player is not yet officially listed but appears based on their typical batting slot from their last 3 games. Locks into the pick or gets swapped if scratched once lineup posts.",
+  },
+  {
+    term: "11:45 AM CT",
+    label: "Daily Pick Deadline",
+    emoji: "⏰",
+    def: "Picks are finalized by 11:45 AM Central Time each day. After this, no substitutions are made — even if a projected player is scratched late. Always confirm lineups on MLB.com before locking in.",
+  },
+  {
+    term: "Hit Prob %",
+    label: "Hit Probability",
+    emoji: "🔵",
+    def: "The model's final score converted to a probability (capped at 75%). Combines recent form (20%), season consistency (20%), Statcast quality (20%), matchup (20%), and market confluence (20%). Aim for picks ≥ 65%.",
+  },
+];
+
+function HowToReadBTS() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: "rgba(19,35,58,0.03)", borderColor: "rgba(19,35,58,0.12)" }}
+    >
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen size={15} style={{ color: "#60a5fa" }} />
+          <p className="text-sm font-bold text-foreground">How to Read BTS Picks</p>
+          <span
+            className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+            style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa" }}
+          >
+            GLOSSARY
+          </span>
+        </div>
+        {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+          <p className="text-[10px] text-muted-foreground pt-3 leading-relaxed">
+            Beat the Streak picks are ranked by hit probability. Here's what every stat and badge means:
+          </p>
+          <div className="space-y-2.5">
+            {BTS_GLOSSARY.map(g => (
+              <div
+                key={g.term}
+                className="rounded-xl p-3"
+                style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none flex-shrink-0">{g.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs font-black text-foreground">{g.term}</p>
+                      <p className="text-[10px] text-muted-foreground">— {g.label}</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{g.def}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Scoring model visual */}
+          <div
+            className="rounded-xl p-3 mt-1"
+            style={{ background: "rgba(250,204,21,0.06)", border: "1px solid rgba(250,204,21,0.20)" }}
+          >
+            <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color: "#b8930a" }}>Scoring Model Weights</p>
+            <div className="space-y-1.5">
+              {[
+                { label: "Recent Form", desc: "14d BA + GHP", pct: 20 },
+                { label: "Season Consistency", desc: "30d BA + season BA", pct: 20 },
+                { label: "Statcast Quality", desc: "xBA + xwOBA + Hard Hit %", pct: 20 },
+                { label: "Matchup & External", desc: "Pitcher splits + park + weather", pct: 20 },
+                { label: "Market Confluence", desc: "Game total + lineup availability", pct: 20 },
+              ].map(row => (
+                <div key={row.label} className="flex items-center gap-2">
+                  <div className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: "#facc15" }} />
+                  <p className="text-[11px] font-semibold text-foreground w-36 flex-shrink-0">{row.label}</p>
+                  <p className="text-[10px] text-muted-foreground flex-1">{row.desc}</p>
+                  <p className="text-[10px] font-black" style={{ color: "#b8930a" }}>{row.pct}%</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
@@ -405,6 +574,9 @@ export default function BTS() {
           ))}
         </div>
       )}
+
+      {/* How to Read Glossary */}
+      <HowToReadBTS />
 
       {/* Today's Slate */}
       {!isLoading && slate.length > 0 && (
