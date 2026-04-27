@@ -127,6 +127,17 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
               ⚠️ Original pick not in confirmed lineup — see replacement below
             </div>
           )}
+          {/* Override badge — player failed normal gates but extreme metrics qualified */}
+          {pick.isOverridePick && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <span
+                className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-1"
+                style={{ background: "rgba(251,146,60,0.12)", color: "#f97316", border: "1px solid rgba(251,146,60,0.30)" }}
+              >
+                <AlertTriangle size={8} /> STATCAST OVERRIDE — verify before using
+              </span>
+            </div>
+          )}
           <p className="text-[11px] text-muted-foreground">
             {pick.team} · Slot #{pick.lineupSlot} · Bats {pick.bats}
           </p>
@@ -375,6 +386,12 @@ const BTS_GLOSSARY = [
     label: "Hit Probability",
     emoji: "🔵",
     def: "The model's final score converted to a probability (capped at 75%). Combines recent form (20%), season consistency (20%), Statcast quality (20%), matchup (20%), and market confluence (20%). Aim for picks ≥ 65%.",
+  },
+  {
+    term: "STATCAST OVERRIDE",
+    label: "Override Pick",
+    emoji: "⚠️",
+    def: "This player failed the normal eligibility gates (avg14 ≥ .220, GHP ≥ 50%, season avg ≥ .200) but was included because ALL extreme metrics fired simultaneously: xBA ≥ .310, Hard Hit % ≥ 45%, GHP ≥ 78%, and facing a pitcher allowing ≥ .290. These are higher risk — always verify before locking in.",
   },
 ];
 
