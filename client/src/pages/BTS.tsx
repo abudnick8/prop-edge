@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, Info } from "lucide-react";
 
@@ -600,6 +601,7 @@ function HowToReadBTS() {
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
+  const queryClient = useQueryClient();
 
   const today = new Date().toISOString().slice(0, 10);
   // Before 11:45 AM CT refresh every 15 min to catch lineup updates;
@@ -635,12 +637,15 @@ export default function BTS() {
           </p>
         </div>
         <button
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border"
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
+            refetch();
+          }}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
           style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.12)" }}
         >
-          <RefreshCw size={12} />
-          Refresh
+          <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+          {isLoading ? "Loading…" : "Refresh"}
         </button>
       </div>
 
