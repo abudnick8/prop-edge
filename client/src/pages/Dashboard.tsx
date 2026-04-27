@@ -3,7 +3,7 @@ import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import BetCard from "@/components/BetCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles, SlidersHorizontal, Search } from "lucide-react";
+import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles, SlidersHorizontal, Search, Flame, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -219,6 +219,9 @@ export default function Dashboard() {
 
       {/* How to Read */}
       <HowToRead />
+
+      {/* BTS Top Picks Widget */}
+      <BtsDashboardWidget />
 
       {/* ── Main Tab Bar: Player Props | Team Bets | Season Bets ── */}
       <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border">
@@ -762,6 +765,118 @@ function HowToRead() {
       <CheatSheetDrawer open={guideOpen} onClose={() => setGuideOpen(false)} />
     </>
   );
+}
+
+// ── BTS Dashboard Widget ─────────────────────────────────────────────────────
+function BtsDashboardWidget() {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, isLoading } = useQuery({
+    queryKey: ["/api/bts-picks", today, "dashboard"],
+    queryFn: () => apiRequest("GET", `/api/bts-picks?date=${today}`).then(r => r.json()),
+    staleTime: 15 * 60_000,
+    refetchInterval: 15 * 60_000,
+  });
+
+  const picks: any[] = (data?.picks ?? []).slice(0, 3);
+
+  // Don't render widget if API returned an error or no games today
+  if (!isLoading && (data?.error || picks.length === 0)) return null;
+
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: "rgba(250,204,21,0.04)", borderColor: "rgba(250,204,21,0.25)" }}
+    >
+      {/* Widget header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "rgba(250,204,21,0.18)" }}>
+        <div className="flex items-center gap-2">
+          <Trophy size={15} style={{ color: "#facc15" }} />
+          <p className="text-sm font-black text-foreground">Today's BTS Picks</p>
+          <span
+            className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+            style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+          >
+            TOP 3
+          </span>
+        </div>
+        <Link
+          href="/bts"
+          className="flex items-center gap-1 text-[11px] font-bold"
+          style={{ color: "#b8930a" }}
+        >
+          View all <ArrowRight size={11} />
+        </Link>
+      </div>
+
+      {/* Loading state */}
+      {isLoading && (
+        <div className="p-3 space-y-2 animate-pulse">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-10 rounded-xl" style={{ background: "rgba(19,35,58,0.06)" }} />
+          ))}
+        </div>
+      )}
+
+      {/* Pick rows */}
+      {!isLoading && picks.length > 0 && (
+        <div className="divide-y" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
+          {picks.map((pick: any, i: number) => {
+            const prob = pick.hitProbability ?? 0;
+            const color = prob >= 70 ? "#22c55e" : prob >= 65 ? "#facc15" : "#f87171";
+            return (
+              <Link key={pick.playerId ?? i} href="/bts">
+                <div
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  {/* Rank */}
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                    style={{
+                      background: i === 0 ? "#facc15" : "rgba(250,204,21,0.15)",
+                      color: i === 0 ? "#1a1a1a" : "#b8930a",
+                    }}
+                  >
+                    #{i + 1}
+                  </div>
+
+                  {/* Player info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-foreground truncate">{pick.name}</p>
+                      {pick.lineupSource === "confirmed" ? (
+                        <span className="text-[9px] font-black px-1 py-0.5 rounded" style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>✓ IN</span>
+                      ) : (
+                        <span className="text-[9px] font-black px-1 py-0.5 rounded" style={{ background: "rgba(250,204,21,0.12)", color: "#b8930a" }}>PROJ</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {pick.team} · vs {pick.opponentPitcher?.name ?? "TBD"} · {fmtAvg(pick.stats?.avg14)} BA L14
+                    </p>
+                  </div>
+
+                  {/* Probability */}
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-base font-black" style={{ color }}>{prob}%</p>
+                    <p className="text-[9px] text-muted-foreground">hit prob</p>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer note */}
+      <div className="px-4 py-2 border-t" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
+        <p className="text-[9px] text-muted-foreground">Locks at 11:45 AM CT · Based on MLB Stats API + Baseball Savant data</p>
+      </div>
+    </div>
+  );
+}
+
+function fmtAvg(v: number | null | undefined) {
+  if (!v) return "—";
+  return "." + Math.round(v * 1000).toString().padStart(3, "0");
 }
 
 function StatCard({ label, value, icon, highlight = false, loading = false, emoji }: {
