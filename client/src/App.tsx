@@ -3,7 +3,9 @@ import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
-import LockScreen, { useLockScreen } from "@/components/LockScreen";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import Login from "@/pages/Login";
+import ResetPIN from "@/pages/ResetPIN";
 import Dashboard from "@/pages/Dashboard";
 import AllBets from "@/pages/AllBets";
 import BetDetail from "@/pages/BetDetail";
@@ -31,19 +33,16 @@ import { useEffect } from "react";
 
 function ScrollToTop() {
   const [location] = useHashLocation();
-
   useEffect(() => {
-    // Find the scrollable main container and reset to top on route change
     const main = document.querySelector("main");
     if (main) main.scrollTop = 0;
   }, [location]);
-
   return null;
 }
 
 function AppInner() {
   const { isConnected } = useWebSocket();
-  useVersionCheck(); // force reload PWA if server has newer build
+  useVersionCheck();
 
   return (
     <WouterRouter hook={useHashLocation}>
@@ -57,49 +56,28 @@ function AppInner() {
           background: "#F6F1E7",
         }}
       >
-        {/* Desktop: left sidebar */}
         <DesktopSidebar />
 
-        {/* Main content */}
         <main className="flex-1 overflow-y-auto" style={{ background: "#F6F1E7" }}>
-          {/* Top bar — navy on mobile, cream on desktop */}
+          {/* Top bar */}
           <div
             className="sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 py-3"
-            style={{
-              background: "#13233A",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-            }}
+            style={{ background: "#13233A", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
           >
-            {/* Mobile: show full wordmark */}
             <div className="flex md:hidden items-center">
               <CiqLogo size="sm" />
             </div>
-            {/* Desktop: empty left side (sidebar has logo) */}
             <div className="hidden md:block" />
-
-            {/* Right controls */}
             <div className="flex items-center gap-3">
-              {/* Live feed indicator */}
               <div className="flex items-center gap-1.5">
-                <span
-                  className="relative flex h-2 w-2"
-                  title={isConnected ? "Live feed connected" : "Live feed reconnecting..."}
-                >
+                <span className="relative flex h-2 w-2" title={isConnected ? "Live feed connected" : "Live feed reconnecting..."}>
                   {isConnected && (
-                    <span
-                      className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
-                      style={{ background: "#3F6B4B" }}
-                    />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: "#3F6B4B" }} />
                   )}
-                  <span
-                    className="relative inline-flex rounded-full h-2 w-2"
-                    style={{ background: isConnected ? "#3F6B4B" : "#4A5568" }}
-                  />
+                  <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: isConnected ? "#3F6B4B" : "#4A5568" }} />
                 </span>
-                <span
-                  className="hidden md:inline text-[10px] font-semibold tracking-widest uppercase"
-                  style={{ color: isConnected ? "rgba(63,107,75,0.9)" : "rgba(216,204,184,0.3)" }}
-                >
+                <span className="hidden md:inline text-[10px] font-semibold tracking-widest uppercase"
+                  style={{ color: isConnected ? "rgba(63,107,75,0.9)" : "rgba(216,204,184,0.3)" }}>
                   {isConnected ? "Live" : "···"}
                 </span>
               </div>
@@ -108,7 +86,6 @@ function AppInner() {
             </div>
           </div>
 
-          {/* Page content */}
           <div className="p-4 md:p-6 pb-28 md:pb-6">
             <Switch>
               <Route path="/" component={Dashboard} />
@@ -136,19 +113,48 @@ function AppInner() {
         </main>
       </div>
 
-      {/* Mobile bottom tab bar */}
       <MobileTabBar />
       <Toaster />
     </WouterRouter>
   );
 }
 
+// ── Auth guard ────────────────────────────────────────────────────────────────
+// Shows login screen until user is authenticated.
+// Reset-PIN page is always accessible (no auth needed — token in URL).
+function AuthGuard() {
+  const { isLoggedIn, isLoading } = useAuth();
+  const [location] = useHashLocation();
+
+  // Always allow the reset-pin route (it's reached via email link)
+  if (location.startsWith("/reset-pin")) return <ResetPIN />;
+
+  // While checking stored token, show nothing (prevents flash)
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F6F1E7" }}>
+        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#13233A", borderTopColor: "transparent" }} />
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) return <Login />;
+  return <AppInner />;
+}
+
+function AuthGuardWrapper() {
+  const [location] = useHashLocation();
+  return <AuthGuard />;
+}
+
 function App() {
-  const { unlocked, unlock } = useLockScreen();
-  if (!unlocked) return <LockScreen onUnlock={unlock} />;
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner />
+      <AuthProvider>
+        <WouterRouter hook={useHashLocation}>
+          <AuthGuardWrapper />
+        </WouterRouter>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

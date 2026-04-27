@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { Server } from "http";
 import { storage } from "./storage";
 import { runScan, fetchLivePrices, computeSharpMoneyScore, tagUrgency } from "./scanner";
@@ -12,6 +12,12 @@ import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
 import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
+import { db } from "./db";
+import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
+import { requireAuth, requireBasic, requirePro } from "./middleware";
+import { sendPINResetEmail, sendWelcomeEmail } from "./email";
+import crypto from "crypto";
+import Stripe from "stripe";
 
 // ── ML Engine helpers ────────────────────────────────────────────────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
@@ -888,12 +894,284 @@ let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
   // ── Build version endpoint — used by PWA to detect stale cache and force reload ──
-  // BUILD_HASH is set at build time; falls back to timestamp so it's always unique
   const BUILD_HASH = process.env.BUILD_HASH ?? Date.now().toString(36);
   app.get("/api/version", (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json({ version: BUILD_HASH });
   });
+
+  // ── Stripe setup ───────────────────────────────────────────────────────────────────────
+  const stripe = process.env.STRIPE_SECRET_KEY
+    ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-01-27.acacia" })
+    : null;
+
+  // ── Stripe webhook (raw body — must come before JSON body parser routes) ──
+  app.post("/api/stripe-webhook", async (req: Request, res: Response) => {
+    if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+    const sig = req.headers["stripe-signature"] as string;
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        (req as any).rawBody ?? req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET ?? ""
+      );
+    } catch (err: any) {
+      console.error("[Stripe] Webhook signature failed:", err.message);
+      return res.status(400).json({ error: "Webhook signature invalid" });
+    }
+
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const customerId = session.customer as string;
+        const subId      = session.subscription as string;
+        const tierMeta   = session.metadata?.tier ?? "basic";
+        await db.query(
+          `UPDATE users SET stripe_sub_id=$1, sub_status='active', tier=$2, updated_at=NOW()
+           WHERE stripe_customer_id=$3`,
+          [subId, tierMeta, customerId]
+        );
+        // Send welcome email
+        const user = await db.queryOne(`SELECT email FROM users WHERE stripe_customer_id=$1`, [customerId]);
+        if (user?.email) await sendWelcomeEmail(user.email, tierMeta).catch(() => {});
+      }
+
+      if (event.type === "customer.subscription.updated") {
+        const sub     = event.data.object as Stripe.Subscription;
+        const status  = sub.status === "active" ? "active" : sub.status === "past_due" ? "past_due" : "inactive";
+        const priceId = sub.items.data[0]?.price?.id;
+        const tier    = priceId === process.env.STRIPE_PRO_PRICE_ID ? "pro"
+                      : priceId === process.env.STRIPE_BASIC_PRICE_ID ? "basic" : null;
+        await db.query(
+          `UPDATE users SET sub_status=$1, tier=$2, updated_at=NOW() WHERE stripe_sub_id=$3`,
+          [status, tier, sub.id]
+        );
+      }
+
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object as Stripe.Subscription;
+        await db.query(
+          `UPDATE users SET sub_status='cancelled', tier=NULL, updated_at=NOW() WHERE stripe_sub_id=$1`,
+          [sub.id]
+        );
+      }
+
+      if (event.type === "invoice.payment_failed") {
+        const invoice = event.data.object as Stripe.Invoice;
+        await db.query(
+          `UPDATE users SET sub_status='past_due', updated_at=NOW() WHERE stripe_customer_id=$1`,
+          [invoice.customer as string]
+        );
+      }
+    } catch (e: any) {
+      console.error("[Stripe] Webhook handler error:", e.message);
+    }
+
+    res.json({ received: true });
+  });
+
+  // ── Auth routes ──────────────────────────────────────────────────────────────────────────
+
+  // POST /api/auth/signup
+  app.post("/api/auth/signup", async (req: Request, res: Response) => {
+    try {
+      const { email, pin, tier = "basic" } = req.body ?? {};
+
+      if (!isValidEmail(email))
+        return res.status(400).json({ error: "Invalid email address" });
+      if (!isValidPIN(pin))
+        return res.status(400).json({ error: "PIN must be exactly 4 alphanumeric characters" });
+      if (tier !== "basic" && tier !== "pro")
+        return res.status(400).json({ error: "Invalid tier" });
+
+      // Check email not already taken
+      const existing = await db.queryOne(`SELECT id FROM users WHERE email=LOWER($1)`, [email]);
+      if (existing) return res.status(409).json({ error: "An account with that email already exists" });
+
+      const pinHash = await hashPIN(pin);
+
+      // Create Stripe customer if Stripe is configured
+      let stripeCustomerId: string | null = null;
+      let checkoutUrl: string | null = null;
+
+      if (stripe) {
+        const customer = await stripe.customers.create({ email: email.toLowerCase() });
+        stripeCustomerId = customer.id;
+
+        const priceId = tier === "pro"
+          ? process.env.STRIPE_PRO_PRICE_ID
+          : process.env.STRIPE_BASIC_PRICE_ID;
+
+        const session = await stripe.checkout.sessions.create({
+          customer:    stripeCustomerId,
+          mode:        "subscription",
+          line_items:  [{ price: priceId, quantity: 1 }],
+          metadata:    { tier },
+          success_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
+          cancel_url:  `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/signup`,
+        });
+        checkoutUrl = session.url;
+      }
+
+      // Insert user (tier null until Stripe confirms payment)
+      await db.query(
+        `INSERT INTO users (email, pin_hash, tier, stripe_customer_id, sub_status)
+         VALUES (LOWER($1), $2, $3, $4, $5)`,
+        [email, pinHash, stripe ? null : tier, stripeCustomerId, stripe ? "inactive" : "active"]
+      );
+
+      // If no Stripe, auto-activate (dev mode)
+      if (!stripe) {
+        await db.query(`UPDATE users SET tier=$1, sub_status='active' WHERE email=LOWER($2)`, [tier, email]);
+      }
+
+      res.json({ success: true, checkoutUrl });
+    } catch (e: any) {
+      console.error("[Auth] Signup error:", e.message);
+      res.status(500).json({ error: "Signup failed" });
+    }
+  });
+
+  // POST /api/auth/login
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { email, pin } = req.body ?? {};
+      if (!email || !pin) return res.status(400).json({ error: "Email and PIN required" });
+
+      const user = await db.queryOne(
+        `SELECT id, email, pin_hash, tier, sub_status, is_owner, login_attempts, locked_until
+         FROM users WHERE email=LOWER($1)`,
+        [email]
+      );
+
+      if (!user) return res.status(401).json({ error: "Invalid email or PIN" });
+
+      // Check lockout
+      if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        const mins = Math.ceil((new Date(user.locked_until).getTime() - Date.now()) / 60000);
+        return res.status(429).json({ error: `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` });
+      }
+
+      const pinOk = await checkPIN(pin, user.pin_hash);
+      if (!pinOk) {
+        const attempts = (user.login_attempts ?? 0) + 1;
+        const lockedUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+        await db.query(
+          `UPDATE users SET login_attempts=$1, locked_until=$2 WHERE id=$3`,
+          [attempts, lockedUntil, user.id]
+        );
+        return res.status(401).json({ error: "Invalid email or PIN" });
+      }
+
+      // Reset attempts on success
+      await db.query(`UPDATE users SET login_attempts=0, locked_until=NULL WHERE id=$1`, [user.id]);
+
+      const token = signJWT({
+        userId:  user.id,
+        email:   user.email,
+        tier:    user.sub_status === "active" ? user.tier : null,
+        isOwner: user.is_owner ?? false,
+      });
+
+      res.json({ token, tier: user.tier, isOwner: user.is_owner });
+    } catch (e: any) {
+      console.error("[Auth] Login error:", e.message);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // GET /api/me — validate token + return fresh user data
+  app.get("/api/me", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = await db.queryOne(
+        `SELECT id, email, tier, sub_status, is_owner, created_at FROM users WHERE id=$1`,
+        [req.user!.userId]
+      );
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json({
+        id:        user.id,
+        email:     user.email,
+        tier:      user.sub_status === "active" ? user.tier : null,
+        subStatus: user.sub_status,
+        isOwner:   user.is_owner,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // POST /api/auth/forgot-pin
+  app.post("/api/auth/forgot-pin", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body ?? {};
+      if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email" });
+
+      const user = await db.queryOne(`SELECT id FROM users WHERE email=LOWER($1)`, [email]);
+      // Always return success to prevent email enumeration
+      if (!user) return res.json({ success: true });
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = await hashPIN(rawToken.slice(0, 4)); // reuse hashPIN for storage
+      // Store full token hash separately
+      const fullHash = require("crypto").createHash("sha256").update(rawToken).digest("hex");
+      const expires  = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await db.query(
+        `UPDATE users SET reset_token_hash=$1, reset_token_expires=$2 WHERE id=$3`,
+        [fullHash, expires, user.id]
+      );
+
+      await sendPINResetEmail(email, rawToken);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[Auth] Forgot PIN error:", e.message);
+      res.status(500).json({ error: "Failed to send reset email" });
+    }
+  });
+
+  // POST /api/auth/reset-pin
+  app.post("/api/auth/reset-pin", async (req: Request, res: Response) => {
+    try {
+      const { token, pin } = req.body ?? {};
+      if (!token || !isValidPIN(pin))
+        return res.status(400).json({ error: "Invalid request" });
+
+      const tokenHash = require("crypto").createHash("sha256").update(token).digest("hex");
+      const user = await db.queryOne(
+        `SELECT id FROM users WHERE reset_token_hash=$1 AND reset_token_expires > NOW()`,
+        [tokenHash]
+      );
+      if (!user) return res.status(400).json({ error: "Reset link is invalid or has expired" });
+
+      const pinHash = await hashPIN(pin);
+      await db.query(
+        `UPDATE users SET pin_hash=$1, reset_token_hash=NULL, reset_token_expires=NULL WHERE id=$2`,
+        [pinHash, user.id]
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to reset PIN" });
+    }
+  });
+
+  // GET /api/auth/stripe-portal — redirect to Stripe customer portal
+  app.get("/api/auth/stripe-portal", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+      const user = await db.queryOne(`SELECT stripe_customer_id FROM users WHERE id=$1`, [req.user!.userId]);
+      if (!user?.stripe_customer_id) return res.status(400).json({ error: "No billing account found" });
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer:   user.stripe_customer_id,
+        return_url: process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app",
+      });
+      res.json({ url: session.url });
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to create billing portal" });
+    }
+  });
+
 
   // Ensure ml_data directory exists
   const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");

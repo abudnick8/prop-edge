@@ -3,23 +3,25 @@ import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
 import {
   LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain,
+  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, Lock, LogOut, Crown,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
+// tier: 'basic' = basic+pro, 'pro' = pro only, undefined = no auth required
 const navItems = [
-  { href: "/",           label: "Dashboard",     mobileLabel: "Home",     icon: LayoutDashboard,  emoji: "⬛" },
-  { href: "/scores",     label: "Live Scores",   mobileLabel: "Scores",   icon: Activity,         emoji: "⬛" },
-  { href: "/clv",        label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,       emoji: "⬛" },
-  { href: "/markets",    label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,        emoji: "⬛" },
-  { href: "/conviction", label: "Top Plays",      mobileLabel: "Top",      icon: Zap,              emoji: "⬛" },
-  { href: "/bets",       label: "All Picks",      mobileLabel: "Picks",    icon: Target,           emoji: "⬛" },
-  { href: "/linemate",   label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,        emoji: "⬛" },
-  { href: "/bts",         label: "Beat the Streak", mobileLabel: "BTS",      icon: Trophy,           emoji: "⬛" },
-  { href: "/fantasy",    label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,          emoji: "⬛" },
-  { href: "/lotto",      label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,           emoji: "⬛" },
-  { href: "/bracket",    label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,           emoji: "⬛" },
-  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,            emoji: "⬛" },
-  { href: "/settings",   label: "Settings",       mobileLabel: "Settings", icon: Settings,         emoji: "⬛" },
+  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard, tier: "basic"  },
+  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity,        tier: "basic"  },
+  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,      tier: "basic"  },
+  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,       tier: "pro"    },
+  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap,             tier: "pro"    },
+  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target,          tier: "pro"    },
+  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,       tier: "pro"    },
+  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"    },
+  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,         tier: "pro"    },
+  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,          tier: "pro"    },
+  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,          tier: "pro"    },
+  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,           tier: "pro"    },
+  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: "basic"  },
 ];
 
 // Nav item badge definitions — editorial, restrained
@@ -93,103 +95,117 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
 // ── Desktop sidebar ─────────────────────────────────────────────────────────
 export function DesktopSidebar() {
   const [location] = useHashLocation();
+  const { user, isOwner, isPro, isBasic, logout } = useAuth();
+
+  function canAccess(tier?: string) {
+    if (isOwner) return true;
+    if (!tier)   return true;
+    if (tier === "basic") return isBasic;
+    if (tier === "pro")   return isPro;
+    return false;
+  }
 
   return (
     <aside
       className="hidden md:flex w-56 flex-shrink-0 flex-col"
-      style={{
-        background: "#13233A",
-        borderRight: "1px solid rgba(255,255,255,0.07)",
-      }}
+      style={{ background: "#13233A", borderRight: "1px solid rgba(255,255,255,0.07)" }}
     >
       {/* Logo */}
-      <div
-        className="px-5 py-5"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-      >
+      <div className="px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <CiqLogo size="md" />
       </div>
 
+      {/* User badge */}
+      {user && (
+        <div className="px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+              style={{ background: isOwner ? "#A23B32" : isPro ? "#2563eb" : "#3D4B58", color: "#F0EAD9" }}>
+              {isOwner ? "👑" : user.email[0].toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold truncate" style={{ color: "#F0EAD9" }}>{user.email}</p>
+              <p className="text-[9px]" style={{ color: isOwner ? "#A23B32" : isPro ? "#60a5fa" : "rgba(216,204,184,0.5)" }}>
+                {isOwner ? "Owner" : isPro ? "Pro" : isBasic ? "Basic" : "Inactive"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = location === href || (href !== "/" && location.startsWith(href));
-          const badge = NAV_BADGES[href];
+        {navItems.map(({ href, label, icon: Icon, tier }) => {
+          const accessible = canAccess(tier);
+          const isActive   = location === href || (href !== "/" && location.startsWith(href));
+          const badge      = NAV_BADGES[href];
+
+          if (!accessible) {
+            return (
+              <div
+                key={href}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm cursor-default"
+                style={{ color: "rgba(216,204,184,0.3)", borderLeft: "2px solid transparent" }}
+                title={tier === "pro" ? "Pro plan required" : "Basic plan required"}
+              >
+                <Icon size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>{label}</span>
+                <Lock size={11} style={{ flexShrink: 0, opacity: 0.5 }} />
+              </div>
+            );
+          }
 
           return (
             <Link
-              key={href}
-              href={href}
+              key={href} href={href}
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-all"
               style={
                 isActive
-                  ? {
-                      background: "rgba(255,255,255,0.09)",
-                      color: "#F0EAD9",
-                      borderLeft: "2px solid #A23B32",
-                      paddingLeft: "10px",
-                    }
-                  : {
-                      color: "rgba(216,204,184,0.65)",
-                      borderLeft: "2px solid transparent",
-                    }
+                  ? { background: "rgba(255,255,255,0.09)", color: "#F0EAD9", borderLeft: "2px solid #A23B32", paddingLeft: "10px" }
+                  : { color: "rgba(216,204,184,0.65)", borderLeft: "2px solid transparent" }
               }
-              onMouseEnter={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = "#F0EAD9";
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-                }
-              }}
-              onMouseLeave={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = "rgba(216,204,184,0.65)";
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                }
-              }}
+              onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = "#F0EAD9"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; } }}
+              onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = "rgba(216,204,184,0.65)"; (e.currentTarget as HTMLElement).style.background = "transparent"; } }}
               data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
             >
-              <Icon
-                size={15}
-                strokeWidth={isActive ? 2.2 : 1.8}
-                style={{ flexShrink: 0, color: isActive ? "#C4B99A" : undefined }}
-              />
+              <Icon size={15} strokeWidth={isActive ? 2.2 : 1.8} style={{ flexShrink: 0, color: isActive ? "#C4B99A" : undefined }} />
               <span style={{ flex: 1, fontWeight: isActive ? 600 : 400 }}>{label}</span>
-              {badge && !isActive && (
-                <span className={badge.style}>{badge.label}</span>
-              )}
+              {badge && !isActive && <span className={badge.style}>{badge.label}</span>}
             </Link>
           );
         })}
       </nav>
 
       {/* Scanner status */}
-      <div
-        className="px-4 py-3"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
-      >
+      <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
         <div className="flex items-center gap-2">
-          <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: "#3F6B4B", boxShadow: "0 0 0 0 rgba(63,107,75,0.4)", animation: "cardinal-pulse 2.5s ease-in-out infinite" }}
-          />
-          <span style={{ fontSize: 11, color: "rgba(216,204,184,0.5)", fontWeight: 500 }}>
-            Scanner Active · 30 min
-          </span>
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{ background: "#3F6B4B", animation: "cardinal-pulse 2.5s ease-in-out infinite" }} />
+          <span style={{ fontSize: 11, color: "rgba(216,204,184,0.5)", fontWeight: 500 }}>Scanner Active · 30 min</span>
         </div>
+      </div>
+
+      {/* Logout */}
+      <div className="px-3 pb-3">
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-all"
+          style={{ color: "rgba(216,204,184,0.4)" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#f87171"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(216,204,184,0.4)"; }}
+        >
+          <LogOut size={14} />
+          <span>Log out</span>
+        </button>
       </div>
 
       {/* Attribution */}
       <div className="px-4 pb-4">
-        <a
-          href="https://www.perplexity.ai/computer"
-          target="_blank"
-          rel="noopener noreferrer"
+        <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer"
           style={{ fontSize: 10, color: "rgba(216,204,184,0.3)", transition: "color 0.15s" }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "rgba(216,204,184,0.6)"; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(216,204,184,0.3)"; }}
-        >
-          Created with Perplexity Computer
-        </a>
+        >Created with Perplexity Computer</a>
       </div>
     </aside>
   );
@@ -198,45 +214,41 @@ export function DesktopSidebar() {
 // ── Mobile bottom tab bar ─────────────────────────────────────────────────
 export function MobileTabBar() {
   const [location] = useHashLocation();
+  const { isOwner, isPro, isBasic } = useAuth();
+
+  function canAccess(tier?: string) {
+    if (isOwner) return true;
+    if (!tier)   return true;
+    if (tier === "basic") return isBasic;
+    if (tier === "pro")   return isPro;
+    return false;
+  }
 
   return (
     <nav
       className="md:hidden fixed bottom-0 left-0 right-0 z-50"
-      style={{
-        background: "#13233A",
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-      }}
+      style={{ background: "#13233A", borderTop: "1px solid rgba(255,255,255,0.08)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="flex items-stretch overflow-x-auto scrollbar-none">
-        {navItems.map(({ href, label, mobileLabel, icon: Icon }) => {
-          const isActive = location === href || (href !== "/" && location.startsWith(href));
+        {navItems.map(({ href, label, mobileLabel, icon: Icon, tier }) => {
+          const isActive   = location === href || (href !== "/" && location.startsWith(href));
+          const accessible = canAccess(tier);
           return (
             <Link
               key={href}
-              href={href}
+              href={accessible ? href : location}
               className="relative flex-shrink-0 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors"
-              style={{
-                minWidth: 56,
-                maxWidth: 64,
-                color: isActive ? "#F0EAD9" : "rgba(216,204,184,0.45)",
-              }}
+              style={{ minWidth: 56, maxWidth: 64, color: !accessible ? "rgba(216,204,184,0.2)" : isActive ? "#F0EAD9" : "rgba(216,204,184,0.45)" }}
               data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
             >
-              {/* Active indicator — cardinal red bar */}
-              {isActive && (
-                <span
-                  className="absolute top-0 left-1/2 -translate-x-1/2"
-                  style={{
-                    width: 20,
-                    height: 2,
-                    borderRadius: 0,
-                    background: "#A23B32",
-                  }}
-                />
+              {isActive && accessible && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2"
+                  style={{ width: 20, height: 2, borderRadius: 0, background: "#A23B32" }} />
               )}
-              <Icon size={17} strokeWidth={isActive ? 2.2 : 1.6} />
-              <span style={{ fontSize: 9, fontWeight: isActive ? 600 : 400, lineHeight: 1, whiteSpace: "nowrap" }}>
+              {accessible
+                ? <Icon size={17} strokeWidth={isActive ? 2.2 : 1.6} />
+                : <Lock size={15} strokeWidth={1.5} />}
+              <span style={{ fontSize: 9, fontWeight: isActive && accessible ? 600 : 400, lineHeight: 1, whiteSpace: "nowrap" }}>
                 {mobileLabel}
               </span>
             </Link>
