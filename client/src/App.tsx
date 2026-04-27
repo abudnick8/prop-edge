@@ -21,6 +21,7 @@ import LinemateProps from "@/pages/LinemateProps";
 import LiveScores from "@/pages/LiveScores";
 import MLInsights from "@/pages/MLInsights";
 import NotFound from "@/pages/not-found";
+import BTS from "@/pages/BTS";
 import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
@@ -128,6 +129,7 @@ function AppInner() {
               <Route path="/linemate" component={LinemateProps} />
               <Route path="/scores" component={LiveScores} />
               <Route path="/ml-insights" component={MLInsights} />
+              <Route path="/bts" component={BTS} />
               <Route component={NotFound} />
             </Switch>
           </div>
