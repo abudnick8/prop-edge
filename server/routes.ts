@@ -7444,6 +7444,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch { /* savant unavailable */ }
 
+      // ── 3b. Baseball Savant pitcher leaderboard (xBA allowed, xwOBA, HH%) ──
+      let pitcherSavantMap: Record<string, any> = {}; // keyed by mlbam player_id
+      try {
+        const pSavantResp = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,exit_velocity_avg,hard_hit_percent,bb_percent,k_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const pCsvText: string = pSavantResp.data;
+        const pLines = pCsvText.replace(/^\uFEFF/, "").split("\n");
+        const pHeader = pLines[0].replace(/^"|"$/g, "").split(",").map((h: string) => h.trim().replace(/^"|"$/g, ""));
+        for (let i = 1; i < pLines.length; i++) {
+          const row = pLines[i].split(",");
+          if (row.length < 4) continue;
+          const obj: any = {};
+          pHeader.forEach((h, idx) => { obj[h] = row[idx]?.trim().replace(/^"|"$/g, ""); });
+          const pid = row[1]?.trim().replace(/^"|"$/g, "");
+          if (pid) pitcherSavantMap[pid] = obj;
+        }
+      } catch { /* pitcher savant unavailable */ }
+
+      // ── 3c. Helper: fetch pitcher season stats (ERA, K/9, WHIP, IP) ──
+      const pitcherSeasonCache: Record<number, any> = {};
+      async function getPitcherSeasonStats(pitcherId: number) {
+        if (pitcherSeasonCache[pitcherId]) return pitcherSeasonCache[pitcherId];
+        try {
+          const r = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season&group=pitching&season=2026`
+          );
+          const stat = r.data?.stats?.[0]?.splits?.[0]?.stat ?? {};
+          const ip = parseFloat(stat.inningsPitched ?? "0") || 0;
+          const er = parseInt(stat.earnedRuns ?? "0") || 0;
+          const so = parseInt(stat.strikeOuts ?? "0") || 0;
+          const bb = parseInt(stat.baseOnBalls ?? "0") || 0;
+          const hits = parseInt(stat.hits ?? "0") || 0;
+          const era  = ip > 0 ? parseFloat(((er * 9) / ip).toFixed(2)) : null;
+          const k9   = ip > 0 ? parseFloat(((so * 9) / ip).toFixed(1)) : null;
+          const whip = ip > 0 ? parseFloat(((bb + hits) / ip).toFixed(2)) : null;
+          const result = { era, k9, whip, ip };
+          pitcherSeasonCache[pitcherId] = result;
+          return result;
+        } catch { return { era: null, k9: null, whip: null, ip: 0 }; }
+      }
+
       // ── 4. Helper: fetch pitcher vs LHB/RHB splits ──────────────────
       async function getPitcherSplits(pitcherId: number) {
         try {
@@ -7640,11 +7683,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         if (!slateEntry.meetsFilter) continue;
 
-        // Get pitcher splits for both pitchers
-        const [homeSplits, awaySplits] = await Promise.all([
+        // Get pitcher splits + season stats for both pitchers
+        const [homeSplits, awaySplits, homeSeasonStats, awaySeasonStats] = await Promise.all([
           homeTeam.probablePitcher?.id ? getPitcherSplits(homeTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
           awayTeam.probablePitcher?.id ? getPitcherSplits(awayTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
+          homeTeam.probablePitcher?.id ? getPitcherSeasonStats(homeTeam.probablePitcher.id) : Promise.resolve({ era: null, k9: null, whip: null, ip: 0 }),
+          awayTeam.probablePitcher?.id ? getPitcherSeasonStats(awayTeam.probablePitcher.id) : Promise.resolve({ era: null, k9: null, whip: null, ip: 0 }),
         ]);
+        // Resolve pitcher savant data for both pitchers
+        const homePitcherSavant = homeTeam.probablePitcher?.id ? (pitcherSavantMap[String(homeTeam.probablePitcher.id)] ?? {}) : {};
+        const awayPitcherSavant = awayTeam.probablePitcher?.id ? (pitcherSavantMap[String(awayTeam.probablePitcher.id)] ?? {}) : {};
 
         // Get confirmed or projected lineups
         const lineups = game.lineups ?? {};
@@ -7720,7 +7768,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const confirmedHomeIds = new Set(confirmedHome.map((p: any) => p.id ?? p.person?.id));
         const confirmedAwayIds = new Set(confirmedAway.map((p: any) => p.id ?? p.person?.id));
 
-        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string) => {
+        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
           const candidates: any[] = [];
           for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
             const p = players[slotIdx];
@@ -7787,6 +7835,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
                   : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
                 pitcherAvgAllowed: pitcherAvgVsMe,
+                pitcherStats: {
+                  era:   oppPitcherSeasonStats?.era   ?? null,
+                  k9:    oppPitcherSeasonStats?.k9    ?? null,
+                  whip:  oppPitcherSeasonStats?.whip  ?? null,
+                  ip:    oppPitcherSeasonStats?.ip    ?? 0,
+                  xba:   parseFloat(oppPitcherSavant?.xba   ?? "0") || null,
+                  xwoba: parseFloat(oppPitcherSavant?.xwoba ?? "0") || null,
+                  hardHitPct: parseFloat(oppPitcherSavant?.hard_hit_percent ?? "0") || null,
+                },
                 stats: {
                   avg14: stats.avg14,
                   avg30: stats.avg30,
@@ -7817,8 +7874,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         };
 
         const [homeCandidates, awayCandidates] = await Promise.all([
-          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? "", homeLineupSource),
-          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? "", awayLineupSource),
+          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? "", homeLineupSource, awaySeasonStats, awayPitcherSavant),
+          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? "", awayLineupSource, homeSeasonStats, homePitcherSavant),
         ]);
 
         candidatePicks.push(...homeCandidates, ...awayCandidates);
