@@ -1,3 +1,4 @@
+# Cache bust: 1777327847
 [phases.setup]
 nixPkgs = ["nodejs_20", "python312", "python312Packages.numpy", "python312Packages.scipy"]
 
