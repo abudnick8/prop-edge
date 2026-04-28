@@ -19,67 +19,511 @@ import { sendPINResetEmail, sendWelcomeEmail } from "./email";
 import crypto from "crypto";
 import Stripe from "stripe";
 
-// ── ML Engine helpers ────────────────────────────────────────────────────────
+// ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
 const ML_WEIGHTS_FILE  = path.join(ML_DATA_DIR, "ml_weights.json");
 const ML_INSIGHTS_FILE = path.join(ML_DATA_DIR, "ml_insights.json");
-const ML_ENGINE_PY     = path.join(__dirname, "ml_engine.py");
+const ML_OUTCOME_LOG   = path.join(ML_DATA_DIR, "bet_outcome_log.json");
+const ML_GRADED_IDS    = path.join(ML_DATA_DIR, "graded_ids.json");
+const ML_SNAPSHOT_FILE = path.join(ML_DATA_DIR, "pick_snapshots.json");
 
-loadMLWeights(); // boot-time load; refreshed automatically after runMLEngine()
+if (!fs.existsSync(ML_DATA_DIR)) fs.mkdirSync(ML_DATA_DIR, { recursive: true });
+loadMLWeights(); // boot-time load; refreshed after runMLEngine()
 
-// Log a graded outcome to ml_data/bet_outcome_log.json via Python
+// ── ML helpers ────────────────────────────────────────────────────────────────
+function mlLoadJSON(filePath: string, def: any = []): any {
+  try { return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, "utf8")) : def; }
+  catch { return def; }
+}
+function mlSaveJSON(filePath: string, data: any): void {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+// Log a graded outcome (pure TS, no Python)
 function logMLOutcome(record: Record<string, any>): void {
   try {
-    const proc = spawn("python3", [ML_ENGINE_PY, "append", JSON.stringify(record)], {
-      detached: true, stdio: "ignore",
-    });
-    proc.unref();
-  } catch { /* non-blocking, ignore */ }
+    const outcomes: any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+    const idx = outcomes.findIndex((r: any) => r.betId === record.betId);
+    if (idx >= 0) { outcomes[idx] = { ...outcomes[idx], ...record }; }
+    else { outcomes.push(record); }
+    mlSaveJSON(ML_OUTCOME_LOG, outcomes);
+  } catch (e: any) { console.warn("[ML] logMLOutcome error:", e.message); }
 }
 
-// Run full ML engine (nightly or on demand)
-function runMLEngine(): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [ML_ENGINE_PY], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = ""; let err = "";
-    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { err += d.toString(); process.stderr.write(d); });
-    proc.on("error", (e: Error) => reject(new Error(`Failed to start python3: ${e.message} — is python3 installed?`)));
-    proc.on("close", (code: number) => {
-      loadMLWeights(); // refresh weights in memory
-      if (code === 0) {
-        try {
-          const lines = out.trim().split("\n");
-          const jsonLine = lines.findLast((l: string) => l.startsWith("{"));
-          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
-        } catch { resolve({ status: "ok", output: out }); }
-      } else {
-        reject(new Error(`ML engine exited ${code}. stderr: ${err.slice(-800) || "(none)"} stdout: ${out.slice(-200) || "(none)"}`.trim()));
+// ── Auto Grader (ported from auto_grader.py) ──────────────────────────────────
+const SPORT_ESPN_MAP: Record<string, [string, string]> = {
+  NBA: ["basketball", "nba"],
+  MLB: ["baseball",   "mlb"],
+  NHL: ["hockey",     "nhl"],
+  NFL: ["football",   "nfl"],
+};
+const STAT_MAP: Record<string, Record<string, [string, string]>> = {
+  NBA: {
+    PTS:["PTS","int"],POINTS:["PTS","int"],REB:["REB","int"],REBOUNDS:["REB","int"],
+    AST:["AST","int"],ASSISTS:["AST","int"],STL:["STL","int"],BLK:["BLK","int"],
+    BLOCKS:["BLK","int"],TO:["TO","int"],TURNOVERS:["TO","int"],
+    "3PM":["3PT","fraction_left"],THREE_POINTERS_MADE:["3PT","fraction_left"],
+    "PTS+REB+AST":["PTS+REB+AST","combo"],PRA:["PTS+REB+AST","combo"],
+    "PTS+REB":["PTS+REB","combo"],"PTS+AST":["PTS+AST","combo"],"REB+AST":["REB+AST","combo"],
+  },
+  MLB: {
+    H:["H","int"],HITS:["H","int"],HR:["HR","int"],HOME_RUNS:["HR","int"],
+    RBI:["RBI","int"],RUNS_BATTED_IN:["RBI","int"],RBIS:["RBI","int"],
+    R:["R","int"],RUNS:["R","int"],RUNS_SCORED:["R","int"],
+    BB:["BB","int"],WALKS:["BB","int"],K:["K","int"],SO:["K","int"],
+    STRIKEOUTS_BATTER:["K","int"],"1B":["H","int"],SINGLES:["H","int"],
+    "2B":["2B","int"],DOUBLES:["2B","int"],"3B":["3B","int"],TRIPLES:["3B","int"],
+    SB:["SB","int"],STOLEN_BASES:["SB","int"],STOLEN_BASE:["SB","int"],
+    TB:["TB","int"],TOTAL_BASES:["TB","int"],
+    IP:["IP","float"],PITCHER_OUTS:["OUT","int"],OUTS:["OUT","int"],
+    ER:["ER","int"],EARNED_RUNS:["ER","int"],STRIKEOUTS:["K","int"],
+    PITCHING_K:["K","int"],PITCHER_K:["K","int"],PITCHER_STRIKEOUTS:["K","int"],
+    HITS_ALLOWED:["H","int"],PITCHER_HITS:["H","int"],
+    WALKS_ALLOWED:["BB","int"],PITCHER_BB:["BB","int"],ERA:["ERA","float"],
+  },
+  NHL: {
+    G:["G","int"],GOALS:["G","int"],A:["A","int"],ASSISTS:["A","int"],
+    PTS:["G+A","combo"],POINTS:["G+A","combo"],SOG:["SOG","int"],
+    SHOTS:["SOG","int"],SHOTS_ON_GOAL:["SOG","int"],"+/-":["+/-","int"],
+  },
+  NFL: {
+    PASS_YDS:["YDS","int"],PASSING_YARDS:["YDS","int"],
+    RUSH_YDS:["YDS","int"],RUSHING_YARDS:["YDS","int"],
+    REC:["REC","int"],RECEPTIONS:["REC","int"],
+    REC_YDS:["YDS","int"],RECEIVING_YARDS:["YDS","int"],
+    TD:["TD","combo"],TOUCHDOWNS:["TD","combo"],
+    INT:["INT","int"],COMPLETIONS:["C/ATT","fraction_left"],
+    SACKS:["SACKS","float"],TACKLES:["TOT","int"],
+  },
+};
+const NFL_GROUPS: Record<string, string> = {
+  PASS_YDS:"passing",PASSING_YARDS:"passing",
+  RUSH_YDS:"rushing",RUSHING_YARDS:"rushing",
+  REC_YDS:"receiving",RECEIVING_YARDS:"receiving",REC:"receiving",RECEPTIONS:"receiving",
+};
+
+function mlLastWord(s: string): string { const p = s.trim().toLowerCase().split(/\s+/); return p[p.length-1]||"";
+}
+function mlTeamsMatch(a: string, b: string): boolean {
+  a = a.toLowerCase().trim(); b = b.toLowerCase().trim();
+  if (a === b) return true;
+  const al = mlLastWord(a), bl = mlLastWord(b);
+  if (al === bl && al.length > 3) return true;
+  if (a.length > 4 && b.includes(a)) return true;
+  if (b.length > 4 && a.includes(b)) return true;
+  return false;
+}
+function mlPlayerMatch(a: string, b: string): boolean {
+  a = a.toLowerCase().trim(); b = b.toLowerCase().trim();
+  if (a === b) return true;
+  const al = a.split(/\s+/).pop()!, bl = b.split(/\s+/).pop()!;
+  if (al === bl && al.length > 3) return true;
+  if (a.length > 4 && b.includes(a)) return true;
+  if (b.length > 4 && a.includes(b)) return true;
+  const ap = a.split(/\s+/), bp = b.split(/\s+/);
+  if (ap.length >= 2 && bp.length >= 2 && ap[ap.length-1] === bp[bp.length-1] && ap[0][0] === bp[0][0]) return true;
+  return false;
+}
+function mlParseStatValue(raw: string|null|undefined, mode: string): number|null {
+  if (raw == null || raw === "--" || raw === "") return null;
+  const s = String(raw).trim();
+  try {
+    if (mode === "fraction_left") {
+      for (const sep of ["/", "-"]) { if (s.includes(sep)) return parseFloat(s.split(sep)[0]); }
+      return parseFloat(s);
+    }
+    return parseFloat(s);
+  } catch { return null; }
+}
+function mlDetectNFLGroup(labels: string[], keys: string[]): string|null {
+  const ls = labels.join(" ").toLowerCase(), ks = keys.join(" ").toLowerCase();
+  if (ks.includes("passing") || (ls.includes("c/att") && ls.includes("yds") && ls.includes("int"))) return "passing";
+  if (ks.includes("rushing") || (ls.includes("car") && ls.includes("yds") && ls.includes("avg"))) return "rushing";
+  if (ks.includes("receiving") || (ls.includes("rec") && ls.includes("yds") && ls.includes("tgts"))) return "receiving";
+  if (ks.includes("tackle") || (ls.includes("tot") && ls.includes("solo"))) return "defense";
+  return null;
+}
+function mlExtractCombo(comboKey: string, labels: string[], stats: string[]): number|null {
+  const parts = comboKey.split("+").map(p => p.trim().toUpperCase());
+  let total = 0, found = false;
+  for (const part of parts) {
+    const idx = labels.indexOf(part);
+    if (idx >= 0 && idx < stats.length) { const v = mlParseStatValue(stats[idx], "int"); if (v != null) { total += v; found = true; } }
+  }
+  return found ? total : null;
+}
+function mlExtractPlayerStat(summary: any, sport: string, playerName: string, statCategory: string): number|null {
+  const catKey = statCategory.toUpperCase().replace(/[\s-]/g, "_");
+  const sportMap = STAT_MAP[sport] || {};
+  let entry = sportMap[catKey];
+  if (!entry) {
+    for (const [k, v] of Object.entries(sportMap)) { if (k.includes(catKey) || catKey.includes(k)) { entry = v; break; } }
+  }
+  if (!entry) return null;
+  const [espnKey, mode] = entry;
+  const isCombo = mode === "combo";
+  const teamsData = summary?.boxscore?.players || [];
+  for (const teamData of teamsData) {
+    for (const group of (teamData.statistics || [])) {
+      const labels = (group.labels || []).map((l: string) => l.toUpperCase());
+      const keys   = group.keys || [];
+      const groupType = mlDetectNFLGroup(labels, keys);
+      for (const ae of (group.athletes || [])) {
+        const name = ae?.athlete?.displayName || "";
+        if (!mlPlayerMatch(name, playerName)) continue;
+        const stats = ae.stats || [];
+        if (!stats.length) continue;
+        if (isCombo) { const v = mlExtractCombo(espnKey, labels, stats); if (v != null) return v; continue; }
+        if (sport === "NFL") { const req = NFL_GROUPS[catKey]; if (req && groupType && req !== groupType) continue; }
+        const idx = labels.indexOf(espnKey.toUpperCase());
+        if (idx >= 0 && idx < stats.length) { const v = mlParseStatValue(stats[idx], mode); if (v != null) return v; }
       }
-    });
-  });
+    }
+  }
+  return null;
+}
+async function mlFetchESPN(url: string): Promise<any> {
+  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) throw new Error(`ESPN ${r.status}`);
+  return r.json();
+}
+async function mlFetchScoreboard(sport: string, dateStr: string): Promise<any[]> {
+  const [sn, lg] = SPORT_ESPN_MAP[sport] || [];
+  if (!sn) return [];
+  try {
+    const d = await mlFetchESPN(`https://site.api.espn.com/apis/site/v2/sports/${sn}/${lg}/scoreboard?dates=${dateStr}`);
+    return d.events || [];
+  } catch { return []; }
+}
+async function mlFetchCompletedGames(sport: string, dateStr: string): Promise<any[]> {
+  const events = await mlFetchScoreboard(sport, dateStr);
+  const results: any[] = [];
+  for (const ev of events) {
+    const comp = (ev.competitions||[{}])[0];
+    if (!comp.status?.type?.completed) continue;
+    const home = comp.competitors?.find((c: any) => c.homeAway === "home");
+    const away = comp.competitors?.find((c: any) => c.homeAway === "away");
+    if (!home || !away) continue;
+    const hs = parseInt(home.score||"0",10), as_ = parseInt(away.score||"0",10);
+    if (isNaN(hs)||isNaN(as_)) continue;
+    results.push({ gameId: ev.id, espnId: ev.id, home: home.team?.displayName||"", away: away.team?.displayName||"", homeScore: hs, awayScore: as_, date: dateStr });
+  }
+  return results;
+}
+async function mlFetchGameSummary(sport: string, espnId: string): Promise<any|null> {
+  const [sn, lg] = SPORT_ESPN_MAP[sport] || [];
+  if (!sn) return null;
+  try { return await mlFetchESPN(`https://site.api.espn.com/apis/site/v2/sports/${sn}/${lg}/summary?event=${espnId}`); }
+  catch { return null; }
+}
+function mlFindGame(scores: any[], home: string, away: string): any|null {
+  for (const g of scores) {
+    const hm = mlTeamsMatch(g.home, home)||mlTeamsMatch(g.home, away);
+    const am = mlTeamsMatch(g.away, away)||mlTeamsMatch(g.away, home);
+    if (hm && am) return g;
+  }
+  for (const g of scores) {
+    if (mlTeamsMatch(g.home, home)||mlTeamsMatch(g.away, home)||mlTeamsMatch(g.home, away)||mlTeamsMatch(g.away, away)) return g;
+  }
+  return null;
+}
+function mlGradeTeamBet(snap: any, game: any): string|null {
+  const betType = (snap.betType||snap.bet_type||"").toLowerCase();
+  const line    = snap.line != null ? parseFloat(snap.line) : null;
+  const titleUp = (snap.title||"").toUpperCase();
+  const rawSide = (snap.pickSide||snap.pick_side||"").toLowerCase();
+  let pickSide  = rawSide;
+  if (betType === "total") {
+    if (/\bUNDER\b/.test(titleUp)) pickSide = "under";
+    else if (/\bOVER\b/.test(titleUp)) pickSide = "over";
+  }
+  const { homeScore: hs, awayScore: as_ } = game;
+  const total = hs + as_;
+  if (["moneyline","ml"].includes(betType)) {
+    if (hs === as_) return "push";
+    const homeWon = hs > as_;
+    if (pickSide === "home" || mlTeamsMatch(pickSide, snap.homeTeam||"")) return homeWon ? "won" : "lost";
+    if (pickSide === "away" || mlTeamsMatch(pickSide, snap.awayTeam||"")) return homeWon ? "lost" : "won";
+    return null;
+  }
+  if (betType === "spread" && line != null) {
+    const margin = as_ - hs;
+    const cov = margin + line;
+    if (Math.abs(cov) < 0.01) return "push";
+    const awayCovered = cov > 0;
+    if (pickSide === "away" || mlTeamsMatch(pickSide, snap.awayTeam||"")) return awayCovered ? "won" : "lost";
+    if (pickSide === "home" || mlTeamsMatch(pickSide, snap.homeTeam||"")) return awayCovered ? "lost" : "won";
+    return awayCovered ? "won" : "lost";
+  }
+  if (betType === "total" && line != null) {
+    if (Math.abs(total - line) < 0.01) return "push";
+    const wentOver = total > line;
+    if (pickSide === "over") return wentOver ? "won" : "lost";
+    if (pickSide === "under") return wentOver ? "lost" : "won";
+    return null;
+  }
+  return null;
+}
+function mlGradePlayerProp(snap: any, summary: any): string|null {
+  const playerName   = snap.playerName || snap.player_name || "";
+  const statCategory = snap.statCategory || snap.stat_category || "";
+  const sport        = (snap.sport||"").toUpperCase();
+  const line         = snap.line != null ? parseFloat(snap.line) : null;
+  if (!playerName || !statCategory || line == null || isNaN(line)) return null;
+  const titleUp = (snap.title||"").toUpperCase();
+  let pickSide = (snap.pickSide||"").toLowerCase();
+  if (!pickSide) { if (/\bUNDER\b/.test(titleUp)) pickSide = "under"; else pickSide = "over"; }
+  const actual = mlExtractPlayerStat(summary, sport, playerName, statCategory);
+  if (actual == null) return null;
+  if (Math.abs(actual - line) < 0.01) return "push";
+  const wentOver = actual > line;
+  if (pickSide === "over")  return wentOver ? "won" : "lost";
+  if (pickSide === "under") return wentOver ? "lost" : "won";
+  return null;
 }
 
-// Run any Python script in the server/ dir and return its JSON output
-function runPythonScript(scriptName: string, args: string[] = []): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, scriptName);
-    const proc = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { process.stderr.write(d); });
-    proc.on("close", (code: number) => {
-      if (code === 0) {
-        try {
-          const lines = out.trim().split("\n");
-          const jsonLine = lines.findLast((l: string) => l.trimStart().startsWith("{"));
-          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
-        } catch { resolve({ status: "ok", output: out }); }
-      } else {
-        reject(new Error(`${scriptName} exited ${code}: ${out.slice(-500)}`));
+async function runAutoGrader(): Promise<Record<string,any>> {
+  const now        = new Date();
+  const snapshots: any[] = mlLoadJSON(ML_SNAPSHOT_FILE, []);
+  const outcomes:  any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+  const gradedIds: string[] = mlLoadJSON(ML_GRADED_IDS, []);
+  const gradedSet  = new Set(gradedIds);
+  const existingIds = new Set(outcomes.map((r: any) => r.betId));
+
+  const cutoffPast   = new Date(now.getTime() - 2 * 3600 * 1000);
+  const cutoffFuture = new Date(now.getTime() + 24 * 3600 * 1000);
+
+  const pending: any[] = [];
+  for (const snap of snapshots) {
+    const bid = snap.betId || snap.id;
+    if (existingIds.has(bid) || gradedSet.has(bid)) continue;
+    const gtStr = snap.gameTime || snap.game_time;
+    if (!gtStr && (snap.betType||"").toLowerCase() !== "player_prop") continue;
+    const gt = gtStr ? new Date(String(gtStr).replace("Z","").replace("+00:00","")) : new Date(now.getTime() - 86400000);
+    if (gt > cutoffFuture) continue;
+    pending.push(snap);
+  }
+
+  console.log(`[Grader] ${pending.length} picks to grade out of ${snapshots.length} snapshots`);
+
+  let graded = 0, skippedNoGame = 0, skippedNoSummary = 0, skippedNoStat = 0, errors = 0;
+
+  // Group by sport
+  const bySport: Record<string, any[]> = {};
+  for (const snap of pending) {
+    const s = (snap.sport||"").toUpperCase().replace(/BASKETBALL.*|BASKETBALL/,"NBA").replace(/BASEBALL.*|BASEBALL/,"MLB").replace(/HOCKEY.*|HOCKEY/,"NHL").replace(/FOOTBALL.*|FOOTBALL/,"NFL");
+    const sport = ["NBA","MLB","NHL","NFL"].find(x => s.includes(x));
+    if (!sport) { skippedNoGame++; continue; }
+    if (!bySport[sport]) bySport[sport] = [];
+    bySport[sport].push(snap);
+  }
+
+  for (const [sport, snaps] of Object.entries(bySport)) {
+    // Collect dates to fetch
+    const datesNeeded = new Set<string>();
+    for (let d = -3; d <= 1; d++) {
+      const dt = new Date(now.getTime() + d * 86400000);
+      datesNeeded.add(dt.toISOString().slice(0,10).replace(/-/g,""));
+    }
+    for (const snap of snaps) {
+      const gtStr = snap.gameTime || snap.game_time;
+      if (!gtStr) continue;
+      const dt = new Date(String(gtStr).replace("Z",""));
+      for (let d = -2; d <= 1; d++) {
+        const shifted = new Date(dt.getTime() + d * 86400000);
+        datesNeeded.add(shifted.toISOString().slice(0,10).replace(/-/g,""));
       }
-    });
-  });
+    }
+
+    const allScores: any[] = [];
+    const seenIds = new Set<string>();
+    for (const dateStr of [...datesNeeded].sort()) {
+      const games = await mlFetchCompletedGames(sport, dateStr);
+      for (const g of games) { if (!seenIds.has(g.gameId)) { seenIds.add(g.gameId); allScores.push(g); } }
+    }
+    console.log(`[Grader] ${sport}: ${allScores.length} completed games, ${snaps.length} picks to grade`);
+
+    const summaryCache: Record<string, any> = {};
+
+    for (const snap of snaps) {
+      try {
+        const betType = (snap.betType||"").toLowerCase();
+        const home    = snap.homeTeam || "";
+        const away    = snap.awayTeam || "";
+        const bid     = snap.betId || snap.id;
+        const gameTime = snap.gameTime || snap.game_time;
+
+        const game = mlFindGame(allScores, home, away);
+        if (!game) { skippedNoGame++; continue; }
+
+        let result: string|null = null;
+        if (["spread","total","moneyline","ml"].includes(betType)) {
+          result = mlGradeTeamBet(snap, game);
+        } else if (["player_prop","prop"].includes(betType)) {
+          const espnId = game.espnId || game.gameId;
+          if (!espnId) { skippedNoGame++; continue; }
+          if (!summaryCache[espnId]) {
+            await new Promise(r => setTimeout(r, 300)); // polite rate limit
+            summaryCache[espnId] = await mlFetchGameSummary(sport, espnId);
+          }
+          const summary = summaryCache[espnId];
+          if (!summary) { skippedNoSummary++; continue; }
+          result = mlGradePlayerProp(snap, summary);
+          if (result == null) { skippedNoStat++; continue; }
+        } else { continue; }
+
+        if (result == null) { errors++; continue; }
+
+        const record: any = {
+          betId: bid, sport, betType: snap.betType, title: snap.title||"",
+          pickSide: snap.pickSide, line: snap.line,
+          playerName: snap.playerName, statCategory: snap.statCategory,
+          homeTeam: home, awayTeam: away,
+          homeScore: game.homeScore, awayScore: game.awayScore,
+          confidenceScore: snap.confidenceScore, formEdgePct: snap.formEdgePct,
+          hitRate: snap.hitRate, edgeScore: snap.edgeScore, edgeGrade: snap.edgeGrade,
+          gameTime, gradedAt: new Date().toISOString(), result,
+          espnGameId: game.espnId || game.gameId,
+        };
+        outcomes.push(record);
+        gradedSet.add(bid);
+        graded++;
+        console.log(`[Grader] ✓ ${away} @ ${home} → ${result.toUpperCase()}`);
+      } catch (e: any) { errors++; console.warn("[Grader] snap error:", e.message); }
+    }
+  }
+
+  mlSaveJSON(ML_OUTCOME_LOG, outcomes);
+  mlSaveJSON(ML_GRADED_IDS, [...gradedSet]);
+  console.log(`[Grader] Done — graded=${graded} skippedNoGame=${skippedNoGame} errors=${errors}`);
+  return { graded, skippedNoGame, skippedNoSummary, skippedNoStat, errors, totalOutcomes: outcomes.length };
+}
+
+// ── ML Engine (ported from ml_engine.py) ──────────────────────────────────────
+function mlRecencyWeight(gradedAt: string|null|undefined): number {
+  if (!gradedAt) return 1.0;
+  try {
+    const daysAgo = (Date.now() - new Date(gradedAt).getTime()) / 86400000;
+    return daysAgo <= 30 ? 2.0 : daysAgo <= 90 ? 1.5 : 1.0;
+  } catch { return 1.0; }
+}
+function mlExtractFeatures(bet: any): Record<string,any> {
+  const sport    = (bet.sport||"unknown").toUpperCase();
+  const betType  = (bet.betType||bet.bet_type||"unknown").toLowerCase();
+  let conf       = parseFloat(bet.confidenceScore||bet.confidence_score||"50") || 50;
+  const formEdge = parseFloat(bet.formEdgePct||bet.form_edge_pct||"0") || 0;
+  const hitRate  = parseFloat(bet.hitRate||bet.hit_rate||"0.5") || 0.5;
+  const pickSide = (bet.pickSide||bet.pick_side||"").toUpperCase();
+  const statCat  = (bet.statCategory||bet.stat_category||"").toUpperCase().replace(/\s+/g,"_");
+  if (bet.edgeScore != null) {
+    const edgeConf = Math.max(40, Math.min(95, 55 + (parseFloat(bet.edgeScore)-5)*8));
+    conf = Math.round((conf*0.4 + edgeConf*0.6)*10)/10;
+  }
+  const confTier = conf >= 85 ? "elite" : conf >= 70 ? "high" : conf >= 55 ? "medium" : "low";
+  const edgeTier = formEdge >= 20 ? "strong_over" : formEdge >= 10 ? "moderate_over" : formEdge <= -20 ? "strong_under" : formEdge <= -10 ? "moderate_under" : "flat";
+  const formTier = hitRate >= 0.8 ? "hot" : hitRate >= 0.6 ? "above_avg" : hitRate >= 0.4 ? "neutral" : "cold";
+  return { sport, betType: betType, confTier, edgeTier, formTier, pickSide, conf, formEdge, hitRate, statCat };
+}
+function runMLEngine(): Record<string,any> {
+  const outcomes: any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+  const graded = outcomes.filter((b: any) => ["won","lost","push"].includes(b.result));
+  const now = new Date().toISOString();
+  if (graded.length < 5) {
+    const r = { status:"insufficient_data", message:`Need at least 5 graded outcomes. Currently have ${graded.length}.`, sample_size: graded.length, last_run: now };
+    mlSaveJSON(ML_INSIGHTS_FILE, r); return r;
+  }
+  // Pattern accuracy
+  const buckets: Record<string, {wins:number,losses:number,pushes:number,total:number}> = {};
+  const bump = (key: string, result: string, w: number) => {
+    if (!buckets[key]) buckets[key] = {wins:0,losses:0,pushes:0,total:0};
+    buckets[key].total += w;
+    if (result==="won") buckets[key].wins += w;
+    else if (result==="lost") buckets[key].losses += w;
+    else buckets[key].pushes += w;
+  };
+  for (const bet of graded) {
+    const w = mlRecencyWeight(bet.gradedAt||bet.graded_at);
+    const f = mlExtractFeatures(bet);
+    const r = bet.result;
+    const dims = [
+      `sport:${f.sport}`, `bet_type:${f.betType}`, `sport:${f.sport}|bet_type:${f.betType}`,
+      `conf_tier:${f.confTier}`, `edge_tier:${f.edgeTier}`, `form_tier:${f.formTier}`,
+      `pick_side:${f.pickSide}`, `sport:${f.sport}|conf_tier:${f.confTier}`,
+      `sport:${f.sport}|edge_tier:${f.edgeTier}`, `bet_type:${f.betType}|conf_tier:${f.confTier}`,
+      `bet_type:${f.betType}|form_tier:${f.formTier}`, `sport:${f.sport}|pick_side:${f.pickSide}`,
+      ...(f.statCat ? [
+        `stat_category:${f.statCat}`, `sport:${f.sport}|stat_category:${f.statCat}`,
+        `stat_category:${f.statCat}|conf_tier:${f.confTier}`,
+        `stat_category:${f.statCat}|pick_side:${f.pickSide}`,
+      ] : []),
+    ];
+    for (const dim of dims) bump(dim, r, w);
+  }
+  const patterns: Record<string,any> = {};
+  for (const [key, b] of Object.entries(buckets)) {
+    if (b.total < 3) continue;
+    const wr = b.wins / Math.max(b.total - b.pushes, 1);
+    const adj = Math.max(-25, Math.min(25, (wr - 0.5) * 50));
+    patterns[key] = { wins: Math.round(b.wins*10)/10, losses: Math.round(b.losses*10)/10, total: Math.round(b.total*10)/10, win_rate: Math.round(wr*1000)/1000, weight_adj: Math.round(adj*100)/100 };
+  }
+  // Stats
+  const bySport: Record<string,any> = {}, byType: Record<string,any> = {}, byConf: Record<string,any> = {}, weekly: Record<string,any> = {};
+  let tw=0, tl=0, tp=0;
+  for (const b of graded) {
+    const r = b.result, sport = (b.sport||"other").toUpperCase(), btype = (b.betType||"other").toLowerCase();
+    const conf = parseFloat(b.confidenceScore||"50")||50;
+    const ct = conf>=85?"elite":conf>=70?"high":conf>=55?"medium":"low";
+    if (r==="won") tw++; else if (r==="lost") tl++; else tp++;
+    for (const [key, map] of [[sport,bySport],[btype,byType],[ct,byConf]] as [string,Record<string,any>][]) {
+      if (!map[key]) map[key]={won:0,lost:0,push:0};
+      if (r==="won") map[key].won++; else if (r==="lost") map[key].lost++; else map[key].push++;
+    }
+    const ga = b.gradedAt||b.graded_at;
+    if (ga) { try { const wk = new Date(ga).toISOString().slice(0,10); if (!weekly[wk]) weekly[wk]={won:0,lost:0}; if (r==="won") weekly[wk].won++; else if (r==="lost") weekly[wk].lost++; } catch {} }
+  }
+  const td = tw+tl; const wr_overall = tw/Math.max(td,1);
+  const roi = Math.round(((tw*90.91)-(tl*100))/Math.max(td*100,1)*1000)/10;
+  const toWR = (m: Record<string,any>) => Object.fromEntries(Object.entries(m).map(([k,v]: any) => [k, {...v, win_rate: Math.round(v.won/Math.max(v.won+v.lost,1)*1000)/1000}]));
+  const stats = { total: graded.length, won: tw, lost: tl, push: tp, win_rate: Math.round(wr_overall*1000)/1000, roi_est: roi, by_sport: toWR(bySport), by_type: toWR(byType), by_conf_tier: toWR(byConf), by_week: Object.entries(weekly).sort(([a],[b_])=>a<b_?-1:1).slice(-12).map(([wk,v]: any) => ({ week: wk, won: v.won, lost: v.lost, win_rate: Math.round(v.won/Math.max(v.won+v.lost,1)*1000)/1000 })) };
+  // Insights
+  const insights: any[] = [];
+  const ranked = Object.entries(patterns).filter(([,v]: any) => v.total>=5).sort(([,a]: any,[,b_]: any) => b_.win_rate-a.win_rate);
+  for (const [key, s] of ranked.slice(0,5) as any[]) {
+    const pct = Math.round(s.win_rate*1000)/10;
+    insights.push({ type:"strength", pattern:key, title:`${pct}% win rate — ${key.replace(/\|/g," + ").replace(/_/g," ").replace(/:/g,": ")}`, detail:`${Math.round(s.wins)}W-${Math.round(s.losses)}L (${pct}%)`, adj:s.weight_adj, icon:"✅" });
+  }
+  for (const [key, s] of ranked.slice(-5).reverse() as any[]) {
+    const pct = Math.round(s.win_rate*1000)/10;
+    if (pct < 45) insights.push({ type:"weakness", pattern:key, title:`${pct}% win rate — ${key.replace(/\|/g," + ").replace(/_/g," ").replace(/:/g,": ")}`, detail:`${Math.round(s.wins)}W-${Math.round(s.losses)}L (${pct}%)`, adj:s.weight_adj, icon:"⚠️" });
+  }
+  // Weights
+  const getAdj = (k: string) => patterns[k]?.weight_adj || 0;
+  const sports2 = ["NBA","NFL","MLB","NHL"];
+  const btypes2 = ["player_prop","spread","total","moneyline"];
+  const ctiers2 = ["elite","high","medium","low"];
+  const etiers2 = ["strong_over","moderate_over","flat","moderate_under","strong_under"];
+  const ftiers2 = ["hot","above_avg","neutral","cold"];
+  const combo: Record<string,number> = {};
+  for (const sp of sports2) for (const ct of ctiers2) { const k=`sport:${sp}|conf_tier:${ct}`,v=getAdj(k); if (Math.abs(v)>=2) combo[k]=v; }
+  for (const bt of btypes2) for (const ct of ctiers2) { const k=`bet_type:${bt}|conf_tier:${ct}`,v=getAdj(k); if (Math.abs(v)>=2) combo[k]=v; }
+  const weights = {
+    sport_weights:   Object.fromEntries(sports2.map(s => [s, getAdj(`sport:${s}`)])),
+    bettype_weights: Object.fromEntries(btypes2.map(t => [t, getAdj(`bet_type:${t}`)])),
+    conf_tier_cal:   Object.fromEntries(ctiers2.map(c => [c, getAdj(`conf_tier:${c}`)])),
+    edge_tier_weights: Object.fromEntries(etiers2.map(e => [e, getAdj(`edge_tier:${e}`)])),
+    form_tier_weights: Object.fromEntries(ftiers2.map(f => [f, getAdj(`form_tier:${f}`)])),
+    pick_side_weights: { OVER: getAdj("pick_side:OVER"), UNDER: getAdj("pick_side:UNDER") },
+    combo_weights: combo,
+    overall_win_rate: stats.win_rate,
+    sample_size: stats.total,
+    last_run: now, version: "2.0",
+  };
+  mlSaveJSON(ML_WEIGHTS_FILE, weights);
+  const payload = { status:"ok", last_run: now, sample_size: stats.total, accuracy: stats, patterns, insights, weights };
+  mlSaveJSON(ML_INSIGHTS_FILE, payload);
+  loadMLWeights();
+  console.log(`[ML Engine] Done — ${stats.total} graded | ${stats.won}W-${stats.lost}L | ${Math.round(stats.win_rate*1000)/10}% win rate`);
+  return payload;
 }
 
 // Sync ml_data/ to GitHub so outcomes survive Railway redeploys
@@ -1508,8 +1952,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // POST /api/ml/grade — run auto-grader then ML engine
   app.post("/api/ml/grade", async (_req, res) => {
     try {
-      const graderResult = await runPythonScript("auto_grader.py");
-      const mlResult     = await runMLEngine();
+      const graderResult = await runAutoGrader();
+      const mlResult     = runMLEngine();
       // Sync ml_data to GitHub so outcomes survive redeploys
       syncMLDataToGitHub().catch((e: any) => console.warn("[MLSync] GitHub sync error:", e.message));
       res.json({ status: "ok", grader: graderResult, ml: mlResult });
@@ -3147,7 +3591,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       console.log("[ML] Nightly pipeline starting...");
       try {
         // Step 1: Auto-grade picks against ESPN final scores
-        const graderResult = await runPythonScript("auto_grader.py");
+        const graderResult = await runAutoGrader();
         console.log("[ML] Grader done:", graderResult);
       } catch (e: any) {
         console.error("[ML] Grader error:", e.message);
