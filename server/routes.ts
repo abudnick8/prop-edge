@@ -7169,11 +7169,118 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // BTS daily picks cache — keyed by "YYYY-MM-DD"
+  // Once a date's picks are set they NEVER shrink (max 10 enforced at
+  // write-time). At midnight CT the old date's key is simply not looked
+  // up anymore, and the new date starts fresh.
+  // ─────────────────────────────────────────────────────────────────────
+  interface BtsPickEntry {
+    playerId:        number;
+    name:            string;
+    team:            string;
+    hitProbability:  number;
+    lockedAt:        string; // ISO timestamp when the pick was cemented
+    // result fields — filled in by the grader
+    result:          "win" | "loss" | "pending" | "no_game";
+    hits:            number | null; // actual hits recorded
+    ab:              number | null; // at-bats
+    gradedAt:        string | null; // ISO when grade was set
+    // snapshot of the full pick object for display
+    snapshot:        any;
+  }
+
+  // date string → array of up to 10 locked picks
+  const btsPicksCache: Record<string, BtsPickEntry[]> = {};
+
+  // Accumulated season record for BTS (wins/losses across all graded days)
+  const btsSeasonRecord: { wins: number; losses: number; pending: number } =
+    { wins: 0, losses: 0, pending: 0 };
+
+  // Track the last date btsSeasonRecord was fully reconciled from btsPicksCache
+  let btsLastReconcileDate = "";
+
+  function reconcileSeasonRecord() {
+    let w = 0, l = 0, p = 0;
+    for (const entries of Object.values(btsPicksCache)) {
+      for (const e of entries) {
+        if (e.result === "win")     w++;
+        else if (e.result === "loss")    l++;
+        else if (e.result === "pending") p++;
+      }
+    }
+    btsSeasonRecord.wins    = w;
+    btsSeasonRecord.losses  = l;
+    btsSeasonRecord.pending = p;
+  }
+
+  // ── Grader: fetch actual hit stats for a player on a given date ──────
+  async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
+    try {
+      const r = await axios.get(
+        `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&limit=5`
+      );
+      const splits = r.data?.stats?.[0]?.splits ?? [];
+      // Find the split that matches today's date
+      const todaySplit = splits.find((s: any) => s.date === dateStr);
+      if (!todaySplit) return null; // game not finished yet or player didn't play
+      const hits = parseInt(todaySplit.stat?.hits ?? "0");
+      const ab   = parseInt(todaySplit.stat?.atBats ?? "0");
+      return { hits, ab };
+    } catch { return null; }
+  }
+
+  // ── Run grader for all pending picks on a given date ─────────────────
+  async function runBtsGrader(dateStr: string) {
+    const entries = btsPicksCache[dateStr];
+    if (!entries?.length) return;
+    let changed = false;
+    for (const entry of entries) {
+      if (entry.result !== "pending") continue;
+      // Only try grading if the game start time has passed
+      const gameStartMs = entry.snapshot?.game?.gameStartMs;
+      if (gameStartMs && Date.now() < gameStartMs) continue;
+      const result = await gradePickForDate(entry.playerId, dateStr);
+      if (result === null) continue; // game log not available yet
+      entry.hits     = result.hits;
+      entry.ab       = result.ab;
+      entry.result   = result.hits > 0 ? "win" : "loss";
+      entry.gradedAt = new Date().toISOString();
+      changed = true;
+    }
+    if (changed) reconcileSeasonRecord();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /api/bts-picks  — Beat‑the‑Streak daily hitter recommendations
   // ─────────────────────────────────────────────────────────────────────
   app.get("/api/bts-picks", async (req, res) => {
     try {
-      const targetDate = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+      // Always derive today's date in Central Time (CT) so that after midnight
+      // UTC but before midnight CT we don't accidentally serve tomorrow's slate.
+      const ctNowForDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctDateStr = [
+        ctNowForDate.getFullYear(),
+        String(ctNowForDate.getMonth() + 1).padStart(2, "0"),
+        String(ctNowForDate.getDate()).padStart(2, "0"),
+      ].join("-");
+      const targetDate = (req.query.date as string) || ctDateStr;
+
+      // ── 8 AM CT gate: don't populate picks before 8:00 AM Central ─────
+      // Only enforce the gate when the date isn't being overridden by query param.
+      if (!req.query.date) {
+        const ctGateHour = ctNowForDate.getHours();
+        const ctGateMin  = ctNowForDate.getMinutes();
+        if (ctGateHour < 8) {
+          return res.json({
+            date: targetDate,
+            slate: [],
+            picks: [],
+            todayRecord:  { wins: 0, losses: 0, pending: 0, winPct: null },
+            seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: null },
+            message: `BTS picks are available starting at 8:00 AM CT. Check back in ${8 - ctGateHour - (ctGateMin > 0 ? 1 : 0)}h ${ctGateMin > 0 ? 60 - ctGateMin : 0}m.`,
+          });
+        }
+      }
 
       // ── 1. MLB Schedule (probable pitchers, lineups, venue) ──────────
       const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${targetDate}&hydrate=probablePitcher,lineups,linescore,venue,weather,team`;
@@ -7674,13 +7781,61 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return b.hitProbability - a.hitProbability;
       });
       const seenTeams = new Set<string>();
-      const topPicks: any[] = [];
+      const freshPicks: any[] = [];
       for (const p of candidatePicks) {
         if (seenTeams.has(p.team)) continue;
         seenTeams.add(p.team);
-        topPicks.push(p);
-        if (topPicks.length >= 10) break; // hard 10-pick ceiling — quality > quantity
+        freshPicks.push(p);
+        if (freshPicks.length >= 10) break; // hard 10-pick ceiling — quality > quantity
       }
+
+      // ── Merge into the daily persistent cache ──────────────────────────
+      // Rule: once a player is in today's cache they stay ALL day.
+      // New players from freshPicks can be added (up to the 10-cap).
+      // Existing cached players are NEVER removed.
+      if (!btsPicksCache[targetDate]) {
+        btsPicksCache[targetDate] = [];
+      }
+      const cachedEntries = btsPicksCache[targetDate];
+      const cachedIds = new Set(cachedEntries.map((e: BtsPickEntry) => e.playerId));
+
+      for (const pick of freshPicks) {
+        if (cachedIds.has(pick.playerId)) {
+          // Already cached — refresh snapshot + probability but keep lockedAt/result
+          const existing = cachedEntries.find((e: BtsPickEntry) => e.playerId === pick.playerId)!;
+          existing.snapshot       = pick;
+          existing.hitProbability = pick.hitProbability;
+          continue;
+        }
+        if (cachedEntries.length >= 10) break; // hard cap
+        cachedEntries.push({
+          playerId:       pick.playerId,
+          name:           pick.name,
+          team:           pick.team,
+          hitProbability: pick.hitProbability,
+          lockedAt:       new Date().toISOString(),
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       pick,
+        } as BtsPickEntry);
+        cachedIds.add(pick.playerId);
+      }
+
+      // ── Run grader on today's cached picks ────────────────────────────
+      await runBtsGrader(targetDate);
+
+      // Rebuild topPicks from cache so display order = entry order (pick added first = rank 1)
+      const topPicks: any[] = cachedEntries.map((e: BtsPickEntry) => ({
+        ...e.snapshot,
+        result:    e.result,
+        hits:      e.hits,
+        ab:        e.ab,
+        gradedAt:  e.gradedAt,
+        lockedAt:  e.lockedAt,
+      }));
+
 
       // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
       for (const pick of topPicks) {
@@ -7809,16 +7964,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return { ...p, locked, minsToGame: Math.round(minsToGame), gameStarted };
       });
 
-      // After global deadline: keep picks that were locked in (locked=true)
-      // Before global deadline: only keep picks whose game is still >30 min away
-      // Either way, never drop a pick mid-day once it was locked
-      const finalPicks = pastDeadline
-        ? annotatedPicks                          // after 11:45: all picks stay on card
-        : annotatedPicks.filter(p => !p.gameStarted);  // before 11:45: drop started games
+      // After global deadline: ALL cached picks stay on card all day
+      // Before global deadline: only keep picks whose game hasn't started yet
+      //   (but any pick that came in via the cache — i.e. was previously locked—
+      //    always stays visible regardless of game start status)
+      const finalPicks = annotatedPicks.filter(p => {
+        // Always show a pick once it's been graded (result known) or locked
+        if (p.locked || p.result === "win" || p.result === "loss") return true;
+        // Before deadline: hide a pick only if the game has already started AND
+        // the pick was never locked in (pre-deadline, no lineup yet)
+        if (!pastDeadline && p.gameStarted && !p.locked) return false;
+        return true;
+      });
 
       const confirmedCount = finalPicks.filter(p => p.lineupSource === "confirmed").length;
       const projectedCount = finalPicks.filter(p => p.lineupSource === "projected").length;
       const scratchedCount = finalPicks.filter(p => p.isScratched).length;
+
+      // Season record (accumulated across all in-memory graded picks)
+      const todayWins    = cachedEntries.filter((e: BtsPickEntry) => e.result === "win").length;
+      const todayLosses  = cachedEntries.filter((e: BtsPickEntry) => e.result === "loss").length;
+      const todayPending = cachedEntries.filter((e: BtsPickEntry) => e.result === "pending").length;
+      const todayWinPct  = (todayWins + todayLosses) > 0
+        ? Math.round((todayWins / (todayWins + todayLosses)) * 100)
+        : null;
+
+      const seasonTotal   = btsSeasonRecord.wins + btsSeasonRecord.losses;
+      const seasonWinPct  = seasonTotal > 0
+        ? Math.round((btsSeasonRecord.wins / seasonTotal) * 100)
+        : null;
 
       res.json({
         date:          targetDate,
@@ -7833,6 +8007,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         bestPick:     finalPicks[0] ?? null,
         doubleDowns:  finalPicks.slice(1, 4),
         dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
+        // Grading / record data
+        todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },
+        seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: seasonWinPct },
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
