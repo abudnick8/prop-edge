@@ -850,6 +850,7 @@ export default function BTS() {
       {showHistory && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ touchAction: "none" }}
           onClick={() => setShowHistory(false)}
         >
           <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.45)" }} />
@@ -861,6 +862,7 @@ export default function BTS() {
               maxHeight: "min(88dvh, 88vh)",
               height: "min(88dvh, 88vh)",
               overflow: "hidden",
+              touchAction: "auto",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -901,11 +903,13 @@ export default function BTS() {
 
             {/* Scrollable pick list */}
             <div
-              className="flex-1 overflow-y-auto px-4 py-3"
+              className="flex-1 px-4 py-3"
               style={{
+                overflowY: "scroll",
                 WebkitOverflowScrolling: "touch" as any,
                 overscrollBehavior: "contain",
                 touchAction: "pan-y",
+                minHeight: 0,
               }}
             >
               {picks.length === 0 && (
