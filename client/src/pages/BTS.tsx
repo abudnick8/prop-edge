@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, Info } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2 } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -12,6 +12,41 @@ function fmtAvg(v: number | null | undefined) {
 function fmtPct(v: number | null | undefined) {
   if (!v && v !== 0) return "—";
   return (v * 100).toFixed(0) + "%";
+}
+
+// ─── Grade badge ─────────────────────────────────────────────────────
+function GradeBadge({ result, hits, ab }: { result?: string; hits?: number | null; ab?: number | null }) {
+  if (!result || result === "pending") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "1px solid rgba(148,163,184,0.25)" }}
+      >
+        <HelpCircle size={8} /> PENDING
+      </span>
+    );
+  }
+  if (result === "win") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(34,197,94,0.15)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.35)" }}
+      >
+        <CheckCircle size={8} /> HIT {hits != null && ab != null ? String(hits) + "-for-" + String(ab) : ""}
+      </span>
+    );
+  }
+  if (result === "loss") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(248,113,113,0.12)", color: "#f87171", border: "1px solid rgba(248,113,113,0.30)" }}
+      >
+        <XCircle size={8} /> 0-for-{ab ?? "?"}
+      </span>
+    );
+  }
+  return null;
 }
 
 // ─── Score ring ─────────────────────────────────────────────────────────────
@@ -83,8 +118,8 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
     <div
       className="rounded-2xl border overflow-hidden transition-all"
       style={{
-        background: isBest ? "rgba(250,204,21,0.06)" : "#fff",
-        borderColor: isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
+        background: pick.result === "win" ? "rgba(34,197,94,0.04)" : pick.result === "loss" ? "rgba(248,113,113,0.04)" : isBest ? "rgba(250,204,21,0.06)" : "#fff",
+        borderColor: pick.result === "win" ? "rgba(34,197,94,0.30)" : pick.result === "loss" ? "rgba(248,113,113,0.22)" : isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
         boxShadow: isBest ? "0 0 20px rgba(250,204,21,0.15)" : "0 1px 4px rgba(19,35,58,0.06)",
       }}
     >
@@ -130,6 +165,8 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
                 <Clock size={9} /> Locks in {pick.minsToGame}m
               </span>
             ) : null}
+            {/* Grade result badge */}
+            <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
           </div>
           {/* Scratch warning */}
           {pick.isScratched && (
@@ -630,6 +667,8 @@ export default function BTS() {
   const picks: any[] = data?.picks ?? [];
   const bestPick = data?.bestPick;
   const doubleDowns: any[] = data?.doubleDowns ?? [];
+  const todayRecord = data?.todayRecord ?? { wins: 0, losses: 0, pending: 0, winPct: null };
+  const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
   const visiblePicks = showAllPicks ? picks : picks.slice(0, 5);
 
@@ -715,11 +754,10 @@ export default function BTS() {
 
       {/* KPI strip */}
       {!isLoading && picks.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
             { icon: <Trophy size={14} style={{ color: "#facc15" }} />, label: "Best Pick", value: bestPick ? `${bestPick.hitProbability}%` : "—" },
-            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Qualifiers", value: picks.length.toString() },
-            { icon: <TrendingUp size={14} style={{ color: "#60a5fa" }} />, label: "Avg Prob", value: picks.length ? `${Math.round(picks.reduce((s,p) => s + p.hitProbability, 0) / picks.length)}%` : "—" },
+            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Picks Today", value: picks.length.toString() },
           ].map(k => (
             <div
               key={k.label}
@@ -731,6 +769,72 @@ export default function BTS() {
               <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{k.label}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Today's record + season win % */}
+      {!isLoading && picks.length > 0 && (
+        <div
+          className="rounded-2xl p-3"
+          style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}
+        >
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* Today record */}
+            <div className="flex items-center gap-2">
+              <BarChart2 size={14} style={{ color: "#60a5fa" }} />
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Today</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{todayRecord.wins}W</span>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{todayRecord.losses}L</span>
+                  {todayRecord.pending > 0 && (
+                    <span className="text-xs text-muted-foreground">· {todayRecord.pending} pending</span>
+                  )}
+                  {todayRecord.winPct != null && (
+                    <span
+                      className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                      style={{
+                        background: todayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : todayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                        color: todayRecord.winPct >= 60 ? "#16a34a" : todayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                      }}
+                    >
+                      {todayRecord.winPct}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-8 hidden sm:block" style={{ background: "rgba(19,35,58,0.12)" }} />
+
+            {/* Season record */}
+            <div className="flex items-center gap-2">
+              <TrendingUp size={14} style={{ color: "#22c55e" }} />
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Season Record</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{seasonRecord.wins}W</span>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{seasonRecord.losses}L</span>
+                  {seasonRecord.winPct != null ? (
+                    <span
+                      className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                      style={{
+                        background: seasonRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : seasonRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                        color: seasonRecord.winPct >= 60 ? "#16a34a" : seasonRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                      }}
+                    >
+                      {seasonRecord.winPct}% win
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground ml-1">no graded picks yet</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
