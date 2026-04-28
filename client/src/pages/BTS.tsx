@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -648,6 +648,7 @@ function HowToReadBTS() {
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const queryClient = useQueryClient();
 
   const today = new Date().toISOString().slice(0, 10);
@@ -772,10 +773,11 @@ export default function BTS() {
         </div>
       )}
 
-      {/* Today's record + season win % */}
+      {/* Today's record + season win % — tappable → opens history drawer */}
       {!isLoading && picks.length > 0 && (
-        <div
-          className="rounded-2xl p-3"
+        <button
+          onClick={() => setShowHistory(true)}
+          className="w-full rounded-2xl p-3 text-left active:scale-[0.99] transition-transform"
           style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}
         >
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -833,6 +835,140 @@ export default function BTS() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Tap hint */}
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
+              <ChevronUp size={12} />
+              <span>View picks</span>
+            </div>
+          </div>
+        </button>
+      )}
+
+      {/* ── History drawer ── */}
+      {showHistory && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          onClick={() => setShowHistory(false)}
+        >
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.45)" }} />
+          <div
+            className="relative w-full max-w-lg rounded-t-3xl flex flex-col"
+            style={{
+              background: "#F6F1E7",
+              border: "1px solid rgba(19,35,58,0.12)",
+              maxHeight: "min(88dvh, 88vh)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag pill */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full" style={{ width: 36, height: 4, background: "rgba(19,35,58,0.18)" }} />
+
+            {/* Sticky header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-6 pb-3 border-b" style={{ borderColor: "rgba(19,35,58,0.10)" }}>
+              <div>
+                <p className="text-base font-black text-foreground">Pick History</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Today · {picks.length} picks · {todayRecord.wins}W–{todayRecord.losses}L
+                  {todayRecord.winPct != null && ` · ${todayRecord.winPct}% win rate`}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Season badge */}
+                {seasonRecord.winPct != null && (
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Season</p>
+                    <p
+                      className="text-sm font-black"
+                      style={{ color: seasonRecord.winPct >= 60 ? "#16a34a" : seasonRecord.winPct >= 40 ? "#b8930a" : "#f87171" }}
+                    >
+                      {seasonRecord.winPct}%
+                    </p>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="p-1.5 rounded-xl"
+                  style={{ color: "#94a3b8", background: "rgba(19,35,58,0.06)" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable pick list */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ WebkitOverflowScrolling: "touch" as any, overscrollBehavior: "contain" }}>
+              {picks.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-8">No picks recorded yet today.</p>
+              )}
+              {picks.map((pick, i) => {
+                const isWin  = pick.result === "win";
+                const isLoss = pick.result === "loss";
+                const isPending = !pick.result || pick.result === "pending";
+                return (
+                  <div
+                    key={pick.playerId}
+                    className="rounded-2xl p-3 flex items-start gap-3"
+                    style={{
+                      background: isWin ? "rgba(34,197,94,0.06)" : isLoss ? "rgba(248,113,113,0.05)" : "rgba(19,35,58,0.04)",
+                      border: `1px solid ${isWin ? "rgba(34,197,94,0.28)" : isLoss ? "rgba(248,113,113,0.22)" : "rgba(19,35,58,0.10)"}`,
+                    }}
+                  >
+                    {/* Rank */}
+                    <div
+                      className="rounded-full w-7 h-7 flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
+                      style={{ background: "rgba(19,35,58,0.07)", color: "var(--muted-foreground)" }}
+                    >
+                      #{i + 1}
+                    </div>
+
+                    {/* Main info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-black text-sm text-foreground">{pick.name}</p>
+                        <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {pick.team} · {pick.game?.matchup?.split(" @ ")?.[1] ?? pick.game?.venue ?? ""}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {pick.game?.gameTime} · O/U {pick.game?.total ?? "—"} · {pick.bats === "L" ? "LHB" : "RHB"} vs {pick.opponentPitcher?.name ?? "TBD"}
+                      </p>
+                      {/* Stat row */}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>
+                          {pick.hitProbability}% prob
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          14d {pick.stats?.avg14 ? ("." + Math.round(pick.stats.avg14 * 1000).toString().padStart(3,"0")) : "—"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          GHP {pick.stats?.ghp14 != null ? Math.round(pick.stats.ghp14 * 100) + "%" : "—"}
+                        </span>
+                        {pick.lineupSource === "confirmed" && (
+                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: "rgba(34,197,94,0.10)", color: "#16a34a" }}>✓ Confirmed</span>
+                        )}
+                      </div>
+                      {/* Rationale summary — first line only */}
+                      {pick.rationale && (
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug line-clamp-2">
+                          {pick.rationale.split("\n")[0].replace(/^[🔥⚡📊🧊⚠️]+\s*/, "")}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Result icon */}
+                    <div className="flex-shrink-0 mt-0.5">
+                      {isWin  && <CheckCircle size={20} style={{ color: "#22c55e" }} />}
+                      {isLoss && <XCircle    size={20} style={{ color: "#f87171" }} />}
+                      {isPending && <HelpCircle size={20} style={{ color: "#94a3b8" }} />}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Safe area spacer */}
+              <div style={{ height: "max(env(safe-area-inset-bottom, 0px), 24px)" }} />
             </div>
           </div>
         </div>
