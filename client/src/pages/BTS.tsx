@@ -859,6 +859,8 @@ export default function BTS() {
               background: "#F6F1E7",
               border: "1px solid rgba(19,35,58,0.12)",
               maxHeight: "min(88dvh, 88vh)",
+              height: "min(88dvh, 88vh)",
+              overflow: "hidden",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -898,7 +900,14 @@ export default function BTS() {
             </div>
 
             {/* Scrollable pick list */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ WebkitOverflowScrolling: "touch" as any, overscrollBehavior: "contain" }}>
+            <div
+              className="flex-1 overflow-y-auto px-4 py-3"
+              style={{
+                WebkitOverflowScrolling: "touch" as any,
+                overscrollBehavior: "contain",
+                touchAction: "pan-y",
+              }}
+            >
               {picks.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">No picks recorded yet today.</p>
               )}
@@ -910,6 +919,7 @@ export default function BTS() {
                   <div
                     key={pick.playerId}
                     className="rounded-2xl p-3 flex items-start gap-3"
+                    style={{ marginBottom: 8 }}
                     style={{
                       background: isWin ? "rgba(34,197,94,0.06)" : isLoss ? "rgba(248,113,113,0.05)" : "rgba(19,35,58,0.04)",
                       border: `1px solid ${isWin ? "rgba(34,197,94,0.28)" : isLoss ? "rgba(248,113,113,0.22)" : "rgba(19,35,58,0.10)"}`,
