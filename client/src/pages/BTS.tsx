@@ -651,11 +651,18 @@ export default function BTS() {
   const [showHistory, setShowHistory] = useState(false);
   const queryClient = useQueryClient();
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Compute today's date in Central Time so late-night hours (after midnight UTC
+  // but before midnight CT) don't roll over to tomorrow's date.
+  const ctToday = new Date().toLocaleString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+  // toLocaleString returns "MM/DD/YYYY" — reformat to YYYY-MM-DD
+  const [ctMonth, ctDay, ctYear] = ctToday.split("/");
+  const today = `${ctYear}-${ctMonth}-${ctDay}`;
 
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
-    queryFn: () => apiRequest("GET", `/api/bts-picks?date=${today}`).then(r => r.json()),
+    // Don't pass ?date= — let the server derive CT date itself.
+    // This ensures the 8am CT gate and date logic on the server are authoritative.
+    queryFn: () => apiRequest("GET", `/api/bts-picks`).then(r => r.json()),
     // staleTime 0 so manual Refresh always hits the server
     staleTime: 0,
     // Auto-refresh every 15 min all day — even after 11:45 so later-game picks
