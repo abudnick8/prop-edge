@@ -20,7 +20,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TrendingUp, TrendingDown, AlertTriangle, RefreshCw, Search,
   ChevronDown, ChevronUp, Activity, Flame, ArrowLeft,
