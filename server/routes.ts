@@ -642,25 +642,39 @@ async function pullMLDataFromGitHub(): Promise<void> {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
   const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+  const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
     try {
-      const apiUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
-      const resp    = await fetch(apiUrl, {
-        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" },
-      });
-      if (!resp.ok) continue;
-      const json    = await resp.json() as any;
-      const decoded = Buffer.from(json.content, "base64").toString("utf8");
-      // Validate JSON before writing — a truncated GitHub push leaves corrupt data
-      try {
-        JSON.parse(decoded);
-      } catch (_e) {
-        console.warn(`[MLSync] ${filename} from GitHub is corrupt JSON — skipping write`);
-        continue;
+      // Step 1: Get file metadata (SHA + size) via Contents API
+      const metaUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
+      const metaResp = await fetch(metaUrl, { headers: ghHeaders });
+      if (!metaResp.ok) { console.log(`[MLSync] ${filename} not found on GitHub — skipping`); continue; }
+      const meta     = await metaResp.json() as any;
+      const blobSha  = meta.sha;
+      const fileSize = meta.size ?? 0;
+
+      let decoded: string;
+
+      if (fileSize <= 900_000 && meta.encoding === "base64" && meta.content) {
+        // Small file — content already inlined in the contents response
+        decoded = Buffer.from((meta.content as string).replace(/\n/g, ""), "base64").toString("utf8");
+      } else {
+        // Large file (>1MB) — fetch the raw blob directly via Git Blobs API
+        console.log(`[MLSync] ${filename} is ${Math.round(fileSize/1024)}KB — fetching via blob API`);
+        const blobUrl  = `https://api.github.com/repos/${repo}/git/blobs/${blobSha}`;
+        const blobResp = await fetch(blobUrl, { headers: ghHeaders });
+        if (!blobResp.ok) { console.warn(`[MLSync] Blob fetch failed for ${filename}: ${blobResp.status}`); continue; }
+        const blob     = await blobResp.json() as any;
+        decoded        = Buffer.from((blob.content as string).replace(/\n/g, ""), "base64").toString("utf8");
       }
+
+      // Validate JSON before writing
+      try { JSON.parse(decoded); }
+      catch { console.warn(`[MLSync] ${filename} from GitHub is corrupt JSON — skipping`); continue; }
+
       fs.writeFileSync(path.join(DATA_DIR, filename), decoded);
-      console.log(`[MLSync] Pulled ${filename} from GitHub (${Math.round(decoded.length/1024)}KB)`);
+      console.log(`[MLSync] ✓ Pulled ${filename} from GitHub (${Math.round(decoded.length/1024)}KB)`);
     } catch (e: any) {
       console.warn(`[MLSync] Could not pull ${filename}:`, e.message);
     }
