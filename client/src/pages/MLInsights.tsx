@@ -188,6 +188,9 @@ function EmptyState({ onGradeRun, gradeIsPending, gradeIsSuccess, gradeIsError, 
         <div className="rounded-xl p-3 flex items-center gap-2 w-full max-w-sm" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
           <AlertTriangle size={14} style={{ color: RED }} />
           <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+            {(gradeMutation.error as Error)?.message && (
+              <span className="text-xs font-mono break-all" style={{ color: RED, opacity: 0.85 }}>{(gradeMutation.error as Error).message}</span>
+            )}
         </div>
       )}
       {runIsSuccess && (
@@ -428,10 +431,16 @@ export default function MLInsights() {
     refetchInterval: 60_000,
   });
 
+  // Helper: parse error body — server sends {error: "..."}  or plain text
+  const parseErrBody = async (r: Response): Promise<string> => {
+    const txt = await r.text();
+    try { const j = JSON.parse(txt); return j.error ?? j.message ?? txt; } catch { return txt; }
+  };
+
   const runMutation = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/ml/run", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await parseErrBody(r));
       return r.json();
     },
     onSuccess: () => {
@@ -443,7 +452,7 @@ export default function MLInsights() {
   const gradeMutation = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/ml/grade", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await parseErrBody(r));
       return r.json();
     },
     onSuccess: () => {
@@ -600,9 +609,14 @@ export default function MLInsights() {
           </div>
         )}
         {gradeMutation.isError && (
-          <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
-            <AlertTriangle size={14} style={{ color: RED }} />
-            <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+          <div className="rounded-xl p-4 flex flex-col gap-1" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} style={{ color: RED }} />
+              <span className="text-sm font-semibold" style={{ color: RED }}>Grade run failed</span>
+            </div>
+            <span className="text-xs font-mono break-all" style={{ color: RED, opacity: 0.85 }}>
+              {(gradeMutation.error as Error)?.message ?? "Unknown error"}
+            </span>
           </div>
         )}
         {runMutation.isSuccess && (

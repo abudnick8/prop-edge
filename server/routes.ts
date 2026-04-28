@@ -41,8 +41,10 @@ function logMLOutcome(record: Record<string, any>): void {
 function runMLEngine(): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     const proc = spawn("python3", [ML_ENGINE_PY], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
+    let out = ""; let err = "";
     proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    proc.stderr.on("data", (d: Buffer) => { err += d.toString(); process.stderr.write(d); });
+    proc.on("error", (e: Error) => reject(new Error(`Failed to start python3: ${e.message} — is python3 installed?`)));
     proc.on("close", (code: number) => {
       loadMLWeights(); // refresh weights in memory
       if (code === 0) {
@@ -52,7 +54,7 @@ function runMLEngine(): Promise<Record<string, any>> {
           resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
         } catch { resolve({ status: "ok", output: out }); }
       } else {
-        reject(new Error(`ML engine exited ${code}: ${out}`));
+        reject(new Error(`ML engine exited ${code}. stderr: ${err.slice(-800) || "(none)"} stdout: ${out.slice(-200) || "(none)"}`.trim()));
       }
     });
   });
