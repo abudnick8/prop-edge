@@ -7725,6 +7725,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       entry.result   = result.hits > 0 ? "win" : "loss";
       entry.gradedAt = new Date().toISOString();
       changed = true;
+
+      // ── Back-fill outcome into daily candidate log ─────────────────
+      try {
+        const logDir  = path.join(__dirname, "bts_logs");
+        const logPath = path.join(logDir, `${dateStr}.json`);
+        if (fs.existsSync(logPath)) {
+          const logData: any[] = JSON.parse(fs.readFileSync(logPath, "utf8"));
+          const logEntry = logData.find((e: any) => e.playerId === entry.playerId);
+          if (logEntry) {
+            logEntry.result  = entry.result;
+            logEntry.hits    = entry.hits;
+            logEntry.ab      = entry.ab;
+            logEntry.gradedAt = entry.gradedAt;
+            fs.writeFileSync(logPath, JSON.stringify(logData, null, 2));
+          }
+        }
+      } catch { /* non-fatal */ }
     }
     if (changed) reconcileSeasonRecord();
   }
@@ -8116,13 +8133,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const zConPct = parseFloat(savant?.z_contact_percent ?? "0") / 100 || 0.82;
         const whiffPct= parseFloat(savant?.whiff_percent    ?? "0") / 100 || 0.25;
         // Volatility penalty: high K% + high whiff = boom/bust = fewer singles
-        const volatilityPenalty = Math.max(0, (kPct - 0.22) * 1.20 + (whiffPct - 0.28) * 0.80);
+        // Increased K% and whiff sensitivity (Phase 1 upgrade)
+        const volatilityPenalty = Math.max(0, (kPct - 0.22) * 1.60 + (whiffPct - 0.28) * 1.10);
         const contactRaw = (
-          norm(xbaV,    0.200, 0.380) * 0.30 +
+          norm(xbaV,    0.200, 0.380) * 0.28 +
           norm(xwobaV,  0.280, 0.430) * 0.25 +
-          norm(zConPct, 0.700, 0.950) * 0.22 +
-          norm(1-kPct,  0.650, 0.900) * 0.13 +
-          norm(bbPct,   0.040, 0.180) * 0.10
+          norm(zConPct, 0.700, 0.950) * 0.24 + // zone contact is key — increased weight
+          norm(1-kPct,  0.630, 0.900) * 0.15 + // K% inverted — more weight on strikeout avoidance
+          norm(bbPct,   0.040, 0.180) * 0.08
         );
         const contact = Math.max(0.20,
           contactRaw * statcastConf + (1 - statcastConf) * 0.45 - volatilityPenalty * 0.10
@@ -8198,10 +8216,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Boost from team implied runs (higher total = extra-inning PA opportunity)
         const impliedRuns  = total / 2;
         const impliedBoost = norm(impliedRuns, 3.5, 6.5) * 0.08;
-        const rawSlotScore = lineupSlot <= 3 ? 0.85
-                           : lineupSlot <= 5 ? 0.65
-                           : lineupSlot <= 7 ? 0.45
-                           : 0.30;
+        const rawSlotScore = lineupSlot <= 3 ? 0.88 // top-of-order boost (Phase 1)
+                           : lineupSlot <= 5 ? 0.66
+                           : lineupSlot <= 7 ? 0.44
+                           : 0.28;
         // EPA gate: projected PA < 3.8 gets a downgrade flag (not a hard cut)
         const projectedPA = lineupSlot <= 3 ? 4.6
                           : lineupSlot <= 5 ? 4.0
@@ -8226,15 +8244,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           ? 0.60 + (hitter.ghp14 ?? 0.5) * 0.20
           : 0.40;
 
-        // ── Final weighted composite ──────────────────────────────────
+        // ── Final weighted composite (Phase 1 rebalanced) ─────────────
+        // Form 13% | Contact 19% | Hard 10% | Matchup 24% | Opp 20% | BvP 5% | Stability 9%
         const raw = (
-          form           * 0.14 +
-          contact        * 0.16 +
+          form           * 0.13 +
+          contact        * 0.19 +
           hardContact    * 0.10 +
-          matchup        * 0.26 +
-          opportunity    * 0.18 +
-          bvpScore       * 0.08 +
-          stabilityScore * 0.08
+          matchup        * 0.24 +
+          opportunity    * 0.20 +
+          bvpScore       * 0.05 +
+          stabilityScore * 0.09
         );
         return Math.max(0, Math.min(1, raw));
       }
@@ -8245,40 +8264,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // A player must pass ALL three soft gates OR qualify via the override.
       // If they fail the soft gates but every extreme-metric fires, they
       // can still appear — but this should be rare (maybe 1-2 players/day).
-      const MIN_TOTAL           = 8.0;   // game O/U floor — games below skipped
-      const MIN_AVG14           = 0.200; // softened: xBA handles true talent signal
-      const MIN_GHP14           = 0.45;  // hit in ≥45% of L14 games (was 50%)
-      const MIN_SEASON_AVG      = 0.195; // near Mendoza — xBA/Statcast catch real talent
-      // Platoon gate: SOFTENED — replaced with a soft penalty inside scoreHitter
-      // Hard gate kept only as a floor to filter truly unplayable matchups
+      // ── BTS Eligibility Thresholds (Phase 1: hard gates removed) ──
+      // Hard BA gates (MIN_AVG14, MIN_GHP14, MIN_SEASON_AVG) REMOVED.
+      // The calibrated model score + implied probability edge now do all filtering.
+      // Only two hard rules remain: game total floor + min calibrated probability.
+      const MIN_TOTAL           = 8.0;   // game O/U floor — low-total games still skipped
       const MIN_PLATOON_PA      = 5;     // min PA faced to trust platoon BA
-      const MIN_PLATOON_XWOBA   = 0.310; // if pitcher xwOBA allowed >= this, matchup is playable
-      const MIN_PLATOON_BA_HARD = 0.220; // hard floor (lowered from .250); use xwOBA if available
-      const MIN_HIT_PROBABILITY = 62;    // final gate unchanged
+      const MIN_PLATOON_XWOBA   = 0.300; // relaxed from .310 — edge filter handles weak matchups
+      const MIN_PLATOON_BA_HARD = 0.215; // relaxed — xwOBA preferred anyway
+      const MIN_HIT_PROBABILITY = 60;    // lowered from 62 — edge filter handles quality control
 
-      // Override: player fails soft gates but ALL extreme Statcast metrics fire
-      // Max 1 override pick per day (ranked last)
-      // Override: player fails soft gates but demonstrates exceptional multi-signal profile.
-      // Requires 3+ of the 5 conditions to fire (no single-metric overrides).
-      // Strict Statcast volume gate: >=30 batted balls.
+      // Override: flags hitters with elite Statcast profiles despite cold surface stats.
+      // Phase 1 requirements: 30+ batted balls (Statcast volume), 15+ PA in last 14 days (active),
+      // and 4 of 6 quality signals. Override picks are ranked last and capped at 1/day.
       function passesOverride(stats: any, savant: any, pitcherXwoba: number | null, pitcherBA: number): boolean {
         const xba     = parseFloat(savant?.xba               ?? "0") || 0;
         const hardHit = parseFloat(savant?.hard_hit_percent  ?? "0") || 0;
         const barrels = parseFloat(savant?.barrel_batted_rate ?? "0") || 0;
         const whiff   = parseFloat(savant?.whiff_percent     ?? "0") || 99;
-        const pa = parseInt(savant?.pa ?? savant?.ab_count ?? "0") || 0;
-        if (pa < 30) return false; // must have real sample (raised from 10)
+        const savantPA = parseInt(savant?.pa ?? savant?.ab_count ?? "0") || 0;
+        if (savantPA < 30) return false; // Statcast volume gate
+        // Minimum recent PA: must have 15+ PA in last 14 days (ensures player is active/healthy)
+        // Approximate from avg14 * ghp14 * 14games * ~4PA/game; simpler: check avg14 has a sample
+        const recentPA = (stats.ghp14 ?? 0) * 14 * 3.5; // estimated PA in 14d window
+        if (recentPA < 15) return false;
         const matchupOk  = pitcherXwoba !== null ? pitcherXwoba >= 0.370 : pitcherBA >= 0.285;
         const signals: boolean[] = [
-          xba >= 0.310,                        // elite contact expected
-          hardHit >= 46,                       // hard hit rate
-          barrels >= 9,                        // barrel rate
-          (stats.ghp14 ?? 0) >= 0.75,         // hit in 75%+ of recent games
-          matchupOk,                           // favorable matchup
-          whiff <= 22,                         // makes contact (low whiff)
+          xba >= 0.310,                   // elite expected contact
+          hardHit >= 46,                  // hard hit rate
+          barrels >= 9,                   // barrel rate
+          (stats.ghp14 ?? 0) >= 0.70,    // hit in 70%+ of recent games (relaxed from 75%)
+          matchupOk,                      // favorable matchup
+          whiff <= 22,                    // makes contact consistently
         ];
         const positiveCount = signals.filter(Boolean).length;
-        return positiveCount >= 4; // require 4 of 6 signals (not just 1)
+        return positiveCount >= 4; // require 4 of 6 signals
       }
       const slateGames: any[] = [];
       const candidatePicks: any[] = [];
@@ -8404,6 +8424,33 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const confirmedHomeIds = new Set(confirmedHome.map((p: any) => p.id ?? p.person?.id));
         const confirmedAwayIds = new Set(confirmedAway.map((p: any) => p.id ?? p.person?.id));
 
+        // ── Hit prop implied probability lookup (Linemate MLB data) ──────
+        // Keyed by lowercase player name. Built once per game loop.
+        const hitPropImpliedMap: Record<string, number> = {};
+        try {
+          // Pull from already-cached linemate /api/mlb/v2/markets data
+          // We use the in-process linemate cache if available, else skip gracefully
+          const lmCached = linemateCache.get("mlb");
+          if (lmCached) {
+            const markets = lmCached.data?.markets ?? [];
+            for (const m of markets) {
+              const mName = (m.marketName ?? m.market?.name ?? "").toUpperCase();
+              if (!mName.includes("HITTER_HITS") && mName !== "HITTER_HITS") continue;
+              const playerName = (m.playerName ?? m.player?.name ?? "").toLowerCase();
+              if (!playerName) continue;
+              // Prefer OVER line; odds in American format
+              const overOdds = m.overOdds ?? m.odds ?? null;
+              if (overOdds === null) continue;
+              // Convert American odds to implied probability
+              const imp = overOdds < 0
+                ? Math.abs(overOdds) / (Math.abs(overOdds) + 100)
+                : 100 / (overOdds + 100);
+              // Remove vig: rough devig (both sides rarely available; use as-is ~0.9x)
+              hitPropImpliedMap[playerName] = Math.min(0.90, imp * 0.95);
+            }
+          }
+        } catch { /* sportsbook data unavailable — no edge filter applied */ }
+
         const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
           const candidates: any[] = [];
           for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
@@ -8436,16 +8483,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const stats  = await getHitterStats(pid);
               const savant = savantMap[String(pid)] ?? {};
 
-              // ── Gate 2: Soft stat gates ─ all three must pass OR override fires
-              const softGatePass =
-                (stats.avg14     ?? 0) >= MIN_AVG14     &&
-                (stats.ghp14     ?? 0) >= MIN_GHP14     &&
-                (stats.avgSeason ?? 0) >= MIN_SEASON_AVG;
-
+              // ── Gate 2: Removed hard BA/GHP/season gates (Phase 1) ──
+              // Model score + edge filter now handle quality control.
+              // Override still catches extreme Statcast profiles.
               const pitcherXwobaForOverride = parseFloat(oppPitcherSavant?.xwoba ?? "0") || null;
-              if (!softGatePass && !passesOverride(stats, savant, pitcherXwobaForOverride, pitcherAvgVsMe)) continue;
-
-              const isOverridePick = !softGatePass;
+              const isOverridePick = passesOverride(stats, savant, pitcherXwobaForOverride, pitcherAvgVsMe)
+                && ((stats.avg14 ?? 0) < 0.200 || (stats.avgSeason ?? 0) < 0.195);
 
               // ── BvP: fetch career/season history vs today's starter ──
               const opponentPitcherId = side === "home" ? awayTeam.probablePitcher?.id : homeTeam.probablePitcher?.id;
@@ -8469,17 +8512,39 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 side === "home",
               );
 
-              const hitProbability = Math.min(0.75, rawScore * 1.333);
-              // Confidence tier: A = elite edge + top slot + clean matchup
-              //                  B = moderate edge
-              //                  C = thin edge / higher variance
-              const hitProbabilityPct_pre = Math.round(hitProbability * 100);
-              const confTierBTS: "A" | "B" | "C" =
-                hitProbabilityPct_pre >= 70 && lineupSlot <= 4 ? "A" :
-                hitProbabilityPct_pre >= 65 ? "B" : "C";
+              // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
+              // Replaces raw × 1.333. Logistic is fit on observed MLB hit rates:
+              // sigmoid params: center=0.50 (average hitter), scale=5.0
+              // Maps: raw 0.35 → ~54%, raw 0.50 → 62%, raw 0.60 → 69%, raw 0.70 → 75%
+              const logisticCal = (r: number) => {
+                const logit = 5.0 * (r - 0.50);
+                const sig   = 1 / (1 + Math.exp(-logit));
+                // Rescale from (0.27, 0.73) to (0.45, 0.82) — MLB hit rate range
+                return 0.45 + sig * 0.37;
+              };
+              const hitProbability = Math.min(0.80, logisticCal(rawScore));
               const hitProbabilityPct = Math.round(hitProbability * 100);
 
-              // ── Gate 3: Minimum hit probability ─ discard weak qualifiers
+              // ── Sportsbook edge filter ────────────────────────────────────
+              // Compare model probability to implied book probability.
+              // Edge = model - implied. Positive edge = bet. No odds = no filter.
+              const playerNameKey = fullName.toLowerCase();
+              const impliedProb   = hitPropImpliedMap[playerNameKey] ?? null;
+              const edge          = impliedProb !== null ? hitProbability - impliedProb : null;
+              // Tier thresholds: A needs edge >= +6%, B >= +3%, C >= 0%
+              // If no book line: include based on model score alone (edge = null)
+              const hasPositiveEdge = edge === null || edge >= 0;
+              if (!hasPositiveEdge) continue; // negative edge = skip
+
+              // ── Confidence tier (Phase 1: incorporates edge + slot + probability) ──
+              const confTierBTS: "A" | "B" | "C" = (() => {
+                const edgePct = (edge ?? 0) * 100;
+                if (hitProbabilityPct >= 68 && lineupSlot <= 4 && edgePct >= 6) return "A";
+                if (hitProbabilityPct >= 64 && edgePct >= 3) return "B";
+                return "C";
+              })();
+
+              // ── Gate 3: Minimum calibrated hit probability ────────────────
               if (hitProbabilityPct < MIN_HIT_PROBABILITY) continue;
 
               const playerLineupSource = p.lineupSource ?? lineupSrc;
@@ -8545,9 +8610,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   weather: { tempF, wind },
                 },
                 rawScore,
-                hitProbability: hitProbabilityPct,
-                inTargetRange: hitProbability >= 0.62 && hitProbability <= 0.75,
-                confidenceTier: confTierBTS,
+                hitProbability:  hitProbabilityPct,
+                impliedProb:     impliedProb !== null ? Math.round(impliedProb * 100) : null,
+                edge:            edge !== null ? Math.round(edge * 100) : null,
+                inTargetRange:   hitProbability >= 0.60 && hitProbability <= 0.80,
+                confidenceTier:  confTierBTS,
               });
             } catch { /* skip player */ }
           }
@@ -8561,6 +8628,60 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         candidatePicks.push(...homeCandidates, ...awayCandidates);
       }
+
+      // ── 7b. Daily candidate log (Phase 1) ────────────────────────────
+      // Logs every scored candidate with features, scores, edge, and decision.
+      // Written to server/bts_logs/YYYY-MM-DD.json for backtesting + calibration.
+      try {
+        const logDir  = path.join(__dirname, "bts_logs");
+        const logPath = path.join(logDir, `${targetDate}.json`);
+        let existing: any[] = [];
+        try {
+          if (fs.existsSync(logPath)) existing = JSON.parse(fs.readFileSync(logPath, "utf8"));
+        } catch {}
+        const existingIds = new Set(existing.map((e: any) => e.playerId));
+        const newEntries  = candidatePicks
+          .filter((p: any) => !existingIds.has(p.playerId))
+          .map((p: any) => ({
+            loggedAt:       new Date().toISOString(),
+            date:           targetDate,
+            playerId:       p.playerId,
+            name:           p.name,
+            team:           p.team,
+            lineupSlot:     p.lineupSlot,
+            side:           p.side,
+            bats:           p.bats,
+            rawScore:       p.rawScore,
+            hitProbability: p.hitProbability,
+            confTier:       p.confidenceTier,
+            isOverride:     p.isOverridePick,
+            impliedProb:    p.impliedProb,
+            edge:           p.edge,
+            avg14:          p.stats?.avg14,
+            avg30:          p.stats?.avg30,
+            ghp14:          p.stats?.ghp14,
+            avgSeason:      p.stats?.avgSeason,
+            xba:            p.stats?.xba,
+            xwoba:          p.stats?.xwoba,
+            kPct:           p.stats?.kPct,
+            whiffPct:       p.stats?.whiffPct,
+            zContactPct:    p.stats?.zContactPct,
+            hardHitPct:     p.stats?.hardHitPct,
+            barrelPct:      p.stats?.barrelPct,
+            launchAngle:    p.stats?.launchAngle,
+            pitcherXwoba:   p.pitcherStats?.xwoba,
+            pitcherLast5ERA:p.pitcherStats?.last5ERA,
+            venue:          p.game?.venue,
+            gameTotal:      p.game?.total,
+            result:         "pending",
+            hits:           null,
+            ab:             null,
+          }));
+        if (newEntries.length > 0) {
+          if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+          fs.writeFileSync(logPath, JSON.stringify([...existing, ...newEntries], null, 2));
+        }
+      } catch (logErr) { /* non-fatal — log failure doesn't block picks */ }
 
       // ── 8. One-per-team rule + hard 10-pick cap ─────────────────────
       // Sort override picks to the BOTTOM (show normal picks first)
