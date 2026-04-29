@@ -7794,6 +7794,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         } catch { /* skip */ }
       }
 
+      // ── Shared CSV parser (handles quoted fields containing commas) ──
+      function parseCSVLine(line: string): string[] {
+        const result: string[] = [];
+        let cur = "", inQuote = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { inQuote = !inQuote; }
+          else if (ch === "," && !inQuote) { result.push(cur.trim()); cur = ""; }
+          else { cur += ch; }
+        }
+        result.push(cur.trim());
+        return result;
+      }
+
       // ── 3. Baseball Savant Statcast leaderboard (expanded: xBA, xwOBA, HH%, barrel%, EV50, LA, BABIP) ──
       let savantMap: Record<string, any> = {}; // keyed by mlbam player_id
       try {
@@ -7803,14 +7817,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         );
         const csvText: string = savantResp.data;
         const lines = csvText.replace(/^\uFEFF/, "").split("\n");
-        const header = lines[0].replace(/^"|"$/g, "").split(",").map((h: string) => h.trim().replace(/^"|"$/g, ""));
+        const header = parseCSVLine(lines[0]); // quoted-field-aware split
+        // Find player_id column index dynamically (robust against column order changes)
+        const pidColIdx = header.indexOf("player_id");
         for (let i = 1; i < lines.length; i++) {
-          const row = lines[i].split(",");
+          const line = lines[i].trim();
+          if (!line) continue;
+          const row = parseCSVLine(line);
           if (row.length < 4) continue;
           const obj: any = {};
-          header.forEach((h, idx) => { obj[h] = row[idx]?.trim().replace(/^"|"$/g, ""); });
-          const pid = row[1]?.trim().replace(/^"|"$/g, "");
-          if (pid) savantMap[pid] = obj;
+          header.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pidColIdx >= 0 ? (row[pidColIdx] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap[pid] = obj;
         }
       } catch { /* savant unavailable */ }
 
@@ -7823,14 +7841,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         );
         const pCsvText: string = pSavantResp.data;
         const pLines = pCsvText.replace(/^\uFEFF/, "").split("\n");
-        const pHeader = pLines[0].replace(/^"|"$/g, "").split(",").map((h: string) => h.trim().replace(/^"|"$/g, ""));
+        const pHeader = parseCSVLine(pLines[0]); // quoted-field-aware split
+        const pPidColIdx = pHeader.indexOf("player_id");
         for (let i = 1; i < pLines.length; i++) {
-          const row = pLines[i].split(",");
+          const line = pLines[i].trim();
+          if (!line) continue;
+          const row = parseCSVLine(line);
           if (row.length < 4) continue;
           const obj: any = {};
-          pHeader.forEach((h, idx) => { obj[h] = row[idx]?.trim().replace(/^"|"$/g, ""); });
-          const pid = row[1]?.trim().replace(/^"|"$/g, "");
-          if (pid) pitcherSavantMap[pid] = obj;
+          pHeader.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pPidColIdx >= 0 ? (row[pPidColIdx] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) pitcherSavantMap[pid] = obj;
         }
       } catch { /* pitcher savant unavailable */ }
 
