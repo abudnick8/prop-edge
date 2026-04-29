@@ -7676,15 +7676,29 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── Grader: fetch actual hit stats for a player on a given date ──────
   async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
     try {
-      const r = await axios.get(
-        `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&limit=5`
-      );
+      // Use startDate+endDate to pin to the exact game date and avoid limit issues.
+      // Also try the boxscore endpoint as a fallback in case the game log lags.
+      const url = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&startDate=${dateStr}&endDate=${dateStr}&limit=5`;
+      const r = await axios.get(url);
       const splits = r.data?.stats?.[0]?.splits ?? [];
-      // Find the split that matches today's date
-      const todaySplit = splits.find((s: any) => s.date === dateStr);
+
+      // The API should return only this date's game, but do a find just in case
+      // dates are formatted differently (YYYY-MM-DD vs MM/DD/YYYY)
+      const normalize = (d: string) => {
+        if (!d) return "";
+        // Convert MM/DD/YYYY to YYYY-MM-DD if needed
+        const mmdd = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (mmdd) return `${mmdd[3]}-${mmdd[1]}-${mmdd[2]}`;
+        return d.slice(0, 10); // trim any time component
+      };
+
+      const todaySplit = splits.find((s: any) => normalize(s.date) === dateStr)
+                      ?? (splits.length === 1 ? splits[0] : null); // if exactly one result, use it
+
       if (!todaySplit) return null; // game not finished yet or player didn't play
-      const hits = parseInt(todaySplit.stat?.hits ?? "0");
-      const ab   = parseInt(todaySplit.stat?.atBats ?? "0");
+
+      const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
+      const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
       return { hits, ab };
     } catch { return null; }
   }
@@ -7695,12 +7709,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     if (!entries?.length) return;
     let changed = false;
     for (const entry of entries) {
-      if (entry.result !== "pending") continue;
+      // Re-grade: pending OR a loss with 0 AB (bad data — game log wasn't ready)
+      const needsRegrade = entry.result === "pending"
+        || (entry.result === "loss" && (entry.ab === 0 || entry.ab == null));
+      if (!needsRegrade) continue;
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
       if (gameStartMs && Date.now() < gameStartMs) continue;
       const result = await gradePickForDate(entry.playerId, dateStr);
-      if (result === null) continue; // game log not available yet
+      if (result === null) continue; // game log not available yet — stay pending
+      // Only update if we got real AB data (ab > 0 means player actually played)
+      if (result.ab === 0 && entry.result === "loss") continue; // still no data
       entry.hits     = result.hits;
       entry.ab       = result.ab;
       entry.result   = result.hits > 0 ? "win" : "loss";
