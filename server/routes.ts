@@ -7872,6 +7872,52 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch { /* pitcher savant unavailable */ }
 
+      // ── 3b2. Statcast rolling 15d window (batter) — xBA/xwOBA/HH%/barrel% ──
+      // Captures recent hot/cold streaks that season averages obscure.
+      // Blended with season in scoreHitter: 40% rolling-15d + 60% season
+      let savantMap15d: Record<string, any> = {};
+      try {
+        const now15d  = new Date(); now15d.setDate(now15d.getDate() - 15);
+        const s15d    = now15d.toISOString().slice(0, 10);
+        const e15d    = new Date().toISOString().slice(0, 10);
+        const r15 = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&startDate=${s15d}&endDate=${e15d}&selections=xba,xwoba,hard_hit_percent,barrel_batted_rate,whiff_percent,z_contact_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const lines15 = (r15.data as string).replace(/^\uFEFF/, "").split("\n");
+        const hdr15   = parseCSVLine(lines15[0]);
+        const pid15   = hdr15.indexOf("player_id");
+        for (let i = 1; i < lines15.length; i++) {
+          const line = lines15[i].trim(); if (!line) continue;
+          const row  = parseCSVLine(line); if (row.length < 4) continue;
+          const obj: any = {}; hdr15.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pid15 >= 0 ? (row[pid15] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap15d[pid] = obj;
+        }
+      } catch { /* rolling 15d unavailable — fall back to season */ }
+
+      // ── 3b3. Statcast rolling 30d window (batter) ──
+      let savantMap30d: Record<string, any> = {};
+      try {
+        const now30d  = new Date(); now30d.setDate(now30d.getDate() - 30);
+        const s30d    = now30d.toISOString().slice(0, 10);
+        const e30d    = new Date().toISOString().slice(0, 10);
+        const r30 = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&startDate=${s30d}&endDate=${e30d}&selections=xba,xwoba,hard_hit_percent,barrel_batted_rate,whiff_percent,z_contact_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const lines30 = (r30.data as string).replace(/^\uFEFF/, "").split("\n");
+        const hdr30   = parseCSVLine(lines30[0]);
+        const pid30   = hdr30.indexOf("player_id");
+        for (let i = 1; i < lines30.length; i++) {
+          const line = lines30[i].trim(); if (!line) continue;
+          const row  = parseCSVLine(line); if (row.length < 4) continue;
+          const obj: any = {}; hdr30.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pid30 >= 0 ? (row[pid30] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap30d[pid] = obj;
+        }
+      } catch { /* rolling 30d unavailable — fall back to season */ }
+
       // ── 3c. Helper: fetch pitcher season stats + last-5 starts ERA ──
       const pitcherSeasonCache: Record<number, any> = {};
       async function getPitcherSeasonStats(pitcherId: number) {
@@ -7895,17 +7941,45 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
           // Last-5 starts ERA
           let last5ERA: number | null = null;
+          // Last-3 starts: IP trend + ERA (Phase 2) — used for leash probability
+          let last3ERA: number | null = null;
+          let last3AvgIP: number | null = null;   // avg innings per start last 3
+          let last3H9: number | null = null;       // hits/9 last 3 starts (hittability)
+          let leashProbability: number = 0.85;     // prob pitcher goes 5+ IP (default starter)
           if (splits.length >= 2) {
             const last5 = splits.slice(0, 5);
             const l5er  = last5.reduce((s: number, g: any) => s + (parseInt(g.stat?.earnedRuns ?? "0") || 0), 0);
             const l5ip  = last5.reduce((s: number, g: any) => s + (parseFloat(g.stat?.inningsPitched ?? "0") || 0), 0);
             last5ERA = l5ip > 0 ? parseFloat(((l5er * 9) / l5ip).toFixed(2)) : null;
+
+            // ── Phase 2: last-3 starts deeper analysis ───────────────────
+            const last3 = splits.slice(0, 3);
+            const l3er  = last3.reduce((s: number, g: any) => s + (parseInt(g.stat?.earnedRuns ?? "0") || 0), 0);
+            const l3ip  = last3.reduce((s: number, g: any) => s + (parseFloat(g.stat?.inningsPitched ?? "0") || 0), 0);
+            const l3h   = last3.reduce((s: number, g: any) => s + (parseInt(g.stat?.hits ?? "0") || 0), 0);
+            last3ERA    = l3ip > 0 ? parseFloat(((l3er * 9) / l3ip).toFixed(2)) : null;
+            last3AvgIP  = last3.length > 0 ? parseFloat((l3ip / last3.length).toFixed(1)) : null;
+            last3H9     = l3ip > 0 ? parseFloat(((l3h * 9) / l3ip).toFixed(1)) : null;
+
+            // ── Leash probability: likelihood pitcher goes 5+ IP ────────
+            // Key signals: recent avg IP, recent ERA trend, total season IP
+            // Low leash = more bullpen exposure = more PA opportunities for batters
+            if (last3AvgIP !== null) {
+              if (last3AvgIP >= 6.0) leashProbability = 0.92;        // ace-level workload
+              else if (last3AvgIP >= 5.0) leashProbability = 0.80;   // average
+              else if (last3AvgIP >= 4.0) leashProbability = 0.60;   // short leash
+              else leashProbability = 0.40;                           // likely bullpen game soon
+            }
+            // Adjust for recent ERA trend — struggling starters get shorter leash
+            if (last3ERA !== null && last3ERA > 5.5) leashProbability -= 0.15;
+            else if (last3ERA !== null && last3ERA < 3.0) leashProbability += 0.08;
+            leashProbability = Math.max(0.20, Math.min(0.95, leashProbability));
           }
 
-          const result = { era, k9, whip, ip, last5ERA };
+          const result = { era, k9, whip, ip, last5ERA, last3ERA, last3AvgIP, last3H9, leashProbability };
           pitcherSeasonCache[pitcherId] = result;
           return result;
-        } catch { return { era: null, k9: null, whip: null, ip: 0, last5ERA: null }; }
+        } catch { return { era: null, k9: null, whip: null, ip: 0, last5ERA: null, last3ERA: null, last3AvgIP: null, last3H9: null, leashProbability: 0.85 }; }
       }
 
       // ── 4. Helper: fetch pitcher vs LHB/RHB splits (BA + xwOBA + PA count) ──
@@ -7931,6 +8005,87 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
           return result;
         } catch { return { vsLeft: 0.250, vsRight: 0.250, vsLeftPA: 0, vsRightPA: 0, vsLeftXwoba: null, vsRightXwoba: null }; }
+      }
+
+      // ── 4b2. Helper: pitch arsenal matchup (Phase 2) ──────────────────
+      // Fetches pitcher's primary pitch types + batter wOBA vs each.
+      // Pitch types: FF (4-seam), SL (slider), CH (changeup), CU (curve), SI (sinker), FC (cutter)
+      // Returns a weighted "pitchTypeMatchupScore" 0-1 (higher = batter-favorable matchup)
+      const pitchArsenalCache: Record<string, any> = {};
+      async function getPitchArsenalMatchup(pitcherId: number, batterId: number, bats: string): Promise<number | null> {
+        const cacheKey = `${pitcherId}_${batterId}_${bats}`;
+        if (pitchArsenalCache[cacheKey] !== undefined) return pitchArsenalCache[cacheKey];
+        try {
+          // Step 1: Get pitcher arsenal (pitch types + usage %)
+          const pitchTypes = ["FF", "SL", "CH", "CU", "SI", "FC"];
+          const arsenalResults: Array<{ type: string; usage: number; pitcherWoba: number }> = [];
+
+          for (const pt of pitchTypes) {
+            try {
+              const r = await axios.get(
+                `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&pitchType=${pt}&year=2026&team=&min=1&sort=run_value_per_100&sortDir=desc&csv=true`,
+                { headers: { "Accept": "text/csv" } }
+              );
+              const lines = (r.data as string).replace(/^\uFEFF/, "").split("\n");
+              const hdr   = parseCSVLine(lines[0]);
+              const pidIdx  = hdr.indexOf("player_id");
+              const usageIdx = hdr.indexOf("pitch_usage");
+              const wobaIdx  = hdr.indexOf("woba");
+              if (pidIdx < 0) continue;
+              for (let i = 1; i < lines.length; i++) {
+                const ln = lines[i].trim(); if (!ln) continue;
+                const row = parseCSVLine(ln);
+                const pid = (row[pidIdx] ?? "").trim();
+                if (pid !== String(pitcherId)) continue;
+                const usage = parseFloat(row[usageIdx] ?? "0") || 0;
+                const woba  = parseFloat(row[wobaIdx]  ?? "0") || 0;
+                if (usage > 5) arsenalResults.push({ type: pt, usage, pitcherWoba: woba });
+                break;
+              }
+            } catch { /* skip this pitch type */ }
+          }
+
+          if (!arsenalResults.length) { pitchArsenalCache[cacheKey] = null; return null; }
+
+          // Step 2: Get batter wOBA vs each pitch type
+          const totalUsage = arsenalResults.reduce((s, a) => s + a.usage, 0) || 100;
+          let weightedScore = 0;
+          let weightSum = 0;
+
+          for (const arsenal of arsenalResults) {
+            const weight = arsenal.usage / totalUsage;
+            try {
+              const rb = await axios.get(
+                `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=batter&pitchType=${arsenal.type}&year=2026&team=&min=1&sort=woba&sortDir=desc&csv=true`,
+                { headers: { "Accept": "text/csv" } }
+              );
+              const bLines = (rb.data as string).replace(/^\uFEFF/, "").split("\n");
+              const bHdr   = parseCSVLine(bLines[0]);
+              const bPidIdx  = bHdr.indexOf("player_id");
+              const bWobaIdx = bHdr.indexOf("woba");
+              if (bPidIdx < 0) { weightedScore += weight * 0.320; weightSum += weight; continue; }
+              let batterWoba: number | null = null;
+              for (let i = 1; i < bLines.length; i++) {
+                const ln = bLines[i].trim(); if (!ln) continue;
+                const row = parseCSVLine(ln);
+                const pid = (row[bPidIdx] ?? "").trim();
+                if (pid !== String(batterId)) continue;
+                batterWoba = parseFloat(row[bWobaIdx] ?? "0") || null;
+                break;
+              }
+              // Score: batter wOBA vs this pitch type, norm 0.200-0.500
+              const matchupScore = batterWoba !== null
+                ? Math.max(0, Math.min(1, (batterWoba - 0.200) / 0.300))
+                : 0.40; // neutral fallback
+              weightedScore += weight * matchupScore;
+              weightSum     += weight;
+            } catch { weightedScore += weight * 0.40; weightSum += weight; }
+          }
+
+          const finalScore = weightSum > 0 ? weightedScore / weightSum : null;
+          pitchArsenalCache[cacheKey] = finalScore;
+          return finalScore;
+        } catch { pitchArsenalCache[cacheKey] = null; return null; }
       }
 
       // ── 4b. Helper: Batter vs Pitcher career history ────────────────
@@ -8090,7 +8245,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       function scoreHitter(
         hitter: any,
         pitcherSplits: any,
-        savant: any,
+        savant: any,         // season Statcast
+        savant15d: any,      // Phase 2: rolling 15d Statcast
+        savant30d: any,      // Phase 2: rolling 30d Statcast
         pitcherSavant: any,
         total: number,
         weather: any,
@@ -8099,6 +8256,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         lineupSlot: number,
         oppPitcherSeasonStats: any,
         isHomeGame: boolean,
+        pitchTypeMatchup: number | null, // Phase 2: weighted wOBA vs pitcher arsenal (0-1)
       ): number {
         const bats = hitter.bats;
         const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
@@ -8109,14 +8267,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const battedBalls  = parseInt(savant?.pa ?? savant?.ab_count ?? "0") || 0;
         const statcastConf = battedBalls >= 50 ? 1.0 : battedBalls >= 20 ? 0.70 : 0.40;
 
-        // ══ COMPONENT 1: Recent Form (14%) ══
+        // ══ COMPONENT 1: Recent Form (13%) ══
         // BABIP luck regression — if 14d BABIP far exceeds xBABIP, regress toward true talent
         const babip14 = hitter.babip14 ?? null;
-        const xbabipV = parseFloat(savant?.xbabip ?? "0") || null;
-        const xbaV    = parseFloat(savant?.xba    ?? "0") || hitter.avgSeason || 0.250;
+        const xbabipV       = parseFloat(savant?.xbabip ?? "0") || null;
+        const xbaForBabip   = parseFloat(savant?.xba    ?? "0") || hitter.avgSeason || 0.250;
         let adj14 = hitter.avg14 ?? 0;
         if (babip14 !== null && xbabipV !== null && babip14 - xbabipV > 0.055) {
-          adj14 = adj14 * 0.60 + xbaV * 0.40; // regress 40% toward xBA
+          adj14 = adj14 * 0.60 + xbaForBabip * 0.40; // regress 40% toward xBA
         }
         const form = (
           norm(adj14,               0.150, 0.400) * 0.40 +
@@ -8125,21 +8283,47 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           norm(hitter.ghp14 ?? 0.5, 0.300, 0.900) * 0.15
         );
 
-        // ══ COMPONENT 2: Contact Quality / Volatility Control (16%) ══
-        // Uses xBA, xwOBA, zone contact, K%, whiff — penalizes boom/bust profiles
+        // ══ COMPONENT 2: Contact Quality / Volatility Control (19%) ══
+        // Phase 2: blend season + 30d + 15d Statcast for xBA/xwOBA/HH%/zCon
+        // Weights: season 50%, last-30d 30%, last-15d 20% (hot streak signal)
         const kPct  = hitter.kPct  ?? 0.22;
         const bbPct = hitter.bbPct ?? 0.08;
-        const xwobaV  = parseFloat(savant?.xwoba           ?? "0") || 0.320;
-        const zConPct = parseFloat(savant?.z_contact_percent ?? "0") / 100 || 0.82;
-        const whiffPct= parseFloat(savant?.whiff_percent    ?? "0") / 100 || 0.25;
+        // Blended xBA
+        const xbaSeason = parseFloat(savant?.xba   ?? "0") || null;
+        const xba30d    = parseFloat(savant30d?.xba ?? "0") || null;
+        const xba15d    = parseFloat(savant15d?.xba ?? "0") || null;
+        const xbaV = xbaSeason !== null
+          ? (xbaSeason * 0.50 + (xba30d ?? xbaSeason) * 0.30 + (xba15d ?? xbaSeason) * 0.20)
+          : hitter.avgSeason || 0.250;
+        // Blended xwOBA
+        const xwobaSeason = parseFloat(savant?.xwoba   ?? "0") || null;
+        const xwoba30d    = parseFloat(savant30d?.xwoba ?? "0") || null;
+        const xwoba15d    = parseFloat(savant15d?.xwoba ?? "0") || null;
+        const xwobaV = xwobaSeason !== null
+          ? (xwobaSeason * 0.50 + (xwoba30d ?? xwobaSeason) * 0.30 + (xwoba15d ?? xwobaSeason) * 0.20)
+          : 0.320;
+        // Blended HH%
+        const hhSeason = parseFloat(savant?.hard_hit_percent   ?? "0") / 100 || null;
+        const hh30d    = parseFloat(savant30d?.hard_hit_percent ?? "0") / 100 || null;
+        const hh15d    = parseFloat(savant15d?.hard_hit_percent ?? "0") / 100 || null;
+        const hhBlended = hhSeason !== null
+          ? (hhSeason * 0.50 + (hh30d ?? hhSeason) * 0.30 + (hh15d ?? hhSeason) * 0.20)
+          : 0.35;
+        // Blended zone contact
+        const zConSeason = parseFloat(savant?.z_contact_percent   ?? "0") / 100 || null;
+        const zCon30d    = parseFloat(savant30d?.z_contact_percent ?? "0") / 100 || null;
+        const zCon15d    = parseFloat(savant15d?.z_contact_percent ?? "0") / 100 || null;
+        const zConPct = zConSeason !== null
+          ? (zConSeason * 0.50 + (zCon30d ?? zConSeason) * 0.30 + (zCon15d ?? zConSeason) * 0.20)
+          : 0.82;
+        const whiffPct= parseFloat(savant?.whiff_percent ?? "0") / 100 || 0.25;
         // Volatility penalty: high K% + high whiff = boom/bust = fewer singles
-        // Increased K% and whiff sensitivity (Phase 1 upgrade)
         const volatilityPenalty = Math.max(0, (kPct - 0.22) * 1.60 + (whiffPct - 0.28) * 1.10);
         const contactRaw = (
           norm(xbaV,    0.200, 0.380) * 0.28 +
           norm(xwobaV,  0.280, 0.430) * 0.25 +
-          norm(zConPct, 0.700, 0.950) * 0.24 + // zone contact is key — increased weight
-          norm(1-kPct,  0.630, 0.900) * 0.15 + // K% inverted — more weight on strikeout avoidance
+          norm(zConPct, 0.700, 0.950) * 0.24 +
+          norm(1-kPct,  0.630, 0.900) * 0.15 +
           norm(bbPct,   0.040, 0.180) * 0.08
         );
         const contact = Math.max(0.20,
@@ -8147,90 +8331,113 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         );
 
         // ══ COMPONENT 3: Hard Contact & Exit Velocity Profile (10%) ══
-        const hhPct     = parseFloat(savant?.hard_hit_percent   ?? "0") / 100 || 0.35;
+        // Phase 2: use blended hhBlended from above
         const barrelPct = parseFloat(savant?.barrel_batted_rate ?? "0") / 100 || 0.08;
         const laRaw     = parseFloat(savant?.launch_angle_avg   ?? "0") || 12;
-        // Optimal LA for hits: 8-22 degrees (line drives); penalize grounders or pop-ups
         const laNorm = (laRaw >= 8 && laRaw <= 22) ? 1.0
                      : (laRaw >= 4 && laRaw <= 27) ? 0.75 : 0.50;
         const hardContactRaw = (
-          norm(hhPct,     0.25, 0.55) * 0.50 +
+          norm(hhBlended, 0.25, 0.55) * 0.50 +
           norm(barrelPct, 0.04, 0.18) * 0.25 +
           laNorm                      * 0.25
         );
         const hardContact = hardContactRaw * statcastConf + (1 - statcastConf) * 0.45;
 
-        // ══ COMPONENT 4: Pitcher Matchup + Environment (26%) ══
-        // xwOBA allowed by handedness is the primary matchup signal
+        // ══ COMPONENT 4: Pitcher Matchup + Environment (24%) ══
+        // Phase 2 upgrades:
+        //  (a) Pitch-type matchup score blended into hittability (30% weight)
+        //  (b) Last-3 starts replaces last-5 for pitcher form
+        //  (c) Leash probability adjusts opportunity (handled in opp. component)
+        //  (d) Park × weather MULTIPLICATIVE interaction (not additive)
         const pitcherXwoba = parseFloat(pitcherSavant?.xwoba              ?? "0") || null;
         const pitcherGbPct = parseFloat(pitcherSavant?.groundballs_percent ?? "0") / 100 || 0.43;
         const pitcherFbPct = parseFloat(pitcherSavant?.flyballs_percent    ?? "0") / 100 || 0.35;
         const pitcherBbPct = parseFloat(pitcherSavant?.bb_percent          ?? "0") / 100 || 0.08;
         const pitcherSwStr = parseFloat(pitcherSavant?.p_swinging_strike_perc ?? "0") / 100 || 0.10;
         const pitcherKPct  = parseFloat(pitcherSavant?.k_percent           ?? "0") / 100 || 0.22;
-        // Platoon BA fallback — blend toward league avg if small sample
+        // Platoon BA fallback
         const platoonBA = pitcherPA >= 20
           ? pitcherAvgAllowed
           : pitcherPA > 0
             ? pitcherAvgAllowed * (pitcherPA / 20) + 0.250 * (1 - pitcherPA / 20)
             : 0.250;
         const platoon = norm(platoonBA, 0.220, 0.340);
-        // Pitcher hittability: xwOBA allowed preferred; no xwOBA = platoon BA fallback
-        const pitcherHittability = pitcherXwoba !== null
+        // Pitcher hittability: xwOBA + pitch-type matchup blend
+        // Phase 2: if pitch-type matchup available, weight it 30% alongside xwOBA 70%
+        const pitcherHittabilityBase = pitcherXwoba !== null
           ? norm(pitcherXwoba, 0.280, 0.430)
           : platoon;
-        // Pitcher form: last-5 ERA + WHIP (more recent = more predictive)
-        const last5ERA    = oppPitcherSeasonStats?.last5ERA ?? null;
-        const pitcherWHIP = oppPitcherSeasonStats?.whip     ?? null;
+        const pitcherHittability = pitchTypeMatchup !== null
+          ? pitcherHittabilityBase * 0.70 + pitchTypeMatchup * 0.30
+          : pitcherHittabilityBase;
+        // Phase 2: pitcher form uses last-3 ERA (more recent signal) + last-5 fallback
+        const last3ERA    = oppPitcherSeasonStats?.last3ERA  ?? null;
+        const last5ERA    = oppPitcherSeasonStats?.last5ERA  ?? null;
+        const last3H9     = oppPitcherSeasonStats?.last3H9   ?? null;
+        const pitcherWHIP = oppPitcherSeasonStats?.whip      ?? null;
         const pitcherFormScore = (() => {
           let s = 0.50;
-          if (last5ERA    !== null) s += (norm(last5ERA, 3.00, 7.00) - 0.50) * 0.40;
-          if (pitcherWHIP !== null) s += (norm(2.0 - pitcherWHIP, 0.50, 1.50) - 0.50) * 0.20;
-          s -= norm(pitcherSwStr, 0.07, 0.18) * 0.18; // high SwStr% = dominant stuff
-          s -= norm(pitcherKPct,  0.18, 0.35) * 0.12; // high K% = fewer balls in play
-          s += norm(pitcherBbPct, 0.06, 0.14) * 0.05; // high BB% = more baserunner environment
+          // Phase 2: prefer last-3 ERA over last-5 (most recent 3 starts = better signal)
+          const recentERA = last3ERA ?? last5ERA;
+          if (recentERA    !== null) s += (norm(recentERA, 3.00, 7.00) - 0.50) * 0.45;
+          if (pitcherWHIP  !== null) s += (norm(2.0 - pitcherWHIP, 0.50, 1.50) - 0.50) * 0.15;
+          // Phase 2: last-3 hits/9 gives direct hittability signal
+          if (last3H9      !== null) s += (norm(last3H9, 5.0, 12.0) - 0.50) * 0.15;
+          s -= norm(pitcherSwStr, 0.07, 0.18) * 0.15;
+          s -= norm(pitcherKPct,  0.18, 0.35) * 0.10;
+          s += norm(pitcherBbPct, 0.06, 0.14) * 0.05;
           return Math.max(0, Math.min(1, s));
         })();
         // Game total (implied scoring environment)
         const totalBoost = norm(total, 7.5, 12.0);
-        // Park factor (hits per PA relative to league avg)
-        const parkFactor = PARK_HIT_FACTORS[venue] ?? 1.00;
-        const parkBoost  = norm(parkFactor, 0.90, 1.22);
-        // Weather: temperature carry + wind out
-        const tempF   = weather?.tempF   ?? 70;
-        const windMph = weather?.windMph ?? 5;
-        const windOut = weather?.windOut ?? false;
-        const tempBonus = Math.max(0, (tempF - 60) / 10) * 0.015;
-        const windBonus = windOut && windMph >= 8 ? 0.04 : windOut && windMph >= 5 ? 0.02 : 0;
-        const weatherScore = Math.min(1, 0.50 + tempBonus + windBonus);
+        // ── Phase 2: Park × weather MULTIPLICATIVE interaction ──────────
+        // Previously: additive (park + weather as separate additive terms)
+        // Now: parkFactor scales the weather effect (hot day in Coors >> hot day in Petco)
+        const parkFactor    = PARK_HIT_FACTORS[venue] ?? 1.00;
+        const parkBoostRaw  = norm(parkFactor, 0.90, 1.22);          // 0-1 park friendliness
+        const tempF         = weather?.tempF   ?? 70;
+        const windMph       = weather?.windMph ?? 5;
+        const windOut       = weather?.windOut ?? false;
+        const tempMult      = 1.0 + Math.max(0, (tempF - 60) / 80) * 0.12;  // +12% at 100°F
+        const windMult      = windOut && windMph >= 8 ? 1.08
+                            : windOut && windMph >= 5 ? 1.04
+                            : 1.00;
+        // Multiplicative: park_boost × temp_multiplier × wind_multiplier, then normalize
+        const envRaw        = parkBoostRaw * tempMult * windMult;
+        const envScore      = Math.min(1.0, envRaw);                 // cap at 1.0
         const matchup = (
-          pitcherHittability * 0.35 +
-          pitcherFormScore   * 0.25 +
+          pitcherHittability * 0.38 +
+          pitcherFormScore   * 0.28 +
           totalBoost         * 0.20 +
-          parkBoost          * 0.12 +
-          weatherScore       * 0.08
+          envScore           * 0.14    // park × weather combined
         );
 
-        // ══ COMPONENT 5: Opportunity / Lineup Slot + EPA (18%) ══
+        // ══ COMPONENT 5: Opportunity / Lineup Slot + EPA (20%) ══
+        // Phase 2: adds leash probability — low leash = more bullpen innings = PA opportunity
         // PA tiers: 1-3 strong, 4-5 moderate, 6-7 mild downgrade, 8-9 downgrade
-        // Boost from team implied runs (higher total = extra-inning PA opportunity)
         const impliedRuns  = total / 2;
         const impliedBoost = norm(impliedRuns, 3.5, 6.5) * 0.08;
-        const rawSlotScore = lineupSlot <= 3 ? 0.88 // top-of-order boost (Phase 1)
+        const rawSlotScore = lineupSlot <= 3 ? 0.88
                            : lineupSlot <= 5 ? 0.66
                            : lineupSlot <= 7 ? 0.44
                            : 0.28;
-        // EPA gate: projected PA < 3.8 gets a downgrade flag (not a hard cut)
+        // EPA gate: projected PA < 3.8 gets a downgrade flag
         const projectedPA = lineupSlot <= 3 ? 4.6
                           : lineupSlot <= 5 ? 4.0
                           : lineupSlot <= 7 ? 3.6
                           : 3.2;
         const epaGatePenalty = projectedPA < 3.8 ? 0.07 : 0;
-        // Home/away split adjustment (requires 30+ PA to apply)
+        // Home/away split adjustment
         const splitAvg = isHomeGame ? (hitter.avgHome ?? null) : (hitter.avgAway ?? null);
         const splitAdj = splitAvg !== null ? (norm(splitAvg, 0.200, 0.380) - 0.50) * 0.08 : 0;
+        // Phase 2: leash probability adjustment
+        // Low-leash pitcher → more bullpen exposure → top-order hitters see more soft relievers
+        // High-leash ace → fewer plate appearances against vulnerable pen
+        const leashProb = oppPitcherSeasonStats?.leashProbability ?? 0.85;
+        // Short leash (≤0.60) gives up to +0.05 bonus for slots 1-5 (PA opportunity boost)
+        const leashBonus = lineupSlot <= 5 ? (1.0 - leashProb) * 0.10 : 0;
         const opportunity = Math.max(0, Math.min(1,
-          rawSlotScore + impliedBoost + splitAdj - epaGatePenalty
+          rawSlotScore + impliedBoost + splitAdj - epaGatePenalty + leashBonus
         ));
 
         // ══ COMPONENT 6: BvP — requires 20+ AB (reduced noise vs v2's 8 AB) (8%) ══
@@ -8480,12 +8687,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const hasConfirmedLineup = side === "home" ? confirmedHome.length > 0 : confirmedAway.length > 0;
               const isScratched = lineupSrc === "projected" && hasConfirmedLineup && !confirmedIds.has(pid);
 
-              const stats  = await getHitterStats(pid);
-              const savant = savantMap[String(pid)] ?? {};
+              const stats    = await getHitterStats(pid);
+              const savant   = savantMap[String(pid)]    ?? {};  // season Statcast
+              const sav15d   = savantMap15d[String(pid)] ?? {};  // Phase 2: rolling 15d
+              const sav30d   = savantMap30d[String(pid)] ?? {};  // Phase 2: rolling 30d
 
               // ── Gate 2: Removed hard BA/GHP/season gates (Phase 1) ──
               // Model score + edge filter now handle quality control.
-              // Override still catches extreme Statcast profiles.
               const pitcherXwobaForOverride = parseFloat(oppPitcherSavant?.xwoba ?? "0") || null;
               const isOverridePick = passesOverride(stats, savant, pitcherXwobaForOverride, pitcherAvgVsMe)
                 && ((stats.avg14 ?? 0) < 0.200 || (stats.avgSeason ?? 0) < 0.195);
@@ -8496,12 +8704,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 ? await getBvP(pid, opponentPitcherId)
                 : { avg: null, hits: 0, ab: 0, signal: "none" };
 
+              // ── Phase 2: pitch-type matchup score ─────────────────────────
+              // Weighted batter wOBA vs pitcher's actual pitch mix (FF/SL/CH/CU)
+              // Fetched per batter-pitcher pair; cached in pitchArsenalCache
+              const pitchMatchup = opponentPitcherId
+                ? await getPitchArsenalMatchup(opponentPitcherId, pid, bats)
+                : null;
+
               const lineupSlot = p.medianSlot ?? (slotIdx + 1);
 
               const rawScore = scoreHitter(
                 { ...stats, bats },
                 pitcherSplits,
                 savant,
+                sav15d,
+                sav30d,
                 oppPitcherSavant,
                 total,
                 { tempF, windMph, windOut },
@@ -8510,6 +8727,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 lineupSlot,
                 oppPitcherSeasonStats,
                 side === "home",
+                pitchMatchup,
               );
 
               // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
@@ -8565,11 +8783,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 pitcherAvgAllowed: pitcherAvgVsMe,
                 bvp: { avg: bvp.avg, hits: bvp.hits, ab: bvp.ab, signal: bvp.signal },
                 pitcherStats: {
-                  era:        oppPitcherSeasonStats?.era      ?? null,
-                  last5ERA:   oppPitcherSeasonStats?.last5ERA ?? null,
-                  k9:         oppPitcherSeasonStats?.k9       ?? null,
-                  whip:       oppPitcherSeasonStats?.whip     ?? null,
-                  ip:         oppPitcherSeasonStats?.ip       ?? 0,
+                  era:             oppPitcherSeasonStats?.era              ?? null,
+                  last5ERA:        oppPitcherSeasonStats?.last5ERA         ?? null,
+                  last3ERA:        oppPitcherSeasonStats?.last3ERA         ?? null,   // Phase 2
+                  last3AvgIP:      oppPitcherSeasonStats?.last3AvgIP       ?? null,   // Phase 2
+                  last3H9:         oppPitcherSeasonStats?.last3H9          ?? null,   // Phase 2
+                  leashProbability:oppPitcherSeasonStats?.leashProbability ?? null,   // Phase 2
+                  k9:              oppPitcherSeasonStats?.k9               ?? null,
+                  whip:            oppPitcherSeasonStats?.whip             ?? null,
+                  ip:              oppPitcherSeasonStats?.ip               ?? 0,
                   xba:        parseFloat(oppPitcherSavant?.xba              ?? "0") || null,
                   xwoba:      parseFloat(oppPitcherSavant?.xwoba            ?? "0") || null,
                   hardHitPct: parseFloat(oppPitcherSavant?.hard_hit_percent ?? "0") || null,
@@ -8599,6 +8821,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   sprintSpeed:parseFloat(savant?.sprint_speed     ?? "0") || null,
                   avgHome:    stats.avgHome ?? null,
                   avgAway:    stats.avgAway ?? null,
+                  // Phase 2: rolling Statcast windows
+                  xba15d:     parseFloat(sav15d?.xba               ?? "0") || null,
+                  xwoba15d:   parseFloat(sav15d?.xwoba             ?? "0") || null,
+                  hardHit15d: parseFloat(sav15d?.hard_hit_percent  ?? "0") || null,
+                  xba30d:     parseFloat(sav30d?.xba               ?? "0") || null,
+                  xwoba30d:   parseFloat(sav30d?.xwoba             ?? "0") || null,
+                  hardHit30d: parseFloat(sav30d?.hard_hit_percent  ?? "0") || null,
+                  // Phase 2: pitch-type matchup score
+                  pitchTypeMatchup: pitchMatchup !== null ? Math.round(pitchMatchup * 100) : null,
                 },
                 gamelog: stats.gamelog,
                 game: {
@@ -8669,13 +8900,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             hardHitPct:     p.stats?.hardHitPct,
             barrelPct:      p.stats?.barrelPct,
             launchAngle:    p.stats?.launchAngle,
-            pitcherXwoba:   p.pitcherStats?.xwoba,
-            pitcherLast5ERA:p.pitcherStats?.last5ERA,
-            venue:          p.game?.venue,
-            gameTotal:      p.game?.total,
-            result:         "pending",
-            hits:           null,
-            ab:             null,
+            pitcherXwoba:    p.pitcherStats?.xwoba,
+            pitcherLast5ERA: p.pitcherStats?.last5ERA,
+            pitcherLast3ERA: p.pitcherStats?.last3ERA,        // Phase 2
+            pitcherLeash:    p.pitcherStats?.leashProbability, // Phase 2
+            xba15d:          p.stats?.xba15d,                 // Phase 2
+            xwoba15d:        p.stats?.xwoba15d,               // Phase 2
+            xba30d:          p.stats?.xba30d,                 // Phase 2
+            xwoba30d:        p.stats?.xwoba30d,               // Phase 2
+            pitchTypeMatchup:p.stats?.pitchTypeMatchup,       // Phase 2
+            venue:           p.game?.venue,
+            gameTotal:       p.game?.total,
+            result:          "pending",
+            hits:            null,
+            ab:              null,
           }));
         if (newEntries.length > 0) {
           if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
