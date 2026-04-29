@@ -632,12 +632,9 @@ async function syncSnapshotsToGitHub(): Promise<void> {
 }
 
 // Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
-// Module-level promise so any endpoint can await the startup pull.
-// Set once in registerRoutes; read by ML endpoints before serving stale empty files.
-let _mlPullPromise: Promise<void> | null = null;
-function getMLPullPromise(): Promise<void> {
-  return _mlPullPromise ?? Promise.resolve();
-}
+// getMLPullPromise() returns a module-level promise that resolves when startup data is loaded.
+let _mlPullPromise: Promise<void> = Promise.resolve(); // set after pullMLDataFromGitHub is defined
+function getMLPullPromise(): Promise<void> { return _mlPullPromise; }
 
 async function pullMLDataFromGitHub(): Promise<void> {
   const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
@@ -687,6 +684,12 @@ async function pullMLDataFromGitHub(): Promise<void> {
     }
   }
 }
+
+// Start the pull immediately at module load — before any request can be served.
+// This ensures getMLPullPromise() always returns a meaningful promise.
+_mlPullPromise = pullMLDataFromGitHub().catch((e: any) => {
+  console.warn("[MLSync] Module-level startup pull failed:", e?.message);
+});
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -1648,10 +1651,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
   });
 
-  // Pull ML data from GitHub on startup so outcomes survive redeploys.
-  // Store as a module-level promise so ML endpoints can await it before reading files.
+  // ML data pull is started at module load (see top of file) — just track completion for scanner gate.
   let mlPullDone = false;
-  _mlPullPromise = pullMLDataFromGitHub()
+  _mlPullPromise
     .then(() => { mlPullDone = true; console.log("[MLSync] startup pull complete"); })
     .catch((e: any) => { mlPullDone = true; console.warn("[MLSync] startup pull error:", e.message); });
 
