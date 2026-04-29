@@ -541,7 +541,7 @@ async function syncMLDataToGitHub(): Promise<void> {
   console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
-  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json"];
 
   for (const filename of files) {
     const filepath = path.join(DATA_DIR, filename);
@@ -7693,13 +7693,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── Persist btsPicksCache to disk and back up to GitHub ─────────────
   const BTS_PICKS_PATH = path.join(__dirname, "ml_data", "bts_picks.json");
 
+  let _btsSyncTimer: ReturnType<typeof setTimeout> | null = null;
   function saveBtsPicksCache() {
+    // Write to local disk immediately
     try {
       fs.mkdirSync(path.dirname(BTS_PICKS_PATH), { recursive: true });
       fs.writeFileSync(BTS_PICKS_PATH, JSON.stringify(btsPicksCache, null, 2), "utf-8");
     } catch (e: any) {
       console.warn("[BTS] Failed to save bts_picks.json:", e.message);
     }
+    // Debounced GitHub sync (30s cooldown so rapid grader updates don't spam the API)
+    if (_btsSyncTimer) clearTimeout(_btsSyncTimer);
+    _btsSyncTimer = setTimeout(() => {
+      _btsSyncTimer = null;
+      syncMLDataToGitHub().catch((e: any) => console.warn("[BTS] GitHub sync error:", e.message));
+    }, 30_000);
   }
 
   function loadBtsPicksCache() {
