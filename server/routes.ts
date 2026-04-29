@@ -632,6 +632,13 @@ async function syncSnapshotsToGitHub(): Promise<void> {
 }
 
 // Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
+// Module-level promise so any endpoint can await the startup pull.
+// Set once in registerRoutes; read by ML endpoints before serving stale empty files.
+let _mlPullPromise: Promise<void> | null = null;
+function getMLPullPromise(): Promise<void> {
+  return _mlPullPromise ?? Promise.resolve();
+}
+
 async function pullMLDataFromGitHub(): Promise<void> {
   const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
@@ -1641,10 +1648,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
   });
 
-  // Pull ML data from GitHub on startup so outcomes survive redeploys
-  // We await this before scheduling the startup scan so graded picks are ready immediately
+  // Pull ML data from GitHub on startup so outcomes survive redeploys.
+  // Store as a module-level promise so ML endpoints can await it before reading files.
   let mlPullDone = false;
-  pullMLDataFromGitHub()
+  _mlPullPromise = pullMLDataFromGitHub()
     .then(() => { mlPullDone = true; console.log("[MLSync] startup pull complete"); })
     .catch((e: any) => { mlPullDone = true; console.warn("[MLSync] startup pull error:", e.message); });
 
@@ -1860,6 +1867,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml-insights — return latest ML insights JSON transformed for UI
   app.get("/api/ml-insights", async (_req, res) => {
     try {
+      // Await the startup GitHub pull so we never serve stale empty data after a redeploy
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+
       const EMPTY = {
         overall: { total: 0, won: 0, lost: 0, push: 0, win_rate: null },
         by_sport: {}, by_bet_type: {}, by_conf_tier: {}, by_week: [],
@@ -1977,8 +1987,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // GET /api/ml/snapshots — how many picks have been logged
-  app.get("/api/ml/snapshots", (_req, res) => {
+  app.get("/api/ml/snapshots", async (_req, res) => {
     try {
+      // Await startup pull — ensures Railway redeployments don't wipe history
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
       const snapFile = path.join(__dirname, "ml_data", "pick_snapshots.json");
       const outFile  = path.join(__dirname, "ml_data", "bet_outcome_log.json");
       const snaps    = fs.existsSync(snapFile)  ? JSON.parse(fs.readFileSync(snapFile,  "utf8")) : [];
@@ -1999,8 +2011,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // GET /api/ml/graded-picks — full list of graded picks for the ML history log
-  app.get("/api/ml/graded-picks", (_req, res) => {
+  app.get("/api/ml/graded-picks", async (_req, res) => {
     try {
+      // Await startup pull — ensures Railway redeployments don't wipe history
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
       const outFile = path.join(__dirname, "ml_data", "bet_outcome_log.json");
       if (!fs.existsSync(outFile)) return res.json([]);
       const outcomes: any[] = JSON.parse(fs.readFileSync(outFile, "utf8"));
@@ -5767,7 +5781,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   };
   // Wait for ML pull to complete before first scan (or max 10s)
   const waitForMLPull = (elapsed = 0) => {
-    if (mlPullDone || elapsed >= 10000) {
+    if (mlPullDone || elapsed >= 30000) { // raised 10s→30s: give pull time to finish
       startupScan();
     } else {
       setTimeout(() => waitForMLPull(elapsed + 500), 500);
