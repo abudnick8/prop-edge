@@ -26,6 +26,7 @@ const ML_INSIGHTS_FILE = path.join(ML_DATA_DIR, "ml_insights.json");
 const ML_OUTCOME_LOG   = path.join(ML_DATA_DIR, "bet_outcome_log.json");
 const ML_GRADED_IDS    = path.join(ML_DATA_DIR, "graded_ids.json");
 const ML_SNAPSHOT_FILE = path.join(ML_DATA_DIR, "pick_snapshots.json");
+const BTS_PICKS_FILE   = path.join(ML_DATA_DIR, "bts_picks.json");
 
 if (!fs.existsSync(ML_DATA_DIR)) fs.mkdirSync(ML_DATA_DIR, { recursive: true });
 loadMLWeights(); // boot-time load; refreshed after runMLEngine()
@@ -645,7 +646,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
   const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json"];
   const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
@@ -1646,7 +1647,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // Ensure ml_data directory exists
   const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");
   if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
-  ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json"].forEach(f => {
+  ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "bts_picks.json"].forEach(f => {
     const p = path.join(ML_DATA_RUNTIME, f);
     if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
   });
@@ -2057,7 +2058,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
     const dir = path.join(__dirname, "ml_data");
-    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json"];
     const result: Record<string, any> = {};
     const errors: Record<string, string> = {};
     for (const f of files) {
@@ -7689,6 +7690,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     btsSeasonRecord.pending = p;
   }
 
+  // ── Persist btsPicksCache to disk and back up to GitHub ─────────────
+  const BTS_PICKS_PATH = path.join(__dirname, "ml_data", "bts_picks.json");
+
+  function saveBtsPicksCache() {
+    try {
+      fs.mkdirSync(path.dirname(BTS_PICKS_PATH), { recursive: true });
+      fs.writeFileSync(BTS_PICKS_PATH, JSON.stringify(btsPicksCache, null, 2), "utf-8");
+    } catch (e: any) {
+      console.warn("[BTS] Failed to save bts_picks.json:", e.message);
+    }
+  }
+
+  function loadBtsPicksCache() {
+    try {
+      if (!fs.existsSync(BTS_PICKS_PATH)) return;
+      const raw = fs.readFileSync(BTS_PICKS_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      // Merge into in-memory cache (don't overwrite newer in-memory data)
+      for (const [date, entries] of Object.entries(parsed) as [string, any][]) {
+        if (!btsPicksCache[date]) {
+          btsPicksCache[date] = entries;
+        } else {
+          // Merge: update result fields for any entries that are still pending in memory
+          for (const diskEntry of entries) {
+            const memEntry = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === diskEntry.playerId);
+            if (!memEntry) {
+              btsPicksCache[date].push(diskEntry);
+            } else if (memEntry.result === "pending" && diskEntry.result !== "pending") {
+              Object.assign(memEntry, diskEntry);
+            }
+          }
+        }
+      }
+      reconcileSeasonRecord();
+      console.log(`[BTS] Loaded bts_picks.json — ${Object.keys(btsPicksCache).length} days of history`);
+    } catch (e: any) {
+      console.warn("[BTS] Failed to load bts_picks.json:", e.message);
+    }
+  }
+
+  // Load persisted BTS picks after the ML pull promise resolves
+  _mlPullPromise.then(() => loadBtsPicksCache()).catch(() => loadBtsPicksCache());
+
   // ── Grader: fetch actual hit stats for a player on a given date ──────
   async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
     try {
@@ -7759,7 +7803,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch { /* non-fatal */ }
     }
-    if (changed) reconcileSeasonRecord();
+    if (changed) { reconcileSeasonRecord(); saveBtsPicksCache(); }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -8983,6 +9027,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           gradedAt:       null,
           snapshot:       pick,
         } as BtsPickEntry);
+        saveBtsPicksCache(); // persist new pick immediately
         cachedIds.add(pick.playerId);
       }
 
@@ -9176,6 +9221,45 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts-history — all historical BTS picks grouped by date
+  // Survives redeployments via bts_picks.json persisted to GitHub.
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/bts-history", async (_req, res) => {
+    try {
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+      // Build a list of days sorted descending, each with picks + record
+      const days = Object.entries(btsPicksCache)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, entries]) => {
+          const wins    = (entries as BtsPickEntry[]).filter(e => e.result === "win").length;
+          const losses  = (entries as BtsPickEntry[]).filter(e => e.result === "loss").length;
+          const pending = (entries as BtsPickEntry[]).filter(e => e.result === "pending").length;
+          const winPct  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : null;
+          return { date, picks: entries, wins, losses, pending, winPct };
+        });
+
+      const totalWins   = btsSeasonRecord.wins;
+      const totalLosses = btsSeasonRecord.losses;
+      const seasonWinPct = (totalWins + totalLosses) > 0
+        ? Math.round((totalWins / (totalWins + totalLosses)) * 100) : null;
+
+      // Yesterday: most recent fully-graded day (no pending picks)
+      const fullyGraded = days.filter(d => d.pending === 0 && (d.wins + d.losses) > 0);
+      const yesterdayDay = fullyGraded[0] ?? null;
+
+      res.json({
+        days,
+        seasonRecord:    { wins: totalWins, losses: totalLosses, winPct: seasonWinPct },
+        yesterdayRecord: yesterdayDay
+          ? { date: yesterdayDay.date, wins: yesterdayDay.wins, losses: yesterdayDay.losses, winPct: yesterdayDay.winPct }
+          : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, days: [], seasonRecord: { wins: 0, losses: 0, winPct: null }, yesterdayRecord: null });
     }
   });
 
