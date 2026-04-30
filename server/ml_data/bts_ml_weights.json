@@ -1,0 +1,8 @@
+{
+  "version": 0,
+  "sampleSize": 0,
+  "lastRun": null,
+  "weights": {},
+  "correlations": {},
+  "note": "Will be populated by nightly ML learning after enough pick outcomes accumulate"
+}
