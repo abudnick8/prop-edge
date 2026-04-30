@@ -9435,9 +9435,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   gameTime:    localTime,
                   gameStartMs: gameDate ? new Date(gameDate).getTime() : null,
                   weather: {
-                    tempF, wind, windMph, windDir: structuredWeather?.windDir ?? "",
+                    tempF, wind, windMph, windDir: sw?.windDir ?? "",
                     windOut, windIn, humidity, precipInches, isDome,
-                    impactLabel, impactTier, hitterImpact: weatherImpact,
+                    impactLabel, impactTier, hitterImpact,
                   },
                 },
                 rawScore,
