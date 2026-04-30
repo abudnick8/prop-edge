@@ -660,14 +660,19 @@ export default function BTS() {
 
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
-    // Don't pass ?date= — let the server derive CT date itself.
-    // This ensures the 8am CT gate and date logic on the server are authoritative.
     queryFn: () => apiRequest("GET", `/api/bts-picks`).then(r => r.json()),
-    // staleTime 0 so manual Refresh always hits the server
     staleTime: 0,
-    // Auto-refresh every 15 min all day — even after 11:45 so later-game picks
-    // can still be added (they lock per-game 30 min before first pitch)
     refetchInterval: 15 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Historical picks — loaded once, refreshed every 5 min
+  const { data: historyData } = useQuery({
+    queryKey: ["/api/bts-history"],
+    queryFn: () => apiRequest("GET", `/api/bts-history`).then(r => r.json()),
+    refetchOnMount: true,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
 
@@ -679,6 +684,13 @@ export default function BTS() {
   const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
   const visiblePicks = showAllPicks ? picks : picks.slice(0, 5);
+
+  // History data — use history endpoint as source of truth for records
+  const historyDays: any[]       = historyData?.days ?? [];
+  const histSeasonRecord: any    = historyData?.seasonRecord ?? data?.seasonRecord ?? seasonRecord;
+  const histYesterdayRecord: any = historyData?.yesterdayRecord ?? null;
+  // Merge today's current picks into history if not yet graded
+  const hasNoPicks = !isLoading && picks.length === 0;
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-28 max-w-2xl mx-auto w-full">
@@ -760,8 +772,8 @@ export default function BTS() {
         </div>
       )}
 
-      {/* KPI strip */}
-      {!isLoading && picks.length > 0 && (
+      {/* KPI strip — always visible when data loaded */}
+      {!isLoading && data && (
         <div className="grid grid-cols-2 gap-2">
           {[
             { icon: <Trophy size={14} style={{ color: "#facc15" }} />, label: "Best Pick", value: bestPick ? `${bestPick.hitProbability}%` : "—" },
@@ -780,62 +792,86 @@ export default function BTS() {
         </div>
       )}
 
-      {/* Today's record + season win % — tappable → opens history drawer */}
-      {!isLoading && picks.length > 0 && (
+      {/* Record strip — always visible; shows yesterday + season even when no picks yet */}
+      {(data || historyData) && (
         <button
           onClick={() => setShowHistory(true)}
           className="w-full rounded-2xl p-3 text-left active:scale-[0.99] transition-transform"
           style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}
         >
           <div className="flex items-center justify-between flex-wrap gap-2">
-            {/* Today record */}
+            {/* Today record — or yesterday if no picks today yet */}
             <div className="flex items-center gap-2">
               <BarChart2 size={14} style={{ color: "#60a5fa" }} />
               <div>
-                <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Today</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{todayRecord.wins}W</span>
-                  <span className="text-xs text-muted-foreground">/</span>
-                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{todayRecord.losses}L</span>
-                  {todayRecord.pending > 0 && (
-                    <span className="text-xs text-muted-foreground">· {todayRecord.pending} pending</span>
-                  )}
-                  {todayRecord.winPct != null && (
-                    <span
-                      className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
-                      style={{
-                        background: todayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : todayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
-                        color: todayRecord.winPct >= 60 ? "#16a34a" : todayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
-                      }}
-                    >
-                      {todayRecord.winPct}%
-                    </span>
-                  )}
-                </div>
+                {hasNoPicks && histYesterdayRecord ? (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Yesterday</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-sm font-black" style={{ color: "#22c55e" }}>{histYesterdayRecord.wins}W</span>
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <span className="text-sm font-black" style={{ color: "#f87171" }}>{histYesterdayRecord.losses}L</span>
+                      {histYesterdayRecord.winPct != null && (
+                        <span
+                          className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                          style={{
+                            background: histYesterdayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : histYesterdayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                            color: histYesterdayRecord.winPct >= 60 ? "#16a34a" : histYesterdayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                          }}
+                        >
+                          {histYesterdayRecord.winPct}%
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Today</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-sm font-black" style={{ color: "#22c55e" }}>{todayRecord.wins}W</span>
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <span className="text-sm font-black" style={{ color: "#f87171" }}>{todayRecord.losses}L</span>
+                      {todayRecord.pending > 0 && (
+                        <span className="text-xs text-muted-foreground">· {todayRecord.pending} pending</span>
+                      )}
+                      {todayRecord.winPct != null && (
+                        <span
+                          className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                          style={{
+                            background: todayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : todayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                            color: todayRecord.winPct >= 60 ? "#16a34a" : todayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                          }}
+                        >
+                          {todayRecord.winPct}%
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Divider */}
             <div className="w-px h-8 hidden sm:block" style={{ background: "rgba(19,35,58,0.12)" }} />
 
-            {/* Season record */}
+            {/* Season record — uses history endpoint as source of truth */}
             <div className="flex items-center gap-2">
               <TrendingUp size={14} style={{ color: "#22c55e" }} />
               <div>
                 <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Season Record</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{seasonRecord.wins}W</span>
+                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{histSeasonRecord.wins}W</span>
                   <span className="text-xs text-muted-foreground">/</span>
-                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{seasonRecord.losses}L</span>
-                  {seasonRecord.winPct != null ? (
+                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{histSeasonRecord.losses}L</span>
+                  {histSeasonRecord.winPct != null ? (
                     <span
                       className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
                       style={{
-                        background: seasonRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : seasonRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
-                        color: seasonRecord.winPct >= 60 ? "#16a34a" : seasonRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                        background: histSeasonRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : histSeasonRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                        color: histSeasonRecord.winPct >= 60 ? "#16a34a" : histSeasonRecord.winPct >= 40 ? "#b8930a" : "#f87171",
                       }}
                     >
-                      {seasonRecord.winPct}% win
+                      {histSeasonRecord.winPct}% win
                     </span>
                   ) : (
                     <span className="text-[10px] text-muted-foreground ml-1">no graded picks yet</span>
@@ -881,20 +917,20 @@ export default function BTS() {
               <div>
                 <p className="text-base font-black text-foreground">Pick History</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Today · {picks.length} picks · {todayRecord.wins}W–{todayRecord.losses}L
-                  {todayRecord.winPct != null && ` · ${todayRecord.winPct}% win rate`}
+                  {historyDays.length} days · {histSeasonRecord.wins}W–{histSeasonRecord.losses}L season
+                  {histSeasonRecord.winPct != null && ` · ${histSeasonRecord.winPct}% win rate`}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {/* Season badge */}
-                {seasonRecord.winPct != null && (
+                {histSeasonRecord.winPct != null && (
                   <div className="text-center">
                     <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Season</p>
                     <p
                       className="text-sm font-black"
-                      style={{ color: seasonRecord.winPct >= 60 ? "#16a34a" : seasonRecord.winPct >= 40 ? "#b8930a" : "#f87171" }}
+                      style={{ color: histSeasonRecord.winPct >= 60 ? "#16a34a" : histSeasonRecord.winPct >= 40 ? "#b8930a" : "#f87171" }}
                     >
-                      {seasonRecord.winPct}%
+                      {histSeasonRecord.winPct}%
                     </p>
                   </div>
                 )}
@@ -908,7 +944,7 @@ export default function BTS() {
               </div>
             </div>
 
-            {/* Scrollable pick list */}
+            {/* Scrollable pick list — grouped by date, newest first */}
             <div
               className="flex-1 px-4 py-3"
               style={{
@@ -919,71 +955,81 @@ export default function BTS() {
                 minHeight: 0,
               }}
             >
-              {picks.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-8">No picks recorded yet today.</p>
+              {historyDays.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-8">No historical picks recorded yet.</p>
               )}
-              {picks.map((pick, i) => {
-                const isWin  = pick.result === "win";
-                const isLoss = pick.result === "loss";
-                const isPending = !pick.result || pick.result === "pending";
+              {historyDays.map((day: any) => {
+                const dayWins    = day.wins    as number;
+                const dayLosses  = day.losses  as number;
+                const dayPending = day.pending as number;
+                const dayWinPct  = day.winPct  as number | null;
+                const dayPicks   = day.picks   as any[];
                 return (
-                  <div
-                    key={pick.playerId}
-                    className="rounded-2xl p-3 flex items-start gap-3"
-                    style={{ marginBottom: 8 }}
-                    style={{
-                      background: isWin ? "rgba(34,197,94,0.06)" : isLoss ? "rgba(248,113,113,0.05)" : "rgba(19,35,58,0.04)",
-                      border: `1px solid ${isWin ? "rgba(34,197,94,0.28)" : isLoss ? "rgba(248,113,113,0.22)" : "rgba(19,35,58,0.10)"}`,
-                    }}
-                  >
-                    {/* Rank */}
-                    <div
-                      className="rounded-full w-7 h-7 flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
-                      style={{ background: "rgba(19,35,58,0.07)", color: "var(--muted-foreground)" }}
-                    >
-                      #{i + 1}
-                    </div>
-
-                    {/* Main info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-black text-sm text-foreground">{pick.name}</p>
-                        <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {pick.team} · {pick.game?.matchup?.split(" @ ")?.[1] ?? pick.game?.venue ?? ""}
+                  <div key={day.date} className="mb-5">
+                    {/* Day header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                        {new Date(day.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {pick.game?.gameTime} · O/U {pick.game?.total ?? "—"} · {pick.bats === "L" ? "LHB" : "RHB"} vs {pick.opponentPitcher?.name ?? "TBD"}
-                      </p>
-                      {/* Stat row */}
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-[10px] font-bold" style={{ color: "#131A24" }}>
-                          {pick.hitProbability}% prob
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          14d {pick.stats?.avg14 ? ("." + Math.round(pick.stats.avg14 * 1000).toString().padStart(3,"0")) : "—"}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          GHP {pick.stats?.ghp14 != null ? Math.round(pick.stats.ghp14 * 100) + "%" : "—"}
-                        </span>
-                        {pick.lineupSource === "confirmed" && (
-                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: "rgba(34,197,94,0.10)", color: "#16a34a" }}>✓ Confirmed</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold" style={{ color: "#22c55e" }}>{dayWins}W</span>
+                        <span className="text-[10px] text-muted-foreground">/</span>
+                        <span className="text-[10px] font-bold" style={{ color: "#f87171" }}>{dayLosses}L</span>
+                        {dayPending > 0 && <span className="text-[10px] text-muted-foreground">· {dayPending} pend</span>}
+                        {dayWinPct != null && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                            style={{
+                              background: dayWinPct >= 60 ? "rgba(34,197,94,0.12)" : dayWinPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                              color: dayWinPct >= 60 ? "#16a34a" : dayWinPct >= 40 ? "#b8930a" : "#f87171",
+                            }}>
+                            {dayWinPct}%
+                          </span>
                         )}
                       </div>
-                      {/* Rationale summary — first line only */}
-                      {pick.rationale && (
-                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug line-clamp-2">
-                          {pick.rationale.split("\n")[0].replace(/^[🔥⚡📊🧊⚠️]+\s*/, "")}
-                        </p>
-                      )}
                     </div>
-
-                    {/* Result icon */}
-                    <div className="flex-shrink-0 mt-0.5">
-                      {isWin  && <CheckCircle size={20} style={{ color: "#22c55e" }} />}
-                      {isLoss && <XCircle    size={20} style={{ color: "#f87171" }} />}
-                      {isPending && <HelpCircle size={20} style={{ color: "#94a3b8" }} />}
+                    {/* Picks for this day */}
+                    <div className="space-y-2">
+                      {dayPicks.map((pick: any, i: number) => {
+                        const isWin     = pick.result === "win";
+                        const isLoss    = pick.result === "loss";
+                        const isPending = !pick.result || pick.result === "pending";
+                        return (
+                          <div
+                            key={pick.playerId ?? i}
+                            className="rounded-2xl p-3 flex items-start gap-3"
+                            style={{
+                              background: isWin ? "rgba(34,197,94,0.06)" : isLoss ? "rgba(248,113,113,0.05)" : "rgba(19,35,58,0.04)",
+                              border: `1px solid ${isWin ? "rgba(34,197,94,0.28)" : isLoss ? "rgba(248,113,113,0.22)" : "rgba(19,35,58,0.10)"}`,
+                            }}
+                          >
+                            <div
+                              className="rounded-full w-7 h-7 flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
+                              style={{ background: "rgba(19,35,58,0.07)", color: "var(--muted-foreground)" }}
+                            >
+                              #{i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-black text-sm text-foreground">{pick.name}</p>
+                                <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                {pick.team} · {pick.hitProbability}% prob
+                                {pick.hits != null && pick.ab != null && (
+                                  <span className="ml-1 font-bold" style={{ color: isWin ? "#22c55e" : "#f87171" }}>
+                                    · {pick.hits}-for-{pick.ab}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex-shrink-0 mt-0.5">
+                              {isWin  && <CheckCircle size={20} style={{ color: "#22c55e" }} />}
+                              {isLoss && <XCircle    size={20} style={{ color: "#f87171" }} />}
+                              {isPending && <HelpCircle size={20} style={{ color: "#94a3b8" }} />}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -994,7 +1040,6 @@ export default function BTS() {
           </div>
         </div>
       )}
-
       {/* How to Read Glossary */}
       <HowToReadBTS />
 

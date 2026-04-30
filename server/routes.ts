@@ -8576,7 +8576,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             try {
               const r = await axios.get(
                 `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&pitchType=${pt}&year=2026&team=&min=1&sort=run_value_per_100&sortDir=desc&csv=true`,
-                { headers: { "Accept": "text/csv" } }
+                { headers: { "Accept": "text/csv" }, timeout: 5000 }
               );
               const lines = (r.data as string).replace(/^\uFEFF/, "").split("\n");
               const hdr   = parseCSVLine(lines[0]);
@@ -9285,11 +9285,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 : { avg: null, hits: 0, ab: 0, signal: "none" };
 
               // ── Phase 2: pitch-type matchup score ─────────────────────────
-              // Weighted batter wOBA vs pitcher's actual pitch mix (FF/SL/CH/CU)
+              // Wrapped in its own try/catch — a timeout here must NOT silently drop the candidate
               // Fetched per batter-pitcher pair; cached in pitchArsenalCache
-              const pitchMatchup = opponentPitcherId
+              let pitchMatchup: number | null = null;
+              try { pitchMatchup = opponentPitcherId
                 ? await getPitchArsenalMatchup(opponentPitcherId, pid, bats)
-                : null;
+                : null; } catch { pitchMatchup = null; }
 
               const lineupSlot = p.medianSlot ?? (slotIdx + 1);
 
