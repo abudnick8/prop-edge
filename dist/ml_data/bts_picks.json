@@ -1,1 +1,706 @@
-{}
+{
+  "2026-04-29": [
+    {
+      "playerId": 666126,
+      "name": "Carlos Cortes",
+      "team": "Athletics",
+      "hitProbability": 78.5,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 2,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 666126,
+        "name": "Carlos Cortes",
+        "team": "Athletics",
+        "hitProbability": 78.5,
+        "rawScore": 0.6709,
+        "lineupSlot": 3,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.473,
+          "xba": 0.387,
+          "hardHitPct": 53.4,
+          "kPct": 0.057,
+          "avgSeason": 0.387
+        },
+        "game": {
+          "venue": "Sacramento Sutter Health Park",
+          "total": 9.5,
+          "gamePk": 825015
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 2
+      }
+    },
+    {
+      "playerId": 700250,
+      "name": "Ben Rice",
+      "team": "New York Yankees",
+      "hitProbability": 74.8,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 3,
+      "ab": 4,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 700250,
+        "name": "Ben Rice",
+        "team": "New York Yankees",
+        "hitProbability": 74.8,
+        "rawScore": 0.6368,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.444,
+          "xba": 0.296,
+          "hardHitPct": 61.5,
+          "kPct": 0.263,
+          "avgSeason": 0.327
+        },
+        "game": {
+          "venue": "Globe Life Field",
+          "total": 8.5,
+          "gamePk": 822907
+        },
+        "result": "win",
+        "hits": 3,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 682829,
+      "name": "Elly De La Cruz",
+      "team": "Cincinnati Reds",
+      "hitProbability": 74.1,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "loss",
+      "hits": 0,
+      "ab": 3,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 682829,
+        "name": "Elly De La Cruz",
+        "team": "Cincinnati Reds",
+        "hitProbability": 74.1,
+        "rawScore": 0.6314,
+        "lineupSlot": 3,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.393,
+          "xba": 0.284,
+          "hardHitPct": 56.3,
+          "kPct": 0.285,
+          "avgSeason": 0.284
+        },
+        "game": {
+          "venue": "Great American Ball Park",
+          "total": 9.5,
+          "gamePk": 824525
+        },
+        "result": "loss",
+        "hits": 0,
+        "ab": 3
+      }
+    },
+    {
+      "playerId": 673962,
+      "name": "Josh Jung",
+      "team": "Texas Rangers",
+      "hitProbability": 72.7,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 4,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 673962,
+        "name": "Josh Jung",
+        "team": "Texas Rangers",
+        "hitProbability": 72.7,
+        "rawScore": 0.6193,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.377,
+          "xba": 0.311,
+          "hardHitPct": 55.0,
+          "kPct": 0.165,
+          "avgSeason": 0.317
+        },
+        "game": {
+          "venue": "Globe Life Field",
+          "total": 8.5,
+          "gamePk": 822907
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 677951,
+      "name": "Bobby Witt Jr.",
+      "team": "Kansas City Royals",
+      "hitProbability": 72.4,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 2,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 677951,
+        "name": "Bobby Witt Jr.",
+        "team": "Kansas City Royals",
+        "hitProbability": 72.4,
+        "rawScore": 0.6167,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.39,
+          "xba": 0.312,
+          "hardHitPct": 52.6,
+          "kPct": 0.162,
+          "avgSeason": 0.312
+        },
+        "game": {
+          "venue": "Sacramento Sutter Health Park",
+          "total": 9.5,
+          "gamePk": 825015
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 2
+      }
+    },
+    {
+      "playerId": 665489,
+      "name": "Vladimir Guerrero Jr.",
+      "team": "Toronto Blue Jays",
+      "hitProbability": 71.8,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 3,
+      "ab": 3,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 665489,
+        "name": "Vladimir Guerrero Jr.",
+        "team": "Toronto Blue Jays",
+        "hitProbability": 71.8,
+        "rawScore": 0.6116,
+        "lineupSlot": 3,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.395,
+          "xba": 0.327,
+          "hardHitPct": 48.4,
+          "kPct": 0.123,
+          "avgSeason": 0.327
+        },
+        "game": {
+          "venue": "Rogers Centre",
+          "total": 8.5,
+          "gamePk": 822821
+        },
+        "result": "win",
+        "hits": 3,
+        "ab": 3
+      }
+    },
+    {
+      "playerId": 681198,
+      "name": "TJ Rumfield",
+      "team": "Colorado Rockies",
+      "hitProbability": 71.3,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 6,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 681198,
+        "name": "TJ Rumfield",
+        "team": "Colorado Rockies",
+        "hitProbability": 71.3,
+        "rawScore": 0.6073,
+        "lineupSlot": 3,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.344,
+          "xba": 0.271,
+          "hardHitPct": 39.5,
+          "kPct": 0.162,
+          "avgSeason": 0.271
+        },
+        "game": {
+          "venue": "Great American Ball Park",
+          "total": 9.5,
+          "gamePk": 824525
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 6
+      }
+    },
+    {
+      "playerId": 668930,
+      "name": "Brice Turang",
+      "team": "Milwaukee Brewers",
+      "hitProbability": 69.6,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 4,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 668930,
+        "name": "Brice Turang",
+        "team": "Milwaukee Brewers",
+        "hitProbability": 69.6,
+        "rawScore": 0.5933,
+        "lineupSlot": 2,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.416,
+          "xba": 0.287,
+          "hardHitPct": 52.9,
+          "kPct": 0.233,
+          "avgSeason": 0.287
+        },
+        "game": {
+          "venue": "American Family Field",
+          "total": 8.5,
+          "gamePk": 823796
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 545361,
+      "name": "Mike Trout",
+      "team": "Los Angeles Angels",
+      "hitProbability": 69.5,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 4,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 545361,
+        "name": "Mike Trout",
+        "team": "Los Angeles Angels",
+        "hitProbability": 69.5,
+        "rawScore": 0.5923,
+        "lineupSlot": 2,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.492,
+          "xba": 0.295,
+          "hardHitPct": 51.3,
+          "kPct": 0.193,
+          "avgSeason": 0.248
+        },
+        "game": {
+          "venue": "Rate Field",
+          "total": 8.5,
+          "gamePk": 824608
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 671056,
+      "name": "Iv\u00e1n Herrera",
+      "team": "St. Louis Cardinals",
+      "hitProbability": 69.5,
+      "lockedAt": "2026-04-29T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 4,
+      "gradedAt": "2026-04-29T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 671056,
+        "name": "Iv\u00e1n Herrera",
+        "team": "St. Louis Cardinals",
+        "hitProbability": 69.5,
+        "rawScore": 0.5928,
+        "lineupSlot": 2,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.401,
+          "xba": 0.278,
+          "hardHitPct": 47.0,
+          "kPct": 0.143,
+          "avgSeason": 0.278
+        },
+        "game": {
+          "venue": "PNC Park",
+          "total": 8.5,
+          "gamePk": 823392
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 4
+      }
+    }
+  ],
+  "2026-04-28": [
+    {
+      "playerId": 545121,
+      "name": "Ildemaro Vargas",
+      "team": "Arizona Diamondbacks",
+      "hitProbability": 80.4,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 2,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 545121,
+        "name": "Ildemaro Vargas",
+        "team": "Arizona Diamondbacks",
+        "hitProbability": 80.4,
+        "rawScore": 0.6884,
+        "lineupSlot": 1,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.398,
+          "xba": 0.359,
+          "hardHitPct": 36.1,
+          "kPct": 0.116,
+          "avgSeason": 0.359
+        },
+        "game": {
+          "venue": "American Family Field",
+          "total": 15,
+          "gamePk": 823798
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 2
+      }
+    },
+    {
+      "playerId": 667472,
+      "name": "Dane Myers",
+      "team": "Cincinnati Reds",
+      "hitProbability": 77.7,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 3,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 667472,
+        "name": "Dane Myers",
+        "team": "Cincinnati Reds",
+        "hitProbability": 77.7,
+        "rawScore": 0.6635,
+        "lineupSlot": 1,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.477,
+          "xba": 0.353,
+          "hardHitPct": 31.3,
+          "kPct": 0.176,
+          "avgSeason": 0.353
+        },
+        "game": {
+          "venue": "Great American Ball Park",
+          "total": 9,
+          "gamePk": 824526
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 3
+      }
+    },
+    {
+      "playerId": 668930,
+      "name": "Brice Turang",
+      "team": "Milwaukee Brewers",
+      "hitProbability": 77.5,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 3,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 668930,
+        "name": "Brice Turang",
+        "team": "Milwaukee Brewers",
+        "hitProbability": 77.5,
+        "rawScore": 0.6613,
+        "lineupSlot": 3,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.416,
+          "xba": 0.287,
+          "hardHitPct": 52.9,
+          "kPct": 0.233,
+          "avgSeason": 0.287
+        },
+        "game": {
+          "venue": "American Family Field",
+          "total": 15,
+          "gamePk": 823798
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 3
+      }
+    },
+    {
+      "playerId": 671056,
+      "name": "Iv\u00e1n Herrera",
+      "team": "St. Louis Cardinals",
+      "hitProbability": 77.4,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 2,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 671056,
+        "name": "Iv\u00e1n Herrera",
+        "team": "St. Louis Cardinals",
+        "hitProbability": 77.4,
+        "rawScore": 0.6608,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.401,
+          "xba": 0.278,
+          "hardHitPct": 47.0,
+          "kPct": 0.143,
+          "avgSeason": 0.278
+        },
+        "game": {
+          "venue": "PNC Park",
+          "total": 18,
+          "gamePk": 823390
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 2
+      }
+    },
+    {
+      "playerId": 670541,
+      "name": "Yordan Alvarez",
+      "team": "Houston Astros",
+      "hitProbability": 75.8,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 4,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 670541,
+        "name": "Yordan Alvarez",
+        "team": "Houston Astros",
+        "hitProbability": 75.8,
+        "rawScore": 0.6461,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.535,
+          "xba": 0.378,
+          "hardHitPct": 49.0,
+          "kPct": 0.082,
+          "avgSeason": 0.378
+        },
+        "game": {
+          "venue": "Oriole Park at Camden Yards",
+          "total": 8,
+          "gamePk": 824849
+        },
+        "result": "win",
+        "hits": 1,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 665833,
+      "name": "Oneil Cruz",
+      "team": "Pittsburgh Pirates",
+      "hitProbability": 75.5,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 5,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 665833,
+        "name": "Oneil Cruz",
+        "team": "Pittsburgh Pirates",
+        "hitProbability": 75.5,
+        "rawScore": 0.6434,
+        "lineupSlot": 1,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.374,
+          "xba": 0.27,
+          "hardHitPct": 62.5,
+          "kPct": 0.354,
+          "avgSeason": 0.27
+        },
+        "game": {
+          "venue": "PNC Park",
+          "total": 18,
+          "gamePk": 823390
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 5
+      }
+    },
+    {
+      "playerId": 664034,
+      "name": "Ty France",
+      "team": "San Diego Padres",
+      "hitProbability": 72.3,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 4,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 664034,
+        "name": "Ty France",
+        "team": "San Diego Padres",
+        "hitProbability": 72.3,
+        "rawScore": 0.6157,
+        "lineupSlot": 5,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.462,
+          "xba": 0.353,
+          "hardHitPct": 54.1,
+          "kPct": 0.091,
+          "avgSeason": 0.353
+        },
+        "game": {
+          "venue": "Petco Park",
+          "total": 11,
+          "gamePk": 823310
+        },
+        "result": "win",
+        "hits": 2,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 694208,
+      "name": "Mois\u00e9s Ballesteros",
+      "team": "Chicago Cubs",
+      "hitProbability": 72.3,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "loss",
+      "hits": 0,
+      "ab": 4,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 694208,
+        "name": "Mois\u00e9s Ballesteros",
+        "team": "Chicago Cubs",
+        "hitProbability": 72.3,
+        "rawScore": 0.6156,
+        "lineupSlot": 2,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.377,
+          "xba": 0.296,
+          "hardHitPct": 56.4,
+          "kPct": 0.162,
+          "avgSeason": 0.296
+        },
+        "game": {
+          "venue": "Petco Park",
+          "total": 11,
+          "gamePk": 823310
+        },
+        "result": "loss",
+        "hits": 0,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 666397,
+      "name": "Edouard Julien",
+      "team": "Colorado Rockies",
+      "hitProbability": 72.0,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "win",
+      "hits": 3,
+      "ab": 4,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 666397,
+        "name": "Edouard Julien",
+        "team": "Colorado Rockies",
+        "hitProbability": 72.0,
+        "rawScore": 0.6131,
+        "lineupSlot": 1,
+        "confidenceTier": "B",
+        "stats": {
+          "xwoba": 0.379,
+          "xba": 0.287,
+          "hardHitPct": 44.6,
+          "kPct": 0.247,
+          "avgSeason": 0.287
+        },
+        "game": {
+          "venue": "Great American Ball Park",
+          "total": 9,
+          "gamePk": 824526
+        },
+        "result": "win",
+        "hits": 3,
+        "ab": 4
+      }
+    },
+    {
+      "playerId": 700250,
+      "name": "Ben Rice",
+      "team": "New York Yankees",
+      "hitProbability": 71.7,
+      "lockedAt": "2026-04-28T10:30:00.000Z",
+      "result": "loss",
+      "hits": 0,
+      "ab": 4,
+      "gradedAt": "2026-04-28T23:59:00.000Z",
+      "snapshot": {
+        "playerId": 700250,
+        "name": "Ben Rice",
+        "team": "New York Yankees",
+        "hitProbability": 71.7,
+        "rawScore": 0.6107,
+        "lineupSlot": 2,
+        "confidenceTier": "C",
+        "stats": {
+          "xwoba": 0.444,
+          "xba": 0.296,
+          "hardHitPct": 61.5,
+          "kPct": 0.263,
+          "avgSeason": 0.296
+        },
+        "game": {
+          "venue": "Globe Life Field",
+          "total": 8.0,
+          "gamePk": 822908
+        },
+        "result": "loss",
+        "hits": 0,
+        "ab": 4
+      }
+    }
+  ]
+}
