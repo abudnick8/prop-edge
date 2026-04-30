@@ -541,7 +541,7 @@ async function syncMLDataToGitHub(): Promise<void> {
   console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
-  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json"];
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
 
   for (const filename of files) {
     const filepath = path.join(DATA_DIR, filename);
@@ -646,7 +646,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
   const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json"];
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
   const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
@@ -2058,7 +2058,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
     const dir = path.join(__dirname, "ml_data");
-    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json"];
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
     const result: Record<string, any> = {};
     const errors: Record<string, string> = {};
     for (const f of files) {
@@ -2076,6 +2076,49 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       (result as any)._errors = errors;
     }
     res.json(result);
+  });
+
+  // GET /api/bts-ml-weights — current BTS ML learning weights + tier accuracy + calibration
+  app.get("/api/bts-ml-weights", (_req, res) => {
+    try {
+      const wFile = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+      if (fs.existsSync(wFile)) {
+        const data = JSON.parse(fs.readFileSync(wFile, "utf-8"));
+        return res.json(data);
+      }
+      return res.json({
+        version: 0,
+        sampleSize: 0,
+        updatedAt: null,
+        featureWeights: {
+          recentForm: 1.00, contactQuality: 1.00, hardContact: 1.00,
+          pitcherMatchup: 1.00, opportunity: 1.00, bvp: 1.00,
+          stability: 1.00, weatherImpact: 1.00, gameTotal: 1.00,
+        },
+        featureAccuracy: {},
+        tierAccuracy: {},
+        calibration: [],
+        message: "No ML learning run yet — will run nightly after 10+ graded picks.",
+      });
+    } catch (e: any) {
+      console.error("[BTS-ML] weights endpoint error:", e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/bts-ml-learn — manually trigger a BTS ML learning run (dev/admin)
+  app.post("/api/bts-ml-learn", async (_req, res) => {
+    try {
+      await runBtsMlLearning();
+      const wFile = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+      if (fs.existsSync(wFile)) {
+        const data = JSON.parse(fs.readFileSync(wFile, "utf-8"));
+        return res.json({ success: true, ...data });
+      }
+      return res.json({ success: true, message: "Run complete but no weights written (need 10+ graded picks)." });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   });
 
   // ─── Scanner ──────────────────────────────────────────────────────────────
@@ -3635,7 +3678,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.error("[ML] Engine error:", e.message);
       }
       try {
-        // Step 3: Sync ml_data/ back to GitHub so outcomes survive next redeploy
+        // Step 3: Run BTS ML learning — analyzes which features predicted wins/losses
+        await runBtsMlLearning();
+        console.log("[ML] BTS ML learning complete");
+      } catch (e: any) {
+        console.error("[ML] BTS ML learning error:", e.message);
+      }
+      try {
+        // Step 4: Sync ml_data/ back to GitHub so outcomes survive next redeploy
         await syncMLDataToGitHub();
         console.log("[ML] GitHub sync complete");
       } catch (e: any) {
@@ -3659,6 +3709,31 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }, msUntil);
     };
     scheduleNightlyML();
+
+    // ── BTS background re-grader: every 30 min during game window ─────────
+    // Catches picks that had ab=0 on first grade (game log lag) and re-grades them.
+    // Runs 12:00 PM – 2:00 AM CT (covers all MLB games including late West Coast games).
+    const runBtsRegrade = async () => {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctH   = ctNow.getHours();
+      // Only run 12pm–2am CT (noon to midnight+2)
+      if (ctH < 12 && ctH >= 2) return;
+      const dateStr = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+      const entries = btsPicksCache[dateStr] ?? [];
+      const needsRegrade = entries.filter((e: BtsPickEntry) =>
+        e.result === "pending" || (e.ab === 0 || e.ab == null)
+      );
+      if (needsRegrade.length === 0) return;
+      console.log(`[BTS Regrader] ${needsRegrade.length} picks need re-grading for ${dateStr}`);
+      await runBtsGrader(dateStr);
+    };
+    setInterval(runBtsRegrade, 30 * 60 * 1000); // every 30 min
+    // Also run once at startup after a short delay
+    setTimeout(runBtsRegrade, 5 * 60 * 1000);
   }
 
   app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
@@ -6467,95 +6542,175 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return words.slice(0, -1).join(" ") || teamName;
   }
 
-  async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
-    // Only outdoor sports need weather: MLB, NFL
-    if (sport !== "MLB" && sport !== "NFL") return null;
+  // ── Dome/retractable roof stadiums — weather has zero impact ───────────
+  const DOME_VENUES: Set<string> = new Set([
+    // MLB fully enclosed / retractable (closed default)
+    "Tropicana Field","Minute Maid Park","Globe Life Field","American Family Field",
+    "Rogers Centre","loanDepot park","Chase Field","T-Mobile Park",
+    // NFL
+    "Lucas Oil Stadium","Ford Field","Mercedes-Benz Stadium","State Farm Stadium",
+    "Allegiant Stadium","SoFi Stadium","AT&T Stadium","NRG Stadium",
+    "U.S. Bank Stadium","Caesars Superdome",
+  ]);
+
+  // Outfield wind direction lookup: compass bearing → is wind blowing OUT to CF?
+  // "Out to CF" = wind bearing within ±45° of 0° (North compass = toward CF in most parks)
+  // Simplified: out directions = N, NNE, NNW, NE, NW (blowing toward outfield)
+  const OUT_DIRS = new Set(["N","NNE","NNW","NE","NW","NEN","NWN"]);
+  const IN_DIRS  = new Set(["S","SSE","SSW","SE","SW","SES","SWS"]);
+
+  // Structured weather type — used everywhere in the app
+  interface WeatherData {
+    tempF:       number;
+    windMph:     number;
+    windDir:     string;   // 16-point compass, e.g. "NNW"
+    windOut:     boolean;  // blowing toward outfield
+    windIn:      boolean;  // blowing in from outfield
+    humidity:    number;   // 0-100
+    precipInches:number;   // today's precip in inches
+    cloudPct:    number;   // cloud cover 0-100
+    description: string;   // human-readable e.g. "Partly Cloudy"
+    isDome:      boolean;
+    // Derived impact scores (0.0–1.0, neutral = 0.5)
+    hitterImpact:  number; // >0.5 = hitter-friendly, <0.5 = pitcher-friendly
+    scoringImpact: number; // >0.5 = high scoring, <0.5 = low scoring
+    impactLabel:   string; // e.g. "🌬️ Wind blowing in — pitcher's park today"
+    impactTier:    "major" | "moderate" | "minor" | "neutral";
+    source:        string;
+  }
+
+  // In-memory weather cache keyed by "TEAM:SPORT:DATE"
+  const weatherCache = new Map<string, { data: WeatherData; ts: number }>();
+  const WEATHER_TTL = 30 * 60 * 1000; // 30 min
+
+  function computeWeatherImpact(w: Omit<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier">): Pick<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier"> {
+    if (w.isDome) {
+      return { hitterImpact: 0.50, scoringImpact: 0.50, impactLabel: "🏟️ Dome — weather neutral", impactTier: "neutral" };
+    }
+    let score = 0.50;
+    const labels: string[] = [];
+
+    // Temperature effect (cold suppresses offense; heat aids carry)
+    if      (w.tempF >= 85) { score += 0.10; labels.push(`☀️ Hot ${w.tempF}°F`); }
+    else if (w.tempF >= 72) { score += 0.05; labels.push(`🌤 Warm ${w.tempF}°F`); }
+    else if (w.tempF <= 45) { score -= 0.12; labels.push(`🥶 Cold ${w.tempF}°F`); }
+    else if (w.tempF <= 55) { score -= 0.07; labels.push(`🌡 Cool ${w.tempF}°F`); }
+
+    // Wind effect (strongest signal)
+    if (w.windMph >= 15) {
+      if (w.windOut)     { score += 0.16; labels.push(`🌬️ Wind ${w.windMph}mph OUT`); }
+      else if (w.windIn) { score -= 0.16; labels.push(`💨 Wind ${w.windMph}mph IN`); }
+      else               { score -= 0.04; labels.push(`💨 Cross-wind ${w.windMph}mph`); }
+    } else if (w.windMph >= 10) {
+      if (w.windOut)     { score += 0.09; labels.push(`🌬️ Wind ${w.windMph}mph out`); }
+      else if (w.windIn) { score -= 0.09; labels.push(`💨 Wind ${w.windMph}mph in`); }
+    } else if (w.windMph >= 6) {
+      if (w.windOut)     { score += 0.04; }
+      else if (w.windIn) { score -= 0.04; }
+    }
+
+    // Rain / precipitation
+    if (w.precipInches >= 0.1)      { score -= 0.14; labels.push(`🌧️ Rain ${w.precipInches}"`) ; }
+    else if (w.precipInches >= 0.02) { score -= 0.06; labels.push("🌦 Light rain"); }
+
+    // Humidity (humid air is slightly less dense = ball carries slightly further)
+    if (w.humidity >= 80 && w.tempF >= 65) score += 0.02;
+
+    score = Math.max(0.10, Math.min(0.90, score));
+    const delta = score - 0.50;
+    const tier: WeatherData["impactTier"] = Math.abs(delta) >= 0.14 ? "major"
+                                           : Math.abs(delta) >= 0.07 ? "moderate"
+                                           : Math.abs(delta) >= 0.03 ? "minor"
+                                           : "neutral";
+
+    const impactLabel = labels.length > 0
+      ? labels.join(" · ")
+      : score >= 0.55 ? "🌤 Hitter-friendly conditions"
+      : score <= 0.45 ? "🏟️ Pitcher-friendly conditions"
+      : "⚖️ Weather neutral";
+
+    return { hitterImpact: score, scoringImpact: score, impactLabel, impactTier: tier };
+  }
+
+  async function fetchStructuredWeather(homeTeam: string, sport: string, venueName?: string): Promise<WeatherData | null> {
+    // ── Dome check first ──────────────────────────────────────────────
+    const isDome = !!(venueName && DOME_VENUES.has(venueName))
+                || (sport !== "MLB" && sport !== "NFL" && sport !== "CFB");
+    if (isDome) {
+      const base = { tempF:72, windMph:0, windDir:"N", windOut:false, windIn:false,
+                     humidity:50, precipInches:0, cloudPct:0, description:"Dome",
+                     isDome:true, source:"dome" };
+      return { ...base, ...computeWeatherImpact(base) };
+    }
 
     const city = getCityFromTeam(homeTeam);
+    const today = new Date().toISOString().slice(0, 10);
+    const cacheKey = `${homeTeam}:${sport}:${today}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < WEATHER_TTL) return cached.data;
 
-    // ── Try RotoGrinders for MLB (best source for ballpark weather + wind) ───
-    if (sport === "MLB") {
-      try {
-        const { data: html } = await axios.get("https://rotogrinders.com/weather/mlb", {
-          timeout: 6000,
-          headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
-        });
-        // Parse: look for the city/team name and nearby temp/wind data
-        const cityLower = city.toLowerCase();
-        const teamLower = homeTeam.toLowerCase().split(" ").pop() ?? "";
-        // RotoGrinders HTML: <div class="weather-card"> ... team name ... temp ... wind ...
-        const cardRegex = new RegExp(
-          `(${teamLower}|${cityLower})[^]*?([0-9]+)°F[^]*?([0-9]+\s*mph[^<]*)?`,
-          "i"
-        );
-        const match = html.match(cardRegex);
-        if (match) {
-          const temp = match[2];
-          const wind = match[3] ? ` · Wind: ${match[3].trim()}` : "";
-          return `${city}: ☀ ${temp}°F${wind}`;
-        }
-        // Second pass: look for simpler temp pattern near the team
-        const teamIdx = (html as string).toLowerCase().indexOf(teamLower);
-        if (teamIdx > -1) {
-          const nearby = (html as string).slice(teamIdx, teamIdx + 500);
-          const tempM = nearby.match(/([0-9]{2,3})°F/);
-          const windM = nearby.match(/([0-9]+)\s*mph/);
-          if (tempM) {
-            const wind = windM ? ` · Wind: ${windM[1]} mph` : "";
-            return `${city}: ☀ ${tempM[1]}°F${wind}`;
-          }
-        }
-      } catch { /* fall through to wttr */ }
-    }
-
-    // ── Try NFLWeather.com for NFL ────────────────────────────────────────────
-    if (sport === "NFL") {
-      try {
-        const { data: html } = await axios.get("https://www.nflweather.com", {
-          timeout: 6000,
-          headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
-        });
-        const teamLower = homeTeam.toLowerCase().split(" ").pop() ?? "";
-        const cityLower = city.toLowerCase();
-        const nflReg = new RegExp(
-          `(${teamLower}|${cityLower})[^]*?([0-9]+)°F[^]*?([0-9]+\s*mph[^<]*)?`,
-          "i"
-        );
-        const match = (html as string).match(nflReg);
-        if (match) {
-          const temp = match[2];
-          const wind = match[3] ? ` · Wind: ${match[3].trim()}` : "";
-          return `${city}: ☀ ${temp}°F${wind}`;
-        }
-        // Second pass near team
-        const tidx = (html as string).toLowerCase().indexOf(teamLower);
-        if (tidx > -1) {
-          const nearby = (html as string).slice(tidx, tidx + 500);
-          const tempM = nearby.match(/([0-9]{2,3})°F/);
-          const windM = nearby.match(/([0-9]+)\s*mph/);
-          if (tempM) {
-            const wind = windM ? ` · Wind: ${windM[1]} mph` : "";
-            return `${city}: ☀ ${tempM[1]}°F${wind}`;
-          }
-        }
-      } catch { /* fall through to wttr */ }
-    }
-
-    // ── Fallback: wttr.in in imperial (°F) ────────────────────────────────────
+    // ── wttr.in JSON API — structured, reliable, free ────────────────
     try {
       const encoded = encodeURIComponent(city);
-      // &u = imperial/Fahrenheit (no &m which is metric/Celsius)
-      const url = `https://wttr.in/${encoded}?format=3&u`;
-      const { data } = await axios.get(url, { timeout: 5000, headers: { "User-Agent": "curl/7.64" } });
+      const { data } = await axios.get(`https://wttr.in/${encoded}?format=j1`, {
+        timeout: 8000,
+        headers: { "User-Agent": "curl/7.64.1" },
+      });
+      const cur = data?.current_condition?.[0];
+      if (!cur) throw new Error("no current_condition");
+
+      const tempF       = parseInt(cur.temp_F        ?? "70",  10);
+      const windMph     = parseInt(cur.windspeedMiles ?? "0",   10);
+      const windDir     = (cur.winddir16Point ?? "N") as string;
+      const humidity    = parseInt(cur.humidity       ?? "50",  10);
+      const precipInches= parseFloat(cur.precipInches ?? "0");
+      const cloudPct    = parseInt(cur.cloudcover     ?? "0",   10);
+      const description = cur.weatherDesc?.[0]?.value ?? "Clear";
+      const windOut     = OUT_DIRS.has(windDir);
+      const windIn      = IN_DIRS.has(windDir);
+
+      const base = { tempF, windMph, windDir, windOut, windIn, humidity, precipInches, cloudPct, description, isDome: false };
+      const impact = computeWeatherImpact(base);
+      const result: WeatherData = { ...base, ...impact, source: "wttr.in" };
+      weatherCache.set(cacheKey, { data: result, ts: Date.now() });
+      return result;
+    } catch (e: any) {
+      console.warn(`[Weather] wttr.in failed for ${city}:`, e.message);
+    }
+
+    // ── Fallback: plain wttr.in text format ───────────────────────────
+    try {
+      const { data } = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=3&u`, {
+        timeout: 5000, headers: { "User-Agent": "curl/7.64.1" },
+      });
       if (typeof data === "string") {
-        // Convert any remaining °C to °F just in case
-        const clean = data.trim().replace(/\+?(-?[0-9]+)°C/g, (_, n) => `${Math.round(+n * 9/5 + 32)}°F`);
-        return clean.slice(0, 80);
+        const tempM = data.match(/([0-9]{2,3})°F/);
+        const windM = data.match(/([0-9]+)mph/);
+        const tempF   = tempM ? parseInt(tempM[1], 10) : 70;
+        const windMph = windM ? parseInt(windM[1], 10) : 0;
+        const base = { tempF, windMph, windDir: "N", windOut: false, windIn: false,
+                       humidity: 50, precipInches: 0, cloudPct: 50, description: data.trim(), isDome: false };
+        const impact = computeWeatherImpact(base);
+        const result: WeatherData = { ...base, ...impact, source: "wttr.in-text" };
+        weatherCache.set(cacheKey, { data: result, ts: Date.now() });
+        return result;
       }
     } catch { return null; }
 
     return null;
   }
+
+  // Legacy string wrapper — keeps existing fetchWeather() callers working
+  async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
+    const w = await fetchStructuredWeather(homeTeam, sport);
+    if (!w) return null;
+    if (w.isDome) return `🏟️ Dome — weather neutral`;
+    const parts = [`${w.tempF}°F`];
+    if (w.windMph > 0) parts.push(`Wind ${w.windMph}mph ${w.windDir}`);
+    if (w.precipInches > 0) parts.push(`Rain ${w.precipInches}"`);
+    return `${getCityFromTeam(homeTeam)}: ${parts.join(" · ")}`;
+  }
+
 
   function buildMovementSummary(game: any): string {
     const parts: string[] = [];
@@ -6640,6 +6795,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pickSide = awayLine < 0 ? "away" : "home";
       }
 
+      // ── Fetch structured weather for outdoor sports ─────────────────
+      let weatherPayload: any = null;
+      if (sport === "MLB" || sport === "NFL" || sport === "CFB") {
+        try {
+          const sw = await fetchStructuredWeather(homeTeam, sport);
+          if (sw) {
+            weatherPayload = {
+              tempF: sw.tempF, windMph: sw.windMph, windDir: sw.windDir,
+              windOut: sw.windOut, windIn: sw.windIn,
+              humidity: sw.humidity, precipInches: sw.precipInches,
+              isDome: sw.isDome, impactLabel: sw.impactLabel,
+              impactTier: sw.impactTier, hitterImpact: sw.hitterImpact,
+            };
+          }
+        } catch { /* weather optional */ }
+      }
+
       const payload = {
         sport,
         homeTeam,
@@ -6649,13 +6821,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         awayRecord:   awayRecord ?? "0-0",
         homeML:       homeML,
         awayML:       awayML,
-        // edge_grade.py expects spreadHome = the home team's spread line
-        // if away is -15.5, home is +15.5
         spreadHome:   awayLine != null ? -awayLine : null,
         spreadDelta:  spreadMove ?? 0,
         homeMoneyPct: homeMoneyPct ?? null,
         awayMoneyPct: awayMoneyPct ?? null,
         total:        total ?? null,
+        weather:      weatherPayload,
       };
 
       // Resolve edge_grade.py — try multiple paths since __dirname=dist/ in production
@@ -7742,33 +7913,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   _mlPullPromise.then(() => loadBtsPicksCache()).catch(() => loadBtsPicksCache());
 
   // ── Grader: fetch actual hit stats for a player on a given date ──────
+  // Strategy:
+  //   1. MLB game log API (primary) — pinned to exact date
+  //   2. MLB schedule → boxscore API (fallback when game log lags by hours)
+  //   3. Return null only if genuinely no data available yet
   async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
+    const normalize = (d: string) => {
+      if (!d) return "";
+      const mmdd = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (mmdd) return `${mmdd[3]}-${mmdd[1]}-${mmdd[2]}`;
+      return d.slice(0, 10);
+    };
+
+    // ── Attempt 1: Game log API ───────────────────────────────────────
     try {
-      // Use startDate+endDate to pin to the exact game date and avoid limit issues.
-      // Also try the boxscore endpoint as a fallback in case the game log lags.
       const url = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&startDate=${dateStr}&endDate=${dateStr}&limit=5`;
-      const r = await axios.get(url);
+      const r = await axios.get(url, { timeout: 8000 });
       const splits = r.data?.stats?.[0]?.splits ?? [];
-
-      // The API should return only this date's game, but do a find just in case
-      // dates are formatted differently (YYYY-MM-DD vs MM/DD/YYYY)
-      const normalize = (d: string) => {
-        if (!d) return "";
-        // Convert MM/DD/YYYY to YYYY-MM-DD if needed
-        const mmdd = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (mmdd) return `${mmdd[3]}-${mmdd[1]}-${mmdd[2]}`;
-        return d.slice(0, 10); // trim any time component
-      };
-
       const todaySplit = splits.find((s: any) => normalize(s.date) === dateStr)
-                      ?? (splits.length === 1 ? splits[0] : null); // if exactly one result, use it
+                      ?? (splits.length === 1 ? splits[0] : null);
+      if (todaySplit) {
+        const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
+        const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
+        if (ab > 0) return { hits, ab }; // good data — return immediately
+        // ab=0 could mean game in progress or DNP — fall through to boxscore
+      }
+    } catch { /* fall through to boxscore */ }
 
-      if (!todaySplit) return null; // game not finished yet or player didn't play
+    // ── Attempt 2: Schedule → Boxscore (handles game log lag) ────────
+    // Find all games on dateStr and look for this player in the boxscore
+    try {
+      const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team`;
+      const schedR   = await axios.get(schedUrl, { timeout: 8000 });
+      const gameDates = schedR.data?.dates ?? [];
+      const games     = gameDates.flatMap((d: any) => d.games ?? []);
 
-      const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
-      const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
-      return { hits, ab };
-    } catch { return null; }
+      for (const game of games) {
+        if (game.status?.abstractGameState !== "Final") continue; // skip in-progress
+        try {
+          const boxUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
+          const boxR   = await axios.get(boxUrl, { timeout: 8000 });
+          const teams  = boxR.data?.teams ?? {};
+          for (const side of ["home", "away"]) {
+            const players = Object.values(teams[side]?.players ?? {}) as any[];
+            const p = players.find((pl: any) => pl.person?.id === playerId);
+            if (p) {
+              const stats = p.stats?.batting ?? {};
+              const ab    = parseInt(stats.atBats   ?? "-1", 10);
+              const hits  = parseInt(stats.hits      ?? "0",  10);
+              if (ab >= 0) return { hits, ab }; // found — even ab=0 is valid (pinch runner, DNP)
+            }
+          }
+        } catch { /* skip this game */ }
+      }
+    } catch { /* boxscore fallback failed */ }
+
+    return null; // genuinely no data yet
   }
 
   // ── Run grader for all pending picks on a given date ─────────────────
@@ -7812,6 +8012,290 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch { /* non-fatal */ }
     }
     if (changed) { reconcileSeasonRecord(); saveBtsPicksCache(); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // BTS ML LEARNING — nightly feature-correlation analysis
+  // Reads all graded bts_picks + bts_logs feature entries.
+  // For each feature, computes correlation with hit outcome (win=1 / loss=0).
+  // Outputs bts_ml_weights.json with adjusted multipliers for scoreHitter.
+  // Synced to GitHub so weights survive redeploys.
+  // ─────────────────────────────────────────────────────────────────────
+  const BTS_ML_WEIGHTS_FILE = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+  const BTS_ML_LEARNING_LOG = path.join(ML_DATA_DIR, "bts_ml_learning_log.json");
+
+  function getDefaultBtsMlWeights() {
+    return {
+      version: 1,
+      sampleSize: 0,
+      updatedAt: new Date().toISOString(),
+      featureWeights: {
+        recentForm:       1.00,
+        contactQuality:   1.00,
+        hardContact:      1.00,
+        pitcherMatchup:   1.00,
+        opportunity:      1.00,
+        bvp:              1.00,
+        stability:        1.00,
+        weatherImpact:    1.00,
+        gameTotal:        1.00,
+      } as Record<string, number>,
+      featureAccuracy: {} as Record<string, { wins: number; losses: number; accuracy: number }>,
+      tierAccuracy: {} as Record<string, { wins: number; losses: number; accuracy: number }>,
+      calibration: [] as Array<{ bucket: string; predicted: number; actual: number; n: number }>,
+    };
+  }
+
+  function loadBtsMlWeights() {
+    try {
+      if (fs.existsSync(BTS_ML_WEIGHTS_FILE)) {
+        return JSON.parse(fs.readFileSync(BTS_ML_WEIGHTS_FILE, "utf-8"));
+      }
+    } catch { /* use defaults */ }
+    return getDefaultBtsMlWeights();
+  }
+
+  async function runBtsMlLearning(): Promise<void> {
+    console.log("[BTS-ML] Starting nightly ML learning run...");
+    try {
+      // 1. Collect all graded picks from btsPicksCache (attach date from cache key)
+      const gradedPicks: Array<BtsPickEntry & { date: string }> = [];
+      for (const [date, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries) {
+          if (e.result === "win" || e.result === "loss") gradedPicks.push({ ...e, date });
+        }
+      }
+      if (gradedPicks.length < 10) {
+        console.log(`[BTS-ML] Only ${gradedPicks.length} graded picks — skipping (need 10+)`);
+        return;
+      }
+      console.log(`[BTS-ML] Analyzing ${gradedPicks.length} graded picks...`);
+
+      // 2. Load feature logs from bts_logs/
+      const logDir = path.join(__dirname, "bts_logs");
+      const featureMap: Record<number, any> = {};
+      if (fs.existsSync(logDir)) {
+        const logFiles = fs.readdirSync(logDir)
+          .filter((f: string) => f.endsWith(".json"))
+          .sort();
+        for (const lf of logFiles) {
+          try {
+            const entries: any[] = JSON.parse(fs.readFileSync(path.join(logDir, lf), "utf-8"));
+            for (const e of entries) { featureMap[e.playerId] = e; }
+          } catch { /* skip corrupt log */ }
+        }
+      }
+      console.log(`[BTS-ML] Loaded feature logs for ${Object.keys(featureMap).length} unique players`);
+
+      // 3. Merge picks with feature logs
+      const logDirExists = fs.existsSync(logDir);
+      const enrichedPicks: Array<{ outcome: 1|0; features: any; tier: string }> = [];
+      for (const pick of gradedPicks) {
+        const outcome: 1|0 = pick.result === "win" ? 1 : 0;
+        let featureEntry: any = null;
+        if (logDirExists) {
+          const dateLogPath = path.join(logDir, `${pick.date}.json`);
+          if (fs.existsSync(dateLogPath)) {
+            try {
+              const dayLog: any[] = JSON.parse(fs.readFileSync(dateLogPath, "utf-8"));
+              featureEntry = dayLog.find((e: any) => e.playerId === pick.playerId) ?? null;
+            } catch { /* fallback to featureMap */ }
+          }
+        }
+        if (!featureEntry) featureEntry = featureMap[pick.playerId] ?? null;
+        enrichedPicks.push({
+          outcome,
+          tier: (pick as any).confidenceTier ?? featureEntry?.confTier ?? "D",
+          features: featureEntry ?? {
+            hitProbability: pick.hitProbability,
+            rawScore:       pick.rawScore,
+            avg14:          pick.avg14,
+            avg30:          pick.avg30,
+            xwoba:          (pick as any).xwoba ?? null,
+            xba:            (pick as any).xba   ?? null,
+            hardHitPct:     (pick as any).hardHitPct ?? null,
+            kPct:           (pick as any).kPct ?? null,
+            pitcherXwoba:   (pick as any).pitcherXwoba ?? null,
+            pitcherLast3ERA:(pick as any).pitcherLast3ERA ?? null,
+            gameTotal:      (pick as any).gameTotal ?? null,
+            lineupSlot:     (pick as any).lineupSlot ?? null,
+          },
+        });
+      }
+
+      // 4. Compute point-biserial correlation for each feature
+      const computeCorrelation = (values: number[], outcomes: (1|0)[]): number => {
+        const n = values.length;
+        if (n < 5) return 0;
+        const n1 = outcomes.filter(o => o === 1).length;
+        const n0 = n - n1;
+        if (n1 === 0 || n0 === 0) return 0;
+        const avg = values.reduce((a, b) => a + b, 0) / n;
+        const variance = values.reduce((a, b) => a + (b - avg) ** 2, 0) / n;
+        const std = Math.sqrt(variance);
+        if (std < 0.001) return 0;
+        const m1 = values.filter((_, i) => outcomes[i] === 1).reduce((a, b) => a + b, 0) / n1;
+        const m0 = values.filter((_, i) => outcomes[i] === 0).reduce((a, b) => a + b, 0) / n0;
+        return (m1 - m0) / std * Math.sqrt((n1 * n0) / (n * n));
+      };
+      const extractFeature = (key: string, transform?: (v: number) => number) => {
+        const vals: number[] = [];
+        const outs: (1|0)[] = [];
+        for (const { features, outcome } of enrichedPicks) {
+          const raw = features?.[key];
+          if (raw == null || isNaN(+raw)) continue;
+          vals.push(transform ? transform(+raw) : +raw);
+          outs.push(outcome);
+        }
+        return { vals, outs };
+      };
+
+      type FeatureDef = { name: string; keys: string[]; transform?: (v: number) => number };
+      const featureDefs: FeatureDef[] = [
+        { name: "recentForm",     keys: ["avg14", "avg30"] },
+        { name: "contactQuality", keys: ["xwoba", "xba", "xwoba15d", "xwoba30d"] },
+        { name: "hardContact",    keys: ["hardHitPct", "barrelPct"] },
+        { name: "pitcherMatchup", keys: ["pitcherXwoba", "pitcherLast3ERA", "pitchTypeMatchup"] },
+        { name: "opportunity",    keys: ["lineupSlot"], transform: (v) => 10 - v },
+        { name: "bvp",            keys: [] },
+        { name: "stability",      keys: ["ghp14"] },
+        { name: "weatherImpact",  keys: ["hitterImpact"] },
+        { name: "gameTotal",      keys: ["gameTotal"] },
+      ];
+
+      const featureCorrelations: Record<string, { corr: number; n: number; wins: number; losses: number }> = {};
+      for (const { name, keys, transform } of featureDefs) {
+        if (keys.length === 0) { featureCorrelations[name] = { corr: 0, n: 0, wins: 0, losses: 0 }; continue; }
+        const corrVals: number[] = [];
+        let maxN = 0, totalWins = 0, totalLosses = 0;
+        for (const key of keys) {
+          const { vals, outs } = extractFeature(key, transform);
+          if (vals.length < 5) continue;
+          corrVals.push(computeCorrelation(vals, outs));
+          maxN = Math.max(maxN, vals.length);
+          totalWins   += outs.filter(o => o === 1).length;
+          totalLosses += outs.filter(o => o === 0).length;
+        }
+        featureCorrelations[name] = {
+          corr:   corrVals.length > 0 ? corrVals.reduce((a, b) => a + b, 0) / corrVals.length : 0,
+          n:      maxN,
+          wins:   Math.round(totalWins   / Math.max(1, keys.length)),
+          losses: Math.round(totalLosses / Math.max(1, keys.length)),
+        };
+      }
+
+      // 5. Convert correlations to multiplier adjustments
+      const existing = loadBtsMlWeights();
+      const dampFactor = gradedPicks.length >= 200 ? 0.25
+                       : gradedPicks.length >= 50  ? 0.15
+                       : 0.08;
+      const newFeatureWeights: Record<string, number> = { ...(existing.featureWeights ?? {}) };
+      for (const [fname, { corr }] of Object.entries(featureCorrelations)) {
+        const oldW = newFeatureWeights[fname] ?? 1.00;
+        const delta = corr * dampFactor;
+        const rawNew = oldW * (1 + delta);
+        newFeatureWeights[fname] = Math.round(Math.min(1.35, Math.max(0.70, rawNew)) * 1000) / 1000;
+      }
+
+      // 6. Tier accuracy
+      const tierCounts: Record<string, { wins: number; losses: number }> = {};
+      for (const { outcome, tier } of enrichedPicks) {
+        if (!tierCounts[tier]) tierCounts[tier] = { wins: 0, losses: 0 };
+        if (outcome === 1) tierCounts[tier].wins++; else tierCounts[tier].losses++;
+      }
+      const tierAccuracy: Record<string, any> = {};
+      for (const [tier, { wins, losses }] of Object.entries(tierCounts)) {
+        const total = wins + losses;
+        tierAccuracy[tier] = { wins, losses, accuracy: total > 0 ? Math.round(wins / total * 1000) / 10 : 0 };
+      }
+
+      // 7. Feature accuracy by median split
+      const featureAccuracy: Record<string, any> = {};
+      for (const { name, keys } of featureDefs) {
+        if (keys.length === 0) continue;
+        const { vals, outs } = extractFeature(keys[0]);
+        if (vals.length < 5) continue;
+        const sorted = [...vals].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        let aW = 0, aL = 0, bW = 0, bL = 0;
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] >= median) { outs[i] === 1 ? aW++ : aL++; }
+          else                   { outs[i] === 1 ? bW++ : bL++; }
+        }
+        const at = aW + aL, bt = bW + bL;
+        featureAccuracy[name] = {
+          wins:          aW,
+          losses:        aL,
+          accuracy:      at > 0 ? Math.round(aW / at * 1000) / 10 : 0,
+          belowAccuracy: bt > 0 ? Math.round(bW / bt * 1000) / 10 : 0,
+          correlation:   Math.round((featureCorrelations[name]?.corr ?? 0) * 1000) / 1000,
+        };
+      }
+
+      // 8. Probability calibration buckets
+      const buckets: Record<string, { n: number; wins: number; sumProb: number }> = {};
+      for (const { outcome, features } of enrichedPicks) {
+        const prob = features?.hitProbability;
+        if (prob == null || isNaN(+prob)) continue;
+        const p = +prob;
+        const bucket = p >= 80 ? "80+" : p >= 75 ? "75-80" : p >= 70 ? "70-75" : p >= 65 ? "65-70" : "<65";
+        if (!buckets[bucket]) buckets[bucket] = { n: 0, wins: 0, sumProb: 0 };
+        buckets[bucket].n++;
+        buckets[bucket].wins += outcome;
+        buckets[bucket].sumProb += p;
+      }
+      const calibration = Object.entries(buckets)
+        .map(([bucket, { n, wins, sumProb }]) => ({
+          bucket,
+          predicted: Math.round(sumProb / n * 10) / 10,
+          actual:    Math.round(wins / n * 1000) / 10,
+          n,
+        }))
+        .sort((a, b) => b.predicted - a.predicted);
+
+      // 9. Write bts_ml_weights.json
+      const updated = {
+        version:         (existing.version ?? 0) + 1,
+        sampleSize:      gradedPicks.length,
+        updatedAt:       new Date().toISOString(),
+        featureWeights:  newFeatureWeights,
+        featureAccuracy,
+        tierAccuracy,
+        calibration,
+        rawCorrelations: featureCorrelations,
+        dampFactor,
+      };
+      fs.writeFileSync(BTS_ML_WEIGHTS_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      console.log(`[BTS-ML] Weights updated (v${updated.version}) — sample=${gradedPicks.length}`);
+
+      // 10. Append to learning log (keep last 90 runs)
+      const logEntries: any[] = [];
+      try {
+        if (fs.existsSync(BTS_ML_LEARNING_LOG)) {
+          const parsed = JSON.parse(fs.readFileSync(BTS_ML_LEARNING_LOG, "utf-8"));
+          if (Array.isArray(parsed)) logEntries.push(...parsed);
+        }
+      } catch { /* start fresh */ }
+      logEntries.push({
+        runAt:          updated.updatedAt,
+        version:        updated.version,
+        sampleSize:     gradedPicks.length,
+        featureWeights: newFeatureWeights,
+        tierAccuracy,
+        topInsight: Object.entries(featureAccuracy)
+          .sort((a: any, b: any) => (b[1].correlation ?? 0) - (a[1].correlation ?? 0))
+          .slice(0, 3)
+          .map(([name, data]: any) => `${name}: corr=${data.correlation}, acc=${data.accuracy}%`)
+          .join(" | "),
+      });
+      fs.writeFileSync(BTS_ML_LEARNING_LOG, JSON.stringify(logEntries.slice(-90), null, 2), "utf-8");
+
+      // 11. Sync everything to GitHub
+      await syncMLDataToGitHub();
+      console.log("[BTS-ML] Learning run complete and synced to GitHub");
+    } catch (e: any) {
+      console.error("[BTS-ML] Learning run failed:", e.message);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -8466,13 +8950,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const tempF         = weather?.tempF   ?? 70;
         const windMph       = weather?.windMph ?? 5;
         const windOut       = weather?.windOut ?? false;
-        const tempMult      = 1.0 + Math.max(0, (tempF - 60) / 80) * 0.12;  // +12% at 100°F
-        const windMult      = windOut && windMph >= 8 ? 1.08
-                            : windOut && windMph >= 5 ? 1.04
+        const tempMult = 1.0 + Math.max(0, (tempF - 60) / 80) * 0.12;
+        const windMult = windOut && windMph >= 15 ? 1.12
+                       : windOut && windMph >= 10 ? 1.08
+                       : windOut && windMph >= 6  ? 1.04
+                       : weather?.windIn && windMph >= 15 ? 0.88
+                       : weather?.windIn && windMph >= 10 ? 0.92
+                       : 1.00;
+        // Rain penalty: reduces ball-in-play opportunities
+        const precipPenalty = (weather?.precipInches ?? 0) >= 0.10 ? 0.88
+                            : (weather?.precipInches ?? 0) >= 0.02 ? 0.94
                             : 1.00;
-        // Multiplicative: park_boost × temp_multiplier × wind_multiplier, then normalize
-        const envRaw        = parkBoostRaw * tempMult * windMult;
-        const envScore      = Math.min(1.0, envRaw);                 // cap at 1.0
+        // Dome: ignore all weather effects
+        const domeNeutral = (weather?.isDome ?? false) ? 1.0 : 1.0; // always 1, but explicit
+        // Multiplicative: park × temp × wind × precip
+        const envRaw  = parkBoostRaw * tempMult * windMult * precipPenalty;
+        const envScore = Math.min(1.0, Math.max(0.1, envRaw));
         const matchup = (
           pitcherHittability * 0.38 +
           pitcherFormScore   * 0.28 +
@@ -8588,15 +9081,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const oddsKey  = [homeAbbr, awayAbbr].sort().join("_");
         const total    = espnOddsMap[oddsKey] ?? 8.5;
 
-        const venue    = game.venue?.name ?? "";
-        const weather  = game.weather ?? {};
-        const tempF    = parseFloat(weather.temp ?? "70");
-        const wind     = weather.wind ?? "";
-        const windMph  = parseFloat((wind.match(/(\d+) mph/) ?? ["0","0"])[1]);
-        const windOut  = wind.toLowerCase().includes("out");
+        const venue         = game.venue?.name ?? "";
+        const rawScheduleW  = game.weather ?? {};
+        const rawWind       = rawScheduleW.wind ?? "";
+        const rawTempF      = parseFloat(rawScheduleW.temp ?? "70");
+        const rawWindMph    = parseFloat((rawWind.match(/(\d+) mph/) ?? ["0","0"])[1]);
+        const rawWindOut    = rawWind.toLowerCase().includes("out");
+
+        // ── Structured weather via wttr.in (30-min cache, dome-aware) ──
+        let sw: any = null;
+        try {
+          sw = await fetchStructuredWeather(homeTeam?.team?.name ?? "", "MLB", venue);
+        } catch { /* use schedule weather below */ }
+
+        const tempF        = sw?.tempF        ?? rawTempF;
+        const windMph      = sw?.windMph      ?? rawWindMph;
+        const windOut      = sw?.windOut      ?? rawWindOut;
+        const windIn       = sw?.windIn       ?? false;
+        const humidity     = sw?.humidity     ?? 50;
+        const precipInches = sw?.precipInches ?? 0;
+        const isDome       = sw?.isDome       ?? false;
+        const impactLabel  = sw?.impactLabel  ?? "";
+        const impactTier   = sw?.impactTier   ?? "neutral";
+        const hitterImpact = sw?.hitterImpact ?? 0.50;
+        const wind         = sw
+          ? `${sw.windMph} mph ${sw.windDir}${sw.windOut ? " (out)" : sw.windIn ? " (in)" : ""}`
+          : rawWind;
 
         const gameDate  = game.gameDate ?? "";
-        const gmtOffset = -5; // CDT
         const localTime = gameDate ? new Date(gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) : "TBD";
 
         const slateEntry = {
@@ -8605,7 +9117,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           venue,
           total,
           meetsFilter: total >= MIN_TOTAL,
-          weather: { tempF, wind, windMph, windOut },
+          weather: { tempF, wind, windMph, windDir: sw?.windDir ?? "", windOut, windIn, humidity, precipInches, isDome, impactLabel, impactTier, hitterImpact },
           gameTime: localTime,
           homePitcher: homeTeam.probablePitcher ? { id: homeTeam.probablePitcher.id, name: homeTeam.probablePitcher.fullName } : null,
           awayPitcher: awayTeam.probablePitcher ? { id: awayTeam.probablePitcher.id, name: awayTeam.probablePitcher.fullName } : null,
@@ -8789,7 +9301,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 sav30d,
                 oppPitcherSavant,
                 total,
-                { tempF, windMph, windOut },
+                { tempF, windMph, windOut, windIn, humidity, precipInches, isDome },
                 venue,
                 bvp,
                 lineupSlot,
@@ -8906,7 +9418,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   venue,
                   gameTime:    localTime,
                   gameStartMs: gameDate ? new Date(gameDate).getTime() : null,
-                  weather: { tempF, wind },
+                  weather: {
+                    tempF, wind, windMph, windDir: structuredWeather?.windDir ?? "",
+                    windOut, windIn, humidity, precipInches, isDome,
+                    impactLabel, impactTier, hitterImpact: weatherImpact,
+                  },
                 },
                 rawScore,
                 hitProbability:  hitProbabilityPct,
@@ -9128,12 +9644,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           bullets.push(`🏙️ Game total set at ${p.game.total} — favorable run environment`);
         }
 
-        // Weather note
-        if (p.game?.weather?.tempF) {
-          const temp = p.game.weather.tempF;
-          const wind = p.game.weather.wind ?? "";
-          if (temp >= 75) bullets.push(`☀️ Warm ${temp}°F weather today${wind ? " · " + wind : ""} — hitter-friendly conditions`);
-          else if (temp <= 50) bullets.push(`❄️ Cold ${temp}°F at first pitch${wind ? " with " + wind : ""} — something to watch`);
+        // Weather note — uses structured weather impact
+        if (p.game?.weather) {
+          const w = p.game.weather;
+          if (w.isDome) {
+            // dome: no weather bullet
+          } else if (w.impactTier === "major" || w.impactTier === "moderate") {
+            bullets.push(w.impactLabel);
+            if (w.precipInches >= 0.05) bullets.push(`🌧️ Rain in forecast — watch for postponement`);
+          } else if (w.tempF >= 75) {
+            bullets.push(`☀️ Warm ${w.tempF}°F — hitter-friendly conditions${w.windMph > 5 ? " · wind " + w.windMph + "mph " + w.windDir : ""}`);
+          } else if (w.tempF <= 50) {
+            bullets.push(`🥶 Cold ${w.tempF}°F at first pitch — can suppress offense`);
+          } else if (w.windMph >= 8 && (w.windOut || w.windIn)) {
+            bullets.push(w.impactLabel);
+          }
         }
 
         // Lineup confirmation bonus
