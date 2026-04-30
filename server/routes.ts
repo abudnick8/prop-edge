@@ -8335,6 +8335,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const schedResp = await axios.get(scheduleUrl);
       const schedDates = schedResp.data?.dates ?? [];
       const games: any[] = schedDates[0]?.games ?? [];
+      console.log(`[BTS] date=${targetDate} games=${games.length} ctHour=${ctNowForDate.getHours()}:${ctNowForDate.getMinutes()}`);
 
       if (!games.length) {
         return res.json({ date: targetDate, slate: [], picks: [], error: "No MLB games scheduled" });
@@ -9126,6 +9127,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         if (!slateEntry.meetsFilter) continue;
 
+        // ── Per-game try/catch so one bad game never kills remaining games ──
+        try {
+
         // Get pitcher splits + season stats for both pitchers
         const [homeSplits, awaySplits, homeSeasonStats, awaySeasonStats] = await Promise.all([
           homeTeam.probablePitcher?.id ? getPitcherSplits(homeTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
@@ -9146,7 +9150,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         async function getProjectedLineup(teamId: number, preferHome: boolean): Promise<any[]> {
           try {
             const recentSched = await axios.get(
-              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&season=2026&gameType=R&limit=8`
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&season=2026&gameType=R&limit=8`,
+              { timeout: 8000 }
             );
             const recentDates: any[] = recentSched.data?.dates ?? [];
             const recentGames: any[] = recentDates
@@ -9157,7 +9162,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const orderTally: Record<number, number[]> = {};
             for (const rg of recentGames) {
               try {
-                const box = await axios.get(`https://statsapi.mlb.com/api/v1/game/${rg.gamePk}/boxscore`);
+                const box = await axios.get(`https://statsapi.mlb.com/api/v1/game/${rg.gamePk}/boxscore`, { timeout: 8000 });
                 // Figure out which side this team was
                 const homeId = box.data?.teams?.home?.team?.id;
                 const boxSide = homeId === teamId ? "home" : "away";
@@ -9205,6 +9210,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           awayPlayers = await getProjectedLineup(awayTeam.team?.id, false);
           awayLineupSource = awayPlayers.length > 0 ? "projected" : "unavailable";
         }
+        console.log(`[BTS] ${slateEntry.matchup} home=${homeLineupSource}(${homePlayers.length}) away=${awayLineupSource}(${awayPlayers.length}) total=${total}`);
+        if (homePlayers.length === 0 && awayPlayers.length === 0) { console.warn(`[BTS] SKIPPING ${slateEntry.matchup} — no lineup data`); }
 
         // Scratch detection: if we previously had a projected pick whose ID
         // is NOT in the now-confirmed lineup, it gets flagged as scratched
@@ -9239,6 +9246,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         } catch { /* sportsbook data unavailable — no edge filter applied */ }
 
         const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
+          console.log(`[BTS] buildCandidates team=${teamName} side=${side} players=${players.length} src=${lineupSrc}`);
           const candidates: any[] = [];
           for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
             const p = players[slotIdx];
@@ -9246,9 +9254,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             if (!pid) continue;
             try {
               // Fetch player profile for bats (L/R/S)
-              const profileResp = await axios.get(`https://statsapi.mlb.com/api/v1/people/${pid}?hydrate=stats(group=hitting,type=season,season=2026)`);
+              let profileResp: any;
+              try {
+                profileResp = await axios.get(`https://statsapi.mlb.com/api/v1/people/${pid}?hydrate=stats(group=hitting,type=season,season=2026)`, { timeout: 8000 });
+              } catch (profileErr: any) {
+                console.warn(`[BTS] profile fetch failed pid=${pid} team=${teamName}: ${profileErr.message}`);
+                continue;
+              }
               const person = profileResp.data?.people?.[0];
-              if (!person) continue;
+              if (!person) { console.warn(`[BTS] no person data pid=${pid} team=${teamName}`); continue; }
               const bats = person.batSide?.code ?? "R";
               const fullName = person.fullName ?? p.fullName ?? "Unknown";
 
@@ -9260,7 +9274,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const platoonOk = pitcherXwobaVsMe !== null
                 ? pitcherXwobaVsMe >= MIN_PLATOON_XWOBA
                 : (pitcherPAvsMe < MIN_PLATOON_PA ? true : pitcherAvgVsMe >= MIN_PLATOON_BA_HARD);
-              if (!platoonOk) continue;
+              if (!platoonOk) { console.log(`[BTS] platoon filter OUT: pid=${pid} name=${person?.fullName} bats=${bats} xwoba=${pitcherXwobaVsMe} ba=${pitcherAvgVsMe}`); continue; }
 
               // Scratch detection: was this a projected player who's now absent from confirmed lineup?
               const confirmedIds = side === "home" ? confirmedHomeIds : confirmedAwayIds;
@@ -9333,7 +9347,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               // Tier thresholds: A needs edge >= +6%, B >= +3%, C >= 0%
               // If no book line: include based on model score alone (edge = null)
               const hasPositiveEdge = edge === null || edge >= 0;
-              if (!hasPositiveEdge) continue; // negative edge = skip
+              if (!hasPositiveEdge) { console.log(`[BTS] edge filter OUT: ${fullName} pid=${pid} edge=${edge !== null ? Math.round(edge*100) : "n/a"}% implied=${impliedProb !== null ? Math.round(impliedProb*100) : "n/a"}%`); continue; } // negative edge = skip
 
               // ── Confidence tier (Phase 1: incorporates edge + slot + probability) ──
               const confTierBTS: "A" | "B" | "C" = (() => {
@@ -9344,10 +9358,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               })();
 
               // ── Gate 3: Minimum calibrated hit probability ────────────────
-              if (hitProbabilityPct < MIN_HIT_PROBABILITY) continue;
+              if (hitProbabilityPct < MIN_HIT_PROBABILITY) { console.log(`[BTS] prob filter OUT: ${fullName} pid=${pid} prob=${hitProbabilityPct} raw=${rawScore.toFixed(3)}`); continue; }
 
               const playerLineupSource = p.lineupSource ?? lineupSrc;
 
+              console.log(`[BTS] CANDIDATE: ${fullName} pid=${pid} prob=${hitProbabilityPct} tier=${confTierBTS} slot=${lineupSlot} bats=${bats}`);
               candidates.push({
                 playerId: pid,
                 name: fullName,
@@ -9432,7 +9447,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 inTargetRange:   hitProbability >= 0.60 && hitProbability <= 0.80,
                 confidenceTier:  confTierBTS,
               });
-            } catch { /* skip player */ }
+            } catch (playerErr: any) { console.warn(`[BTS] player scoring error pid=${p.id ?? p.person?.id} team=${teamName} slot=${slotIdx}: ${playerErr.message}`); }
           }
           return candidates;
         };
@@ -9443,7 +9458,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         ]);
 
         candidatePicks.push(...homeCandidates, ...awayCandidates);
+        console.log(`[BTS] game=${slateEntry.matchup} home=${homeCandidates.length} away=${awayCandidates.length} candidates`);
+
+        } catch (gameErr: any) {
+          console.warn(`[BTS] game processing error for ${slateEntry?.matchup ?? game.gamePk}: ${gameErr.message}`);
+        }
       }
+
+      console.log(`[BTS] game loop complete — totalCandidates=${candidatePicks.length}`);
 
       // ── 7b. Daily candidate log (Phase 1) ────────────────────────────
       // Logs every scored candidate with features, scores, edge, and decision.
