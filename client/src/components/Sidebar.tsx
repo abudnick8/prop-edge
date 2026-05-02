@@ -15,6 +15,7 @@ const navItems = [
   { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity,        tier: undefined },
   { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,      tier: "pro"     },
   { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,       tier: "pro"     },
+  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"     },
   { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap,             tier: "pro"     },
   { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target,          tier: "pro"     },
   { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,       tier: "basic"   },
@@ -22,7 +23,6 @@ const navItems = [
   { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,          tier: "basic"   },
   { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,          tier: "pro"     },
   { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,           tier: "pro"     },
-  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"     },
   { href: "/pricing",     label: "Upgrade",        mobileLabel: "Upgrade",  icon: Crown,           tier: undefined },
   { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: undefined },
 ];

@@ -103,26 +103,32 @@ function AppInner() {
 
           <div className="p-4 md:p-6 pb-28 md:pb-6">
             <Switch>
-              <Route path="/" component={Dashboard} />
-              <Route path="/bets" component={AllBets} />
-              <Route path="/bets/:id" component={BetDetail} />
-              <Route path="/lotto" component={Lotto} />
-              <Route path="/picks/:slug" component={PickDetail} />
-              <Route path="/lotto/:slug" component={PickDetail} />
-              <Route path="/settings" component={Settings} />
-              <Route path="/ask" component={Ask} />
-              <Route path="/bracket" component={Bracket} />
-              <Route path="/clv" component={LineMovement} />
-              <Route path="/line-movement" component={LineMovement} />
-              <Route path="/markets" component={PredictionMarkets} />
-              <Route path="/markets/top-traders" component={TopTraders} />
-              <Route path="/fantasy" component={Fantasy} />
-              <Route path="/conviction" component={HighConviction} />
-              <Route path="/linemate" component={LinemateProps} />
+              {/* Free — always accessible */}
               <Route path="/scores" component={LiveScores} />
-              <Route path="/ml-insights" component={MLInsights} />
-              <Route path="/bts" component={BTS} />
+              <Route path="/fantasy" component={Fantasy} />
+              <Route path="/settings" component={Settings} />
               <Route path="/pricing" component={Pricing} />
+              <Route path="/ask" component={Ask} />
+
+              {/* Basic tier — Dashboard, Props Hub, Lotto */}
+              <Route path="/">{() => <TierGuard require="basic"><Dashboard /></TierGuard>}</Route>
+              <Route path="/linemate">{() => <TierGuard require="basic"><LinemateProps /></TierGuard>}</Route>
+              <Route path="/lotto">{() => <TierGuard require="basic"><Lotto /></TierGuard>}</Route>
+              <Route path="/picks/:slug">{(p) => <TierGuard require="basic"><PickDetail {...p} /></TierGuard>}</Route>
+              <Route path="/lotto/:slug">{(p) => <TierGuard require="basic"><PickDetail {...p} /></TierGuard>}</Route>
+
+              {/* Pro tier — everything else */}
+              <Route path="/bets">{() => <TierGuard require="pro"><AllBets /></TierGuard>}</Route>
+              <Route path="/bets/:id">{(p) => <TierGuard require="pro"><BetDetail {...p} /></TierGuard>}</Route>
+              <Route path="/bracket">{() => <TierGuard require="pro"><Bracket /></TierGuard>}</Route>
+              <Route path="/clv">{() => <TierGuard require="pro"><LineMovement /></TierGuard>}</Route>
+              <Route path="/line-movement">{() => <TierGuard require="pro"><LineMovement /></TierGuard>}</Route>
+              <Route path="/markets">{() => <TierGuard require="pro"><PredictionMarkets /></TierGuard>}</Route>
+              <Route path="/markets/top-traders">{() => <TierGuard require="pro"><TopTraders /></TierGuard>}</Route>
+              <Route path="/conviction">{() => <TierGuard require="pro"><HighConviction /></TierGuard>}</Route>
+              <Route path="/ml-insights">{() => <TierGuard require="pro"><MLInsights /></TierGuard>}</Route>
+              <Route path="/bts">{() => <TierGuard require="pro"><BTS /></TierGuard>}</Route>
+
               <Route component={NotFound} />
             </Switch>
           </div>
