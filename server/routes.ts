@@ -15,7 +15,7 @@ import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGam
 import { db } from "./db";
 import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
 import { requireAuth, requireBasic, requirePro } from "./middleware";
-import { sendPINResetEmail, sendWelcomeEmail } from "./email";
+import { sendPINResetEmail, sendWelcomeEmail, sendNewSignupNotification, SUPPORT_EMAIL } from "./email";
 import crypto from "crypto";
 import Stripe from "stripe";
 
@@ -1477,6 +1477,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
            VALUES (LOWER($1), $2, 'pro', 'active', TRUE)`,
           [email, pinHash]
         );
+        sendNewSignupNotification(email, "pro").catch(() => {});
         return res.json({ success: true, checkoutUrl: null });
       }
 
@@ -1511,6 +1512,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (!stripe || isFreeTier) {
         await db.query(`UPDATE users SET tier=$1, sub_status='active' WHERE email=LOWER($2)`, [tier, email]);
       }
+
+      // Notify admins of new signup (fire-and-forget — never block the response)
+      sendNewSignupNotification(email, tier).catch(() => {});
 
       res.json({ success: true, checkoutUrl });
     } catch (e: any) {

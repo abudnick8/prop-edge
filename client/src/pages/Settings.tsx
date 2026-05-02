@@ -130,6 +130,24 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* ── Support ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Mail size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Support</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Questions, issues, or feedback? Reach our support team directly.</p>
+        <a
+          href="mailto:clubhouseiqbets@gmail.com"
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all active:scale-95"
+          style={{ borderColor: "rgba(19,35,58,0.15)", background: "rgba(19,35,58,0.03)", color: "#131A24" }}
+        >
+          <Mail size={13} style={{ color: "#A23B32", flexShrink: 0 }} />
+          <span className="text-sm font-semibold">clubhouseiqbets@gmail.com</span>
+          <ExternalLink size={11} className="ml-auto" style={{ color: "rgba(19,35,58,0.35)" }} />
+        </a>
+      </div>
+
       {/* Alert Threshold */}
       <SettingsSection icon={<Bell size={16} />} title="Alert Threshold" description="Set the minimum confidence score to receive a notification">
         <div>
