@@ -24,12 +24,13 @@ import LiveScores from "@/pages/LiveScores";
 import MLInsights from "@/pages/MLInsights";
 import NotFound from "@/pages/not-found";
 import BTS from "@/pages/BTS";
+import Pricing from "@/pages/Pricing";
 import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 function ScrollToTop() {
   const [location] = useHashLocation();
@@ -38,6 +39,20 @@ function ScrollToTop() {
     if (main) main.scrollTop = 0;
   }, [location]);
   return null;
+}
+
+
+// TierGuard — wraps a page component and redirects to /pricing if tier insufficient
+function TierGuard({ children, require: req }: { children: React.ReactNode; require: "basic" | "pro" }) {
+  const { isPro, isBasic, isOwner } = useAuth();
+  const [, navigate] = useHashLocation();
+  const ok = isOwner || (req === "pro" ? isPro : isBasic);
+  if (!ok) {
+    // Redirect to pricing on next tick to avoid render-phase navigation
+    setTimeout(() => navigate("/pricing"), 0);
+    return null;
+  }
+  return <>{children}</>;
 }
 
 function AppInner() {
@@ -107,6 +122,7 @@ function AppInner() {
               <Route path="/scores" component={LiveScores} />
               <Route path="/ml-insights" component={MLInsights} />
               <Route path="/bts" component={BTS} />
+              <Route path="/pricing" component={Pricing} />
               <Route component={NotFound} />
             </Switch>
           </div>

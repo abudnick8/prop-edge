@@ -3,7 +3,9 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone, Crown, ExternalLink, ArrowUpRight } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +25,7 @@ const OPTIONAL_SPORTS = [
 
 export default function Settings() {
   const { toast } = useToast();
+  const { user, isPro, isBasic } = useAuth();
   const { data: settings, isLoading } = useQuery<SettingsType>({
     queryKey: ["/api/settings"],
   });
@@ -76,6 +79,55 @@ export default function Settings() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Configure your prediction bot</p>
+      </div>
+
+      {/* ── Billing / Plan ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Crown size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Your Plan</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <span
+              className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{
+                background: user?.tier === "pro" ? "rgba(162,59,50,0.1)" : user?.tier === "basic" ? "rgba(37,99,235,0.1)" : "rgba(61,75,88,0.1)",
+                color: user?.tier === "pro" ? "#A23B32" : user?.tier === "basic" ? "#2563eb" : "#3D4B58",
+              }}
+            >
+              {user?.tier === "pro" ? "Pro — $15/mo" : user?.tier === "basic" ? "Basic — $5/mo" : "Free"}
+            </span>
+            {!isPro && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {isBasic ? "Upgrade to Pro for BTS, ML Intel, Top Plays, and more." : "Upgrade to Basic or Pro to unlock picks."}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 items-end">
+            {!isPro && (
+              <Link href="/pricing">
+                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95"
+                  style={{ background: "#A23B32", color: "#fff" }}>
+                  <ArrowUpRight size={12} /> Upgrade
+                </button>
+              </Link>
+            )}
+            {(isBasic || isPro) && user?.tier !== "free" && (
+              <button
+                onClick={async () => {
+                  const res = await fetch("/api/auth/stripe-portal");
+                  const { url } = await res.json();
+                  if (url) window.location.href = url;
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all active:scale-95"
+                style={{ borderColor: "rgba(19,35,58,0.15)", color: "rgba(19,35,58,0.6)", background: "transparent" }}
+              >
+                <ExternalLink size={11} /> Manage Billing
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Alert Threshold */}

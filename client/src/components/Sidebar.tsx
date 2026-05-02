@@ -7,21 +7,24 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-// tier: 'basic' = basic+pro, 'pro' = pro only, undefined = no auth required
+// tier: undefined = free (always accessible when logged in)
+//       'basic' = basic + pro + owner
+//       'pro'   = pro + owner only
 const navItems = [
-  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard, tier: "basic"  },
-  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity,        tier: "basic"  },
-  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,      tier: "basic"  },
-  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,       tier: "pro"    },
-  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap,             tier: "pro"    },
-  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target,          tier: "pro"    },
-  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,       tier: "pro"    },
-  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"    },
-  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,         tier: "pro"    },
-  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,          tier: "pro"    },
-  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,          tier: "pro"    },
-  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,           tier: "pro"    },
-  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: "basic"  },
+  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity,        tier: undefined },
+  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,         tier: undefined },
+  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard, tier: "basic"   },
+  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,       tier: "basic"   },
+  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,          tier: "basic"   },
+  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,      tier: "pro"     },
+  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,       tier: "pro"     },
+  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap,             tier: "pro"     },
+  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target,          tier: "pro"     },
+  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"     },
+  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,          tier: "pro"     },
+  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,           tier: "pro"     },
+  { href: "/pricing",     label: "Upgrade",        mobileLabel: "Upgrade",  icon: Crown,           tier: undefined },
+  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: undefined },
 ];
 
 // Nav item badge definitions — editorial, restrained
@@ -99,9 +102,9 @@ export function DesktopSidebar() {
 
   function canAccess(tier?: string) {
     if (isOwner) return true;
-    if (!tier)   return true;
-    if (tier === "basic") return isBasic;
-    if (tier === "pro")   return isPro;
+    if (!tier)   return true;               // free tier — always accessible when logged in
+    if (tier === "basic") return isBasic;   // basic or pro
+    if (tier === "pro")   return isPro;     // pro only
     return false;
   }
 
@@ -146,7 +149,7 @@ export function DesktopSidebar() {
                 key={href}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm cursor-default"
                 style={{ color: "rgba(216,204,184,0.3)", borderLeft: "2px solid transparent" }}
-                title={tier === "pro" ? "Pro plan required" : "Basic plan required"}
+                title={tier === "pro" ? "Pro — $15/mo · Tap Upgrade to subscribe" : "Basic — $5/mo · Tap Upgrade to subscribe"}
               >
                 <Icon size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>{label}</span>
@@ -218,9 +221,9 @@ export function MobileTabBar() {
 
   function canAccess(tier?: string) {
     if (isOwner) return true;
-    if (!tier)   return true;
-    if (tier === "basic") return isBasic;
-    if (tier === "pro")   return isPro;
+    if (!tier)   return true;               // free tier — always accessible when logged in
+    if (tier === "basic") return isBasic;   // basic or pro
+    if (tier === "pro")   return isPro;     // pro only
     return false;
   }
 

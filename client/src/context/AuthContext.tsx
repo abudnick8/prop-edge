@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 export interface AuthUser {
   id: number;
   email: string;
-  tier: "basic" | "pro" | null;
+  tier: "free" | "basic" | "pro" | null;
   subStatus: string;
   isOwner: boolean;
 }
@@ -16,6 +16,7 @@ interface AuthContextValue {
   isOwner: boolean;
   isPro: boolean;
   isBasic: boolean;
+  isFree: boolean;
   isLoading: boolean;
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
@@ -74,10 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isOwner    = user?.isOwner ?? false;
   const isPro      = isOwner || user?.tier === "pro";
   const isBasic    = isOwner || user?.tier === "basic" || user?.tier === "pro";
+  // isFree is true for any logged-in user (free tier or above)
+  const isFree     = !!user;
 
   return (
     <AuthContext.Provider value={{
-      user, isLoggedIn, isOwner, isPro, isBasic,
+      user, isLoggedIn, isOwner, isPro, isBasic, isFree,
       isLoading, login, logout, refreshUser,
     }}>
       {children}

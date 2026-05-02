@@ -1453,7 +1453,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ error: "Invalid email address" });
       if (!isValidPIN(pin))
         return res.status(400).json({ error: "PIN must be exactly 4 alphanumeric characters" });
-      if (tier !== "basic" && tier !== "pro")
+      if (tier !== "free" && tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
 
       // Check email not already taken
@@ -1466,7 +1466,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       let stripeCustomerId: string | null = null;
       let checkoutUrl: string | null = null;
 
-      if (stripe) {
+      if (stripe && tier !== "free") {
         const customer = await stripe.customers.create({ email: email.toLowerCase() });
         stripeCustomerId = customer.id;
 
@@ -1485,15 +1485,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         checkoutUrl = session.url;
       }
 
-      // Insert user (tier null until Stripe confirms payment)
+      // Free tier is always immediately active (no payment needed)
+      const isFreeTier = tier === "free";
       await db.query(
         `INSERT INTO users (email, pin_hash, tier, stripe_customer_id, sub_status)
          VALUES (LOWER($1), $2, $3, $4, $5)`,
-        [email, pinHash, stripe ? null : tier, stripeCustomerId, stripe ? "inactive" : "active"]
+        [email, pinHash, isFreeTier ? "free" : (stripe ? null : tier), stripeCustomerId, isFreeTier ? "active" : (stripe ? "inactive" : "active")]
       );
 
-      // If no Stripe, auto-activate (dev mode)
-      if (!stripe) {
+      // If no Stripe or free tier, auto-activate
+      if (!stripe || isFreeTier) {
         await db.query(`UPDATE users SET tier=$1, sub_status='active' WHERE email=LOWER($2)`, [tier, email]);
       }
 
@@ -1640,6 +1641,47 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       res.json({ url: session.url });
     } catch (e: any) {
       res.status(500).json({ error: "Failed to create billing portal" });
+    }
+  });
+
+  // POST /api/auth/upgrade-checkout — existing logged-in user wants to upgrade tier
+  app.post("/api/auth/upgrade-checkout", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+      const { tier } = req.body ?? {};
+      if (tier !== "basic" && tier !== "pro")
+        return res.status(400).json({ error: "Invalid tier" });
+
+      const user = await db.queryOne(
+        `SELECT email, stripe_customer_id FROM users WHERE id=$1`,
+        [req.user!.userId]
+      );
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      // Create Stripe customer if they don't have one yet (e.g. signed up as free)
+      let customerId = user.stripe_customer_id;
+      if (!customerId) {
+        const customer = await stripe.customers.create({ email: user.email });
+        customerId = customer.id;
+        await db.query(`UPDATE users SET stripe_customer_id=$1 WHERE id=$2`, [customerId, req.user!.userId]);
+      }
+
+      const priceId = tier === "pro"
+        ? process.env.STRIPE_PRO_PRICE_ID
+        : process.env.STRIPE_BASIC_PRICE_ID;
+
+      const session = await stripe.checkout.sessions.create({
+        customer:    customerId,
+        mode:        "subscription",
+        line_items:  [{ price: priceId, quantity: 1 }],
+        metadata:    { tier, userId: String(req.user!.userId) },
+        success_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/settings?upgrade=success`,
+        cancel_url:  `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/pricing`,
+      });
+      res.json({ checkoutUrl: session.url });
+    } catch (e: any) {
+      console.error("[Stripe] Upgrade checkout error:", e.message);
+      res.status(500).json({ error: "Failed to create checkout session" });
     }
   });
 
