@@ -1,8 +1,168 @@
 {
-  "version": 0,
-  "sampleSize": 0,
-  "lastRun": null,
-  "weights": {},
-  "correlations": {},
-  "note": "Will be populated by nightly ML learning after enough pick outcomes accumulate"
+  "version": 1,
+  "sampleSize": 30,
+  "updatedAt": "2026-05-02T07:00:07.889Z",
+  "featureWeights": {
+    "recentForm": 0.99,
+    "contactQuality": 1,
+    "hardContact": 0.988,
+    "pitcherMatchup": 1.003,
+    "opportunity": 1.016,
+    "bvp": 1,
+    "stability": 1.027,
+    "weatherImpact": 1,
+    "gameTotal": 1.028
+  },
+  "featureAccuracy": {
+    "recentForm": {
+      "wins": 10,
+      "losses": 2,
+      "accuracy": 83.3,
+      "belowAccuracy": 70,
+      "correlation": -0.123
+    },
+    "contactQuality": {
+      "wins": 9,
+      "losses": 2,
+      "accuracy": 81.8,
+      "belowAccuracy": 72.7,
+      "correlation": 0.004
+    },
+    "hardContact": {
+      "wins": 7,
+      "losses": 4,
+      "accuracy": 63.6,
+      "belowAccuracy": 90.9,
+      "correlation": -0.145
+    },
+    "pitcherMatchup": {
+      "wins": 8,
+      "losses": 3,
+      "accuracy": 72.7,
+      "belowAccuracy": 80,
+      "correlation": 0.04
+    },
+    "opportunity": {
+      "wins": 14,
+      "losses": 5,
+      "accuracy": 73.7,
+      "belowAccuracy": 100,
+      "correlation": 0.199
+    },
+    "stability": {
+      "wins": 14,
+      "losses": 3,
+      "accuracy": 82.4,
+      "belowAccuracy": 60,
+      "correlation": 0.342
+    },
+    "gameTotal": {
+      "wins": 15,
+      "losses": 4,
+      "accuracy": 78.9,
+      "belowAccuracy": 66.7,
+      "correlation": 0.354
+    }
+  },
+  "tierAccuracy": {
+    "D": {
+      "wins": 8,
+      "losses": 0,
+      "accuracy": 100
+    },
+    "C": {
+      "wins": 17,
+      "losses": 5,
+      "accuracy": 77.3
+    }
+  },
+  "calibration": [
+    {
+      "bucket": "80+",
+      "predicted": 80.4,
+      "actual": 100,
+      "n": 1
+    },
+    {
+      "bucket": "75-80",
+      "predicted": 77.4,
+      "actual": 100,
+      "n": 4
+    },
+    {
+      "bucket": "70-75",
+      "predicted": 70.9,
+      "actual": 90.9,
+      "n": 11
+    },
+    {
+      "bucket": "65-70",
+      "predicted": 68.2,
+      "actual": 69.2,
+      "n": 13
+    },
+    {
+      "bucket": "<65",
+      "predicted": 64,
+      "actual": 100,
+      "n": 1
+    }
+  ],
+  "rawCorrelations": {
+    "recentForm": {
+      "corr": -0.12277358144645116,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    },
+    "contactQuality": {
+      "corr": 0.0042596357660688935,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    },
+    "hardContact": {
+      "corr": -0.14467172141016374,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    },
+    "pitcherMatchup": {
+      "corr": 0.03975810971615319,
+      "n": 21,
+      "wins": 16,
+      "losses": 5
+    },
+    "opportunity": {
+      "corr": 0.1992288597007424,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    },
+    "bvp": {
+      "corr": 0,
+      "n": 0,
+      "wins": 0,
+      "losses": 0
+    },
+    "stability": {
+      "corr": 0.341924378630355,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    },
+    "weatherImpact": {
+      "corr": 0,
+      "n": 0,
+      "wins": 0,
+      "losses": 0
+    },
+    "gameTotal": {
+      "corr": 0.35446869513752854,
+      "n": 22,
+      "wins": 17,
+      "losses": 5
+    }
+  },
+  "dampFactor": 0.08
 }

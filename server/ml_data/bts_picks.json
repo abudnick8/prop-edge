@@ -1,4 +1,3968 @@
 {
+  "2026-05-02": [
+    {
+      "playerId": 669127,
+      "name": "Shea Langeliers",
+      "team": "Athletics",
+      "side": "home",
+      "bats": "R",
+      "lineupSlot": 2,
+      "lineupSource": "confirmed",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Slade Cecconi",
+        "id": 677944,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.283,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 6.28,
+        "last5ERA": 5.34,
+        "last3ERA": 2.98,
+        "last3AvgIP": 5,
+        "last3H9": 6.6,
+        "leashProbability": 0.88,
+        "k9": 7.5,
+        "whip": 1.53,
+        "ip": 30.1,
+        "xba": 0.277,
+        "xwoba": 0.367,
+        "hardHitPct": 37.8,
+        "gbPct": 46.9,
+        "fbPct": 24.5,
+        "swStrPct": null,
+        "pitcherKPct": 18,
+        "pitcherBbPct": 9.4
+      },
+      "stats": {
+        "avg14": 0.333,
+        "avg30": 0.314,
+        "avg7": 0.444,
+        "avgSeason": 0.326,
+        "babip14": 0.3877551020408163,
+        "ghp14": 0.8571428571428571,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.31,
+        "xwoba": 0.399,
+        "hardHitPct": 48.5,
+        "barrelPct": 14.4,
+        "launchAngle": 19.4,
+        "xbabip": null,
+        "whiffPct": 25.2,
+        "zContactPct": null,
+        "sprintSpeed": 28.5,
+        "avgHome": 0.345,
+        "avgAway": 0.311,
+        "xba15d": 0.31,
+        "xwoba15d": 0.399,
+        "hardHit15d": 48.5,
+        "xba30d": 0.31,
+        "xwoba30d": 0.399,
+        "hardHit30d": 48.5,
+        "pitchTypeMatchup": 73
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-16",
+          "hits": 2,
+          "ab": 2
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 2,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 1,
+          "ab": 5
+        }
+      ],
+      "game": {
+        "matchup": "Cleveland Guardians @ Athletics",
+        "total": 10.5,
+        "venue": "Sutter Health Park",
+        "gameTime": "3:05 PM",
+        "gameStartMs": 1777752300000,
+        "weather": {
+          "tempF": 57,
+          "wind": "9 mph WSW",
+          "windMph": 9,
+          "windDir": "WSW",
+          "windOut": false,
+          "windIn": false,
+          "humidity": 81,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\u2696\ufe0f Weather neutral",
+          "impactTier": "neutral",
+          "hitterImpact": 0.5
+        }
+      },
+      "rawScore": 0.6564381280408049,
+      "hitProbability": 70,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.065Z",
+      "rationale": "\ud83d\udd25 Shea Langeliers is absolutely locked in, hitting .333 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **86%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.444** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \u26a1 Opponent **Slade Cecconi** allows **.283** to right-handed batters this season\n\u2022 \ud83d\udcca Statcast xBA of **.310** confirms he's hitting the ball with elite quality, not just luck",
+      "locked": true,
+      "minsToGame": 74,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 669127,
+        "name": "Shea Langeliers",
+        "team": "Athletics",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Slade Cecconi",
+          "id": 677944,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.283,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 6.28,
+          "last5ERA": 5.34,
+          "last3ERA": 2.98,
+          "last3AvgIP": 5,
+          "last3H9": 6.6,
+          "leashProbability": 0.88,
+          "k9": 7.5,
+          "whip": 1.53,
+          "ip": 30.1,
+          "xba": 0.277,
+          "xwoba": 0.367,
+          "hardHitPct": 37.8,
+          "gbPct": 46.9,
+          "fbPct": 24.5,
+          "swStrPct": null,
+          "pitcherKPct": 18,
+          "pitcherBbPct": 9.4
+        },
+        "stats": {
+          "avg14": 0.333,
+          "avg30": 0.314,
+          "avg7": 0.444,
+          "avgSeason": 0.326,
+          "babip14": 0.3877551020408163,
+          "ghp14": 0.8571428571428571,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.31,
+          "xwoba": 0.399,
+          "hardHitPct": 48.5,
+          "barrelPct": 14.4,
+          "launchAngle": 19.4,
+          "xbabip": null,
+          "whiffPct": 25.2,
+          "zContactPct": null,
+          "sprintSpeed": 28.5,
+          "avgHome": 0.345,
+          "avgAway": 0.311,
+          "xba15d": 0.31,
+          "xwoba15d": 0.399,
+          "hardHit15d": 48.5,
+          "xba30d": 0.31,
+          "xwoba30d": 0.399,
+          "hardHit30d": 48.5,
+          "pitchTypeMatchup": 73
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 2,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 2,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 5
+          }
+        ],
+        "game": {
+          "matchup": "Cleveland Guardians @ Athletics",
+          "total": 10.5,
+          "venue": "Sutter Health Park",
+          "gameTime": "3:05 PM",
+          "gameStartMs": 1777752300000,
+          "weather": {
+            "tempF": 57,
+            "wind": "9 mph WSW",
+            "windMph": 9,
+            "windDir": "WSW",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 81,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\u2696\ufe0f Weather neutral",
+            "impactTier": "neutral",
+            "hitterImpact": 0.5
+          }
+        },
+        "rawScore": 0.6564381280408049,
+        "hitProbability": 70,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Shea Langeliers is absolutely locked in, hitting .333 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **86%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.444** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \u26a1 Opponent **Slade Cecconi** allows **.283** to right-handed batters this season\n\u2022 \ud83d\udcca Statcast xBA of **.310** confirms he's hitting the ball with elite quality, not just luck",
+        "locked": true,
+        "minsToGame": 74,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 671056,
+      "name": "Iv\u00e1n Herrera",
+      "team": "St. Louis Cardinals",
+      "side": "home",
+      "bats": "R",
+      "lineupSlot": 2,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Roki Sasaki",
+        "id": 808963,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.29,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 6.49,
+        "last5ERA": 6.49,
+        "last3ERA": 6.23,
+        "last3AvgIP": 4.3,
+        "last3H9": 9.7,
+        "leashProbability": 0.44999999999999996,
+        "k9": 8.9,
+        "whip": 1.85,
+        "ip": 22.2,
+        "xba": 0.275,
+        "xwoba": 0.379,
+        "hardHitPct": 45.1,
+        "gbPct": 38,
+        "fbPct": 33.8,
+        "swStrPct": null,
+        "pitcherKPct": 20.4,
+        "pitcherBbPct": 12
+      },
+      "stats": {
+        "avg14": 0.313,
+        "avg30": 0.272,
+        "avg7": 0.333,
+        "avgSeason": 0.254,
+        "babip14": 0.4,
+        "ghp14": 0.9285714285714286,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.27,
+        "xwoba": 0.388,
+        "hardHitPct": 48.4,
+        "barrelPct": 8.8,
+        "launchAngle": 10.2,
+        "xbabip": null,
+        "whiffPct": 20.2,
+        "zContactPct": null,
+        "sprintSpeed": 25.3,
+        "avgHome": 0.228,
+        "avgAway": 0.281,
+        "xba15d": 0.27,
+        "xwoba15d": 0.388,
+        "hardHit15d": 48.4,
+        "xba30d": 0.27,
+        "xwoba30d": 0.388,
+        "hardHit30d": 48.4,
+        "pitchTypeMatchup": 69
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-17",
+          "hits": 2,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 1,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-21",
+          "hits": 2,
+          "ab": 5
+        }
+      ],
+      "game": {
+        "matchup": "Los Angeles Dodgers @ St. Louis Cardinals",
+        "total": 8.5,
+        "venue": "Busch Stadium",
+        "gameTime": "6:15 PM",
+        "gameStartMs": 1777763700000,
+        "weather": {
+          "tempF": 87,
+          "wind": "11 mph ESE",
+          "windMph": 11,
+          "windDir": "ESE",
+          "windOut": false,
+          "windIn": false,
+          "humidity": 22,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\u2600\ufe0f Hot 87\u00b0F",
+          "impactTier": "moderate",
+          "hitterImpact": 0.6
+        }
+      },
+      "rawScore": 0.635535519472027,
+      "hitProbability": 70,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.066Z",
+      "rationale": "\ud83d\udd25 Iv\u00e1n Herrera is absolutely locked in, hitting .313 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **93%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.333** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Roki Sasaki**, who allows **.290** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **48%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+      "locked": true,
+      "minsToGame": 264,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 671056,
+        "name": "Iv\u00e1n Herrera",
+        "team": "St. Louis Cardinals",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Roki Sasaki",
+          "id": 808963,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.29,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 6.49,
+          "last5ERA": 6.49,
+          "last3ERA": 6.23,
+          "last3AvgIP": 4.3,
+          "last3H9": 9.7,
+          "leashProbability": 0.44999999999999996,
+          "k9": 8.9,
+          "whip": 1.85,
+          "ip": 22.2,
+          "xba": 0.275,
+          "xwoba": 0.379,
+          "hardHitPct": 45.1,
+          "gbPct": 38,
+          "fbPct": 33.8,
+          "swStrPct": null,
+          "pitcherKPct": 20.4,
+          "pitcherBbPct": 12
+        },
+        "stats": {
+          "avg14": 0.313,
+          "avg30": 0.272,
+          "avg7": 0.333,
+          "avgSeason": 0.254,
+          "babip14": 0.4,
+          "ghp14": 0.9285714285714286,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.27,
+          "xwoba": 0.388,
+          "hardHitPct": 48.4,
+          "barrelPct": 8.8,
+          "launchAngle": 10.2,
+          "xbabip": null,
+          "whiffPct": 20.2,
+          "zContactPct": null,
+          "sprintSpeed": 25.3,
+          "avgHome": 0.228,
+          "avgAway": 0.281,
+          "xba15d": 0.27,
+          "xwoba15d": 0.388,
+          "hardHit15d": 48.4,
+          "xba30d": 0.27,
+          "xwoba30d": 0.388,
+          "hardHit30d": 48.4,
+          "pitchTypeMatchup": 69
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-17",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 2,
+            "ab": 5
+          }
+        ],
+        "game": {
+          "matchup": "Los Angeles Dodgers @ St. Louis Cardinals",
+          "total": 8.5,
+          "venue": "Busch Stadium",
+          "gameTime": "6:15 PM",
+          "gameStartMs": 1777763700000,
+          "weather": {
+            "tempF": 87,
+            "wind": "11 mph ESE",
+            "windMph": 11,
+            "windDir": "ESE",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 22,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\u2600\ufe0f Hot 87\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.6
+          }
+        },
+        "rawScore": 0.635535519472027,
+        "hitProbability": 70,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Iv\u00e1n Herrera is absolutely locked in, hitting .313 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **93%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.333** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Roki Sasaki**, who allows **.290** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **48%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+        "locked": true,
+        "minsToGame": 264,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 592450,
+      "name": "Aaron Judge",
+      "team": "New York Yankees",
+      "side": "home",
+      "bats": "R",
+      "lineupSlot": 2,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Kyle Bradish",
+        "id": 680694,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.422,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 4.2,
+        "last5ERA": 4.3,
+        "last3ERA": 4.8,
+        "last3AvgIP": 5,
+        "last3H9": 11.4,
+        "leashProbability": 0.8,
+        "k9": 9.3,
+        "whip": 1.73,
+        "ip": 30,
+        "xba": 0.245,
+        "xwoba": 0.332,
+        "hardHitPct": 38.6,
+        "gbPct": 51.1,
+        "fbPct": 21.6,
+        "swStrPct": null,
+        "pitcherKPct": 22.8,
+        "pitcherBbPct": 12.5
+      },
+      "stats": {
+        "avg14": 0.308,
+        "avg30": 0.3,
+        "avg7": 0.381,
+        "avgSeason": 0.263,
+        "babip14": 0.36,
+        "ghp14": 0.7142857142857143,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.283,
+        "xwoba": 0.454,
+        "hardHitPct": 53.9,
+        "barrelPct": 26.3,
+        "launchAngle": 13.9,
+        "xbabip": null,
+        "whiffPct": 33.5,
+        "zContactPct": null,
+        "sprintSpeed": 26.9,
+        "avgHome": 0.314,
+        "avgAway": 0.222,
+        "xba15d": 0.283,
+        "xwoba15d": 0.454,
+        "hardHit15d": 53.9,
+        "xba30d": 0.283,
+        "xwoba30d": 0.454,
+        "hardHit30d": 53.9,
+        "pitchTypeMatchup": 74
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-16",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 0,
+          "ab": 2
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 1,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-21",
+          "hits": 1,
+          "ab": 3
+        }
+      ],
+      "game": {
+        "matchup": "Baltimore Orioles @ New York Yankees",
+        "total": 8.5,
+        "venue": "Yankee Stadium",
+        "gameTime": "12:35 PM",
+        "gameStartMs": 1777743300000,
+        "weather": {
+          "tempF": 51,
+          "wind": "10 mph NW (out)",
+          "windMph": 10,
+          "windDir": "NW",
+          "windOut": true,
+          "windIn": false,
+          "humidity": 89,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+          "impactTier": "neutral",
+          "hitterImpact": 0.52
+        }
+      },
+      "rawScore": 0.6286860194523592,
+      "hitProbability": 69,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "loss",
+      "hits": 0,
+      "ab": 1,
+      "gradedAt": "2026-05-02T17:57:03.590Z",
+      "lockedAt": "2026-05-02T03:48:56.067Z",
+      "rationale": "\ud83d\udd25 Aaron Judge is absolutely locked in, hitting .308 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83d\udd25 Hitting **.381** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Kyle Bradish**, who allows **.422** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **54%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+      "locked": true,
+      "minsToGame": -76,
+      "gameStarted": true,
+      "snapshot": {
+        "playerId": 592450,
+        "name": "Aaron Judge",
+        "team": "New York Yankees",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Kyle Bradish",
+          "id": 680694,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.422,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.2,
+          "last5ERA": 4.3,
+          "last3ERA": 4.8,
+          "last3AvgIP": 5,
+          "last3H9": 11.4,
+          "leashProbability": 0.8,
+          "k9": 9.3,
+          "whip": 1.73,
+          "ip": 30,
+          "xba": 0.245,
+          "xwoba": 0.332,
+          "hardHitPct": 38.6,
+          "gbPct": 51.1,
+          "fbPct": 21.6,
+          "swStrPct": null,
+          "pitcherKPct": 22.8,
+          "pitcherBbPct": 12.5
+        },
+        "stats": {
+          "avg14": 0.308,
+          "avg30": 0.3,
+          "avg7": 0.381,
+          "avgSeason": 0.263,
+          "babip14": 0.36,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.283,
+          "xwoba": 0.454,
+          "hardHitPct": 53.9,
+          "barrelPct": 26.3,
+          "launchAngle": 13.9,
+          "xbabip": null,
+          "whiffPct": 33.5,
+          "zContactPct": null,
+          "sprintSpeed": 26.9,
+          "avgHome": 0.314,
+          "avgAway": 0.222,
+          "xba15d": 0.283,
+          "xwoba15d": 0.454,
+          "hardHit15d": 53.9,
+          "xba30d": 0.283,
+          "xwoba30d": 0.454,
+          "hardHit30d": 53.9,
+          "pitchTypeMatchup": 74
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 0,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 3
+          }
+        ],
+        "game": {
+          "matchup": "Baltimore Orioles @ New York Yankees",
+          "total": 8.5,
+          "venue": "Yankee Stadium",
+          "gameTime": "12:35 PM",
+          "gameStartMs": 1777743300000,
+          "weather": {
+            "tempF": 51,
+            "wind": "10 mph NW (out)",
+            "windMph": 10,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 89,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+            "impactTier": "neutral",
+            "hitterImpact": 0.52
+          }
+        },
+        "rawScore": 0.6286860194523592,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Aaron Judge is absolutely locked in, hitting .308 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83d\udd25 Hitting **.381** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Kyle Bradish**, who allows **.422** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **54%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+        "locked": true,
+        "minsToGame": -76,
+        "gameStarted": true
+      }
+    },
+    {
+      "playerId": 800050,
+      "name": "Chase DeLauter",
+      "team": "Cleveland Guardians",
+      "side": "away",
+      "bats": "L",
+      "lineupSlot": 2,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Jacob Lopez",
+        "id": 682052,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.24,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 5.95,
+        "last5ERA": 5.79,
+        "last3ERA": 6.38,
+        "last3AvgIP": 4.7,
+        "last3H9": 8.3,
+        "leashProbability": 0.44999999999999996,
+        "k9": 6.7,
+        "whip": 1.98,
+        "ip": 24.2,
+        "xba": 0.198,
+        "xwoba": 0.306,
+        "hardHitPct": 26.8,
+        "gbPct": 37.8,
+        "fbPct": 31.7,
+        "swStrPct": null,
+        "pitcherKPct": 14.9,
+        "pitcherBbPct": 17.4
+      },
+      "stats": {
+        "avg14": 0.35,
+        "avg30": 0.289,
+        "avg7": 0.55,
+        "avgSeason": 0.286,
+        "babip14": 0.3125,
+        "ghp14": 0.6428571428571429,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.292,
+        "xwoba": 0.375,
+        "hardHitPct": 39.1,
+        "barrelPct": 8.6,
+        "launchAngle": 16.4,
+        "xbabip": null,
+        "whiffPct": 15.9,
+        "zContactPct": null,
+        "sprintSpeed": 27,
+        "avgHome": 0.269,
+        "avgAway": 0.302,
+        "xba15d": 0.292,
+        "xwoba15d": 0.375,
+        "hardHit15d": 39.1,
+        "xba30d": 0.292,
+        "xwoba30d": 0.375,
+        "hardHit30d": 39.1,
+        "pitchTypeMatchup": 77
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-15",
+          "hits": 0,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-16",
+          "hits": 0,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 0,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "Cleveland Guardians @ Athletics",
+        "total": 10.5,
+        "venue": "Sutter Health Park",
+        "gameTime": "3:05 PM",
+        "gameStartMs": 1777752300000,
+        "weather": {
+          "tempF": 55,
+          "wind": "9 mph SW (in)",
+          "windMph": 9,
+          "windDir": "SW",
+          "windOut": false,
+          "windIn": true,
+          "humidity": 83,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83c\udf21 Cool 55\u00b0F",
+          "impactTier": "moderate",
+          "hitterImpact": 0.39
+        }
+      },
+      "rawScore": 0.6394259631113893,
+      "hitProbability": 70,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.068Z",
+      "rationale": "\ud83d\udd25 Chase DeLauter is absolutely locked in, hitting .350 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **64%** of L14 games\n\u2022 \ud83d\udd25 Hitting **.550** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83d\udcca Strong Statcast xBA **.292** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udd28 **39%** hard-hit rate keeps him in play as a quality-contact pick",
+      "locked": true,
+      "minsToGame": 74,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 800050,
+        "name": "Chase DeLauter",
+        "team": "Cleveland Guardians",
+        "side": "away",
+        "bats": "L",
+        "lineupSlot": 2,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Jacob Lopez",
+          "id": 682052,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.24,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 5.95,
+          "last5ERA": 5.79,
+          "last3ERA": 6.38,
+          "last3AvgIP": 4.7,
+          "last3H9": 8.3,
+          "leashProbability": 0.44999999999999996,
+          "k9": 6.7,
+          "whip": 1.98,
+          "ip": 24.2,
+          "xba": 0.198,
+          "xwoba": 0.306,
+          "hardHitPct": 26.8,
+          "gbPct": 37.8,
+          "fbPct": 31.7,
+          "swStrPct": null,
+          "pitcherKPct": 14.9,
+          "pitcherBbPct": 17.4
+        },
+        "stats": {
+          "avg14": 0.35,
+          "avg30": 0.289,
+          "avg7": 0.55,
+          "avgSeason": 0.286,
+          "babip14": 0.3125,
+          "ghp14": 0.6428571428571429,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.292,
+          "xwoba": 0.375,
+          "hardHitPct": 39.1,
+          "barrelPct": 8.6,
+          "launchAngle": 16.4,
+          "xbabip": null,
+          "whiffPct": 15.9,
+          "zContactPct": null,
+          "sprintSpeed": 27,
+          "avgHome": 0.269,
+          "avgAway": 0.302,
+          "xba15d": 0.292,
+          "xwoba15d": 0.375,
+          "hardHit15d": 39.1,
+          "xba30d": 0.292,
+          "xwoba30d": 0.375,
+          "hardHit30d": 39.1,
+          "pitchTypeMatchup": 77
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-15",
+            "hits": 0,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-16",
+            "hits": 0,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 0,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Cleveland Guardians @ Athletics",
+          "total": 10.5,
+          "venue": "Sutter Health Park",
+          "gameTime": "3:05 PM",
+          "gameStartMs": 1777752300000,
+          "weather": {
+            "tempF": 55,
+            "wind": "9 mph SW (in)",
+            "windMph": 9,
+            "windDir": "SW",
+            "windOut": false,
+            "windIn": true,
+            "humidity": 83,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 55\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.39
+          }
+        },
+        "rawScore": 0.6394259631113893,
+        "hitProbability": 70,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Chase DeLauter is absolutely locked in, hitting .350 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **64%** of L14 games\n\u2022 \ud83d\udd25 Hitting **.550** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83d\udcca Strong Statcast xBA **.292** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udd28 **39%** hard-hit rate keeps him in play as a quality-contact pick",
+        "locked": true,
+        "minsToGame": 74,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 690993,
+      "name": "Colt Keith",
+      "team": "Detroit Tigers",
+      "side": "home",
+      "bats": "L",
+      "lineupSlot": 3,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Kumar Rocker",
+        "id": 677958,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.264,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 3.44,
+        "last5ERA": 3.44,
+        "last3ERA": 4.44,
+        "last3AvgIP": 4.7,
+        "last3H9": 9.5,
+        "leashProbability": 0.6,
+        "k9": 7.6,
+        "whip": 1.34,
+        "ip": 26.2,
+        "xba": 0.259,
+        "xwoba": 0.33,
+        "hardHitPct": 47.6,
+        "gbPct": 56.1,
+        "fbPct": 17.1,
+        "swStrPct": null,
+        "pitcherKPct": 19.1,
+        "pitcherBbPct": 8.7
+      },
+      "stats": {
+        "avg14": 0.344,
+        "avg30": 0.314,
+        "avg7": 0.294,
+        "avgSeason": 0.326,
+        "babip14": 0.36363636363636365,
+        "ghp14": 0.6428571428571429,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.295,
+        "xwoba": 0.342,
+        "hardHitPct": 52.1,
+        "barrelPct": 6.8,
+        "launchAngle": 12,
+        "xbabip": null,
+        "whiffPct": 23,
+        "zContactPct": null,
+        "sprintSpeed": 28.2,
+        "avgHome": 0.355,
+        "avgAway": 0.311,
+        "xba15d": 0.295,
+        "xwoba15d": 0.342,
+        "hardHit15d": 52.1,
+        "xba30d": 0.295,
+        "xwoba30d": 0.342,
+        "hardHit30d": 52.1,
+        "pitchTypeMatchup": 44
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-14",
+          "hits": 0,
+          "ab": 1
+        },
+        {
+          "date": "2026-04-15",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-16",
+          "hits": 1,
+          "ab": 2
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 0,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "Texas Rangers @ Detroit Tigers",
+        "total": 8,
+        "venue": "Comerica Park",
+        "gameTime": "6:15 PM",
+        "gameStartMs": 1777763700000,
+        "weather": {
+          "tempF": 42,
+          "wind": "7 mph NW (out)",
+          "windMph": 7,
+          "windDir": "NW",
+          "windOut": true,
+          "windIn": false,
+          "humidity": 59,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83e\udd76 Cold 42\u00b0F",
+          "impactTier": "moderate",
+          "hitterImpact": 0.42
+        }
+      },
+      "rawScore": 0.5946512477341925,
+      "hitProbability": 68,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.069Z",
+      "rationale": "\ud83d\udd25 Colt Keith is absolutely locked in, hitting .344 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **64%** of L14 games\n\u2022 \u26a1 Opponent **Kumar Rocker** allows **.264** to left-handed batters this season\n\u2022 \ud83d\udcca Strong Statcast xBA **.295** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udd28 **52%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+      "locked": true,
+      "minsToGame": 264,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 690993,
+        "name": "Colt Keith",
+        "team": "Detroit Tigers",
+        "side": "home",
+        "bats": "L",
+        "lineupSlot": 3,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Kumar Rocker",
+          "id": 677958,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.264,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 3.44,
+          "last5ERA": 3.44,
+          "last3ERA": 4.44,
+          "last3AvgIP": 4.7,
+          "last3H9": 9.5,
+          "leashProbability": 0.6,
+          "k9": 7.6,
+          "whip": 1.34,
+          "ip": 26.2,
+          "xba": 0.259,
+          "xwoba": 0.33,
+          "hardHitPct": 47.6,
+          "gbPct": 56.1,
+          "fbPct": 17.1,
+          "swStrPct": null,
+          "pitcherKPct": 19.1,
+          "pitcherBbPct": 8.7
+        },
+        "stats": {
+          "avg14": 0.344,
+          "avg30": 0.314,
+          "avg7": 0.294,
+          "avgSeason": 0.326,
+          "babip14": 0.36363636363636365,
+          "ghp14": 0.6428571428571429,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.295,
+          "xwoba": 0.342,
+          "hardHitPct": 52.1,
+          "barrelPct": 6.8,
+          "launchAngle": 12,
+          "xbabip": null,
+          "whiffPct": 23,
+          "zContactPct": null,
+          "sprintSpeed": 28.2,
+          "avgHome": 0.355,
+          "avgAway": 0.311,
+          "xba15d": 0.295,
+          "xwoba15d": 0.342,
+          "hardHit15d": 52.1,
+          "xba30d": 0.295,
+          "xwoba30d": 0.342,
+          "hardHit30d": 52.1,
+          "pitchTypeMatchup": 44
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-14",
+            "hits": 0,
+            "ab": 1
+          },
+          {
+            "date": "2026-04-15",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 0,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Texas Rangers @ Detroit Tigers",
+          "total": 8,
+          "venue": "Comerica Park",
+          "gameTime": "6:15 PM",
+          "gameStartMs": 1777763700000,
+          "weather": {
+            "tempF": 42,
+            "wind": "7 mph NW (out)",
+            "windMph": 7,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 59,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83e\udd76 Cold 42\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.42
+          }
+        },
+        "rawScore": 0.5946512477341925,
+        "hitProbability": 68,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Colt Keith is absolutely locked in, hitting .344 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **64%** of L14 games\n\u2022 \u26a1 Opponent **Kumar Rocker** allows **.264** to left-handed batters this season\n\u2022 \ud83d\udcca Strong Statcast xBA **.295** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udd28 **52%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph",
+        "locked": true,
+        "minsToGame": 264,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 621493,
+      "name": "Taylor Ward",
+      "team": "Baltimore Orioles",
+      "side": "away",
+      "bats": "R",
+      "lineupSlot": 1,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Ryan Weathers",
+        "id": 677960,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.257,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 3.25,
+        "last5ERA": 3.49,
+        "last3ERA": 5,
+        "last3AvgIP": 5.4,
+        "last3H9": 10,
+        "leashProbability": 0.8,
+        "k9": 10.8,
+        "whip": 1.23,
+        "ip": 33.2,
+        "xba": 0.267,
+        "xwoba": 0.338,
+        "hardHitPct": 44.9,
+        "gbPct": 41.6,
+        "fbPct": 25.8,
+        "swStrPct": null,
+        "pitcherKPct": 29.2,
+        "pitcherBbPct": 5.8
+      },
+      "stats": {
+        "avg14": 0.3,
+        "avg30": 0.284,
+        "avg7": 0.188,
+        "avgSeason": 0.294,
+        "babip14": 0.3157894736842105,
+        "ghp14": 0.5714285714285714,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.288,
+        "xwoba": 0.381,
+        "hardHitPct": 38.5,
+        "barrelPct": 6.3,
+        "launchAngle": 14.9,
+        "xbabip": null,
+        "whiffPct": 17,
+        "zContactPct": null,
+        "sprintSpeed": 27.1,
+        "avgHome": 0.288,
+        "avgAway": 0.302,
+        "xba15d": 0.288,
+        "xwoba15d": 0.381,
+        "hardHit15d": 38.5,
+        "xba30d": 0.288,
+        "xwoba30d": 0.381,
+        "hardHit30d": 38.5,
+        "pitchTypeMatchup": 64
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-16",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 0,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 2,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 1,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "Baltimore Orioles @ New York Yankees",
+        "total": 8.5,
+        "venue": "Yankee Stadium",
+        "gameTime": "12:35 PM",
+        "gameStartMs": 1777743300000,
+        "weather": {
+          "tempF": 51,
+          "wind": "10 mph NW (out)",
+          "windMph": 10,
+          "windDir": "NW",
+          "windOut": true,
+          "windIn": false,
+          "humidity": 89,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+          "impactTier": "neutral",
+          "hitterImpact": 0.52
+        }
+      },
+      "rawScore": 0.5729630778823193,
+      "hitProbability": 67,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "loss",
+      "hits": 0,
+      "ab": 1,
+      "gradedAt": "2026-05-02T18:22:03.684Z",
+      "lockedAt": "2026-05-02T03:48:56.070Z",
+      "rationale": "\ud83d\udd25 Taylor Ward is absolutely locked in, hitting .300 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **57%** of L14 games\n\u2022 \ud83d\udd28 **39%** hard-hit rate keeps him in play as a quality-contact pick\n\u2022 \ud83c\udfaf xwOBA of **.381** ranks him among the best hitters in the game right now\n\u2022 \ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+      "locked": true,
+      "minsToGame": -76,
+      "gameStarted": true,
+      "snapshot": {
+        "playerId": 621493,
+        "name": "Taylor Ward",
+        "team": "Baltimore Orioles",
+        "side": "away",
+        "bats": "R",
+        "lineupSlot": 1,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Ryan Weathers",
+          "id": 677960,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.257,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 3.25,
+          "last5ERA": 3.49,
+          "last3ERA": 5,
+          "last3AvgIP": 5.4,
+          "last3H9": 10,
+          "leashProbability": 0.8,
+          "k9": 10.8,
+          "whip": 1.23,
+          "ip": 33.2,
+          "xba": 0.267,
+          "xwoba": 0.338,
+          "hardHitPct": 44.9,
+          "gbPct": 41.6,
+          "fbPct": 25.8,
+          "swStrPct": null,
+          "pitcherKPct": 29.2,
+          "pitcherBbPct": 5.8
+        },
+        "stats": {
+          "avg14": 0.3,
+          "avg30": 0.284,
+          "avg7": 0.188,
+          "avgSeason": 0.294,
+          "babip14": 0.3157894736842105,
+          "ghp14": 0.5714285714285714,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.288,
+          "xwoba": 0.381,
+          "hardHitPct": 38.5,
+          "barrelPct": 6.3,
+          "launchAngle": 14.9,
+          "xbabip": null,
+          "whiffPct": 17,
+          "zContactPct": null,
+          "sprintSpeed": 27.1,
+          "avgHome": 0.288,
+          "avgAway": 0.302,
+          "xba15d": 0.288,
+          "xwoba15d": 0.381,
+          "hardHit15d": 38.5,
+          "xba30d": 0.288,
+          "xwoba30d": 0.381,
+          "hardHit30d": 38.5,
+          "pitchTypeMatchup": 64
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 0,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 2,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Baltimore Orioles @ New York Yankees",
+          "total": 8.5,
+          "venue": "Yankee Stadium",
+          "gameTime": "12:35 PM",
+          "gameStartMs": 1777743300000,
+          "weather": {
+            "tempF": 51,
+            "wind": "10 mph NW (out)",
+            "windMph": 10,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 89,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+            "impactTier": "neutral",
+            "hitterImpact": 0.52
+          }
+        },
+        "rawScore": 0.5729630778823193,
+        "hitProbability": 67,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Taylor Ward is absolutely locked in, hitting .300 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udcc5 Got a hit in **57%** of L14 games\n\u2022 \ud83d\udd28 **39%** hard-hit rate keeps him in play as a quality-contact pick\n\u2022 \ud83c\udfaf xwOBA of **.381** ranks him among the best hitters in the game right now\n\u2022 \ud83c\udf21 Cool 51\u00b0F \u00b7 \ud83c\udf2c\ufe0f Wind 10mph out",
+        "locked": true,
+        "minsToGame": -76,
+        "gameStarted": true
+      }
+    },
+    {
+      "playerId": 650333,
+      "name": "Luis Arraez",
+      "team": "San Francisco Giants",
+      "side": "away",
+      "bats": "L",
+      "lineupSlot": 1,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Griffin Jax",
+        "id": 643377,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.292,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 6.49,
+        "last5ERA": 5.87,
+        "last3ERA": 6.43,
+        "last3AvgIP": 0.5,
+        "last3H9": 12.9,
+        "leashProbability": 0.25,
+        "k9": 9.7,
+        "whip": 1.71,
+        "ip": 11.1,
+        "xba": 0.262,
+        "xwoba": 0.357,
+        "hardHitPct": 46.9,
+        "gbPct": 56.3,
+        "fbPct": 25,
+        "swStrPct": null,
+        "pitcherKPct": 23.1,
+        "pitcherBbPct": 15.4
+      },
+      "stats": {
+        "avg14": 0.28,
+        "avg30": 0.303,
+        "avg7": 0.24,
+        "avgSeason": 0.303,
+        "babip14": 0.2807017543859649,
+        "ghp14": 0.7142857142857143,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.299,
+        "xwoba": 0.308,
+        "hardHitPct": 19,
+        "barrelPct": null,
+        "launchAngle": 13.9,
+        "xbabip": null,
+        "whiffPct": 7.9,
+        "zContactPct": null,
+        "sprintSpeed": 26.5,
+        "avgHome": 0.328,
+        "avgAway": 0.279,
+        "xba15d": 0.299,
+        "xwoba15d": 0.308,
+        "hardHit15d": 19,
+        "xba30d": 0.299,
+        "xwoba30d": 0.308,
+        "hardHit30d": 19,
+        "pitchTypeMatchup": 35
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-16",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 2,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 2,
+          "ab": 6
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-21",
+          "hits": 1,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "San Francisco Giants @ Tampa Bay Rays",
+        "total": 8,
+        "venue": "Tropicana Field",
+        "gameTime": "5:10 PM",
+        "gameStartMs": 1777759800000,
+        "weather": {
+          "tempF": 72,
+          "wind": "0 mph N",
+          "windMph": 0,
+          "windDir": "N",
+          "windOut": false,
+          "windIn": false,
+          "humidity": 50,
+          "precipInches": 0,
+          "isDome": true,
+          "impactLabel": "\ud83c\udfdf\ufe0f Dome \u2014 weather neutral",
+          "impactTier": "neutral",
+          "hitterImpact": 0.5
+        }
+      },
+      "rawScore": 0.579868782315255,
+      "hitProbability": 67,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.071Z",
+      "rationale": "\u26a1 Luis Arraez is in strong form, raking at .280 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83c\udfaf Faces **Griffin Jax**, who allows **.292** BA vs left-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udcca Strong Statcast xBA **.299** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udce1 Projected in lineup based on recent batting order \u2014 confirm before locking in",
+      "locked": true,
+      "minsToGame": 199,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 650333,
+        "name": "Luis Arraez",
+        "team": "San Francisco Giants",
+        "side": "away",
+        "bats": "L",
+        "lineupSlot": 1,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Griffin Jax",
+          "id": 643377,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.292,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 6.49,
+          "last5ERA": 5.87,
+          "last3ERA": 6.43,
+          "last3AvgIP": 0.5,
+          "last3H9": 12.9,
+          "leashProbability": 0.25,
+          "k9": 9.7,
+          "whip": 1.71,
+          "ip": 11.1,
+          "xba": 0.262,
+          "xwoba": 0.357,
+          "hardHitPct": 46.9,
+          "gbPct": 56.3,
+          "fbPct": 25,
+          "swStrPct": null,
+          "pitcherKPct": 23.1,
+          "pitcherBbPct": 15.4
+        },
+        "stats": {
+          "avg14": 0.28,
+          "avg30": 0.303,
+          "avg7": 0.24,
+          "avgSeason": 0.303,
+          "babip14": 0.2807017543859649,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.299,
+          "xwoba": 0.308,
+          "hardHitPct": 19,
+          "barrelPct": null,
+          "launchAngle": 13.9,
+          "xbabip": null,
+          "whiffPct": 7.9,
+          "zContactPct": null,
+          "sprintSpeed": 26.5,
+          "avgHome": 0.328,
+          "avgAway": 0.279,
+          "xba15d": 0.299,
+          "xwoba15d": 0.308,
+          "hardHit15d": 19,
+          "xba30d": 0.299,
+          "xwoba30d": 0.308,
+          "hardHit30d": 19,
+          "pitchTypeMatchup": 35
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 2,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 2,
+            "ab": 6
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "San Francisco Giants @ Tampa Bay Rays",
+          "total": 8,
+          "venue": "Tropicana Field",
+          "gameTime": "5:10 PM",
+          "gameStartMs": 1777759800000,
+          "weather": {
+            "tempF": 72,
+            "wind": "0 mph N",
+            "windMph": 0,
+            "windDir": "N",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 50,
+            "precipInches": 0,
+            "isDome": true,
+            "impactLabel": "\ud83c\udfdf\ufe0f Dome \u2014 weather neutral",
+            "impactTier": "neutral",
+            "hitterImpact": 0.5
+          }
+        },
+        "rawScore": 0.579868782315255,
+        "hitProbability": 67,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\u26a1 Luis Arraez is in strong form, raking at .280 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83c\udfaf Faces **Griffin Jax**, who allows **.292** BA vs left-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udcca Strong Statcast xBA **.299** \u2014 quality of contact backs up the surface stats\n\u2022 \ud83d\udce1 Projected in lineup based on recent batting order \u2014 confirm before locking in",
+        "locked": true,
+        "minsToGame": 199,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 608324,
+      "name": "Alex Bregman",
+      "team": "Chicago Cubs",
+      "side": "home",
+      "bats": "R",
+      "lineupSlot": 2,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Ryne Nelson",
+        "id": 669194,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.308,
+      "bvp": {
+        "avg": 0.2,
+        "hits": 1,
+        "ab": 5,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 7.86,
+        "last5ERA": 8.27,
+        "last3ERA": 2.48,
+        "last3AvgIP": 4.8,
+        "last3H9": 6.8,
+        "leashProbability": 0.6799999999999999,
+        "k9": 8.6,
+        "whip": 1.55,
+        "ip": 25.2,
+        "xba": 0.27,
+        "xwoba": 0.357,
+        "hardHitPct": 47.6,
+        "gbPct": 29.8,
+        "fbPct": 33.3,
+        "swStrPct": null,
+        "pitcherKPct": 20,
+        "pitcherBbPct": 9.2
+      },
+      "stats": {
+        "avg14": 0.286,
+        "avg30": 0.269,
+        "avg7": 0.211,
+        "avgSeason": 0.258,
+        "babip14": 0.30434782608695654,
+        "ghp14": 0.7142857142857143,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.257,
+        "xwoba": 0.335,
+        "hardHitPct": 45.4,
+        "barrelPct": 7.4,
+        "launchAngle": 15.2,
+        "xbabip": null,
+        "whiffPct": 16.4,
+        "zContactPct": null,
+        "sprintSpeed": 25.5,
+        "avgHome": 0.268,
+        "avgAway": 0.246,
+        "xba15d": 0.257,
+        "xwoba15d": 0.335,
+        "hardHit15d": 45.4,
+        "xba30d": 0.257,
+        "xwoba30d": 0.335,
+        "hardHit30d": 45.4,
+        "pitchTypeMatchup": 57
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-17",
+          "hits": 1,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 2,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-21",
+          "hits": 1,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "Arizona Diamondbacks @ Chicago Cubs",
+        "total": 8.5,
+        "venue": "Wrigley Field",
+        "gameTime": "1:20 PM",
+        "gameStartMs": 1777746000000,
+        "weather": {
+          "tempF": 41,
+          "wind": "2 mph NW (out)",
+          "windMph": 2,
+          "windDir": "NW",
+          "windOut": true,
+          "windIn": false,
+          "humidity": 62,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83e\udd76 Cold 41\u00b0F",
+          "impactTier": "moderate",
+          "hitterImpact": 0.38
+        }
+      },
+      "rawScore": 0.5604796699349801,
+      "hitProbability": 66,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "loss",
+      "hits": 0,
+      "ab": 1,
+      "gradedAt": "2026-05-02T18:37:03.984Z",
+      "lockedAt": "2026-05-02T03:48:56.073Z",
+      "rationale": "\u26a1 Alex Bregman is in strong form, raking at .286 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83c\udfaf Faces **Ryne Nelson**, who allows **.308** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **45%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph\n\u2022 \ud83e\udd76 Cold 41\u00b0F",
+      "locked": true,
+      "minsToGame": -31,
+      "gameStarted": true,
+      "snapshot": {
+        "playerId": 608324,
+        "name": "Alex Bregman",
+        "team": "Chicago Cubs",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Ryne Nelson",
+          "id": 669194,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.308,
+        "bvp": {
+          "avg": 0.2,
+          "hits": 1,
+          "ab": 5,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 7.86,
+          "last5ERA": 8.27,
+          "last3ERA": 2.48,
+          "last3AvgIP": 4.8,
+          "last3H9": 6.8,
+          "leashProbability": 0.6799999999999999,
+          "k9": 8.6,
+          "whip": 1.55,
+          "ip": 25.2,
+          "xba": 0.27,
+          "xwoba": 0.357,
+          "hardHitPct": 47.6,
+          "gbPct": 29.8,
+          "fbPct": 33.3,
+          "swStrPct": null,
+          "pitcherKPct": 20,
+          "pitcherBbPct": 9.2
+        },
+        "stats": {
+          "avg14": 0.286,
+          "avg30": 0.269,
+          "avg7": 0.211,
+          "avgSeason": 0.258,
+          "babip14": 0.30434782608695654,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.257,
+          "xwoba": 0.335,
+          "hardHitPct": 45.4,
+          "barrelPct": 7.4,
+          "launchAngle": 15.2,
+          "xbabip": null,
+          "whiffPct": 16.4,
+          "zContactPct": null,
+          "sprintSpeed": 25.5,
+          "avgHome": 0.268,
+          "avgAway": 0.246,
+          "xba15d": 0.257,
+          "xwoba15d": 0.335,
+          "hardHit15d": 45.4,
+          "xba30d": 0.257,
+          "xwoba30d": 0.335,
+          "hardHit30d": 45.4,
+          "pitchTypeMatchup": 57
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Arizona Diamondbacks @ Chicago Cubs",
+          "total": 8.5,
+          "venue": "Wrigley Field",
+          "gameTime": "1:20 PM",
+          "gameStartMs": 1777746000000,
+          "weather": {
+            "tempF": 41,
+            "wind": "2 mph NW (out)",
+            "windMph": 2,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 62,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83e\udd76 Cold 41\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.38
+          }
+        },
+        "rawScore": 0.5604796699349801,
+        "hitProbability": 66,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\u26a1 Alex Bregman is in strong form, raking at .286 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \ud83c\udfaf Faces **Ryne Nelson**, who allows **.308** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udd28 **45%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph\n\u2022 \ud83e\udd76 Cold 41\u00b0F",
+        "locked": true,
+        "minsToGame": -31,
+        "gameStarted": true
+      }
+    },
+    {
+      "playerId": 682829,
+      "name": "Elly De La Cruz",
+      "team": "Cincinnati Reds",
+      "side": "away",
+      "bats": "S",
+      "lineupSlot": 3,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Carmen Mlodzinski",
+        "id": 669387,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.222,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 6,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 4.16,
+        "last5ERA": 4.38,
+        "last3ERA": 1.18,
+        "last3AvgIP": 5.1,
+        "last3H9": 7.6,
+        "leashProbability": 0.88,
+        "k9": 9.6,
+        "whip": 1.46,
+        "ip": 28.1,
+        "xba": 0.267,
+        "xwoba": 0.319,
+        "hardHitPct": 55.4,
+        "gbPct": 47,
+        "fbPct": 15.7,
+        "swStrPct": null,
+        "pitcherKPct": 23.8,
+        "pitcherBbPct": 8.7
+      },
+      "stats": {
+        "avg14": 0.28,
+        "avg30": 0.288,
+        "avg7": 0.273,
+        "avgSeason": 0.273,
+        "babip14": 0.3055555555555556,
+        "ghp14": 0.7142857142857143,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.269,
+        "xwoba": 0.373,
+        "hardHitPct": 52.9,
+        "barrelPct": 16.1,
+        "launchAngle": 15.2,
+        "xbabip": null,
+        "whiffPct": 31.7,
+        "zContactPct": null,
+        "sprintSpeed": 27.8,
+        "avgHome": 0.304,
+        "avgAway": 0.237,
+        "xba15d": 0.269,
+        "xwoba15d": 0.373,
+        "hardHit15d": 52.9,
+        "xba30d": 0.269,
+        "xwoba30d": 0.373,
+        "hardHit30d": 52.9,
+        "pitchTypeMatchup": 62
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-16",
+          "hits": 0,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 1,
+          "ab": 3
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 1,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 1,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 1,
+          "ab": 4
+        }
+      ],
+      "game": {
+        "matchup": "Cincinnati Reds @ Pittsburgh Pirates",
+        "total": 8,
+        "venue": "PNC Park",
+        "gameTime": "3:05 PM",
+        "gameStartMs": 1777752300000,
+        "weather": {
+          "tempF": 38,
+          "wind": "3 mph WNW",
+          "windMph": 3,
+          "windDir": "WNW",
+          "windOut": false,
+          "windIn": false,
+          "humidity": 93,
+          "precipInches": 0,
+          "isDome": false,
+          "impactLabel": "\ud83e\udd76 Cold 38\u00b0F",
+          "impactTier": "moderate",
+          "hitterImpact": 0.38
+        }
+      },
+      "rawScore": 0.5526194272010451,
+      "hitProbability": 66,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.074Z",
+      "rationale": "\u26a1 Elly De La Cruz is in strong form, raking at .280 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \u26a0\ufe0f **Carmen Mlodzinski** is tough on right-handed batters (**.222** BA allowed) \u2014 matchup is the key risk here\n\u2022 \ud83d\udd28 **53%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph\n\u2022 \ud83c\udfaf xwOBA of **.373** ranks him among the best hitters in the game right now",
+      "locked": true,
+      "minsToGame": 74,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 682829,
+        "name": "Elly De La Cruz",
+        "team": "Cincinnati Reds",
+        "side": "away",
+        "bats": "S",
+        "lineupSlot": 3,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Carmen Mlodzinski",
+          "id": 669387,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.222,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 6,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.16,
+          "last5ERA": 4.38,
+          "last3ERA": 1.18,
+          "last3AvgIP": 5.1,
+          "last3H9": 7.6,
+          "leashProbability": 0.88,
+          "k9": 9.6,
+          "whip": 1.46,
+          "ip": 28.1,
+          "xba": 0.267,
+          "xwoba": 0.319,
+          "hardHitPct": 55.4,
+          "gbPct": 47,
+          "fbPct": 15.7,
+          "swStrPct": null,
+          "pitcherKPct": 23.8,
+          "pitcherBbPct": 8.7
+        },
+        "stats": {
+          "avg14": 0.28,
+          "avg30": 0.288,
+          "avg7": 0.273,
+          "avgSeason": 0.273,
+          "babip14": 0.3055555555555556,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.269,
+          "xwoba": 0.373,
+          "hardHitPct": 52.9,
+          "barrelPct": 16.1,
+          "launchAngle": 15.2,
+          "xbabip": null,
+          "whiffPct": 31.7,
+          "zContactPct": null,
+          "sprintSpeed": 27.8,
+          "avgHome": 0.304,
+          "avgAway": 0.237,
+          "xba15d": 0.269,
+          "xwoba15d": 0.373,
+          "hardHit15d": 52.9,
+          "xba30d": 0.269,
+          "xwoba30d": 0.373,
+          "hardHit30d": 52.9,
+          "pitchTypeMatchup": 62
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Cincinnati Reds @ Pittsburgh Pirates",
+          "total": 8,
+          "venue": "PNC Park",
+          "gameTime": "3:05 PM",
+          "gameStartMs": 1777752300000,
+          "weather": {
+            "tempF": 38,
+            "wind": "3 mph WNW",
+            "windMph": 3,
+            "windDir": "WNW",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 93,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83e\udd76 Cold 38\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.38
+          }
+        },
+        "rawScore": 0.5526194272010451,
+        "hitProbability": 66,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\u26a1 Elly De La Cruz is in strong form, raking at .280 over the last 14 days with consistent plate appearances.\n\u2022 \u2705 Recorded a hit in **71%** of the last 14 games\n\u2022 \u26a0\ufe0f **Carmen Mlodzinski** is tough on right-handed batters (**.222** BA allowed) \u2014 matchup is the key risk here\n\u2022 \ud83d\udd28 **53%** hard-hit rate \u2014 consistently barreling the ball at 95+ mph\n\u2022 \ud83c\udfaf xwOBA of **.373** ranks him among the best hitters in the game right now",
+        "locked": true,
+        "minsToGame": 74,
+        "gameStarted": false
+      }
+    },
+    {
+      "playerId": 672640,
+      "name": "Otto Lopez",
+      "team": "Miami Marlins",
+      "side": "home",
+      "bats": "R",
+      "lineupSlot": 4,
+      "lineupSource": "projected",
+      "isScratched": false,
+      "isOverridePick": false,
+      "opponentPitcher": {
+        "name": "Andrew Painter",
+        "id": 691725,
+        "hand": "R"
+      },
+      "pitcherAvgAllowed": 0.343,
+      "bvp": {
+        "avg": null,
+        "hits": 0,
+        "ab": 0,
+        "signal": "none"
+      },
+      "pitcherStats": {
+        "era": 5.25,
+        "last5ERA": 5.41,
+        "last3ERA": 3.83,
+        "last3AvgIP": 4.7,
+        "last3H9": 10.2,
+        "leashProbability": 0.6,
+        "k9": 7.9,
+        "whip": 1.5,
+        "ip": 24,
+        "xba": 0.262,
+        "xwoba": 0.315,
+        "hardHitPct": 32.5,
+        "gbPct": 38.8,
+        "fbPct": 25,
+        "swStrPct": null,
+        "pitcherKPct": 19.4,
+        "pitcherBbPct": 5.6
+      },
+      "stats": {
+        "avg14": 0.314,
+        "avg30": 0.337,
+        "avg7": 0.346,
+        "avgSeason": 0.333,
+        "babip14": 0.45454545454545453,
+        "ghp14": 0.8571428571428571,
+        "kPct": 0.2,
+        "bbPct": 0.08,
+        "xba": 0.297,
+        "xwoba": 0.353,
+        "hardHitPct": 49,
+        "barrelPct": 10.2,
+        "launchAngle": 6.8,
+        "xbabip": null,
+        "whiffPct": 23,
+        "zContactPct": null,
+        "sprintSpeed": 28.2,
+        "avgHome": 0.328,
+        "avgAway": 0.339,
+        "xba15d": 0.297,
+        "xwoba15d": 0.353,
+        "hardHit15d": 49,
+        "xba30d": 0.297,
+        "xwoba30d": 0.353,
+        "hardHit30d": 49,
+        "pitchTypeMatchup": 68
+      },
+      "gamelog": [
+        {
+          "date": "2026-04-15",
+          "hits": 2,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-17",
+          "hits": 3,
+          "ab": 5
+        },
+        {
+          "date": "2026-04-18",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-19",
+          "hits": 1,
+          "ab": 4
+        },
+        {
+          "date": "2026-04-20",
+          "hits": 1,
+          "ab": 3
+        }
+      ],
+      "game": {
+        "matchup": "Philadelphia Phillies @ Miami Marlins",
+        "total": 8.5,
+        "venue": "loanDepot park",
+        "gameTime": "3:10 PM",
+        "gameStartMs": 1777752600000,
+        "weather": {
+          "tempF": 72,
+          "wind": "0 mph N",
+          "windMph": 0,
+          "windDir": "N",
+          "windOut": false,
+          "windIn": false,
+          "humidity": 50,
+          "precipInches": 0,
+          "isDome": true,
+          "impactLabel": "\ud83c\udfdf\ufe0f Dome \u2014 weather neutral",
+          "impactTier": "neutral",
+          "hitterImpact": 0.5
+        }
+      },
+      "rawScore": 0.5552929543429329,
+      "hitProbability": 66,
+      "impliedProb": null,
+      "edge": null,
+      "inTargetRange": true,
+      "confidenceTier": "C",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "lockedAt": "2026-05-02T03:48:56.075Z",
+      "rationale": "\ud83d\udd25 Otto Lopez is absolutely locked in, hitting .314 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **86%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.346** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Andrew Painter**, who allows **.343** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udcca Strong Statcast xBA **.297** \u2014 quality of contact backs up the surface stats",
+      "locked": true,
+      "minsToGame": 79,
+      "gameStarted": false,
+      "snapshot": {
+        "playerId": 672640,
+        "name": "Otto Lopez",
+        "team": "Miami Marlins",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 4,
+        "lineupSource": "projected",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Andrew Painter",
+          "id": 691725,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.343,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 5.25,
+          "last5ERA": 5.41,
+          "last3ERA": 3.83,
+          "last3AvgIP": 4.7,
+          "last3H9": 10.2,
+          "leashProbability": 0.6,
+          "k9": 7.9,
+          "whip": 1.5,
+          "ip": 24,
+          "xba": 0.262,
+          "xwoba": 0.315,
+          "hardHitPct": 32.5,
+          "gbPct": 38.8,
+          "fbPct": 25,
+          "swStrPct": null,
+          "pitcherKPct": 19.4,
+          "pitcherBbPct": 5.6
+        },
+        "stats": {
+          "avg14": 0.314,
+          "avg30": 0.337,
+          "avg7": 0.346,
+          "avgSeason": 0.333,
+          "babip14": 0.45454545454545453,
+          "ghp14": 0.8571428571428571,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.297,
+          "xwoba": 0.353,
+          "hardHitPct": 49,
+          "barrelPct": 10.2,
+          "launchAngle": 6.8,
+          "xbabip": null,
+          "whiffPct": 23,
+          "zContactPct": null,
+          "sprintSpeed": 28.2,
+          "avgHome": 0.328,
+          "avgAway": 0.339,
+          "xba15d": 0.297,
+          "xwoba15d": 0.353,
+          "hardHit15d": 49,
+          "xba30d": 0.297,
+          "xwoba30d": 0.353,
+          "hardHit30d": 49,
+          "pitchTypeMatchup": 68
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-15",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 3,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 3
+          }
+        ],
+        "game": {
+          "matchup": "Philadelphia Phillies @ Miami Marlins",
+          "total": 8.5,
+          "venue": "loanDepot park",
+          "gameTime": "3:10 PM",
+          "gameStartMs": 1777752600000,
+          "weather": {
+            "tempF": 72,
+            "wind": "0 mph N",
+            "windMph": 0,
+            "windDir": "N",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 50,
+            "precipInches": 0,
+            "isDome": true,
+            "impactLabel": "\ud83c\udfdf\ufe0f Dome \u2014 weather neutral",
+            "impactTier": "neutral",
+            "hitterImpact": 0.5
+          }
+        },
+        "rawScore": 0.5552929543429329,
+        "hitProbability": 66,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C",
+        "rationale": "\ud83d\udd25 Otto Lopez is absolutely locked in, hitting .314 over the last 14 days \u2014 one of the hottest bats on today's slate.\n\u2022 \ud83d\udca5 Hit in **86%** of the last 14 games (elite streak consistency)\n\u2022 \ud83d\udd25 Hitting **.346** over the last 7 days \u2014 currently in peak hot-streak territory\n\u2022 \ud83c\udfaf Faces **Andrew Painter**, who allows **.343** BA vs right-handed batters \u2014 a highly favorable matchup\n\u2022 \ud83d\udcca Strong Statcast xBA **.297** \u2014 quality of contact backs up the surface stats",
+        "locked": true,
+        "minsToGame": 79,
+        "gameStarted": false
+      }
+    }
+  ],
+  "2026-05-01": [
+    {
+      "playerId": 645277,
+      "name": "Ozzie Albies",
+      "team": "Atlanta Braves",
+      "hitProbability": 72,
+      "lockedAt": "2026-05-02T03:48:38.028Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 4,
+      "gradedAt": "2026-05-02T03:48:38.148Z",
+      "snapshot": {
+        "playerId": 645277,
+        "name": "Ozzie Albies",
+        "team": "Atlanta Braves",
+        "side": "away",
+        "bats": "S",
+        "lineupSlot": 3,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Jose Quintana",
+          "id": 500779,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.25,
+        "bvp": {
+          "avg": 0.125,
+          "hits": 1,
+          "ab": 8,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.11,
+          "last5ERA": 4.23,
+          "last3ERA": 6.59,
+          "last3AvgIP": 4.1,
+          "last3H9": 11,
+          "leashProbability": 0.44999999999999996,
+          "k9": 4.5,
+          "whip": 1.37,
+          "ip": 24.1,
+          "xba": 0.275,
+          "xwoba": 0.36,
+          "hardHitPct": 33.9,
+          "gbPct": 32.3,
+          "fbPct": 33.9,
+          "swStrPct": null,
+          "pitcherKPct": 11,
+          "pitcherBbPct": 13.4
+        },
+        "stats": {
+          "avg14": 0.4,
+          "avg30": 0.33,
+          "avg7": 0.391,
+          "avgSeason": 0.32,
+          "babip14": 0.3469387755102041,
+          "ghp14": 0.9285714285714286,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.264,
+          "xwoba": 0.315,
+          "hardHitPct": 30.9,
+          "barrelPct": 4.5,
+          "launchAngle": 16.4,
+          "xbabip": null,
+          "whiffPct": 22.7,
+          "zContactPct": null,
+          "sprintSpeed": 27.2,
+          "avgHome": 0.343,
+          "avgAway": 0.295,
+          "xba15d": 0.264,
+          "xwoba15d": 0.315,
+          "hardHit15d": 30.9,
+          "xba30d": 0.264,
+          "xwoba30d": 0.315,
+          "hardHit30d": 30.9,
+          "pitchTypeMatchup": 64
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-17",
+            "hits": 0,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Atlanta Braves @ Colorado Rockies",
+          "total": 11,
+          "venue": "Coors Field",
+          "gameTime": "7:40 PM",
+          "gameStartMs": 1777682400000,
+          "weather": {
+            "tempF": 51,
+            "wind": "7 mph E",
+            "windMph": 7,
+            "windDir": "E",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 22,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 51\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.7017353742392873,
+        "hitProbability": 72,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 665489,
+      "name": "Vladimir Guerrero Jr.",
+      "team": "Toronto Blue Jays",
+      "hitProbability": 71,
+      "lockedAt": "2026-05-02T03:48:38.031Z",
+      "result": "loss",
+      "hits": 0,
+      "ab": 4,
+      "gradedAt": "2026-05-02T03:48:38.255Z",
+      "snapshot": {
+        "playerId": 665489,
+        "name": "Vladimir Guerrero Jr.",
+        "team": "Toronto Blue Jays",
+        "side": "away",
+        "bats": "R",
+        "lineupSlot": 3,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Simeon Woods Richardson",
+          "id": 680573,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.342,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 6.58,
+          "last5ERA": 8.88,
+          "last3ERA": 9,
+          "last3AvgIP": 4.7,
+          "last3H9": 12.9,
+          "leashProbability": 0.44999999999999996,
+          "k9": 4.5,
+          "whip": 1.78,
+          "ip": 34.2,
+          "xba": 0.268,
+          "xwoba": 0.344,
+          "hardHitPct": 40.7,
+          "gbPct": 38,
+          "fbPct": 25.9,
+          "swStrPct": null,
+          "pitcherKPct": 11,
+          "pitcherBbPct": 9.6
+        },
+        "stats": {
+          "avg14": 0.375,
+          "avg30": 0.351,
+          "avg7": 0.417,
+          "avgSeason": 0.342,
+          "babip14": 0.4,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.332,
+          "xwoba": 0.396,
+          "hardHitPct": 45.9,
+          "barrelPct": 12.2,
+          "launchAngle": 7,
+          "xbabip": null,
+          "whiffPct": 21.1,
+          "zContactPct": null,
+          "sprintSpeed": 26.2,
+          "avgHome": 0.371,
+          "avgAway": 0.309,
+          "xba15d": 0.332,
+          "xwoba15d": 0.396,
+          "hardHit15d": 45.9,
+          "xba30d": 0.332,
+          "xwoba30d": 0.396,
+          "hardHit30d": 45.9,
+          "pitchTypeMatchup": 66
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 3,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 3,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 3
+          }
+        ],
+        "game": {
+          "matchup": "Toronto Blue Jays @ Minnesota Twins",
+          "total": 8.5,
+          "venue": "Target Field",
+          "gameTime": "7:10 PM",
+          "gameStartMs": 1777680600000,
+          "weather": {
+            "tempF": 48,
+            "wind": "3 mph NW (out)",
+            "windMph": 3,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 31,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 48\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.6690774020378099,
+        "hitProbability": 71,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 666160,
+      "name": "Mickey Moniak",
+      "team": "Colorado Rockies",
+      "hitProbability": 71,
+      "lockedAt": "2026-05-02T03:48:38.031Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 5,
+      "gradedAt": "2026-05-02T03:48:38.365Z",
+      "snapshot": {
+        "playerId": 666160,
+        "name": "Mickey Moniak",
+        "team": "Colorado Rockies",
+        "side": "home",
+        "bats": "L",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Grant Holmes",
+          "id": 656550,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.224,
+        "bvp": {
+          "avg": 0.6,
+          "hits": 3,
+          "ab": 5,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.37,
+          "last5ERA": 5.31,
+          "last3ERA": 4.38,
+          "last3AvgIP": 4.8,
+          "last3H9": 7.5,
+          "leashProbability": 0.6,
+          "k9": 7,
+          "whip": 1.32,
+          "ip": 37.1,
+          "xba": 0.238,
+          "xwoba": 0.322,
+          "hardHitPct": 42.7,
+          "gbPct": 41.7,
+          "fbPct": 28.1,
+          "swStrPct": null,
+          "pitcherKPct": 18.5,
+          "pitcherBbPct": 10.4
+        },
+        "stats": {
+          "avg14": 0.375,
+          "avg30": 0.319,
+          "avg7": 0.333,
+          "avgSeason": 0.319,
+          "babip14": 0.4444444444444444,
+          "ghp14": 1,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.231,
+          "xwoba": 0.316,
+          "hardHitPct": 36.9,
+          "barrelPct": 12.3,
+          "launchAngle": 24.6,
+          "xbabip": null,
+          "whiffPct": 27.3,
+          "zContactPct": null,
+          "sprintSpeed": 28,
+          "avgHome": 0.373,
+          "avgAway": 0.256,
+          "xba15d": 0.231,
+          "xwoba15d": 0.316,
+          "hardHit15d": 36.9,
+          "xba30d": 0.231,
+          "xwoba30d": 0.316,
+          "hardHit30d": 36.9,
+          "pitchTypeMatchup": 75
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 2,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Atlanta Braves @ Colorado Rockies",
+          "total": 11,
+          "venue": "Coors Field",
+          "gameTime": "7:40 PM",
+          "gameStartMs": 1777682400000,
+          "weather": {
+            "tempF": 51,
+            "wind": "7 mph E",
+            "windMph": 7,
+            "windDir": "E",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 22,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 51\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.6611815971686648,
+        "hitProbability": 71,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 545361,
+      "name": "Mike Trout",
+      "team": "Los Angeles Angels",
+      "hitProbability": 70,
+      "lockedAt": "2026-05-02T03:48:38.032Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 3,
+      "gradedAt": "2026-05-02T03:48:38.474Z",
+      "snapshot": {
+        "playerId": 545361,
+        "name": "Mike Trout",
+        "team": "Los Angeles Angels",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Christian Scott",
+          "id": 681035,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.25,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.43,
+          "last5ERA": 4.43,
+          "last3ERA": 4.43,
+          "last3AvgIP": 3,
+          "last3H9": 4.4,
+          "leashProbability": 0.4,
+          "k9": 13.3,
+          "whip": 1.31,
+          "ip": 6.1,
+          "xba": 0.047,
+          "xwoba": 0.449,
+          "hardHitPct": null,
+          "gbPct": null,
+          "fbPct": 33.3,
+          "swStrPct": null,
+          "pitcherKPct": 10,
+          "pitcherBbPct": 50
+        },
+        "stats": {
+          "avg14": 0.275,
+          "avg30": 0.247,
+          "avg7": 0.318,
+          "avgSeason": 0.25,
+          "babip14": 0.2962962962962963,
+          "ghp14": 0.7857142857142857,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.288,
+          "xwoba": 0.482,
+          "hardHitPct": 51.9,
+          "barrelPct": 25.3,
+          "launchAngle": 20.7,
+          "xbabip": null,
+          "whiffPct": 20.6,
+          "zContactPct": null,
+          "sprintSpeed": 28.6,
+          "avgHome": 0.158,
+          "avgAway": 0.296,
+          "xba15d": 0.288,
+          "xwoba15d": 0.482,
+          "hardHit15d": 51.9,
+          "xba30d": 0.288,
+          "xwoba30d": 0.482,
+          "hardHit30d": 51.9,
+          "pitchTypeMatchup": 85
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 0,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 1
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "New York Mets @ Los Angeles Angels",
+          "total": 9,
+          "venue": "Angel Stadium",
+          "gameTime": "8:38 PM",
+          "gameStartMs": 1777685880000,
+          "weather": {
+            "tempF": 66,
+            "wind": "8 mph SW (in)",
+            "windMph": 8,
+            "windDir": "SW",
+            "windOut": false,
+            "windIn": true,
+            "humidity": 70,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\u2696\ufe0f Weather neutral",
+            "impactTier": "minor",
+            "hitterImpact": 0.46
+          }
+        },
+        "rawScore": 0.6496779964337064,
+        "hitProbability": 70,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 700250,
+      "name": "Ben Rice",
+      "team": "New York Yankees",
+      "hitProbability": 69,
+      "lockedAt": "2026-05-02T03:48:38.033Z",
+      "result": "win",
+      "hits": 2,
+      "ab": 5,
+      "gradedAt": "2026-05-02T03:48:38.580Z",
+      "snapshot": {
+        "playerId": 700250,
+        "name": "Ben Rice",
+        "team": "New York Yankees",
+        "side": "home",
+        "bats": "L",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Cade Povich",
+          "id": 700249,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.333,
+        "bvp": {
+          "avg": 0.3,
+          "hits": 3,
+          "ab": 10,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.47,
+          "last5ERA": 4.68,
+          "last3ERA": 4.68,
+          "last3AvgIP": 5.1,
+          "last3H9": 9.4,
+          "leashProbability": 0.8,
+          "k9": 6.1,
+          "whip": 1.3,
+          "ip": 16.1,
+          "xba": 0.253,
+          "xwoba": 0.303,
+          "hardHitPct": 39.5,
+          "gbPct": 42.1,
+          "fbPct": 34.2,
+          "swStrPct": null,
+          "pitcherKPct": 14.6,
+          "pitcherBbPct": 6.3
+        },
+        "stats": {
+          "avg14": 0.318,
+          "avg30": 0.314,
+          "avg7": 0.375,
+          "avgSeason": 0.33,
+          "babip14": 0.3125,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.305,
+          "xwoba": 0.446,
+          "hardHitPct": 60.9,
+          "barrelPct": 20.3,
+          "launchAngle": 11.5,
+          "xbabip": null,
+          "whiffPct": 24.6,
+          "zContactPct": null,
+          "sprintSpeed": 27,
+          "avgHome": 0.289,
+          "avgAway": 0.362,
+          "xba15d": 0.305,
+          "xwoba15d": 0.446,
+          "hardHit15d": 60.9,
+          "xba30d": 0.305,
+          "xwoba30d": 0.446,
+          "hardHit30d": 60.9,
+          "pitchTypeMatchup": 92
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-04-21",
+            "hits": 0,
+            "ab": 4
+          }
+        ],
+        "game": {
+          "matchup": "Baltimore Orioles @ New York Yankees",
+          "total": 9,
+          "venue": "Yankee Stadium",
+          "gameTime": "6:05 PM",
+          "gameStartMs": 1777676700000,
+          "weather": {
+            "tempF": 53,
+            "wind": "2 mph SSW (in)",
+            "windMph": 2,
+            "windDir": "SSW",
+            "windOut": false,
+            "windIn": true,
+            "humidity": 69,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 53\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.6301921934585064,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 621043,
+      "name": "Carlos Correa",
+      "team": "Houston Astros",
+      "hitProbability": 69,
+      "lockedAt": "2026-05-02T03:48:38.033Z",
+      "result": "win",
+      "hits": 3,
+      "ab": 5,
+      "gradedAt": "2026-05-02T03:48:38.690Z",
+      "snapshot": {
+        "playerId": 621043,
+        "name": "Carlos Correa",
+        "team": "Houston Astros",
+        "side": "away",
+        "bats": "R",
+        "lineupSlot": 1,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Jake Bennett",
+          "id": 687562,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.308,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 1.8,
+          "last5ERA": null,
+          "last3ERA": null,
+          "last3AvgIP": null,
+          "last3H9": null,
+          "leashProbability": 0.85,
+          "k9": 5.4,
+          "whip": 1.4,
+          "ip": 5,
+          "xba": null,
+          "xwoba": null,
+          "hardHitPct": null,
+          "gbPct": null,
+          "fbPct": null,
+          "swStrPct": null,
+          "pitcherKPct": null,
+          "pitcherBbPct": null
+        },
+        "stats": {
+          "avg14": 0.317,
+          "avg30": 0.286,
+          "avg7": 0.35,
+          "avgSeason": 0.288,
+          "babip14": 0.34210526315789475,
+          "ghp14": 0.6428571428571429,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.288,
+          "xwoba": 0.357,
+          "hardHitPct": 41.9,
+          "barrelPct": 9.3,
+          "launchAngle": 6,
+          "xbabip": null,
+          "whiffPct": 21.5,
+          "zContactPct": null,
+          "sprintSpeed": 27.2,
+          "avgHome": 0.236,
+          "avgAway": 0.339,
+          "xba15d": 0.288,
+          "xwoba15d": 0.357,
+          "hardHit15d": 41.9,
+          "xba30d": 0.288,
+          "xwoba30d": 0.357,
+          "hardHit30d": 41.9,
+          "pitchTypeMatchup": null
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-15",
+            "hits": 0,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-16",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 0,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 3
+          }
+        ],
+        "game": {
+          "matchup": "Houston Astros @ Boston Red Sox",
+          "total": 9,
+          "venue": "Fenway Park",
+          "gameTime": "6:10 PM",
+          "gameStartMs": 1777677000000,
+          "weather": {
+            "tempF": 52,
+            "wind": "3 mph S (in)",
+            "windMph": 3,
+            "windDir": "S",
+            "windOut": false,
+            "windIn": true,
+            "humidity": 61,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 52\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.6131156890040338,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 680777,
+      "name": "Ryan Jeffers",
+      "team": "Minnesota Twins",
+      "hitProbability": 69,
+      "lockedAt": "2026-05-02T03:48:38.034Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 4,
+      "gradedAt": "2026-05-02T03:48:38.800Z",
+      "snapshot": {
+        "playerId": 680777,
+        "name": "Ryan Jeffers",
+        "team": "Minnesota Twins",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 3,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Patrick Corbin",
+          "id": 571578,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.278,
+        "bvp": {
+          "avg": 0.308,
+          "hits": 4,
+          "ab": 13,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 3.72,
+          "last5ERA": 3.83,
+          "last3ERA": 3.8,
+          "last3AvgIP": 4.7,
+          "last3H9": 7.6,
+          "leashProbability": 0.6,
+          "k9": 7.4,
+          "whip": 1.28,
+          "ip": 24.2,
+          "xba": 0.289,
+          "xwoba": 0.375,
+          "hardHitPct": 41.8,
+          "gbPct": 43.6,
+          "fbPct": 21.8,
+          "swStrPct": null,
+          "pitcherKPct": 20.3,
+          "pitcherBbPct": 7.6
+        },
+        "stats": {
+          "avg14": 0.324,
+          "avg30": 0.319,
+          "avg7": 0.391,
+          "avgSeason": 0.301,
+          "babip14": 0.35294117647058826,
+          "ghp14": 0.7142857142857143,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.266,
+          "xwoba": 0.386,
+          "hardHitPct": 41.3,
+          "barrelPct": 14.3,
+          "launchAngle": 23.4,
+          "xbabip": null,
+          "whiffPct": 18.1,
+          "zContactPct": null,
+          "sprintSpeed": 26,
+          "avgHome": 0.32,
+          "avgAway": 0.273,
+          "xba15d": 0.266,
+          "xwoba15d": 0.386,
+          "hardHit15d": 41.3,
+          "xba30d": 0.266,
+          "xwoba30d": 0.386,
+          "hardHit30d": 41.3,
+          "pitchTypeMatchup": 86
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-13",
+            "hits": 3,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-15",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 0
+          }
+        ],
+        "game": {
+          "matchup": "Toronto Blue Jays @ Minnesota Twins",
+          "total": 8.5,
+          "venue": "Target Field",
+          "gameTime": "7:10 PM",
+          "gameStartMs": 1777680600000,
+          "weather": {
+            "tempF": 48,
+            "wind": "3 mph NW (out)",
+            "windMph": 3,
+            "windDir": "NW",
+            "windOut": true,
+            "windIn": false,
+            "humidity": 31,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83c\udf21 Cool 48\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.43
+          }
+        },
+        "rawScore": 0.6289436801586912,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 665742,
+      "name": "Juan Soto",
+      "team": "New York Mets",
+      "hitProbability": 69,
+      "lockedAt": "2026-05-02T03:48:38.035Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 3,
+      "gradedAt": "2026-05-02T03:48:38.907Z",
+      "snapshot": {
+        "playerId": 665742,
+        "name": "Juan Soto",
+        "team": "New York Mets",
+        "side": "away",
+        "bats": "L",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Walbert Ure\u00f1a",
+          "id": 700712,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.222,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 3.91,
+          "last5ERA": 4.09,
+          "last3ERA": 2.5,
+          "last3AvgIP": 2.4,
+          "last3H9": 11.3,
+          "leashProbability": 0.48000000000000004,
+          "k9": 9.5,
+          "whip": 1.86,
+          "ip": 16.1,
+          "xba": 0.211,
+          "xwoba": 0.295,
+          "hardHitPct": 27,
+          "gbPct": 51.4,
+          "fbPct": 24.3,
+          "swStrPct": null,
+          "pitcherKPct": 21.7,
+          "pitcherBbPct": 16.7
+        },
+        "stats": {
+          "avg14": 0.333,
+          "avg30": 0.343,
+          "avg7": 0.4,
+          "avgSeason": 0.344,
+          "babip14": 0.34210526315789475,
+          "ghp14": 0.8571428571428571,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.346,
+          "xwoba": 0.49,
+          "hardHitPct": 50,
+          "barrelPct": 26,
+          "launchAngle": 13.3,
+          "xbabip": null,
+          "whiffPct": 19.8,
+          "zContactPct": null,
+          "sprintSpeed": 25.7,
+          "avgHome": 0.341,
+          "avgAway": null,
+          "xba15d": 0.346,
+          "xwoba15d": 0.49,
+          "hardHit15d": 50,
+          "xba30d": 0.346,
+          "xwoba30d": 0.49,
+          "hardHit30d": 50,
+          "pitchTypeMatchup": 76
+        },
+        "gamelog": [
+          {
+            "date": "2026-03-30",
+            "hits": 1,
+            "ab": 3
+          },
+          {
+            "date": "2026-03-31",
+            "hits": 2,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-01",
+            "hits": 1,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-02",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-03",
+            "hits": 1,
+            "ab": 1
+          }
+        ],
+        "game": {
+          "matchup": "New York Mets @ Los Angeles Angels",
+          "total": 9,
+          "venue": "Angel Stadium",
+          "gameTime": "8:38 PM",
+          "gameStartMs": 1777685880000,
+          "weather": {
+            "tempF": 66,
+            "wind": "8 mph SW (in)",
+            "windMph": 8,
+            "windDir": "SW",
+            "windOut": false,
+            "windIn": true,
+            "humidity": 70,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\u2696\ufe0f Weather neutral",
+            "impactTier": "minor",
+            "hitterImpact": 0.46
+          }
+        },
+        "rawScore": 0.633759527602748,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 669127,
+      "name": "Shea Langeliers",
+      "team": "Athletics",
+      "hitProbability": 69,
+      "lockedAt": "2026-05-02T03:48:38.035Z",
+      "result": "win",
+      "hits": 1,
+      "ab": 3,
+      "gradedAt": "2026-05-02T03:48:39.018Z",
+      "snapshot": {
+        "playerId": 669127,
+        "name": "Shea Langeliers",
+        "team": "Athletics",
+        "side": "home",
+        "bats": "R",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Joey Cantillo",
+          "id": 676282,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.275,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 3.7,
+          "last5ERA": 4.06,
+          "last3ERA": 3.51,
+          "last3AvgIP": 5.1,
+          "last3H9": 7.6,
+          "leashProbability": 0.8,
+          "k9": 9.5,
+          "whip": 1.41,
+          "ip": 34.1,
+          "xba": 0.226,
+          "xwoba": 0.312,
+          "hardHitPct": 42.9,
+          "gbPct": 44.2,
+          "fbPct": 28.6,
+          "swStrPct": null,
+          "pitcherKPct": 27.2,
+          "pitcherBbPct": 10.4
+        },
+        "stats": {
+          "avg14": 0.34,
+          "avg30": 0.317,
+          "avg7": 0.462,
+          "avgSeason": 0.328,
+          "babip14": 0.3877551020408163,
+          "ghp14": 0.8571428571428571,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.307,
+          "xwoba": 0.398,
+          "hardHitPct": 48.9,
+          "barrelPct": 14.9,
+          "launchAngle": 19.5,
+          "xbabip": null,
+          "whiffPct": 24.7,
+          "zContactPct": null,
+          "sprintSpeed": 28.5,
+          "avgHome": 0.353,
+          "avgAway": 0.311,
+          "xba15d": 0.307,
+          "xwoba15d": 0.398,
+          "hardHit15d": 48.9,
+          "xba30d": 0.307,
+          "xwoba30d": 0.398,
+          "hardHit30d": 48.9,
+          "pitchTypeMatchup": 82
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-16",
+            "hits": 2,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 1,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 2,
+            "ab": 5
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 4
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 5
+          }
+        ],
+        "game": {
+          "matchup": "Cleveland Guardians @ Athletics",
+          "total": 9.5,
+          "venue": "Sutter Health Park",
+          "gameTime": "8:40 PM",
+          "gameStartMs": 1777686000000,
+          "weather": {
+            "tempF": 56,
+            "wind": "8 mph WSW",
+            "windMph": 8,
+            "windDir": "WSW",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 84,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\u2696\ufe0f Weather neutral",
+            "impactTier": "neutral",
+            "hitterImpact": 0.5
+          }
+        },
+        "rawScore": 0.629801319897031,
+        "hitProbability": 69,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    },
+    {
+      "playerId": 694208,
+      "name": "Mois\u00e9s Ballesteros",
+      "team": "Chicago Cubs",
+      "hitProbability": 68,
+      "lockedAt": "2026-05-02T03:48:38.036Z",
+      "result": "loss",
+      "hits": 0,
+      "ab": 3,
+      "gradedAt": "2026-05-02T03:48:39.124Z",
+      "snapshot": {
+        "playerId": 694208,
+        "name": "Mois\u00e9s Ballesteros",
+        "team": "Chicago Cubs",
+        "side": "home",
+        "bats": "L",
+        "lineupSlot": 2,
+        "lineupSource": "confirmed",
+        "isScratched": false,
+        "isOverridePick": false,
+        "opponentPitcher": {
+          "name": "Zac Gallen",
+          "id": 668678,
+          "hand": "R"
+        },
+        "pitcherAvgAllowed": 0.281,
+        "bvp": {
+          "avg": null,
+          "hits": 0,
+          "ab": 0,
+          "signal": "none"
+        },
+        "pitcherStats": {
+          "era": 4.49,
+          "last5ERA": 5.05,
+          "last3ERA": 3.55,
+          "last3AvgIP": 5.1,
+          "last3H9": 13,
+          "leashProbability": 0.8,
+          "k9": 5.6,
+          "whip": 1.53,
+          "ip": 32.1,
+          "xba": 0.296,
+          "xwoba": 0.348,
+          "hardHitPct": 45.8,
+          "gbPct": 46.9,
+          "fbPct": 25,
+          "swStrPct": null,
+          "pitcherKPct": 14.2,
+          "pitcherBbPct": 5.8
+        },
+        "stats": {
+          "avg14": 0.265,
+          "avg30": 0.375,
+          "avg7": 0.105,
+          "avgSeason": 0.324,
+          "babip14": 0.2903225806451613,
+          "ghp14": 0.6428571428571429,
+          "kPct": 0.2,
+          "bbPct": 0.08,
+          "xba": 0.287,
+          "xwoba": 0.364,
+          "hardHitPct": 53.3,
+          "barrelPct": 11.7,
+          "launchAngle": 11.8,
+          "xbabip": null,
+          "whiffPct": 23.5,
+          "zContactPct": null,
+          "sprintSpeed": 24.5,
+          "avgHome": 0.341,
+          "avgAway": 0.303,
+          "xba15d": 0.287,
+          "xwoba15d": 0.364,
+          "hardHit15d": 53.3,
+          "xba30d": 0.287,
+          "xwoba30d": 0.364,
+          "hardHit30d": 53.3,
+          "pitchTypeMatchup": 82
+        },
+        "gamelog": [
+          {
+            "date": "2026-04-14",
+            "hits": 1,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-17",
+            "hits": 2,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-18",
+            "hits": 1,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-19",
+            "hits": 0,
+            "ab": 2
+          },
+          {
+            "date": "2026-04-20",
+            "hits": 1,
+            "ab": 1
+          }
+        ],
+        "game": {
+          "matchup": "Arizona Diamondbacks @ Chicago Cubs",
+          "total": 8.5,
+          "venue": "Wrigley Field",
+          "gameTime": "1:20 PM",
+          "gameStartMs": 1777659600000,
+          "weather": {
+            "tempF": 40,
+            "wind": "4 mph ENE",
+            "windMph": 4,
+            "windDir": "ENE",
+            "windOut": false,
+            "windIn": false,
+            "humidity": 62,
+            "precipInches": 0,
+            "isDome": false,
+            "impactLabel": "\ud83e\udd76 Cold 40\u00b0F",
+            "impactTier": "moderate",
+            "hitterImpact": 0.38
+          }
+        },
+        "rawScore": 0.5992504830638508,
+        "hitProbability": 68,
+        "impliedProb": null,
+        "edge": null,
+        "inTargetRange": true,
+        "confidenceTier": "C"
+      }
+    }
+  ],
   "2026-04-29": [
     {
       "playerId": 666126,
