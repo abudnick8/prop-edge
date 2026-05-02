@@ -1466,6 +1466,20 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       let stripeCustomerId: string | null = null;
       let checkoutUrl: string | null = null;
 
+      // Owner bypass — skip Stripe entirely, auto-activate as owner + pro
+      const OWNER_EMAIL = "adam.budnick8@gmail.com";
+      const isOwnerSignup = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
+
+      if (isOwnerSignup) {
+        // Insert owner directly — no Stripe, no payment
+        await db.query(
+          `INSERT INTO users (email, pin_hash, tier, sub_status, is_owner)
+           VALUES (LOWER($1), $2, 'pro', 'active', TRUE)`,
+          [email, pinHash]
+        );
+        return res.json({ success: true, checkoutUrl: null });
+      }
+
       if (stripe && tier !== "free") {
         const customer = await stripe.customers.create({ email: email.toLowerCase() });
         stripeCustomerId = customer.id;
