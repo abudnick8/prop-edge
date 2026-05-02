@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import ShareCard from "@/components/ShareCard";
 import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ function Chip({ label, value, highlight }: { label: string; value: string; highl
 // ─── Pick card ───────────────────────────────────────────────────────────────
 function PickCard({ pick, rank }: { pick: any; rank: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const isBest = rank === 1;
 
   return (
@@ -337,15 +339,27 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
         </div>
       )}
 
-      {/* Expand toggle */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full px-4 py-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground border-t"
-        style={{ borderColor: "rgba(19,35,58,0.08)", background: "rgba(19,35,58,0.02)" }}
-      >
-        {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-        {expanded ? "Less detail" : "Full breakdown"}
-      </button>
+      {/* Action row: expand + share */}
+      <div className="flex border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex-1 px-4 py-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground"
+          style={{ background: "rgba(19,35,58,0.02)" }}
+        >
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {expanded ? "Less" : "Full breakdown"}
+        </button>
+        <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
+        <button
+          onClick={() => setShowShare(true)}
+          className="flex items-center justify-center gap-1.5 px-4 py-2 text-[11px] font-semibold"
+          style={{ background: "rgba(19,35,58,0.02)", color: "#b8930a" }}
+        >
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><circle cx={18} cy={5} r={3}/><circle cx={6} cy={12} r={3}/><circle cx={18} cy={19} r={3}/><line x1={8.59} y1={13.51} x2={15.42} y2={17.49}/><line x1={15.41} y1={6.51} x2={8.59} y2={10.49}/></svg>
+          Share
+        </button>
+      </div>
+      {showShare && <ShareCard type="bts" data={pick} onClose={() => setShowShare(false)} />}
 
       {expanded && (
         <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
