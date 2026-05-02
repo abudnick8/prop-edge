@@ -530,7 +530,7 @@ function runMLEngine(): Record<string,any> {
 // Sync ml_data/ to GitHub so outcomes survive Railway redeploys
 // Uses the GitHub API to upsert files — no git CLI needed on Railway
 async function syncMLDataToGitHub(): Promise<void> {
-  const token  = process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk");
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
   if (!token || token === "SCRUBBED_GITHUB_TOKEN") {
@@ -595,7 +595,7 @@ async function syncMLDataToGitHub(): Promise<void> {
 // Lightweight snapshot-only sync — runs after every scanner pick log
 // Keeps pick_snapshots.json backed up on GitHub so restarts don't lose picks
 async function syncSnapshotsToGitHub(): Promise<void> {
-  const token  = process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk");
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = "main";
   if (!token || token === "SCRUBBED_GITHUB_TOKEN") { console.warn("[MLSync] snapshots: no valid token, skipping"); return; }
@@ -638,7 +638,7 @@ let _mlPullPromise: Promise<void> = Promise.resolve(); // set after pullMLDataFr
 function getMLPullPromise(): Promise<void> { return _mlPullPromise; }
 
 async function pullMLDataFromGitHub(): Promise<void> {
-  const token  = process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk");
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
   if (!token || token === "SCRUBBED_GITHUB_TOKEN") { console.warn("[MLSync] pull: no valid token, skipping"); return; }
