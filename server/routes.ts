@@ -3724,16 +3724,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         String(ctNow.getDate()).padStart(2, "0"),
       ].join("-");
       const entries = btsPicksCache[dateStr] ?? [];
-      const needsRegrade = entries.filter((e: BtsPickEntry) =>
-        e.result === "pending" || (e.ab === 0 || e.ab == null)
-      );
+      const needsRegrade = entries.filter((e: BtsPickEntry) => e.result !== "win");
       if (needsRegrade.length === 0) return;
-      console.log(`[BTS Regrader] ${needsRegrade.length} picks need re-grading for ${dateStr}`);
+      console.log(`[BTS Regrader] ${needsRegrade.length} non-win picks to check for ${dateStr}`);
       await runBtsGrader(dateStr);
     };
-    setInterval(runBtsRegrade, 30 * 60 * 1000); // every 30 min
+    setInterval(runBtsRegrade, 5 * 60 * 1000); // every 5 min — catches in-progress hits
     // Also run once at startup after a short delay
-    setTimeout(runBtsRegrade, 5 * 60 * 1000);
+    setTimeout(runBtsRegrade, 2 * 60 * 1000);
   }
 
   app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
@@ -7949,7 +7947,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const games     = gameDates.flatMap((d: any) => d.games ?? []);
 
       for (const game of games) {
-        if (game.status?.abstractGameState !== "Final") continue; // skip in-progress
+        const state = game.status?.abstractGameState; // "Preview"|"Live"|"Final"
+        if (state === "Preview") continue; // game hasn't started yet
         try {
           const boxUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
           const boxR   = await axios.get(boxUrl, { timeout: 8000 });
@@ -7961,7 +7960,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const stats = p.stats?.batting ?? {};
               const ab    = parseInt(stats.atBats   ?? "-1", 10);
               const hits  = parseInt(stats.hits      ?? "0",  10);
-              if (ab >= 0) return { hits, ab }; // found — even ab=0 is valid (pinch runner, DNP)
+              // For in-progress games, only return if player has had at least 1 AB
+              // (ab=0 mid-game just means they haven't batted yet — wait for more data)
+              if (state === "Final" && ab >= 0) return { hits, ab };
+              if (state === "Live"  && ab >  0) return { hits, ab };
             }
           }
         } catch { /* skip this game */ }
@@ -7977,22 +7979,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     if (!entries?.length) return;
     let changed = false;
     for (const entry of entries) {
-      // Re-grade: pending OR a loss with 0 AB (bad data — game log wasn't ready)
-      const needsRegrade = entry.result === "pending"
-        || (entry.result === "loss" && (entry.ab === 0 || entry.ab == null));
+      // Re-grade: pending, OR any non-win result (loss could flip to win as game progresses)
+      // Skip confirmed wins — a hit doesn't un-happen
+      const needsRegrade = entry.result !== "win";
       if (!needsRegrade) continue;
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
       if (gameStartMs && Date.now() < gameStartMs) continue;
       const result = await gradePickForDate(entry.playerId, dateStr);
-      if (result === null) continue; // game log not available yet — stay pending
-      // Only update if we got real AB data (ab > 0 means player actually played)
-      if (result.ab === 0 && entry.result === "loss") continue; // still no data
+      if (result === null) continue; // no data yet — stay pending
+      // Require at least 1 AB to update (ab=0 mid-game = hasn't batted yet)
+      if (result.ab === 0) continue;
+      const newResult = result.hits > 0 ? "win" : "loss";
+      // Only write if something actually changed
+      if (entry.hits === result.hits && entry.ab === result.ab && entry.result === newResult) continue;
       entry.hits     = result.hits;
       entry.ab       = result.ab;
-      entry.result   = result.hits > 0 ? "win" : "loss";
+      entry.result   = newResult;
       entry.gradedAt = new Date().toISOString();
       changed = true;
+      console.log(`[BTS Regrader] ${entry.name} → ${newResult} (${result.hits}/${result.ab})`);
 
       // ── Back-fill outcome into daily candidate log ─────────────────
       try {
@@ -9595,6 +9601,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
       for (const pick of topPicks) {
         const p = pick;
+        if (!p.stats) continue;  // guard: skip if snapshot missing stats (malformed entry)
         const avg14Str  = p.stats.avg14  ? "." + Math.round(p.stats.avg14  * 1000).toString().padStart(3, "0") : null;
         const avg7Str   = p.stats.avg7   ? "." + Math.round(p.stats.avg7   * 1000).toString().padStart(3, "0") : null;
         const xbaStr    = p.stats.xba    ? "." + Math.round(p.stats.xba    * 1000).toString().padStart(3, "0") : null;
