@@ -38,6 +38,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) { setIsLoading(false); return; }
 
+    // Restore from cached user immediately (no flicker / no login screen on return)
+    const cached = localStorage.getItem(TOKEN_KEY + "_user");
+    if (cached) {
+      try {
+        setUser(JSON.parse(cached));
+        setIsLoading(false); // show app instantly from cache
+      } catch {}
+    }
+
     try {
       const res = await fetch("/api/me", {
         headers: { Authorization: `Bearer ${token}` },
@@ -45,13 +54,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        // Cache fresh user data for instant restore on next load
+        localStorage.setItem(TOKEN_KEY + "_user", JSON.stringify(data));
       } else {
         // Token expired or invalid — clear it
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY + "_user");
         setUser(null);
       }
     } catch {
-      // Network error — keep token, don't log out
+      // Network error — keep cached user, don't force logout
     } finally {
       setIsLoading(false);
     }
@@ -61,11 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((token: string, userData: AuthUser) => {
     localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_KEY + "_user", JSON.stringify(userData));
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY + "_user");
     // Also clear the old BREW session key
     sessionStorage.removeItem("ciq_unlocked");
     setUser(null);

@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
 const JWT_SECRET = process.env.JWT_SECRET || "ciq-dev-secret-change-in-production";
-const JWT_EXPIRES = "7d";
+const JWT_EXPIRES = "30d";
 const BCRYPT_ROUNDS = 10;
 
 // ── JWT ──────────────────────────────────────────────────────────────────────
