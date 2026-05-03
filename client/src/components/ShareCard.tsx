@@ -15,6 +15,7 @@
  */
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -540,7 +541,13 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    // iOS Safari needs a non-passive touchmove listener to actually block scroll
+    const block = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("touchmove", block);
+    };
   }, []);
 
   // Close on Escape
@@ -550,13 +557,13 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  return (
+  return createPortal(
     /* Backdrop — blocks ALL touch events from reaching content behind */
     <div
       className="fixed inset-0 z-[9999] flex items-end justify-center"
       style={{ background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
       onClick={onClose}
-      onTouchMove={e => e.stopPropagation()}
+      onTouchMove={e => { e.preventDefault(); e.stopPropagation(); }}
       onTouchStart={e => e.stopPropagation()}
     >
       {/* Card — fixed height, no scroll, stops propagation */}
@@ -628,6 +635,7 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
