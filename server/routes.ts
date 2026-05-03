@@ -6343,11 +6343,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             );
             if (oddsArr.length < 1) continue;
 
-            const opening = oddsArr[0];
+            // ── Filter out alt lines / F5 lines ──────────────────────────────
+            // MLB run line is always ±1.5; totals < 6 are F5/alt lines.
+            // NBA/NHL spreads are rarely > 20; NFL rarely > 30.
+            // Any entry with a suspiciously small total (< 6 for MLB, < 150 for NBA/NHL
+            // ML context) or a non-standard spread is an alt/F5 — exclude it from
+            // opening/current line calculations to prevent false steam signals.
+            // Minimum realistic full-game totals by sport
+            const MIN_TOTAL: Record<string, number> = { MLB: 6, NBA: 180, NHL: 4.5, NFL: 30 };
+            const MAX_TOTAL: Record<string, number> = { MLB: 16, NBA: 260, NHL: 9,   NFL: 65 };
+
+            const isAltLine = (o: any): boolean => {
+              const minT = MIN_TOTAL[label];
+              const maxT = MAX_TOTAL[label];
+              // Filter out F5, alt, or live-score entries that have unrealistic totals
+              if (o.total != null && minT != null && (o.total < minT || o.total > maxT)) return true;
+              if (label === "MLB") {
+                // Run line is always ±1.5 — any other spread value is an alt line
+                if (o.spread_away != null && Math.abs(Math.abs(o.spread_away) - 1.5) > 0.1) return true;
+              }
+              return false;
+            };
+            const fullGameOdds = oddsArr.filter((o: any) => !isAltLine(o));
+            const oddsForLines = fullGameOdds.length > 0 ? fullGameOdds : oddsArr;
+
+            const opening = oddsForLines[0];
             // Current = latest entry that has at least some data
-            const withLines  = oddsArr.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
+            const withLines  = oddsForLines.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
             const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null || o.total_over_public != null);
-            const current = oddsArr[oddsArr.length - 1];
+            const current = oddsForLines[oddsForLines.length - 1];
             const bestLines  = withLines.length  > 0 ? withLines[withLines.length - 1]   : current;
             const bestPublic = withPublic.length > 0 ? withPublic[withPublic.length - 1] : current;
 
