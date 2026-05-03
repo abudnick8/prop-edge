@@ -14,7 +14,7 @@
  *   • onTouchMove blocked on backdrop + card to prevent scroll bleed-through
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -536,7 +536,29 @@ export interface ShareCardProps {
   onClose: () => void;
 }
 
+const ANIM_MS = 320;
+
 export default function ShareCard({ type, data, onClose }: ShareCardProps) {
+  const [visible, setVisible] = useState(false);   // drives enter animation
+  const [closing, setClosing] = useState(false);   // drives exit animation
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Trigger enter animation on mount
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  // Smooth close: animate out, then call real onClose
+  const handleClose = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    setVisible(false);
+    closeTimer.current = setTimeout(onClose, ANIM_MS);
+  }, [closing, onClose]);
+
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
   // Lock body scroll while open — prevents iOS scroll bleed-through
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -552,21 +574,30 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [handleClose]);
+
+  const backdropOpacity = visible ? 1 : 0;
+  const cardTranslate  = visible ? "translateY(0)" : "translateY(100%)";
 
   return createPortal(
-    /* Backdrop — blocks ALL touch events from reaching content behind */
+    /* Backdrop */
     <div
       className="fixed inset-0 z-[9999] flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
-      onClick={onClose}
+      style={{
+        background: `rgba(0,0,0,${0.78 * backdropOpacity})`,
+        backdropFilter: visible ? "blur(6px)" : "blur(0px)",
+        WebkitBackdropFilter: visible ? "blur(6px)" : "blur(0px)",
+        transition: `background ${ANIM_MS}ms ease, backdrop-filter ${ANIM_MS}ms ease`,
+        pointerEvents: closing && !visible ? "none" : "auto",
+      }}
+      onClick={handleClose}
       onTouchMove={e => { e.preventDefault(); e.stopPropagation(); }}
       onTouchStart={e => e.stopPropagation()}
     >
-      {/* Card — fixed height, no scroll, stops propagation */}
+      {/* Card */}
       <div
         className="relative w-full max-w-sm rounded-t-3xl flex flex-col"
         style={{
@@ -576,6 +607,9 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
           boxShadow: "0 -8px 40px rgba(0,0,0,0.6)",
           maxHeight: "92dvh",
           height: "92dvh",
+          transform: cardTranslate,
+          transition: `transform ${ANIM_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+          willChange: "transform",
         }}
         onClick={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
@@ -606,7 +640,7 @@ export default function ShareCard({ type, data, onClose }: ShareCardProps) {
               📸 Share View
             </span>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-full p-1.5"
               style={{ background: "rgba(255,255,255,0.08)", WebkitTapHighlightColor: "transparent" }}
             >
