@@ -3770,28 +3770,46 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     };
     scheduleNightlyML();
 
-    // ── BTS background re-grader: every 30 min during game window ─────────
-    // Catches picks that had ab=0 on first grade (game log lag) and re-grades them.
-    // Runs 12:00 PM – 2:00 AM CT (covers all MLB games including late West Coast games).
+    // ── BTS background re-grader: every 5 min during game window ──────────
+    // Also backfills any past days that still have pending/ungraded picks.
     const runBtsRegrade = async () => {
       const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
       const ctH   = ctNow.getHours();
-      // Only run 12pm–2am CT (noon to midnight+2)
-      if (ctH < 12 && ctH >= 2) return;
-      const dateStr = [
-        ctNow.getFullYear(),
-        String(ctNow.getMonth() + 1).padStart(2, "0"),
-        String(ctNow.getDate()).padStart(2, "0"),
+
+      const toDateStr = (d: Date) => [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, "0"),
+        String(d.getDate()).padStart(2, "0"),
       ].join("-");
-      const entries = btsPicksCache[dateStr] ?? [];
-      const needsRegrade = entries.filter((e: BtsPickEntry) => e.result !== "win");
-      if (needsRegrade.length === 0) return;
-      console.log(`[BTS Regrader] ${needsRegrade.length} non-win picks to check for ${dateStr}`);
-      await runBtsGrader(dateStr);
+
+      const todayStr = toDateStr(ctNow);
+
+      // ── 1. Backfill: grade ALL past days that still have pending picks ─────
+      for (const [dateStr, entries] of Object.entries(btsPicksCache)) {
+        if (dateStr >= todayStr) continue; // skip today — handled below
+        const stillPending = (entries as BtsPickEntry[]).filter(
+          (e: BtsPickEntry) => !e.result || e.result === "pending"
+        );
+        if (stillPending.length === 0) continue;
+        console.log(`[BTS Backfill] Grading ${stillPending.length} pending picks from ${dateStr}`);
+        await runBtsGrader(dateStr);
+      }
+
+      // ── 2. Today: only run during 12pm–2am CT game window ─────────────────
+      if (ctH >= 12 || ctH < 2) {
+        const entries = btsPicksCache[todayStr] ?? [];
+        const needsRegrade = (entries as BtsPickEntry[]).filter(
+          (e: BtsPickEntry) => e.result !== "win"
+        );
+        if (needsRegrade.length > 0) {
+          console.log(`[BTS Regrader] ${needsRegrade.length} non-win picks to check for ${todayStr}`);
+          await runBtsGrader(todayStr);
+        }
+      }
     };
-    setInterval(runBtsRegrade, 5 * 60 * 1000); // every 5 min — catches in-progress hits
-    // Also run once at startup after a short delay
-    setTimeout(runBtsRegrade, 2 * 60 * 1000);
+    setInterval(runBtsRegrade, 5 * 60 * 1000); // every 5 min
+    // Run once at startup after short delay — catches any picks missed during downtime
+    setTimeout(runBtsRegrade, 30 * 1000);
   }
 
   app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
