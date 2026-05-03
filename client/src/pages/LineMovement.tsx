@@ -1304,26 +1304,52 @@ function GameCard({ game }: { game: GameLine }) {
           {/* ★ Clubhouse IQ Pick — AI analysis from Edge Crew v3 grade engine */}
           <CIQPickPanel game={game} ciqData={ciqData} isLoading={ciqLoading} isFetching={ciqFetching} refetch={ciqRefetch} />
 
+          {/* MLB public % unavailable notice */}
+          {game.sport === "MLB" && game.spread.awayPublic == null && game.moneyline.awayPublic == null && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+              <span className="text-amber-400 mt-0.5">⚾</span>
+              <div>
+                <span className="font-bold text-amber-400">Public % not available for MLB</span>
+                <span className="text-foreground/60 ml-1">— ActionNetwork doesn't publish betting splits for baseball. Sharp signals below are derived from line movement direction and moneyline shift.</span>
+                {game.numBets != null && <span className="block text-foreground/50 mt-0.5">{game.numBets.toLocaleString()} total bets tracked on this game.</span>}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-            {/* Spread */}
+            {/* Spread / Run Line */}
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Spread ({game.awayTeam})</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {game.sport === "MLB" ? "Run Line" : `Spread (${game.awayTeam})`}
+              </p>
               <MovementBar open={game.spread.open} current={game.spread.current} move={game.spread.move} label="Line" />
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label={`${game.awayTeam} (away)`} publicPct={game.spread.awayPublic} moneyPct={game.spread.awayMoney} />
-                <PublicBar label={`${game.homeTeam} (home)`} publicPct={game.spread.homePublic} moneyPct={game.spread.homeMoney} />
-              </div>
+              {game.spread.awayPublic != null || game.spread.homePublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label={`${game.awayTeam} (away)`} publicPct={game.spread.awayPublic} moneyPct={game.spread.awayMoney} />
+                  <PublicBar label={`${game.homeTeam} (home)`} publicPct={game.spread.homePublic} moneyPct={game.spread.homeMoney} />
+                </div>
+              ) : game.spread.move != null && game.spread.move !== 0 ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  {game.sport === "MLB" ? "Run line vig shifted" : "Line moved"} {game.spread.move > 0 ? "+" : ""}{game.spread.move} — implied sharp action
+                </p>
+              ) : null}
             </div>
 
             {/* Total */}
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total (O/U)</p>
               <MovementBar open={game.total.open} current={game.total.current} move={game.total.move} label="Line" />
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label="Over" publicPct={game.total.overPublic} moneyPct={game.total.overMoney} />
-                <PublicBar label="Under" publicPct={game.total.underPublic} moneyPct={game.total.underMoney} />
-              </div>
+              {game.total.overPublic != null || game.total.underPublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label="Over" publicPct={game.total.overPublic} moneyPct={game.total.overMoney} />
+                  <PublicBar label="Under" publicPct={game.total.underPublic} moneyPct={game.total.underMoney} />
+                </div>
+              ) : game.total.move != null && game.total.move !== 0 ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  Total moved {game.total.move > 0 ? "+" : ""}{game.total.move} — sharp action on the {game.total.move > 0 ? "Over" : "Under"}
+                </p>
+              ) : null}
             </div>
 
             {/* Moneyline */}
@@ -1355,10 +1381,16 @@ function GameCard({ game }: { game: GameLine }) {
                   )}
                 </div>
               </div>
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label={game.awayTeam.split(" ").pop()!} publicPct={game.moneyline.awayPublic} moneyPct={game.moneyline.awayMoney} />
-                <PublicBar label={game.homeTeam.split(" ").pop()!} publicPct={game.moneyline.homePublic} moneyPct={game.moneyline.homeMoney} />
-              </div>
+              {game.moneyline.awayPublic != null || game.moneyline.homePublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label={game.awayTeam.split(" ").pop()!} publicPct={game.moneyline.awayPublic} moneyPct={game.moneyline.awayMoney} />
+                  <PublicBar label={game.homeTeam.split(" ").pop()!} publicPct={game.moneyline.homePublic} moneyPct={game.moneyline.homeMoney} />
+                </div>
+              ) : (mlAwayMove != null && mlAwayMove !== 0) || (mlHomeMove != null && mlHomeMove !== 0) ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  ML shifted — {mlAwayMove != null && mlAwayMove !== 0 ? `${game.awayTeam.split(" ").pop()} ${mlAwayMove > 0 ? "+" : ""}${mlAwayMove}` : `${game.homeTeam.split(" ").pop()} ${mlHomeMove! > 0 ? "+" : ""}${mlHomeMove}`}
+                </p>
+              ) : null}
             </div>
           </div>
 

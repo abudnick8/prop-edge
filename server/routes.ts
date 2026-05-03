@@ -6404,7 +6404,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             let mlAwayMoney      = bestPublic.ml_away_money      ?? null;
             let mlHomePublic     = bestPublic.ml_home_public     ?? null;
             let mlHomeMoney      = bestPublic.ml_home_money      ?? null;
-            const numBets        = bestPublic.num_bets           ?? current.num_bets ?? null;
+            const numBets        = bestPublic.num_bets ?? current.num_bets ?? game.num_bets ?? null;
 
             // ── Step 3: If lines are missing, supplement with ESPN odds ──
             const hasLines = spreadCurrent != null || totalCurrent != null || mlAwayCurrent != null;
