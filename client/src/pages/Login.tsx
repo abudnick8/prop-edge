@@ -50,7 +50,7 @@ export default function Login() {
   function handleDevAccess(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (devCode.trim().toUpperCase() !== "BREW") {
+    if (devCode.trim().toUpperCase() !== "ABUD") {
       setError("Invalid access code.");
       return;
     }
