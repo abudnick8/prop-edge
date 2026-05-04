@@ -7,6 +7,7 @@ import {
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
   Bell, BellOff, Target, Wind, Thermometer, Eye, ArrowRight,
   Brain, Star, BarChart2, CheckCircle, XCircle, Minus as MinusIcon,
+  Share2, Copy, Check as CheckIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
@@ -1083,9 +1084,220 @@ function CIQPickPanel({
   );
 }
 
+// ── Share Card ───────────────────────────────────────────────────────────────
+function ShareCardNode({ game, ciqGrade, ciqPickTeam, rec }: {
+  game: GameLine;
+  ciqGrade: string | null;
+  ciqPickTeam: string | undefined;
+  rec: ReturnType<typeof buildBetRec>;
+}) {
+  const mlAwayMove = (game.moneyline.awayOpen != null && game.moneyline.awayCurrent != null)
+    ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
+  const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
+    ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+  const spreadMove = game.spread.move;
+  const totalMove  = game.total.move;
+  const hasSteam   = Math.abs(spreadMove ?? 0) >= 3 || Math.abs(totalMove ?? 0) >= 3;
+  const ciqColor   = ciqGrade ? (GRADE_COLOR[ciqGrade] ?? "#a78bfa") : "#a78bfa";
+
+  const row = (label: string, val: string, sub?: string, color?: string) => (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+      <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" }}>{label}</span>
+      <div style={{ textAlign:"right" }}>
+        <span style={{ fontSize:13, fontWeight:700, color: color ?? "#F6F1E7", fontFamily:"monospace" }}>{val}</span>
+        {sub && <span style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginLeft:6 }}>{sub}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      width: 380,
+      background: "linear-gradient(145deg, #0f1923 0%, #13233A 60%, #0d1a2a 100%)",
+      borderRadius: 20,
+      padding: "20px 22px 16px",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+      color: "#F6F1E7",
+      border: hasSteam ? "1.5px solid rgba(248,113,113,0.5)" : "1.5px solid rgba(255,255,255,0.10)",
+    }}>
+
+      {/* Brand header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:"#A23B32", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>⚾</div>
+          <span style={{ fontWeight:900, fontSize:14, letterSpacing:"0.01em", color:"#F6F1E7" }}>Clubhouse IQ</span>
+        </div>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)", fontWeight:600 }}>Line Movement</span>
+      </div>
+
+      {/* Matchup */}
+      <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+          <span style={{ fontSize:18 }}>{SPORT_EMOJI[game.sport] ?? "🏟"}</span>
+          <div>
+            <div style={{ fontSize:15, fontWeight:900, color:"#F6F1E7", lineHeight:1.2 }}>
+              {game.awayTeam} <span style={{ color:"rgba(255,255,255,0.4)", fontWeight:400 }}>@</span> {game.homeTeam}
+            </div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.45)", marginTop:2 }}>{fmtTime(game.gameTime)}</div>
+          </div>
+        </div>
+        {/* Status badges */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}>
+          {hasSteam && (
+            <span style={{ fontSize:10, fontWeight:800, background:"rgba(248,113,113,0.2)", color:"#fca5a5", border:"1px solid rgba(248,113,113,0.4)", borderRadius:6, padding:"3px 8px" }}>🔥 STEAM MOVE</span>
+          )}
+          {!hasSteam && (Math.abs(spreadMove ?? 0) >= 1.5 || Math.abs(totalMove ?? 0) >= 1.5) && (
+            <span style={{ fontSize:10, fontWeight:800, background:"rgba(245,158,11,0.2)", color:"#fbbf24", border:"1px solid rgba(245,158,11,0.4)", borderRadius:6, padding:"3px 8px" }}>⚡ MOVED</span>
+          )}
+          {ciqGrade && (
+            <span style={{ fontSize:10, fontWeight:900, background:`${ciqColor}25`, color:ciqColor, border:`1px solid ${ciqColor}60`, borderRadius:6, padding:"3px 8px" }}>
+              🧠 CIQ {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Lines grid */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Lines</div>
+        {/* Spread */}
+        {row(
+          game.sport === "MLB" ? "Run Line" : "Spread",
+          game.spread.current != null ? fmtLine(game.spread.current) : "—",
+          game.spread.open != null && game.spread.current !== game.spread.open
+            ? `was ${fmtLine(game.spread.open)} (${spreadMove != null && spreadMove !== 0 ? (spreadMove > 0 ? "+" : "") + spreadMove : "no move"})`
+            : game.spread.open != null ? `opened ${fmtLine(game.spread.open)}` : undefined,
+          spreadMove != null && Math.abs(spreadMove) >= 3 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* Total */}
+        {row(
+          "Total (O/U)",
+          game.total.current != null ? `O/U ${game.total.current}` : "—",
+          game.total.open != null && game.total.current !== game.total.open
+            ? `was ${game.total.open} (${totalMove != null && totalMove !== 0 ? (totalMove > 0 ? "+" : "") + totalMove : "no move"})`
+            : game.total.open != null ? `opened ${game.total.open}` : undefined,
+          totalMove != null && Math.abs(totalMove) >= 3 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* ML Away */}
+        {row(
+          `${game.awayTeam.split(" ").pop()} ML`,
+          fmtOdds(game.moneyline.awayCurrent),
+          game.moneyline.awayOpen != null ? `opened ${fmtOdds(game.moneyline.awayOpen)}${mlAwayMove != null && mlAwayMove !== 0 ? " (" + (mlAwayMove > 0 ? "+" : "") + mlAwayMove + ")" : ""}` : undefined,
+          mlAwayMove != null && Math.abs(mlAwayMove) >= 50 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* ML Home */}
+        {row(
+          `${game.homeTeam.split(" ").pop()} ML`,
+          fmtOdds(game.moneyline.homeCurrent),
+          game.moneyline.homeOpen != null ? `opened ${fmtOdds(game.moneyline.homeOpen)}${mlHomeMove != null && mlHomeMove !== 0 ? " (" + (mlHomeMove > 0 ? "+" : "") + mlHomeMove + ")" : ""}` : undefined,
+          mlHomeMove != null && Math.abs(mlHomeMove) >= 50 ? "#fca5a5" : "#F6F1E7"
+        )}
+      </div>
+
+      {/* Public money — if available */}
+      {(game.spread.awayMoney != null || game.total.overMoney != null || game.moneyline.awayMoney != null) && (
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Public Money %</div>
+          {game.spread.awayMoney != null && row(`Spread — ${game.awayTeam.split(" ").pop()}`, `${game.spread.awayMoney}% $`, game.spread.awayPublic != null ? `${game.spread.awayPublic}% bets` : undefined)}
+          {game.total.overMoney != null && row("Total — Over", `${game.total.overMoney}% $`, game.total.overPublic != null ? `${game.total.overPublic}% bets` : undefined)}
+          {game.moneyline.awayMoney != null && row(`ML — ${game.awayTeam.split(" ").pop()}`, `${game.moneyline.awayMoney}% $`, game.moneyline.awayPublic != null ? `${game.moneyline.awayPublic}% bets` : undefined)}
+        </div>
+      )}
+
+      {/* Bet rec */}
+      {rec && (
+        <div style={{ background:`${rec.color}18`, border:`1px solid ${rec.color}40`, borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:900, color:rec.color, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>{rec.signal}</div>
+          <div style={{ fontSize:13, fontWeight:800, color:"#F6F1E7", marginBottom:4 }}>{rec.play}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.5 }}>{rec.why}</div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", borderTop:"1px solid rgba(255,255,255,0.08)", paddingTop:10, marginTop:4 }}>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", fontWeight:600 }}>clubhouse-iq.up.railway.app</span>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>{new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── useShareGame hook ─────────────────────────────────────────────────────────
+function useShareGame() {
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied]   = useState(false);
+
+  const share = useCallback(async (
+    game: GameLine,
+    ciqGrade: string | null,
+    ciqPickTeam: string | undefined,
+    rec: ReturnType<typeof buildBetRec>
+  ) => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      // Render card off-screen
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:-9999px;z-index:-1;";
+      document.body.appendChild(container);
+
+      const { createRoot } = await import("react-dom/client");
+      const { createElement } = await import("react");
+
+      await new Promise<void>(resolve => {
+        const root = createRoot(container);
+        root.render(createElement(ShareCardNode, { game, ciqGrade, ciqPickTeam, rec }));
+        // Give React a tick to paint
+        setTimeout(resolve, 120);
+      });
+
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
+        backgroundColor: null,
+        scale: 3,
+        useCORS: true,
+        logging: false,
+      });
+
+      document.body.removeChild(container);
+
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Canvas to blob failed");
+
+      const file = new File([blob], `${game.awayTeam}-at-${game.homeTeam}.png`, { type: "image/png" });
+
+      // Try native share (iOS / Android)
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${game.awayTeam} @ ${game.homeTeam} — Line Movement`,
+          text: `Check out the line movement for ${game.awayTeam} @ ${game.homeTeam} on Clubhouse IQ`,
+        });
+      } else {
+        // Fallback: download the image
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = file.name; a.click();
+        URL.revokeObjectURL(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error("[Share]", e);
+    } finally {
+      setSharing(false);
+    }
+  }, [sharing]);
+
+  return { share, sharing, copied };
+}
+
+// ── GameCard ───────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
+  const { share, sharing, copied } = useShareGame();
 
   const rec = buildBetRec(game);
 
@@ -1200,7 +1412,7 @@ function GameCard({ game }: { game: GameLine }) {
               </div>
             </div>
           </div>
-          {/* Spread/total + chevron — right side */}
+          {/* Spread/total + share + chevron — right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <div className="text-right">
               {game.spread.current != null && (
@@ -1224,6 +1436,22 @@ function GameCard({ game }: { game: GameLine }) {
                 </p>
               )}
             </div>
+            {/* Share button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); share(game, ciqGrade, ciqPickTeam ?? undefined, rec); }}
+              disabled={sharing}
+              title="Share this game"
+              className="flex items-center justify-center w-7 h-7 rounded-lg transition-all active:scale-90 disabled:opacity-40 flex-shrink-0"
+              style={{ background: copied ? "rgba(34,197,94,0.15)" : "rgba(19,35,58,0.08)", border: "1px solid rgba(19,35,58,0.12)" }}
+            >
+              {sharing ? (
+                <RefreshCw size={11} className="animate-spin" style={{ color: "#3D4B58" }} />
+              ) : copied ? (
+                <CheckIcon size={11} style={{ color: "#22c55e" }} />
+              ) : (
+                <Share2 size={11} style={{ color: "#3D4B58" }} />
+              )}
+            </button>
             {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
           </div>
         </div>
