@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Check, Lock, Zap, Trophy, Brain, BarChart2, Target, LineChart, Ticket, TrendingUp, Shuffle, Activity, LayoutDashboard, Crown, ArrowRight, Loader2 } from "lucide-react";
+import { Check, Lock, Zap, Trophy, Brain, BarChart2, Target, LineChart, Ticket, TrendingUp, Shuffle, Activity, LayoutDashboard, Crown, ArrowRight, Loader2, Tag, X } from "lucide-react";
 
 // ─── Plan definitions ─────────────────────────────────────────────────────────
 
@@ -87,12 +87,11 @@ type PlanId = "free" | "basic" | "pro";
 
 // ─── Upgrade handler ──────────────────────────────────────────────────────────
 
-async function startCheckout(tier: "basic" | "pro"): Promise<string | null> {
-  // For existing logged-in users who want to upgrade — create a new checkout session
+async function startCheckout(tier: "basic" | "pro", promoCode?: string): Promise<string | null> {
   const res = await fetch("/api/auth/upgrade-checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tier }),
+    body: JSON.stringify({ tier, promoCode }),
   });
   if (!res.ok) return null;
   const { checkoutUrl } = await res.json();
@@ -232,10 +231,28 @@ function PlanCard({
 
 export default function Pricing() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState<PlanId | null>(null);
-  const [error, setError] = useState("");
+  const [loading, setLoading]         = useState<PlanId | null>(null);
+  const [error, setError]             = useState("");
+  const [promoInput, setPromoInput]   = useState("");
+  const [promoCode, setPromoCode]     = useState<string | null>(null);
+  const [promoDiscount, setPromoDiscount] = useState<number | null>(null);
+  const [promoLoading, setPromoLoading]   = useState(false);
+  const [promoError, setPromoError]       = useState("");
 
   const currentTier = user?.tier ?? null;
+
+  async function applyPromo() {
+    if (!promoInput.trim()) return;
+    setPromoLoading(true); setPromoError("");
+    try {
+      const res = await fetch(`/api/admin/validate-promo?code=${encodeURIComponent(promoInput.trim())}`);
+      const d = await res.json();
+      if (!res.ok) { setPromoError(d.error ?? "Invalid code"); return; }
+      setPromoCode(d.code);
+      setPromoDiscount(d.discount_pct);
+    } catch { setPromoError("Could not validate code"); }
+    finally { setPromoLoading(false); }
+  }
 
   async function handleSelect(id: PlanId) {
     setError("");
@@ -245,7 +262,7 @@ export default function Pricing() {
     }
     setLoading(id);
     try {
-      const url = await startCheckout(id);
+      const url = await startCheckout(id, promoCode ?? undefined);
       if (url) {
         window.location.href = url;
       } else {
@@ -274,6 +291,39 @@ export default function Pricing() {
         <p className="text-sm" style={{ color: "rgba(19,35,58,0.55)" }}>
           No hidden fees. Cancel anytime. Instant access after payment.
         </p>
+      </div>
+
+      {/* Promo code input */}
+      <div className="px-4 max-w-lg mx-auto mb-4">
+        <div className="bg-white rounded-2xl p-4 border" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><Tag size={11} />Promo Code</p>
+          {promoCode ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+              <Check size={14} style={{ color: "#22c55e" }} />
+              <span className="text-sm font-black tracking-widest" style={{ color: "#131A24" }}>{promoCode}</span>
+              <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{promoDiscount}% off applied!</span>
+              <button onClick={() => { setPromoCode(null); setPromoDiscount(null); setPromoInput(""); }} className="ml-auto p-0.5 rounded-md hover:bg-muted/40">
+                <X size={12} style={{ color: "#3D4B58" }} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === "Enter" && applyPromo()}
+                placeholder="Enter promo code"
+                className="flex-1 px-3 py-2.5 rounded-xl border text-sm font-black tracking-widest uppercase outline-none"
+                style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)", color: "#131A24" }}
+              />
+              <button onClick={applyPromo} disabled={promoLoading || !promoInput.trim()}
+                className="px-4 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 disabled:opacity-40"
+                style={{ background: "#13233A", color: "#F6F1E7" }}>
+                {promoLoading ? <Loader2 size={12} className="animate-spin" /> : "Apply"}
+              </button>
+            </div>
+          )}
+          {promoError && <p className="text-[11px] text-red-600 font-semibold mt-1.5">{promoError}</p>}
+        </div>
       </div>
 
       {/* Plan cards */}

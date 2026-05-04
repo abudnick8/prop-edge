@@ -47,6 +47,52 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count   INT          DEFAULT 0`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login     TIMESTAMPTZ  DEFAULT NULL`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active    TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_code     TEXT         DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expires  TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled    BOOLEAN      DEFAULT FALSE`);
+
+    // ── Promo codes (Stripe discount codes) ──────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS promo_codes (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT UNIQUE NOT NULL,
+        discount_pct INT NOT NULL,
+        applies_to   TEXT DEFAULT 'both',
+        max_uses     INT DEFAULT NULL,
+        uses         INT DEFAULT 0,
+        active       BOOLEAN DEFAULT TRUE,
+        created_at   TIMESTAMPTZ DEFAULT NOW(),
+        expires_at   TIMESTAMPTZ DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS promo_codes_code_idx ON promo_codes(code)`);
+
+    // ── Trial access codes ───────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trial_codes (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT UNIQUE NOT NULL,
+        duration_days INT DEFAULT 7,
+        max_uses     INT DEFAULT NULL,
+        uses         INT DEFAULT 0,
+        active       BOOLEAN DEFAULT TRUE,
+        note         TEXT DEFAULT NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW(),
+        expires_at   TIMESTAMPTZ DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS trial_codes_code_idx ON trial_codes(code)`);
+
+    // ── Trial code usage log ─────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trial_code_uses (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT NOT NULL,
+        email        TEXT NOT NULL,
+        used_at      TIMESTAMPTZ DEFAULT NOW(),
+        trial_expires TIMESTAMPTZ
+      )
+    `);
 
     console.log("[DB] Migrations complete");
   } catch (err: any) {

@@ -1530,12 +1530,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (!email || !pin) return res.status(400).json({ error: "Email and PIN required" });
 
       const user = await db.queryOne(
-        `SELECT id, email, pin_hash, tier, sub_status, is_owner, login_attempts, locked_until
+        `SELECT id, email, pin_hash, tier, sub_status, is_owner, is_disabled, login_attempts, locked_until, trial_expires
          FROM users WHERE email=LOWER($1)`,
         [email]
       );
 
       if (!user) return res.status(401).json({ error: "Invalid email or PIN" });
+
+      // Check disabled
+      if (user.is_disabled) return res.status(403).json({ error: "This account has been disabled. Contact support." });
 
       // Check lockout
       if (user.locked_until && new Date(user.locked_until) > new Date()) {
@@ -1552,6 +1555,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           [attempts, lockedUntil, user.id]
         );
         return res.status(401).json({ error: "Invalid email or PIN" });
+      }
+
+      // Auto-expire trial accounts
+      if (user.trial_expires && new Date(user.trial_expires) < new Date() && !user.is_owner) {
+        await db.query(`UPDATE users SET tier=NULL, sub_status='inactive', trial_code=NULL, trial_expires=NULL WHERE id=$1`, [user.id]);
+        user.tier = null; user.sub_status = "inactive";
       }
 
       // Reset attempts on success + track login activity
@@ -1747,7 +1756,210 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // OWNER TOOLS — Promo codes, Trial codes, User management
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/admin/promo-codes ─────────────────────────────────────────────
+  app.get("/api/admin/promo-codes", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM promo_codes ORDER BY created_at DESC`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/promo-codes ────────────────────────────────────────────
+  app.post("/api/admin/promo-codes", requireOwner, async (req: Request, res: Response) => {
+    const { code, discount_pct, applies_to = "both", max_uses = null, expires_at = null } = req.body ?? {};
+    if (!code || !discount_pct) return res.status(400).json({ error: "code and discount_pct required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    if (discount_pct < 1 || discount_pct > 100) return res.status(400).json({ error: "Discount must be 1–100%" });
+    try {
+      const row = await db.queryOne(
+        `INSERT INTO promo_codes (code, discount_pct, applies_to, max_uses, expires_at)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [upper, discount_pct, applies_to, max_uses, expires_at || null]
+      );
+      res.json(row);
+    } catch (e: any) {
+      if (e.code === "23505") return res.status(409).json({ error: "Code already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── DELETE /api/admin/promo-codes/:id ──────────────────────────────────────
+  app.delete("/api/admin/promo-codes/:id", requireOwner, async (req: Request, res: Response) => {
+    await db.query(`DELETE FROM promo_codes WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  // ── PATCH /api/admin/promo-codes/:id/toggle ────────────────────────────────
+  app.patch("/api/admin/promo-codes/:id/toggle", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`UPDATE promo_codes SET active = NOT active WHERE id=$1 RETURNING *`, [req.params.id]);
+    res.json(row);
+  });
+
+  // ── GET /api/admin/trial-codes ─────────────────────────────────────────────
+  app.get("/api/admin/trial-codes", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM trial_codes ORDER BY created_at DESC`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/trial-codes ────────────────────────────────────────────
+  app.post("/api/admin/trial-codes", requireOwner, async (req: Request, res: Response) => {
+    const { code, duration_days = 7, max_uses = null, note = null, expires_at = null } = req.body ?? {};
+    if (!code) return res.status(400).json({ error: "code required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    try {
+      const row = await db.queryOne(
+        `INSERT INTO trial_codes (code, duration_days, max_uses, note, expires_at)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [upper, duration_days, max_uses, note, expires_at || null]
+      );
+      res.json(row);
+    } catch (e: any) {
+      if (e.code === "23505") return res.status(409).json({ error: "Code already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── DELETE /api/admin/trial-codes/:id ─────────────────────────────────────
+  app.delete("/api/admin/trial-codes/:id", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT code FROM trial_codes WHERE id=$1`, [req.params.id]);
+    if (row) await db.query(`DELETE FROM trial_codes WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  // ── PATCH /api/admin/trial-codes/:id/toggle ───────────────────────────────
+  app.patch("/api/admin/trial-codes/:id/toggle", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`UPDATE trial_codes SET active = NOT active WHERE id=$1 RETURNING *`, [req.params.id]);
+    res.json(row);
+  });
+
+  // ── GET /api/admin/trial-uses — usage log ─────────────────────────────────
+  app.get("/api/admin/trial-uses", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM trial_code_uses ORDER BY used_at DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/redeem-trial — login with trial code (public) ─────────
+  // Creates account if needed, sets trial tier+expiry, returns JWT
+  app.post("/api/admin/redeem-trial", async (req: Request, res: Response) => {
+    const { code, email } = req.body ?? {};
+    if (!code || !email) return res.status(400).json({ error: "code and email required" });
+    const upper = String(code).toUpperCase().trim();
+
+    // Look up trial code
+    const tc = await db.queryOne(
+      `SELECT * FROM trial_codes WHERE code=$1 AND active=TRUE`, [upper]
+    );
+    if (!tc) return res.status(404).json({ error: "Invalid or expired trial code" });
+    if (tc.expires_at && new Date(tc.expires_at) < new Date()) {
+      return res.status(410).json({ error: "This trial code has expired" });
+    }
+    if (tc.max_uses !== null && tc.uses >= tc.max_uses) {
+      return res.status(410).json({ error: "This trial code has reached its usage limit" });
+    }
+
+    const trialExpires = new Date(Date.now() + tc.duration_days * 86400000);
+    const lowerEmail = String(email).toLowerCase().trim();
+
+    // Upsert user — if new, create with a random pin (they can set one later)
+    const { randomBytes, createHash } = await import("crypto");
+    const tempPin = randomBytes(4).toString("hex");
+    const pinHash = createHash("sha256").update(tempPin).digest("hex");
+
+    let user = await db.queryOne(`SELECT * FROM users WHERE email=$1`, [lowerEmail]);
+    if (!user) {
+      user = await db.queryOne(
+        `INSERT INTO users (email, pin_hash, tier, sub_status, trial_code, trial_expires, login_count, last_login, last_active)
+         VALUES ($1,$2,'pro','active',$3,$4,1,NOW(),NOW()) RETURNING *`,
+        [lowerEmail, pinHash, upper, trialExpires]
+      );
+    } else {
+      // Upgrade existing user to pro trial
+      user = await db.queryOne(
+        `UPDATE users SET tier='pro', sub_status='active', trial_code=$1, trial_expires=$2,
+         login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW()
+         WHERE email=$3 RETURNING *`,
+        [upper, trialExpires, lowerEmail]
+      );
+    }
+
+    // Increment trial code uses
+    await db.query(`UPDATE trial_codes SET uses=uses+1 WHERE code=$1`, [upper]);
+
+    // Log the use
+    await db.query(
+      `INSERT INTO trial_code_uses (code, email, trial_expires) VALUES ($1,$2,$3)`,
+      [upper, lowerEmail, trialExpires]
+    );
+
+    // Issue JWT
+    const { signJWT } = await import("./auth");
+    const token = signJWT({
+      id: user.id, email: user.email, tier: "pro",
+      subStatus: "active", isOwner: false,
+    });
+
+    res.json({
+      token,
+      user: { email: user.email, tier: "pro", subStatus: "active", isOwner: false },
+      trialExpires: trialExpires.toISOString(),
+      message: `Trial access granted until ${trialExpires.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}`,
+    });
+  });
+
+  // ── GET /api/admin/validate-promo — used by Pricing page ──────────────────
+  app.get("/api/admin/validate-promo", async (req: Request, res: Response) => {
+    const code = String(req.query.code ?? "").toUpperCase().trim();
+    if (!code) return res.status(400).json({ error: "code required" });
+    const row = await db.queryOne(
+      `SELECT * FROM promo_codes WHERE code=$1 AND active=TRUE`, [code]
+    );
+    if (!row) return res.status(404).json({ error: "Invalid promo code" });
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      return res.status(410).json({ error: "This promo code has expired" });
+    }
+    if (row.max_uses !== null && row.uses >= row.max_uses) {
+      return res.status(410).json({ error: "This promo code has reached its limit" });
+    }
+    res.json({ code: row.code, discount_pct: row.discount_pct, applies_to: row.applies_to });
+  });
+
+  // ── GET /api/admin/users — user list for owner management ─────────────────
+  app.get("/api/admin/users", requireOwner, async (req: Request, res: Response) => {
+    const search = req.query.search ? `%${req.query.search}%` : null;
+    const rows = search
+      ? await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires FROM users WHERE email ILIKE $1 ORDER BY created_at DESC LIMIT 50`, [search])
+      : await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires FROM users ORDER BY created_at DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // ── PATCH /api/admin/users/:id/tier — manual tier override ────────────────
+  app.patch("/api/admin/users/:id/tier", requireOwner, async (req: Request, res: Response) => {
+    const { tier, sub_status = "active" } = req.body ?? {};
+    if (!["free","basic","pro"].includes(tier)) return res.status(400).json({ error: "Invalid tier" });
+    const row = await db.queryOne(
+      `UPDATE users SET tier=$1, sub_status=$2 WHERE id=$3 AND is_owner=FALSE RETURNING id,email,tier,sub_status`,
+      [tier === "free" ? null : tier, sub_status, req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
+  // ── PATCH /api/admin/users/:id/disable — disable/enable user ──────────────
+  app.patch("/api/admin/users/:id/disable", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(
+      `UPDATE users SET is_disabled = NOT is_disabled WHERE id=$1 AND is_owner=FALSE RETURNING id,email,is_disabled`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
   // POST /api/auth/forgot-pin
+
   app.post("/api/auth/forgot-pin", async (req: Request, res: Response) => {
     try {
       const { email } = req.body ?? {};
@@ -1822,7 +2034,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.post("/api/auth/upgrade-checkout", requireAuth, async (req: Request, res: Response) => {
     try {
       if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
-      const { tier } = req.body ?? {};
+      const { tier, promoCode } = req.body ?? {};
       if (tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
 
@@ -1844,14 +2056,36 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         ? process.env.STRIPE_PRO_PRICE_ID
         : process.env.STRIPE_BASIC_PRICE_ID;
 
-      const session = await stripe.checkout.sessions.create({
+      // Resolve promo code → Stripe coupon if provided
+      let discounts: any[] | undefined;
+      if (promoCode) {
+        const pc = await db.queryOne(
+          `SELECT * FROM promo_codes WHERE code=$1 AND active=TRUE`, [String(promoCode).toUpperCase().trim()]
+        );
+        if (pc && !(pc.expires_at && new Date(pc.expires_at) < new Date()) && !(pc.max_uses !== null && pc.uses >= pc.max_uses)) {
+          // Create a one-time Stripe coupon for this discount
+          const coupon = await stripe.coupons.create({
+            percent_off: pc.discount_pct,
+            duration: "once",
+            name: `${pc.code} — ${pc.discount_pct}% off`,
+          });
+          discounts = [{ coupon: coupon.id }];
+          // Track use
+          await db.query(`UPDATE promo_codes SET uses=uses+1 WHERE code=$1`, [pc.code]);
+        }
+      }
+
+      const sessionParams: any = {
         customer:    customerId,
         mode:        "subscription",
         line_items:  [{ price: priceId, quantity: 1 }],
         metadata:    { tier, userId: String(req.user!.userId) },
         success_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/settings?upgrade=success`,
         cancel_url:  `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/pricing`,
-      });
+      };
+      if (discounts) sessionParams.discounts = discounts;
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
       res.json({ checkoutUrl: session.url });
     } catch (e: any) {
       console.error("[Stripe] Upgrade checkout error:", e.message);
