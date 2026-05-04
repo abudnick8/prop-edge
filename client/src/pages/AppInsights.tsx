@@ -527,11 +527,11 @@ function ApiHealthPanel() {
   });
 
   const services = [
-    { key: "odds_api",       label: "Odds API",        desc: "Player props + lines" },
-    { key: "espn",           label: "ESPN",            desc: "Scores + schedules" },
-    { key: "mlb_stats",      label: "MLB Stats API",   desc: "Game logs + stats" },
-    { key: "action_network", label: "Action Network",  desc: "Sharp money data" },
-    { key: "weather",        label: "Weather (wttr)",  desc: "MLB/NFL weather" },
+    { key: "odds_api",       label: "Odds API",        desc: "Player props + lines",    note: null },
+    { key: "espn",           label: "ESPN",            desc: "Scores + schedules",      note: null },
+    { key: "mlb_stats",      label: "MLB Stats API",   desc: "Game logs + stats",       note: null },
+    { key: "action_network", label: "Action Network",  desc: "Sharp money data",        note: "Sharp money + public betting percentages." },
+    { key: "weather",        label: "Weather (wttr)",  desc: "MLB/NFL weather",         note: "May show 500 from Railway IP — data still works in-app" },
   ];
 
   const healthMap = Object.fromEntries(health.map(h => [h.service, h]));

@@ -11022,8 +11022,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=${oddsApiKey}` },
       espn:           { url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard` },
       mlb_stats:      { url: `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${new Date().toISOString().split('T')[0]}` },
-      // Action Network blocks datacenter IPs (CloudFront) — check via DNS reachability instead
-      action_network: { url: `https://api.actionnetwork.com/web/v1/sports`, headers: { 'x-api-key': process.env.ACTION_NETWORK_KEY || '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2', 'User-Agent': 'Mozilla/5.0 (compatible; ClubhouseIQ/1.0)' } },
+      action_network: { url: `https://api.actionnetwork.com/web/v1/scoreboard/mlb?date=${new Date().toISOString().split('T')[0].replace(/-/g,'')}`, headers: { 'x-api-key': process.env.ACTION_NETWORK_KEY || '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2', 'User-Agent': 'Mozilla/5.0 (compatible; ClubhouseIQ/1.0)', 'Referer': 'https://www.actionnetwork.com/' } },
       // wttr.in blocks datacenter IPs — use json format which is more permissive
       weather:        { url: `https://wttr.in/Chicago?format=j1`, headers: { 'User-Agent': 'curl/7.68.0', 'Accept': 'application/json' } },
     };
