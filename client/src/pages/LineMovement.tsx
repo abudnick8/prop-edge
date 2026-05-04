@@ -7,8 +7,9 @@ import {
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
   Bell, BellOff, Target, Wind, Thermometer, Eye, ArrowRight,
   Brain, Star, BarChart2, CheckCircle, XCircle, Minus as MinusIcon,
-  Share2, Copy, Check as CheckIcon,
+  Share2,
 } from "lucide-react";
+import { shareGameCard } from "@/lib/shareGameCard";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
 import { CheatSheetButton, CheatSheetInline } from "@/components/CheatSheet";
@@ -1084,8 +1085,9 @@ function CIQPickPanel({
   );
 }
 
-// ── Share Card ───────────────────────────────────────────────────────────────
-function ShareCardNode({ game, ciqGrade, ciqPickTeam, rec }: {
+// ── Share Card (canvas-based, see lib/shareGameCard.ts) ─────────────────────
+// Legacy node kept as type anchor — actual rendering done in shareGameCard.ts
+function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
   game: GameLine;
   ciqGrade: string | null;
   ciqPickTeam: string | undefined;
@@ -1223,81 +1225,11 @@ function ShareCardNode({ game, ciqGrade, ciqPickTeam, rec }: {
   );
 }
 
-// ── useShareGame hook ─────────────────────────────────────────────────────────
-function useShareGame() {
-  const [sharing, setSharing] = useState(false);
-  const [copied, setCopied]   = useState(false);
-
-  const share = useCallback(async (
-    game: GameLine,
-    ciqGrade: string | null,
-    ciqPickTeam: string | undefined,
-    rec: ReturnType<typeof buildBetRec>
-  ) => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      // Render card off-screen
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:-9999px;z-index:-1;";
-      document.body.appendChild(container);
-
-      const { createRoot } = await import("react-dom/client");
-      const { createElement } = await import("react");
-
-      await new Promise<void>(resolve => {
-        const root = createRoot(container);
-        root.render(createElement(ShareCardNode, { game, ciqGrade, ciqPickTeam, rec }));
-        // Give React a tick to paint
-        setTimeout(resolve, 120);
-      });
-
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
-        backgroundColor: null,
-        scale: 3,
-        useCORS: true,
-        logging: false,
-      });
-
-      document.body.removeChild(container);
-
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("Canvas to blob failed");
-
-      const file = new File([blob], `${game.awayTeam}-at-${game.homeTeam}.png`, { type: "image/png" });
-
-      // Try native share (iOS / Android)
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: `${game.awayTeam} @ ${game.homeTeam} — Line Movement`,
-          text: `Check out the line movement for ${game.awayTeam} @ ${game.homeTeam} on Clubhouse IQ`,
-        });
-      } else {
-        // Fallback: download the image
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = file.name; a.click();
-        URL.revokeObjectURL(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      }
-    } catch (e: any) {
-      if (e?.name !== "AbortError") console.error("[Share]", e);
-    } finally {
-      setSharing(false);
-    }
-  }, [sharing]);
-
-  return { share, sharing, copied };
-}
-
 // ── GameCard ───────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
-  const { share, sharing, copied } = useShareGame();
+  const [sharing, setSharing] = useState(false);
 
   const rec = buildBetRec(game);
 
@@ -1438,19 +1370,53 @@ function GameCard({ game }: { game: GameLine }) {
             </div>
             {/* Share button */}
             <button
-              onClick={(e) => { e.stopPropagation(); share(game, ciqGrade, ciqPickTeam ?? undefined, rec); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sharing) return;
+                setSharing(true);
+                const mlAwayMove = (game.moneyline.awayOpen != null && game.moneyline.awayCurrent != null)
+                  ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
+                const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
+                  ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+                shareGameCard({
+                  sport: game.sport,
+                  awayTeam: game.awayTeam,
+                  homeTeam: game.homeTeam,
+                  gameTime: game.gameTime,
+                  spread: game.spread.current != null ? fmtLine(game.spread.current) : null,
+                  spreadMove: game.spread.move != null ? fmtLine(game.spread.move) : null,
+                  total: game.total.current != null ? String(game.total.current) : null,
+                  totalMove: game.total.move != null ? fmtLine(game.total.move) : null,
+                  mlAway: fmtOdds(game.moneyline.awayCurrent),
+                  mlHome: fmtOdds(game.moneyline.homeCurrent),
+                  mlAwayMove: mlAwayMove != null ? fmtOdds(mlAwayMove) : null,
+                  mlHomeMove: mlHomeMove != null ? fmtOdds(mlHomeMove) : null,
+                  spreadAwayMoney: game.spread.awayMoney,
+                  spreadAwayPublic: game.spread.awayPublic,
+                  totalOverMoney: game.total.overMoney,
+                  totalOverPublic: game.total.overPublic,
+                  mlAwayMoney: game.moneyline.awayMoney,
+                  mlAwayPublic: game.moneyline.awayPublic,
+                  hasSteam: Math.abs(game.spread.move ?? 0) >= 3 || Math.abs(game.total.move ?? 0) >= 3,
+                  hasMoved: Math.abs(game.spread.move ?? 0) >= 1.5 || Math.abs(game.total.move ?? 0) >= 1.5,
+                  ciqGrade: ciqGrade,
+                  ciqPickTeam: ciqPickTeam ?? undefined,
+                  recSignal: rec?.signal ?? null,
+                  recPlay: rec?.play ?? null,
+                  recWhy: rec?.why ?? null,
+                  recColor: rec?.color ?? null,
+                }).catch(e => { if (e?.name !== "AbortError") console.error("[Share]", e); })
+                  .finally(() => setSharing(false));
+              }}
               disabled={sharing}
               title="Share this game"
               className="flex items-center justify-center w-7 h-7 rounded-lg transition-all active:scale-90 disabled:opacity-40 flex-shrink-0"
-              style={{ background: copied ? "rgba(34,197,94,0.15)" : "rgba(19,35,58,0.08)", border: "1px solid rgba(19,35,58,0.12)" }}
+              style={{ background: "rgba(19,35,58,0.08)", border: "1px solid rgba(19,35,58,0.12)" }}
             >
-              {sharing ? (
-                <RefreshCw size={11} className="animate-spin" style={{ color: "#3D4B58" }} />
-              ) : copied ? (
-                <CheckIcon size={11} style={{ color: "#22c55e" }} />
-              ) : (
-                <Share2 size={11} style={{ color: "#3D4B58" }} />
-              )}
+              {sharing
+                ? <RefreshCw size={11} className="animate-spin" style={{ color: "#3D4B58" }} />
+                : <Share2 size={11} style={{ color: "#3D4B58" }} />
+              }
             </button>
             {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
           </div>

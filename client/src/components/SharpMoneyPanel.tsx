@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, BarChart2, AlertTriangle, DollarSign, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, BarChart2, AlertTriangle, DollarSign, Zap, ChevronDown, ChevronUp, Share2 } from "lucide-react";
+import { shareGameCard } from "@/lib/shareGameCard";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 const BG     = "#F6F1E7";
@@ -377,6 +378,7 @@ function ColorLegend() {
 // ── Game card ─────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: SharpGameData }) {
   const [expanded, setExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const d = deriveData(game);
 
   const spread = game.pinnacleSpread ?? game.softSpread;
@@ -440,7 +442,7 @@ function GameCard({ game }: { game: SharpGameData }) {
             {startCT && <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{startCT}</p>}
           </div>
 
-          {/* Badges */}
+          {/* Badges + share */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {game.rlmDetected && (
               <span style={{
@@ -458,6 +460,50 @@ function GameCard({ game }: { game: SharpGameData }) {
                 {game.sharpScore >= 70 ? "SHARP" : "LEAN"} {game.sharpScore}
               </span>
             )}
+            {/* Share button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sharing) return;
+                setSharing(true);
+                const spread = game.pinnacleSpread ?? game.softSpread;
+                const total  = game.pinnacleTotal  ?? game.softTotal;
+                const ml     = d.ml;
+                shareGameCard({
+                  sport:          game.sport,
+                  awayTeam:       game.awayTeam,
+                  homeTeam:       game.homeTeam,
+                  gameTime:       game.startTime,
+                  spread:         spread != null ? (spread > 0 ? `+${spread.toFixed(1)}` : spread.toFixed(1)) : null,
+                  total:          total != null ? String(total.toFixed(1)) : null,
+                  mlAway:         ml ? (ml.away > 0 ? `+${ml.away}` : String(ml.away)) : null,
+                  mlHome:         ml ? (ml.home > 0 ? `+${ml.home}` : String(ml.home)) : null,
+                  hasSteam:       game.sharpScore >= 70,
+                  hasMoved:       game.sharpScore >= 40,
+                  sharpScore:     game.sharpScore,
+                  sharpDirection: game.sharpDirection,
+                  rlmDetected:    game.rlmDetected,
+                  spreadAwayMoney: game.publicMoneyPct?.away ?? null,
+                  spreadAwayPublic: game.publicBetPct?.away ?? null,
+                  totalOverMoney:  game.publicMoneyPct?.over ?? null,
+                  totalOverPublic: game.publicBetPct?.over ?? null,
+                  mlAwayMoney:     game.publicMoneyPct?.away ?? null,
+                  mlAwayPublic:    game.publicBetPct?.away ?? null,
+                }).catch(e => { if (e?.name !== "AbortError") console.error("[Share]", e); })
+                  .finally(() => setSharing(false));
+              }}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.15)",
+                cursor: sharing ? "wait" : "pointer", opacity: sharing ? 0.5 : 1,
+              }}
+            >
+              {sharing
+                ? <RefreshCw size={11} color={MUTED} style={{ animation: "spin 1s linear infinite" }} />
+                : <Share2 size={11} color={MUTED} />
+              }
+            </button>
             {expanded
               ? <ChevronUp size={14} style={{ color: MUTED }} />
               : <ChevronDown size={14} style={{ color: MUTED }} />
