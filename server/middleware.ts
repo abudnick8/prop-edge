@@ -69,6 +69,18 @@ export function requirePro(req: Request, res: Response, next: NextFunction) {
   });
 }
 
+// ── requireOwner ─────────────────────────────────────────────────────────────
+// Owner-only — not even Pro users can access these endpoints
+export function requireOwner(req: Request, res: Response, next: NextFunction) {
+  requireAuth(req, res, () => {
+    if (!req.user) return;
+    if (!req.user.isOwner) {
+      return res.status(403).json({ error: "Owner access required" });
+    }
+    next();
+  });
+}
+
 // ── optionalAuth ──────────────────────────────────────────────────────────────
 // Attaches user if token present, but doesn't block unauthenticated requests
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {

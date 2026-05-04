@@ -27,6 +27,9 @@ const navItems = [
   { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: undefined },
 ];
 
+// Owner-only nav item — appended dynamically when isOwner=true
+const ownerNavItem = { href: "/insights", label: "App Insights", mobileLabel: "Insights", icon: BarChart2, tier: undefined };
+
 // Nav item badge definitions — editorial, restrained
 const NAV_BADGES: Record<string, { label: string; style: string }> = {
   "/scores":     { label: "LIVE", style: "badge-live" },
@@ -138,7 +141,7 @@ export function DesktopSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon, tier }) => {
+        {[...navItems, ...(isOwner ? [ownerNavItem] : [])].map(({ href, label, icon: Icon, tier }) => {
           const accessible = canAccess(tier);
           const isActive   = location === href || (href !== "/" && location.startsWith(href));
           const badge      = NAV_BADGES[href];
@@ -233,7 +236,7 @@ export function MobileTabBar() {
       style={{ background: "#13233A", borderTop: "1px solid rgba(255,255,255,0.08)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="flex items-stretch overflow-x-auto scrollbar-none">
-        {navItems.map(({ href, label, mobileLabel, icon: Icon, tier }) => {
+        {[...navItems, ...(isOwner ? [ownerNavItem] : [])].map(({ href, label, mobileLabel, icon: Icon, tier }) => {
           const isActive   = location === href || (href !== "/" && location.startsWith(href));
           const accessible = canAccess(tier);
           return (

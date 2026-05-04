@@ -14,7 +14,7 @@ import { logPicks } from "./pick_logger";
 import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
 import { db } from "./db";
 import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
-import { requireAuth, requireBasic, requirePro } from "./middleware";
+import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
 import { sendPINResetEmail, sendWelcomeEmail, sendNewSignupNotification, SUPPORT_EMAIL } from "./email";
 import crypto from "crypto";
 import Stripe from "stripe";
@@ -1554,8 +1554,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return res.status(401).json({ error: "Invalid email or PIN" });
       }
 
-      // Reset attempts on success
-      await db.query(`UPDATE users SET login_attempts=0, locked_until=NULL WHERE id=$1`, [user.id]);
+      // Reset attempts on success + track login activity
+      await db.query(
+        `UPDATE users SET login_attempts=0, locked_until=NULL, login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW() WHERE id=$1`,
+        [user.id]
+      );
 
       const token = signJWT({
         userId:  user.id,
@@ -1574,6 +1577,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/me — validate token + return fresh user data
   app.get("/api/me", requireAuth, async (req: Request, res: Response) => {
     try {
+      // Update last_active timestamp (throttled — only update if > 5 min since last)
+      await db.query(
+        `UPDATE users SET last_active=NOW() WHERE id=$1 AND (last_active IS NULL OR last_active < NOW() - INTERVAL '5 minutes')`,
+        [req.user!.userId]
+      ).catch(() => {});
+
       const user = await db.queryOne(
         `SELECT id, email, tier, sub_status, is_owner, created_at FROM users WHERE id=$1`,
         [req.user!.userId]
@@ -1588,6 +1597,138 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
     } catch (e: any) {
       res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // GET /api/admin/insights — OWNER ONLY
+  // ──────────────────────────────────────────────────────────────
+  app.get("/api/admin/insights", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const now = new Date();
+
+      // ── Subscriber counts by tier ──
+      const tierRows = await db.query(`
+        SELECT tier, sub_status, COUNT(*) as count
+        FROM users
+        WHERE is_owner = FALSE
+        GROUP BY tier, sub_status
+        ORDER BY tier
+      `);
+
+      // ── Total users ──
+      const totalRow = await db.queryOne(`SELECT COUNT(*) as count FROM users WHERE is_owner = FALSE`);
+
+      // ── Active subscribers (paying, active) ──
+      const activeSubRow = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE sub_status = 'active' AND tier IN ('basic','pro') AND is_owner = FALSE
+      `);
+
+      // ── Active today (last_active within last 24h) ──
+      const activeToday = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '24 hours' AND is_owner = FALSE
+      `);
+
+      // ── Active this week ──
+      const activeWeek = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+      `);
+
+      // ── Active this month ──
+      const activeMonth = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+      `);
+
+      // ── New signups this week ──
+      const newThisWeek = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+      `);
+
+      // ── New signups this month ──
+      const newThisMonth = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+      `);
+
+      // ── Top logins (most active users) ──
+      const topUsers = await db.query(`
+        SELECT email, tier, sub_status, login_count, last_login, last_active, created_at
+        FROM users
+        WHERE is_owner = FALSE
+        ORDER BY login_count DESC NULLS LAST
+        LIMIT 20
+      `);
+
+      // ── Signups per day (last 30 days) ──
+      const signupTrend = await db.query(`
+        SELECT DATE(created_at AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
+        FROM users
+        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+        GROUP BY day
+        ORDER BY day ASC
+      `);
+
+      // ── Daily active users trend (last 14 days) ──
+      const dauTrend = await db.query(`
+        SELECT DATE(last_active AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
+        FROM users
+        WHERE last_active > NOW() - INTERVAL '14 days' AND is_owner = FALSE
+        GROUP BY day
+        ORDER BY day ASC
+      `);
+
+      // ── Avg logins per user ──
+      const avgLogins = await db.queryOne(`
+        SELECT ROUND(AVG(login_count), 1) as avg FROM users WHERE is_owner = FALSE AND login_count > 0
+      `);
+
+      // Build tier breakdown
+      const tiers: Record<string, { active: number; inactive: number; cancelled: number }> = {
+        free:  { active: 0, inactive: 0, cancelled: 0 },
+        basic: { active: 0, inactive: 0, cancelled: 0 },
+        pro:   { active: 0, inactive: 0, cancelled: 0 },
+      };
+      for (const row of tierRows.rows) {
+        const t = row.tier ?? "free";
+        const s = row.sub_status ?? "inactive";
+        if (!tiers[t]) tiers[t] = { active: 0, inactive: 0, cancelled: 0 };
+        const key = s === "active" ? "active" : s === "cancelled" ? "cancelled" : "inactive";
+        tiers[t][key] = parseInt(row.count);
+      }
+
+      res.json({
+        generatedAt: now.toISOString(),
+        totals: {
+          allUsers:          parseInt(totalRow?.count ?? "0"),
+          activeSubscribers: parseInt(activeSubRow?.count ?? "0"),
+          activeToday:       parseInt(activeToday?.count ?? "0"),
+          activeThisWeek:    parseInt(activeWeek?.count ?? "0"),
+          activeThisMonth:   parseInt(activeMonth?.count ?? "0"),
+          newThisWeek:       parseInt(newThisWeek?.count ?? "0"),
+          newThisMonth:      parseInt(newThisMonth?.count ?? "0"),
+          avgLoginsPerUser:  parseFloat(avgLogins?.avg ?? "0"),
+        },
+        tiers,
+        topUsers: topUsers.rows.map((u: any) => ({
+          email:       u.email,
+          tier:        u.tier,
+          subStatus:   u.sub_status,
+          loginCount:  u.login_count ?? 0,
+          lastLogin:   u.last_login,
+          lastActive:  u.last_active,
+          joinedAt:    u.created_at,
+        })),
+        signupTrend: signupTrend.rows.map((r: any) => ({ day: r.day, count: parseInt(r.count) })),
+        dauTrend:    dauTrend.rows.map((r: any) => ({ day: r.day, count: parseInt(r.count) })),
+      });
+    } catch (e: any) {
+      console.error("[Insights]", e.message);
+      res.status(500).json({ error: "Failed to load insights" });
     }
   });
 

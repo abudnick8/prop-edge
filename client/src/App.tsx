@@ -25,6 +25,7 @@ import MLInsights from "@/pages/MLInsights";
 import NotFound from "@/pages/not-found";
 import BTS from "@/pages/BTS";
 import Pricing from "@/pages/Pricing";
+import AppInsights from "@/pages/AppInsights";
 import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
@@ -128,6 +129,9 @@ function AppInner() {
               <Route path="/conviction">{() => <TierGuard require="pro"><HighConviction /></TierGuard>}</Route>
               <Route path="/ml-insights">{() => <TierGuard require="pro"><MLInsights /></TierGuard>}</Route>
               <Route path="/bts">{() => <TierGuard require="pro"><BTS /></TierGuard>}</Route>
+
+              {/* Owner-only */}
+              <Route path="/insights">{() => user?.isOwner ? <AppInsights /> : <NotFound />}</Route>
 
               <Route component={NotFound} />
             </Switch>

@@ -19,11 +19,47 @@ export const db = {
   },
 };
 
+// ── Auto-migrations ── run on every boot, all idempotent ────────────────────
+async function runMigrations() {
+  try {
+    // Core users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id                SERIAL PRIMARY KEY,
+        email             TEXT UNIQUE NOT NULL,
+        pin_hash          TEXT NOT NULL,
+        tier              TEXT DEFAULT NULL,
+        stripe_customer_id TEXT DEFAULT NULL,
+        stripe_sub_id     TEXT DEFAULT NULL,
+        sub_status        TEXT DEFAULT 'inactive',
+        is_owner          BOOLEAN DEFAULT FALSE,
+        reset_token_hash  TEXT DEFAULT NULL,
+        reset_token_expires TIMESTAMPTZ DEFAULT NULL,
+        login_attempts    INT DEFAULT 0,
+        locked_until      TIMESTAMPTZ DEFAULT NULL,
+        created_at        TIMESTAMPTZ DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS users_email_idx ON users(email)`);
+
+    // Login & activity tracking columns (added later — safe to re-run)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count   INT          DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login     TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active    TIMESTAMPTZ  DEFAULT NULL`);
+
+    console.log("[DB] Migrations complete");
+  } catch (err: any) {
+    console.warn("[DB] Migration warning:", err.message);
+  }
+}
+
 // Test connection on startup — non-fatal if DB not yet configured
 pool.connect()
   .then(client => {
     console.log("[DB] PostgreSQL connected");
     client.release();
+    runMigrations();
   })
   .catch(err => {
     console.warn("[DB] PostgreSQL not available (expected until Railway Postgres addon added):", err.message);
