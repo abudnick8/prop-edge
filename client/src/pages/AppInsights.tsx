@@ -527,8 +527,13 @@ function ApiHealthPanel() {
   });
 
   const clearMut = useMutation({
-    mutationFn: (service?: string) => fetch(`/api/admin/api-health/errors${service ? `?service=${service}` : ""}`, { method: "DELETE", headers: authHeaders() }).then(r => r.json()),
+    mutationFn: async (service?: string) => {
+      const r = await fetch(`/api/admin/api-health/errors${service ? `?service=${service}` : ""}`, { method: "DELETE", headers: authHeaders() });
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      return r.json();
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-api-health"] }),
+    onError: (e: any) => console.error("[clear-errors]", e.message),
   });
 
   const totalErrors = health.reduce((sum, h) => sum + (h.errors_24h ?? 0), 0);

@@ -11016,16 +11016,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
   // DELETE /api/admin/api-health/errors — clear all error entries from the log
   app.delete("/api/admin/api-health/errors", requireOwner, async (req: Request, res: Response) => {
-    const { service } = req.query as { service?: string };
-    if (service) {
-      // Clear errors for a specific service only
-      await db.query(`DELETE FROM api_health_log WHERE status='error' AND service=$1`, [service]);
-    } else {
-      // Clear all errors across all services
-      await db.query(`DELETE FROM api_health_log WHERE status='error'`);
+    try {
+      const { service } = req.query as { service?: string };
+      if (service) {
+        await db.query(`DELETE FROM api_health_log WHERE status='error' AND service=$1`, [service]);
+      } else {
+        await db.query(`DELETE FROM api_health_log WHERE status='error'`);
+      }
+      await auditLog((req as any).user?.email ?? "owner", "clear_api_errors", service ?? "all");
+      res.json({ ok: true, cleared: service ?? "all" });
+    } catch (e: any) {
+      console.error("[clear-api-errors]", e.message);
+      res.status(500).json({ ok: false, error: e.message });
     }
-    await auditLog(req, "clear_api_errors", { service: service ?? "all" });
-    res.json({ ok: true, cleared: service ?? "all" });
   });
 
   // POST /api/admin/api-health/ping — ping a specific service and record result
