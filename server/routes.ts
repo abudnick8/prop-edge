@@ -1845,6 +1845,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // ── POST /api/admin/redeem-trial — login with trial code (public) ─────────
   // Creates account if needed, sets trial tier+expiry, returns JWT
   app.post("/api/admin/redeem-trial", async (req: Request, res: Response) => {
+    try {
     const { code, email } = req.body ?? {};
     if (!code || !email) return res.status(400).json({ error: "code and email required" });
     const upper = String(code).toUpperCase().trim();
@@ -1865,9 +1866,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     const lowerEmail = String(email).toLowerCase().trim();
 
     // Upsert user — if new, create with a random pin (they can set one later)
-    const { randomBytes, createHash } = await import("crypto");
-    const tempPin = randomBytes(4).toString("hex");
-    const pinHash = createHash("sha256").update(tempPin).digest("hex");
+    // Use statically-imported crypto (dynamic import fails in esbuild bundle)
+    const tempPin = crypto.randomBytes(4).toString("hex");
+    const pinHash = crypto.createHash("sha256").update(tempPin).digest("hex");
 
     let user = await db.queryOne(`SELECT * FROM users WHERE email=$1`, [lowerEmail]);
     if (!user) {
@@ -1895,10 +1896,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       [upper, lowerEmail, trialExpires]
     );
 
-    // Issue JWT
-    const { signJWT } = await import("./auth");
+    // Issue JWT — use statically-imported signJWT, correct field is userId not id
     const token = signJWT({
-      id: user.id, email: user.email, tier: "pro",
+      userId: user.id, email: user.email, tier: "pro",
       subStatus: "active", isOwner: false,
     });
 
@@ -1908,6 +1908,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       trialExpires: trialExpires.toISOString(),
       message: `Trial access granted until ${trialExpires.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}`,
     });
+    } catch (e: any) {
+      console.error("[Trial] Redeem error:", e.message);
+      res.status(500).json({ error: "Failed to activate trial: " + e.message });
+    }
   });
 
   // ── GET /api/admin/validate-promo — used by Pricing page ──────────────────

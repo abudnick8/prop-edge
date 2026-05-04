@@ -70,10 +70,14 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Invalid trial code"); return; }
-      const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${data.token}` } });
-      const me = await meRes.json();
+      // Fetch fresh user profile, fall back to data.user if /api/me fails
+      let me = data.user;
+      try {
+        const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${data.token}` } });
+        if (meRes.ok) me = await meRes.json();
+      } catch { /* use data.user fallback */ }
       login(data.token, me);
-    } catch { setError("Network error — please try again."); }
+    } catch (err: any) { setError(err?.message ?? "Network error — please try again."); }
     finally { setLoading(false); }
   }
 
