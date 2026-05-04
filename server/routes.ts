@@ -1768,16 +1768,17 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // ── POST /api/admin/promo-codes ────────────────────────────────────────────
   app.post("/api/admin/promo-codes", requireOwner, async (req: Request, res: Response) => {
-    const { code, discount_pct, applies_to = "both", max_uses = null, expires_at = null } = req.body ?? {};
+    const { code, discount_pct, applies_to = "both", max_uses = null, expires_at = null, duration_months = null } = req.body ?? {};
     if (!code || !discount_pct) return res.status(400).json({ error: "code and discount_pct required" });
     const upper = String(code).toUpperCase().trim();
     if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
     if (discount_pct < 1 || discount_pct > 100) return res.status(400).json({ error: "Discount must be 1–100%" });
+    if (duration_months !== null && (duration_months < 1 || duration_months > 24)) return res.status(400).json({ error: "Duration must be 1–24 months" });
     try {
       const row = await db.queryOne(
-        `INSERT INTO promo_codes (code, discount_pct, applies_to, max_uses, expires_at)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [upper, discount_pct, applies_to, max_uses, expires_at || null]
+        `INSERT INTO promo_codes (code, discount_pct, applies_to, max_uses, expires_at, duration_months)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [upper, discount_pct, applies_to, max_uses, expires_at || null, duration_months || null]
       );
       res.json(row);
     } catch (e: any) {
@@ -1914,6 +1915,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ── GET /api/admin/dev-code — public, returns current dev access code ────────
+  app.get("/api/admin/dev-code", async (_req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT value FROM app_settings WHERE key='dev_code'`);
+    res.json({ code: row?.value ?? "ABUD" });
+  });
+
+  // ── PATCH /api/admin/dev-code — owner-only, update dev code ─────────────────
+  app.patch("/api/admin/dev-code", requireOwner, async (req: Request, res: Response) => {
+    const { code } = req.body ?? {};
+    if (!code) return res.status(400).json({ error: "code required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    await db.query(`INSERT INTO app_settings (key, value) VALUES ('dev_code', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [upper]);
+    res.json({ code: upper });
+  });
+
   // ── GET /api/admin/validate-promo — used by Pricing page ──────────────────
   app.get("/api/admin/validate-promo", async (req: Request, res: Response) => {
     const code = String(req.query.code ?? "").toUpperCase().trim();
@@ -1928,7 +1945,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     if (row.max_uses !== null && row.uses >= row.max_uses) {
       return res.status(410).json({ error: "This promo code has reached its limit" });
     }
-    res.json({ code: row.code, discount_pct: row.discount_pct, applies_to: row.applies_to });
+    res.json({ code: row.code, discount_pct: row.discount_pct, applies_to: row.applies_to, duration_months: row.duration_months ?? null });
   });
 
   // ── GET /api/admin/users — user list for owner management ─────────────────
@@ -2067,12 +2084,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           `SELECT * FROM promo_codes WHERE code=$1 AND active=TRUE`, [String(promoCode).toUpperCase().trim()]
         );
         if (pc && !(pc.expires_at && new Date(pc.expires_at) < new Date()) && !(pc.max_uses !== null && pc.uses >= pc.max_uses)) {
-          // Create a one-time Stripe coupon for this discount
-          const coupon = await stripe.coupons.create({
+          // Create a Stripe coupon with the correct duration
+          const couponParams: any = {
             percent_off: pc.discount_pct,
-            duration: "once",
             name: `${pc.code} — ${pc.discount_pct}% off`,
-          });
+          };
+          if (pc.duration_months === null || pc.duration_months === undefined) {
+            // No duration set → discount applies forever (until cancelled)
+            couponParams.duration = "forever";
+          } else if (pc.duration_months === 1) {
+            // Single month → Stripe "once"
+            couponParams.duration = "once";
+          } else {
+            // Multi-month → Stripe "repeating"
+            couponParams.duration = "repeating";
+            couponParams.duration_in_months = pc.duration_months;
+          }
+          const coupon = await stripe.coupons.create(couponParams);
           discounts = [{ coupon: coupon.id }];
           // Track use
           await db.query(`UPDATE promo_codes SET uses=uses+1 WHERE code=$1`, [pc.code]);

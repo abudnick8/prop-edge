@@ -62,7 +62,7 @@ interface InsightsData {
   signupTrend: { day: string; count: number }[];
   dauTrend:    { day: string; count: number }[];
 }
-interface PromoCode { id: number; code: string; discount_pct: number; applies_to: string; max_uses: number | null; uses: number; active: boolean; created_at: string; expires_at: string | null; }
+interface PromoCode { id: number; code: string; discount_pct: number; applies_to: string; max_uses: number | null; uses: number; active: boolean; created_at: string; expires_at: string | null; duration_months: number | null; }
 interface TrialCode { id: number; code: string; duration_days: number; max_uses: number | null; uses: number; active: boolean; note: string | null; created_at: string; expires_at: string | null; }
 interface TrialUse  { id: number; code: string; email: string; used_at: string; trial_expires: string; }
 interface AppUser   { id: number; email: string; tier: string | null; sub_status: string; is_owner: boolean; is_disabled: boolean; login_count: number; last_active: string | null; created_at: string; trial_code: string | null; trial_expires: string | null; }
@@ -101,14 +101,21 @@ function SparkBar({ data, color = "#A23B32" }: { data: { day: string; count: num
 }
 
 // ─── Promo Codes Panel ────────────────────────────────────────────────────────
+function durLabel(d: number | null): string {
+  if (d === null) return "Forever";
+  if (d === 1)    return "1 mo";
+  return `${d} mo`;
+}
+
 function PromoCodesPanel() {
   const qc = useQueryClient();
-  const [code, setCode]       = useState("");
-  const [pct, setPct]         = useState(10);
-  const [appliesTo, setAppliesTo] = useState("both");
-  const [maxUses, setMaxUses] = useState("");
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
+  const [code, setCode]             = useState("");
+  const [pct, setPct]               = useState(10);
+  const [appliesTo, setAppliesTo]   = useState("both");
+  const [maxUses, setMaxUses]       = useState("");
+  const [durationMonths, setDurationMonths] = useState<string>("forever");
+  const [error, setError]           = useState("");
+  const [success, setSuccess]       = useState("");
 
   const { data: codes = [], isLoading } = useQuery<PromoCode[]>({
     queryKey: ["admin-promo-codes"],
@@ -137,7 +144,8 @@ function PromoCodesPanel() {
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault(); setError("");
-    createMut.mutate({ code: code.toUpperCase().trim(), discount_pct: pct, applies_to: appliesTo, max_uses: maxUses ? parseInt(maxUses) : null });
+    const dm = durationMonths === "forever" ? null : parseInt(durationMonths);
+    createMut.mutate({ code: code.toUpperCase().trim(), discount_pct: pct, applies_to: appliesTo, max_uses: maxUses ? parseInt(maxUses) : null, duration_months: dm });
   }
 
   return (
@@ -172,6 +180,14 @@ function PromoCodesPanel() {
             <option value="basic">Basic Only</option>
             <option value="pro">Pro Only</option>
           </select>
+          <select value={durationMonths} onChange={e => setDurationMonths(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-xs font-semibold outline-none"
+            style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)", color: "#131A24" }}>
+            <option value="forever">Until Cancelled</option>
+            {[1,2,3,4,5,6,9,12,18,24].map(n => (
+              <option key={n} value={String(n)}>{n} Month{n > 1 ? "s" : ""}</option>
+            ))}
+          </select>
           <input type="number" min={1} value={maxUses} onChange={e => setMaxUses(e.target.value)}
             placeholder="Max uses (∞)"
             className="w-28 px-3 py-2 rounded-xl border text-xs outline-none"
@@ -195,6 +211,7 @@ function PromoCodesPanel() {
             <div key={c.id} className="px-4 py-3 flex items-center gap-3">
               <span className="font-black text-sm tracking-widest" style={{ color: c.active ? "#131A24" : "rgba(19,35,58,0.35)" }}>{c.code}</span>
               <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(37,99,235,0.1)", color: "#2563eb" }}>{c.discount_pct}% off</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(19,35,58,0.08)", color: "#3D4B58" }}>{durLabel(c.duration_months)}</span>
               <span className="text-[10px] text-muted-foreground">{c.applies_to}</span>
               <span className="text-[10px] text-muted-foreground ml-auto">{c.uses}{c.max_uses ? `/${c.max_uses}` : ""} uses</span>
               <span className="text-[10px] font-bold" style={{ color: c.active ? "#22c55e" : "#ef4444" }}>{c.active ? "Active" : "Off"}</span>

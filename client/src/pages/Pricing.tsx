@@ -234,10 +234,11 @@ export default function Pricing() {
   const [loading, setLoading]         = useState<PlanId | null>(null);
   const [error, setError]             = useState("");
   const [promoInput, setPromoInput]   = useState("");
-  const [promoCode, setPromoCode]     = useState<string | null>(null);
-  const [promoDiscount, setPromoDiscount] = useState<number | null>(null);
-  const [promoLoading, setPromoLoading]   = useState(false);
-  const [promoError, setPromoError]       = useState("");
+  const [promoCode, setPromoCode]           = useState<string | null>(null);
+  const [promoDiscount, setPromoDiscount]   = useState<number | null>(null);
+  const [promoDuration, setPromoDuration]   = useState<number | null>(null);
+  const [promoLoading, setPromoLoading]     = useState(false);
+  const [promoError, setPromoError]         = useState("");
 
   const currentTier = user?.tier ?? null;
 
@@ -250,6 +251,7 @@ export default function Pricing() {
       if (!res.ok) { setPromoError(d.error ?? "Invalid code"); return; }
       setPromoCode(d.code);
       setPromoDiscount(d.discount_pct);
+      setPromoDuration(d.duration_months ?? null);
     } catch { setPromoError("Could not validate code"); }
     finally { setPromoLoading(false); }
   }
@@ -301,8 +303,11 @@ export default function Pricing() {
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
               <Check size={14} style={{ color: "#22c55e" }} />
               <span className="text-sm font-black tracking-widest" style={{ color: "#131A24" }}>{promoCode}</span>
-              <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{promoDiscount}% off applied!</span>
-              <button onClick={() => { setPromoCode(null); setPromoDiscount(null); setPromoInput(""); }} className="ml-auto p-0.5 rounded-md hover:bg-muted/40">
+              <span className="text-xs font-bold" style={{ color: "#22c55e" }}>
+                {promoDiscount}% off
+                {promoDuration === null ? " forever" : promoDuration === 1 ? " · 1 month" : ` · ${promoDuration} months`}
+              </span>
+              <button onClick={() => { setPromoCode(null); setPromoDiscount(null); setPromoDuration(null); setPromoInput(""); }} className="ml-auto p-0.5 rounded-md hover:bg-muted/40">
                 <X size={12} style={{ color: "#3D4B58" }} />
               </button>
             </div>

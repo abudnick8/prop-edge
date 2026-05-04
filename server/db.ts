@@ -66,6 +66,8 @@ async function runMigrations() {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS promo_codes_code_idx ON promo_codes(code)`);
+    // Migration: add duration_months if missing
+    await pool.query(`ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS duration_months INT DEFAULT NULL`);
 
     // ── Trial access codes ───────────────────────────────────────────────────
     await pool.query(`
@@ -92,6 +94,19 @@ async function runMigrations() {
         used_at      TIMESTAMPTZ DEFAULT NOW(),
         trial_expires TIMESTAMPTZ
       )
+    `);
+
+    // ── App settings (key/value) ────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    // Seed default dev code if not already set
+    await pool.query(`
+      INSERT INTO app_settings (key, value) VALUES ('dev_code', 'ABUD')
+      ON CONFLICT (key) DO NOTHING
     `);
 
     console.log("[DB] Migrations complete");
