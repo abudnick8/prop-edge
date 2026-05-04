@@ -582,27 +582,22 @@ function UserManagementPanel() {
                       <span className="text-[10px] font-semibold capitalize" style={{ color: statusColor(u.sub_status) }}>{u.sub_status}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      {/* Only show PIN for paid (basic/pro) non-owner members */}
-                      {!u.is_owner && (u.tier === "basic" || u.tier === "pro") ? (
+                      {u.pin_plain ? (
                         <div className="flex items-center justify-center gap-1">
                           <span className="font-mono text-[10px] font-bold text-foreground">
-                            {u.pin_plain
-                              ? (revealedPins.has(u.id) ? u.pin_plain : "••••")
-                              : <span className="text-muted-foreground text-[9px]">N/A</span>}
+                            {revealedPins.has(u.id) ? u.pin_plain : "••••"}
                           </span>
-                          {u.pin_plain && (
-                            <button
-                              onClick={() => togglePin(u.id)}
-                              className="p-0.5 rounded transition-colors hover:bg-muted/40"
-                              title={revealedPins.has(u.id) ? "Hide PIN" : "Reveal PIN"}>
-                              {revealedPins.has(u.id)
-                                ? <EyeOff size={10} style={{ color: "#3D4B58" }} />
-                                : <Eye size={10} style={{ color: "#3D4B58" }} />}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => togglePin(u.id)}
+                            className="p-0.5 rounded transition-colors hover:bg-muted/40"
+                            title={revealedPins.has(u.id) ? "Hide PIN" : "Reveal PIN"}>
+                            {revealedPins.has(u.id)
+                              ? <EyeOff size={10} style={{ color: "#3D4B58" }} />
+                              : <Eye size={10} style={{ color: "#3D4B58" }} />}
+                          </button>
                         </div>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground">—</span>
+                        <span className="text-[10px] text-muted-foreground">N/A</span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-[10px] text-muted-foreground">
