@@ -3,7 +3,7 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone, Crown, ExternalLink, ArrowUpRight } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone, Crown, ExternalLink, ArrowUpRight, User, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ const OPTIONAL_SPORTS = [
 
 export default function Settings() {
   const { toast } = useToast();
-  const { user, isPro, isBasic } = useAuth();
+  const { user, isPro, isBasic, logout } = useAuth();
   const { data: settings, isLoading } = useQuery<SettingsType>({
     queryKey: ["/api/settings"],
   });
@@ -79,6 +79,27 @@ export default function Settings() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Configure your prediction bot</p>
+      </div>
+
+      {/* ── Account ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <User size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Account</p>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Signed in as</p>
+            <p className="text-sm font-semibold text-foreground truncate">{user?.email ?? "—"}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition-all active:scale-95"
+            style={{ borderColor: "rgba(239,68,68,0.25)", color: "#ef4444", background: "rgba(239,68,68,0.05)" }}
+          >
+            <LogOut size={13} /> Log out
+          </button>
+        </div>
       </div>
 
       {/* ── Billing / Plan ── */}
