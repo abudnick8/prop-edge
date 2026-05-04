@@ -526,6 +526,13 @@ function ApiHealthPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-api-health"] }),
   });
 
+  const clearMut = useMutation({
+    mutationFn: (service?: string) => fetch(`/api/admin/api-health/errors${service ? `?service=${service}` : ""}`, { method: "DELETE", headers: authHeaders() }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-api-health"] }),
+  });
+
+  const totalErrors = health.reduce((sum, h) => sum + (h.errors_24h ?? 0), 0);
+
   const services = [
     { key: "odds_api",       label: "Odds API",        desc: "Player props + lines",    note: null },
     { key: "espn",           label: "ESPN",            desc: "Scores + schedules",      note: null },
@@ -541,7 +548,18 @@ function ApiHealthPanel() {
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[10px] text-muted-foreground">Click Ping to test a service live</p>
-          <button onClick={() => refetch()} className="text-[10px] font-semibold flex items-center gap-1 text-muted-foreground hover:text-foreground"><RefreshCw size={10} />Refresh</button>
+          <div className="flex items-center gap-2">
+            {totalErrors > 0 && (
+              <button
+                onClick={() => clearMut.mutate(undefined)}
+                disabled={clearMut.isPending}
+                className="text-[10px] font-semibold flex items-center gap-1 px-2 py-1 rounded-full transition-all"
+                style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", opacity: clearMut.isPending ? 0.5 : 1 }}>
+                <X size={9} />{clearMut.isPending ? "Clearing…" : `Clear Errors (${totalErrors})`}
+              </button>
+            )}
+            <button onClick={() => refetch()} className="text-[10px] font-semibold flex items-center gap-1 text-muted-foreground hover:text-foreground"><RefreshCw size={10} />Refresh</button>
+          </div>
         </div>
         <div className="space-y-2">
           {services.map(svc => {

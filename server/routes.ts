@@ -11014,6 +11014,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     res.json(rows.rows);
   });
 
+  // DELETE /api/admin/api-health/errors — clear all error entries from the log
+  app.delete("/api/admin/api-health/errors", requireOwner, async (req: Request, res: Response) => {
+    const { service } = req.query as { service?: string };
+    if (service) {
+      // Clear errors for a specific service only
+      await db.query(`DELETE FROM api_health_log WHERE status='error' AND service=$1`, [service]);
+    } else {
+      // Clear all errors across all services
+      await db.query(`DELETE FROM api_health_log WHERE status='error'`);
+    }
+    await auditLog(req, "clear_api_errors", { service: service ?? "all" });
+    res.json({ ok: true, cleared: service ?? "all" });
+  });
+
   // POST /api/admin/api-health/ping — ping a specific service and record result
   app.post("/api/admin/api-health/ping", requireOwner, async (req: Request, res: Response) => {
     const { service } = req.body ?? {};
