@@ -1473,9 +1473,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (isOwnerSignup) {
         // Insert owner directly — no Stripe, no payment
         await db.query(
-          `INSERT INTO users (email, pin_hash, tier, sub_status, is_owner)
-           VALUES (LOWER($1), $2, 'pro', 'active', TRUE)`,
-          [email, pinHash]
+          `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, is_owner)
+           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE)`,
+          [email, pinHash, pin]
         );
         sendNewSignupNotification(email, "pro").catch(() => {});
         return res.json({ success: true, checkoutUrl: null });
@@ -1503,9 +1503,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Free tier is always immediately active (no payment needed)
       const isFreeTier = tier === "free";
       await db.query(
-        `INSERT INTO users (email, pin_hash, tier, stripe_customer_id, sub_status)
-         VALUES (LOWER($1), $2, $3, $4, $5)`,
-        [email, pinHash, isFreeTier ? "free" : (stripe ? null : tier), stripeCustomerId, isFreeTier ? "active" : (stripe ? "inactive" : "active")]
+        `INSERT INTO users (email, pin_hash, pin_plain, tier, stripe_customer_id, sub_status)
+         VALUES (LOWER($1), $2, $3, $4, $5, $6)`,
+        [email, pinHash, pin, isFreeTier ? "free" : (stripe ? null : tier), stripeCustomerId, isFreeTier ? "active" : (stripe ? "inactive" : "active")]
       );
 
       // If no Stripe or free tier, auto-activate
@@ -1539,6 +1539,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       // Check disabled
       if (user.is_disabled) return res.status(403).json({ error: "This account has been disabled. Contact support." });
+
+      // Block cancelled subscriptions (non-owner)
+      if (user.sub_status === "cancelled" && !user.is_owner) {
+        return res.status(403).json({ error: "Your subscription has been cancelled. Resubscribe at clubhouse-iq.up.railway.app to regain access." });
+      }
 
       // Check lockout
       if (user.locked_until && new Date(user.locked_until) > new Date()) {
@@ -1885,9 +1890,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     let user = await db.queryOne(`SELECT * FROM users WHERE email=$1`, [lowerEmail]);
     if (!user) {
       user = await db.queryOne(
-        `INSERT INTO users (email, pin_hash, tier, sub_status, trial_code, trial_expires, login_count, last_login, last_active)
-         VALUES ($1,$2,'pro','active',$3,$4,1,NOW(),NOW()) RETURNING *`,
-        [lowerEmail, pinHash, upper, trialExpires]
+        `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, trial_code, trial_expires, login_count, last_login, last_active)
+         VALUES ($1,$2,$3,'pro','active',$4,$5,1,NOW(),NOW()) RETURNING *`,
+        [lowerEmail, pinHash, tempPin, upper, trialExpires]
       );
     } else {
       // Upgrade existing user to pro trial
@@ -1963,8 +1968,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/admin/users", requireOwner, async (req: Request, res: Response) => {
     const search = req.query.search ? `%${req.query.search}%` : null;
     const rows = search
-      ? await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires FROM users WHERE email ILIKE $1 ORDER BY created_at DESC LIMIT 50`, [search])
-      : await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires FROM users ORDER BY created_at DESC LIMIT 100`);
+      ? await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires,pin_plain FROM users WHERE email ILIKE $1 ORDER BY created_at DESC LIMIT 50`, [search])
+      : await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires,pin_plain FROM users ORDER BY created_at DESC LIMIT 100`);
     res.json(rows.rows);
   });
 
@@ -2036,8 +2041,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       const pinHash = await hashPIN(pin);
       await db.query(
-        `UPDATE users SET pin_hash=$1, reset_token_hash=NULL, reset_token_expires=NULL WHERE id=$2`,
-        [pinHash, user.id]
+        `UPDATE users SET pin_hash=$1, pin_plain=$2, reset_token_hash=NULL, reset_token_expires=NULL WHERE id=$3`,
+        [pinHash, pin, user.id]
       );
       res.json({ success: true });
     } catch (e: any) {

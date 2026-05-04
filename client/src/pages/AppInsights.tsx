@@ -11,6 +11,7 @@ import {
   RefreshCw, LogIn, UserCheck, UserPlus, Tag, Gift,
   Trash2, ToggleLeft, ToggleRight, ShieldBan, ShieldCheck,
   ChevronDown, ChevronUp, Search, KeyRound, Save,
+  Eye, EyeOff,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ interface InsightsData {
 interface PromoCode { id: number; code: string; discount_pct: number; applies_to: string; max_uses: number | null; uses: number; active: boolean; created_at: string; expires_at: string | null; duration_months: number | null; }
 interface TrialCode { id: number; code: string; duration_days: number; max_uses: number | null; uses: number; active: boolean; note: string | null; created_at: string; expires_at: string | null; }
 interface TrialUse  { id: number; code: string; email: string; used_at: string; trial_expires: string; }
-interface AppUser   { id: number; email: string; tier: string | null; sub_status: string; is_owner: boolean; is_disabled: boolean; login_count: number; last_active: string | null; created_at: string; trial_code: string | null; trial_expires: string | null; }
+interface AppUser   { id: number; email: string; tier: string | null; sub_status: string; is_owner: boolean; is_disabled: boolean; login_count: number; last_active: string | null; created_at: string; trial_code: string | null; trial_expires: string | null; pin_plain: string | null; }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub, color = "#131A24" }: { icon: React.ReactNode; label: string; value: string | number; sub?: string; color?: string }) {
@@ -486,6 +487,13 @@ function UserManagementPanel() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [searchVal, setSearchVal] = useState("");
+  const [revealedPins, setRevealedPins] = useState<Set<number>>(new Set());
+
+  const togglePin = (id: number) => setRevealedPins(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const { data: users = [], isLoading, refetch } = useQuery<AppUser[]>({
     queryKey: ["admin-users", searchVal],
@@ -550,6 +558,7 @@ function UserManagementPanel() {
                 <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Email</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Plan</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">PIN</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trial</th>
                 <th className="text-right px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Last Active</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Change Plan</th>
@@ -571,6 +580,30 @@ function UserManagementPanel() {
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <span className="text-[10px] font-semibold capitalize" style={{ color: statusColor(u.sub_status) }}>{u.sub_status}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {/* Only show PIN for paid (basic/pro) non-owner members */}
+                      {!u.is_owner && (u.tier === "basic" || u.tier === "pro") ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="font-mono text-[10px] font-bold text-foreground">
+                            {u.pin_plain
+                              ? (revealedPins.has(u.id) ? u.pin_plain : "••••")
+                              : <span className="text-muted-foreground text-[9px]">N/A</span>}
+                          </span>
+                          {u.pin_plain && (
+                            <button
+                              onClick={() => togglePin(u.id)}
+                              className="p-0.5 rounded transition-colors hover:bg-muted/40"
+                              title={revealedPins.has(u.id) ? "Hide PIN" : "Reveal PIN"}>
+                              {revealedPins.has(u.id)
+                                ? <EyeOff size={10} style={{ color: "#3D4B58" }} />
+                                : <Eye size={10} style={{ color: "#3D4B58" }} />}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-[10px] text-muted-foreground">
                       {u.trial_code ? <span className="font-bold" style={{ color: "#A23B32" }}>{u.trial_code}<br /><span className="font-normal text-muted-foreground">exp {fmtDate(u.trial_expires)}</span></span> : "—"}
