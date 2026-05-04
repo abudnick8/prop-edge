@@ -5,7 +5,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { useLocation } from "wouter";
 import {
   Users, TrendingUp, Activity, Crown, Star, Zap,
   RefreshCw, Calendar, LogIn, UserCheck, UserPlus,
@@ -112,14 +111,9 @@ function StatCard({ icon, label, value, sub, color = "#131A24" }: {
 // ─── main component ───────────────────────────────────────────────────────────
 export default function AppInsights() {
   const { user } = useAuth();
-  const [, navigate] = useLocation();
 
-  // Hard redirect if not owner — belt-and-suspenders on top of route guard
-  if (user && !user.isOwner) {
-    navigate("/");
-    return null;
-  }
-
+  // OwnerGuard in App.tsx handles the redirect — no need to redirect here.
+  // Just pull the token for the API call.
   const token = localStorage.getItem("ciq_token");
 
   const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useQuery<InsightsData>({

@@ -56,6 +56,18 @@ function TierGuard({ children, require: req }: { children: React.ReactNode; requ
   return <>{children}</>;
 }
 
+// OwnerGuard — renders children only for is_owner=true, redirects otherwise
+function OwnerGuard({ children }: { children: React.ReactNode }) {
+  const { isOwner, isLoading } = useAuth();
+  const [, navigate] = useHashLocation();
+  if (isLoading) return null; // wait for auth to resolve before deciding
+  if (!isOwner) {
+    setTimeout(() => navigate("/"), 0);
+    return null;
+  }
+  return <>{children}</>;
+}
+
 function AppInner() {
   const { isConnected } = useWebSocket();
   useVersionCheck();
@@ -131,7 +143,7 @@ function AppInner() {
               <Route path="/bts">{() => <TierGuard require="pro"><BTS /></TierGuard>}</Route>
 
               {/* Owner-only */}
-              <Route path="/insights">{() => user?.isOwner ? <AppInsights /> : <NotFound />}</Route>
+              <Route path="/insights">{() => <OwnerGuard><AppInsights /></OwnerGuard>}</Route>
 
               <Route component={NotFound} />
             </Switch>
