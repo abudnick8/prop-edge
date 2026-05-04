@@ -488,11 +488,19 @@ function UserManagementPanel() {
   const [search, setSearch] = useState("");
   const [searchVal, setSearchVal] = useState("");
   const [revealedPins, setRevealedPins] = useState<Set<number>>(new Set());
+  const [editingPin, setEditingPin] = useState<number | null>(null);
+  const [pinInput, setPinInput] = useState("");
 
   const togglePin = (id: number) => setRevealedPins(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
+  });
+
+  const pinMut = useMutation({
+    mutationFn: ({ id, pin }: { id: number; pin: string }) =>
+      fetch(`/api/admin/users/${id}/pin`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ pin }) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-users"] }); setEditingPin(null); setPinInput(""); },
   });
 
   const { data: users = [], isLoading, refetch } = useQuery<AppUser[]>({
@@ -582,22 +590,48 @@ function UserManagementPanel() {
                       <span className="text-[10px] font-semibold capitalize" style={{ color: statusColor(u.sub_status) }}>{u.sub_status}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      {u.pin_plain ? (
+                      {editingPin === u.id ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            autoFocus
+                            value={pinInput}
+                            onChange={e => setPinInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && pinInput.trim()) pinMut.mutate({ id: u.id, pin: pinInput.trim() });
+                              if (e.key === "Escape") { setEditingPin(null); setPinInput(""); }
+                            }}
+                            placeholder="PIN"
+                            className="w-14 px-1 py-0.5 rounded border text-[10px] font-mono text-center outline-none"
+                            style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.3)", color: "#131A24" }}
+                          />
+                          <button onClick={() => pinInput.trim() && pinMut.mutate({ id: u.id, pin: pinInput.trim() })}
+                            className="text-[9px] px-1.5 py-0.5 rounded font-bold"
+                            style={{ background: "#131A24", color: "#F6F1E7" }}>✓</button>
+                          <button onClick={() => { setEditingPin(null); setPinInput(""); }}
+                            className="text-[9px] px-1 py-0.5 rounded font-bold"
+                            style={{ background: "rgba(19,35,58,0.1)", color: "#3D4B58" }}>✕</button>
+                        </div>
+                      ) : u.pin_plain ? (
                         <div className="flex items-center justify-center gap-1">
                           <span className="font-mono text-[10px] font-bold text-foreground">
                             {revealedPins.has(u.id) ? u.pin_plain : "••••"}
                           </span>
-                          <button
-                            onClick={() => togglePin(u.id)}
+                          <button onClick={() => togglePin(u.id)}
                             className="p-0.5 rounded transition-colors hover:bg-muted/40"
                             title={revealedPins.has(u.id) ? "Hide PIN" : "Reveal PIN"}>
                             {revealedPins.has(u.id)
                               ? <EyeOff size={10} style={{ color: "#3D4B58" }} />
                               : <Eye size={10} style={{ color: "#3D4B58" }} />}
                           </button>
+                          <button onClick={() => { setEditingPin(u.id); setPinInput(u.pin_plain ?? ""); }}
+                            className="p-0.5 rounded transition-colors hover:bg-muted/40" title="Edit PIN">
+                            <KeyRound size={9} style={{ color: "#3D4B58" }} />
+                          </button>
                         </div>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground">N/A</span>
+                        <button onClick={() => { setEditingPin(u.id); setPinInput(""); }}
+                          className="text-[9px] font-semibold underline underline-offset-2"
+                          style={{ color: "#A23B32" }}>Set PIN</button>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-[10px] text-muted-foreground">

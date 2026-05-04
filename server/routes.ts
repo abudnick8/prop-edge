@@ -1985,6 +1985,19 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json(row);
   });
 
+  // ── PATCH /api/admin/users/:id/pin — owner sets pin_plain for any user ─────
+  app.patch("/api/admin/users/:id/pin", requireOwner, async (req: Request, res: Response) => {
+    const { pin } = req.body ?? {};
+    if (!pin || String(pin).length < 1) return res.status(400).json({ error: "PIN required" });
+    const pinHash = await hashPIN(String(pin));
+    const row = await db.queryOne(
+      `UPDATE users SET pin_hash=$1, pin_plain=$2 WHERE id=$3 RETURNING id,email,pin_plain`,
+      [pinHash, String(pin), req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
   // ── PATCH /api/admin/users/:id/disable — disable/enable user ──────────────
   app.patch("/api/admin/users/:id/disable", requireOwner, async (req: Request, res: Response) => {
     const row = await db.queryOne(
