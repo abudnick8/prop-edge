@@ -1593,10 +1593,21 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       ).catch(() => {});
 
       const user = await db.queryOne(
-        `SELECT id, email, tier, sub_status, is_owner, created_at FROM users WHERE id=$1`,
+        `SELECT id, email, tier, sub_status, is_owner, created_at, trial_expires FROM users WHERE id=$1`,
         [req.user!.userId]
       );
       if (!user) return res.status(404).json({ error: "User not found" });
+
+      // Auto-expire trial — demote to free if trial has lapsed
+      if (user.trial_expires && new Date(user.trial_expires) < new Date() && !user.is_owner) {
+        await db.query(
+          `UPDATE users SET tier=NULL, sub_status='inactive', trial_code=NULL, trial_expires=NULL WHERE id=$1`,
+          [user.id]
+        );
+        user.tier = null;
+        user.sub_status = "inactive";
+      }
+
       res.json({
         id:        user.id,
         email:     user.email,
