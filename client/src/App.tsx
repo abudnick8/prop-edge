@@ -31,7 +31,7 @@ import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { X, AlertTriangle, Info, CheckCircle } from "lucide-react";
 
 // ── Feature flag types ────────────────────────────────────────────────────────
@@ -42,29 +42,32 @@ interface FeatureFlag {
   kill_switch: boolean;
 }
 
-// Route path → feature flag key mapping
-const ROUTE_FLAG_MAP: Record<string, string> = {
-  "/":           "dashboard",
-  "/linemate":   "props_hub",
-  "/lotto":      "lotto",
-  "/picks":      "dashboard",       // pick detail — tied to dashboard
-  "/bets":       "all_picks",
-  "/bracket":    "bracket",
-  "/clv":        "line_movement",
-  "/line-movement": "line_movement",
-  "/markets":    "markets",
-  "/conviction": "top_plays",
-  "/ml-insights":"ml_intel",
-  "/bts":        "bts",
-  "/scores":     "live_scores",
-  "/fantasy":    "fantasy",
-};
+// ── Feature flags context — fetched ONCE at app level ────────────────────────
+const FeatureFlagContext = createContext<FeatureFlag[]>([]);
 
-// ── Global announcement banner ────────────────────────────────────────────────
-function AnnouncementBanner() {
-  const [dismissed, setDismissed] = useState<string | null>(null);
+function FeatureFlagProvider({ children }: { children: ReactNode }) {
+  const { data: flags = [] } = useQuery<FeatureFlag[]>({
+    queryKey: ["feature-flags-global"],
+    queryFn: () => fetch("/api/feature-flags").then(r => r.json()),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  return (
+    <FeatureFlagContext.Provider value={flags}>
+      {children}
+    </FeatureFlagContext.Provider>
+  );
+}
 
-  const { data } = useQuery<{ message: string; type: string; ts: string } | null>({
+function useFeatureFlags() {
+  return useContext(FeatureFlagContext);
+}
+
+// ── Announcement context ──────────────────────────────────────────────────────
+const AnnouncementContext = createContext<{ message: string; type: string } | null>(null);
+
+function AnnouncementProvider({ children }: { children: ReactNode }) {
+  const { data = null } = useQuery<{ message: string; type: string } | null>({
     queryKey: ["announcement-global"],
     queryFn: async () => {
       const r = await fetch("/api/announcement");
@@ -75,11 +78,20 @@ function AnnouncementBanner() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  return (
+    <AnnouncementContext.Provider value={data}>
+      {children}
+    </AnnouncementContext.Provider>
+  );
+}
 
-  // Key = message content so clearing/changing auto-re-evaluates
+// ── Global announcement banner ────────────────────────────────────────────────
+function AnnouncementBanner() {
+  const data = useContext(AnnouncementContext);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+
   const msgKey = data?.message ?? null;
 
-  // Check sessionStorage for dismissed state
   useEffect(() => {
     if (msgKey) {
       const stored = sessionStorage.getItem("ciq_ann_dismissed");
@@ -96,8 +108,6 @@ function AnnouncementBanner() {
   };
 
   const type = data.type ?? "info";
-
-  // Style per type
   const styles: Record<string, { bg: string; border: string; text: string; icon: ReactNode }> = {
     info:    { bg: "#1a3350", border: "rgba(99,163,235,0.4)",  text: "#bfd9f5", icon: <Info size={14} /> },
     success: { bg: "#1a3328", border: "rgba(74,180,120,0.4)",  text: "#a3e6c2", icon: <CheckCircle size={14} /> },
@@ -107,54 +117,28 @@ function AnnouncementBanner() {
   const s = styles[type] ?? styles.info;
 
   return (
-    <div
-      style={{
-        background: s.bg,
-        borderBottom: `1px solid ${s.border}`,
-        color: s.text,
-        padding: "9px 16px",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 13,
-        fontWeight: 500,
-        zIndex: 40,
-        position: "relative",
-      }}
-    >
+    <div style={{
+      background: s.bg,
+      borderBottom: `1px solid ${s.border}`,
+      color: s.text,
+      padding: "9px 16px",
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      fontSize: 13,
+      fontWeight: 500,
+    }}>
       <span style={{ flexShrink: 0, opacity: 0.85 }}>{s.icon}</span>
       <span style={{ flex: 1, lineHeight: 1.4 }}>{data.message}</span>
       <button
         onClick={handleDismiss}
-        style={{
-          flexShrink: 0,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: s.text,
-          opacity: 0.7,
-          padding: "2px 4px",
-          borderRadius: 4,
-          display: "flex",
-          alignItems: "center",
-        }}
+        style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: s.text, opacity: 0.7, padding: "2px 4px", borderRadius: 4, display: "flex", alignItems: "center" }}
         aria-label="Dismiss announcement"
       >
         <X size={14} />
       </button>
     </div>
   );
-}
-
-// ── Feature flags hook ────────────────────────────────────────────────────────
-function useFeatureFlags() {
-  const { data: flags = [] } = useQuery<FeatureFlag[]>({
-    queryKey: ["feature-flags-global"],
-    queryFn: () => fetch("/api/feature-flags").then(r => r.json()),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-  return flags;
 }
 
 function ScrollToTop() {
@@ -166,8 +150,7 @@ function ScrollToTop() {
   return null;
 }
 
-// ── FeatureGuard — replaces TierGuard, also enforces kill switches ────────────
-// flagKey: the feature_flags.key for this route (optional — if not provided, only tier is checked)
+// ── FeatureGuard — proper component, no hooks-in-callbacks issue ──────────────
 function FeatureGuard({
   children,
   require: req,
@@ -178,8 +161,8 @@ function FeatureGuard({
   flagKey?: string;
 }) {
   const { isPro, isBasic, isOwner } = useAuth();
-  const [, navigate] = useHashLocation();
   const flags = useFeatureFlags();
+  const [, navigate] = useHashLocation();
 
   // Owner bypasses everything
   if (isOwner) return <>{children}</>;
@@ -195,46 +178,28 @@ function FeatureGuard({
     return null;
   }
 
-  // Feature flag / kill switch check
+  // Feature flag / kill switch check (only once flags have loaded)
   if (flagKey && flags.length > 0) {
     const flag = flags.find(f => f.key === flagKey);
     if (flag) {
-      // Kill switch: override — no one (except owner, already returned above) gets access
       if (flag.kill_switch) {
         return (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <div style={{
-              background: "#13233A",
-              borderRadius: 16,
-              padding: "32px 28px",
-              maxWidth: 360,
-              color: "#F6F1E7",
-            }}>
+            <div style={{ background: "#13233A", borderRadius: 16, padding: "32px 28px", maxWidth: 360, color: "#F6F1E7" }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🚧</div>
               <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Feature Unavailable</div>
-              <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>
-                This feature is temporarily disabled. Check back soon.
-              </div>
+              <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>This feature is temporarily disabled. Check back soon.</div>
             </div>
           </div>
         );
       }
-      // Disabled for tier (not kill switch — just turned off)
       if (!flag.enabled) {
         return (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <div style={{
-              background: "#13233A",
-              borderRadius: 16,
-              padding: "32px 28px",
-              maxWidth: 360,
-              color: "#F6F1E7",
-            }}>
+            <div style={{ background: "#13233A", borderRadius: 16, padding: "32px 28px", maxWidth: 360, color: "#F6F1E7" }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
               <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Currently Disabled</div>
-              <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>
-                This feature is not available right now.
-              </div>
+              <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5 }}>This feature is not available right now.</div>
             </div>
           </div>
         );
@@ -245,7 +210,7 @@ function FeatureGuard({
   return <>{children}</>;
 }
 
-// OwnerGuard — renders children only for is_owner=true, redirects otherwise
+// Owner-only guard
 function OwnerGuard({ children }: { children: React.ReactNode }) {
   const { isOwner, isLoading } = useAuth();
   const [, navigate] = useHashLocation();
@@ -257,6 +222,26 @@ function OwnerGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ── Route components — defined as named components, NOT inline arrows ─────────
+// This ensures hooks inside FeatureGuard are always called at component level
+function RouteScores()      { return <FeatureGuard require="free"  flagKey="live_scores"><LiveScores /></FeatureGuard>; }
+function RouteFantasy()     { return <FeatureGuard require="free"  flagKey="fantasy"><Fantasy /></FeatureGuard>; }
+function RouteDashboard()   { return <FeatureGuard require="basic" flagKey="dashboard"><Dashboard /></FeatureGuard>; }
+function RouteLinemate()    { return <FeatureGuard require="basic" flagKey="props_hub"><LinemateProps /></FeatureGuard>; }
+function RouteLotto()       { return <FeatureGuard require="basic" flagKey="lotto"><Lotto /></FeatureGuard>; }
+function RouteAllBets()     { return <FeatureGuard require="pro"   flagKey="all_picks"><AllBets /></FeatureGuard>; }
+function RouteBracket()     { return <FeatureGuard require="pro"   flagKey="bracket"><Bracket /></FeatureGuard>; }
+function RouteLineMove()    { return <FeatureGuard require="pro"   flagKey="line_movement"><LineMovement /></FeatureGuard>; }
+function RouteMarkets()     { return <FeatureGuard require="pro"   flagKey="markets"><PredictionMarkets /></FeatureGuard>; }
+function RouteTraders()     { return <FeatureGuard require="pro"   flagKey="markets"><TopTraders /></FeatureGuard>; }
+function RouteConviction()  { return <FeatureGuard require="pro"   flagKey="top_plays"><HighConviction /></FeatureGuard>; }
+function RouteMLInsights()  { return <FeatureGuard require="pro"   flagKey="ml_intel"><MLInsights /></FeatureGuard>; }
+function RouteBTS()         { return <FeatureGuard require="pro"   flagKey="bts"><BTS /></FeatureGuard>; }
+function RouteInsights()    { return <OwnerGuard><AppInsights /></OwnerGuard>; }
+function RoutePickDetail(p: any)    { return <FeatureGuard require="basic" flagKey="dashboard"><PickDetail {...p} /></FeatureGuard>; }
+function RouteLottoDetail(p: any)   { return <FeatureGuard require="basic" flagKey="lotto"><PickDetail {...p} /></FeatureGuard>; }
+function RouteBetDetail(p: any)     { return <FeatureGuard require="pro"   flagKey="all_picks"><BetDetail {...p} /></FeatureGuard>; }
+
 function AppInner() {
   const { isConnected } = useWebSocket();
   useVersionCheck();
@@ -266,21 +251,13 @@ function AppInner() {
       <ScrollToTop />
       <div
         className="flex overflow-hidden"
-        style={{
-          height: "100dvh",
-          minHeight: "-webkit-fill-available",
-          paddingTop: "env(safe-area-inset-top, 0px)",
-          background: "#F6F1E7",
-        }}
+        style={{ height: "100dvh", minHeight: "-webkit-fill-available", paddingTop: "env(safe-area-inset-top, 0px)", background: "#F6F1E7" }}
       >
         <DesktopSidebar />
 
         <main className="flex-1 overflow-y-auto" style={{ background: "#F6F1E7" }}>
           {/* Top bar */}
-          <div
-            className="sticky top-0 z-30"
-            style={{ background: "#13233A", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-          >
+          <div className="sticky top-0 z-30" style={{ background: "#13233A", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
             <div className="flex items-center justify-between px-4 md:px-6 py-3">
               <div className="flex md:hidden items-center">
                 <CiqLogo size="sm" />
@@ -289,13 +266,10 @@ function AppInner() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5">
                   <span className="relative flex h-2 w-2" title={isConnected ? "Live feed connected" : "Live feed reconnecting..."}>
-                    {isConnected && (
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: "#3F6B4B" }} />
-                    )}
+                    {isConnected && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: "#3F6B4B" }} />}
                     <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: isConnected ? "#3F6B4B" : "#4A5568" }} />
                   </span>
-                  <span className="hidden md:inline text-[10px] font-semibold tracking-widest uppercase"
-                    style={{ color: isConnected ? "rgba(63,107,75,0.9)" : "rgba(216,204,184,0.3)" }}>
+                  <span className="hidden md:inline text-[10px] font-semibold tracking-widest uppercase" style={{ color: isConnected ? "rgba(63,107,75,0.9)" : "rgba(216,204,184,0.3)" }}>
                     {isConnected ? "Live" : "···"}
                   </span>
                 </div>
@@ -303,41 +277,32 @@ function AppInner() {
                 <NotificationCenter />
               </div>
             </div>
-            {/* Global announcement banner — sits inside sticky top bar so it scrolls with the bar */}
             <AnnouncementBanner />
           </div>
 
           <div className="p-4 md:p-6 pb-28 md:pb-6">
             <Switch>
-              {/* Free — always accessible (but still respect kill switches) */}
-              <Route path="/scores">{() => <FeatureGuard require="free" flagKey="live_scores"><LiveScores /></FeatureGuard>}</Route>
-              <Route path="/fantasy">{() => <FeatureGuard require="free" flagKey="fantasy"><Fantasy /></FeatureGuard>}</Route>
-              <Route path="/settings" component={Settings} />
-              <Route path="/pricing" component={Pricing} />
-              <Route path="/ask" component={Ask} />
-
-              {/* Basic tier */}
-              <Route path="/">{() => <FeatureGuard require="basic" flagKey="dashboard"><Dashboard /></FeatureGuard>}</Route>
-              <Route path="/linemate">{() => <FeatureGuard require="basic" flagKey="props_hub"><LinemateProps /></FeatureGuard>}</Route>
-              <Route path="/lotto">{() => <FeatureGuard require="basic" flagKey="lotto"><Lotto /></FeatureGuard>}</Route>
-              <Route path="/picks/:slug">{(p) => <FeatureGuard require="basic" flagKey="dashboard"><PickDetail {...p} /></FeatureGuard>}</Route>
-              <Route path="/lotto/:slug">{(p) => <FeatureGuard require="basic" flagKey="lotto"><PickDetail {...p} /></FeatureGuard>}</Route>
-
-              {/* Pro tier */}
-              <Route path="/bets">{() => <FeatureGuard require="pro" flagKey="all_picks"><AllBets /></FeatureGuard>}</Route>
-              <Route path="/bets/:id">{(p) => <FeatureGuard require="pro" flagKey="all_picks"><BetDetail {...p} /></FeatureGuard>}</Route>
-              <Route path="/bracket">{() => <FeatureGuard require="pro" flagKey="bracket"><Bracket /></FeatureGuard>}</Route>
-              <Route path="/clv">{() => <FeatureGuard require="pro" flagKey="line_movement"><LineMovement /></FeatureGuard>}</Route>
-              <Route path="/line-movement">{() => <FeatureGuard require="pro" flagKey="line_movement"><LineMovement /></FeatureGuard>}</Route>
-              <Route path="/markets">{() => <FeatureGuard require="pro" flagKey="markets"><PredictionMarkets /></FeatureGuard>}</Route>
-              <Route path="/markets/top-traders">{() => <FeatureGuard require="pro" flagKey="markets"><TopTraders /></FeatureGuard>}</Route>
-              <Route path="/conviction">{() => <FeatureGuard require="pro" flagKey="top_plays"><HighConviction /></FeatureGuard>}</Route>
-              <Route path="/ml-insights">{() => <FeatureGuard require="pro" flagKey="ml_intel"><MLInsights /></FeatureGuard>}</Route>
-              <Route path="/bts">{() => <FeatureGuard require="pro" flagKey="bts"><BTS /></FeatureGuard>}</Route>
-
-              {/* Owner-only */}
-              <Route path="/insights">{() => <OwnerGuard><AppInsights /></OwnerGuard>}</Route>
-
+              <Route path="/scores"        component={RouteScores} />
+              <Route path="/fantasy"       component={RouteFantasy} />
+              <Route path="/settings"      component={Settings} />
+              <Route path="/pricing"       component={Pricing} />
+              <Route path="/ask"           component={Ask} />
+              <Route path="/"             component={RouteDashboard} />
+              <Route path="/linemate"      component={RouteLinemate} />
+              <Route path="/lotto"         component={RouteLotto} />
+              <Route path="/picks/:slug"   component={RoutePickDetail} />
+              <Route path="/lotto/:slug"   component={RouteLottoDetail} />
+              <Route path="/bets"          component={RouteAllBets} />
+              <Route path="/bets/:id"      component={RouteBetDetail} />
+              <Route path="/bracket"       component={RouteBracket} />
+              <Route path="/clv"           component={RouteLineMove} />
+              <Route path="/line-movement" component={RouteLineMove} />
+              <Route path="/markets"       component={RouteMarkets} />
+              <Route path="/markets/top-traders" component={RouteTraders} />
+              <Route path="/conviction"    component={RouteConviction} />
+              <Route path="/ml-insights"   component={RouteMLInsights} />
+              <Route path="/bts"           component={RouteBTS} />
+              <Route path="/insights"      component={RouteInsights} />
               <Route component={NotFound} />
             </Switch>
           </div>
@@ -360,7 +325,7 @@ function AuthGuard() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#F6F1E7" }}>
-        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#13233A", borderTopColor: "transparent" }} />
+        <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: "#13233A", borderTopColor: "transparent" }} />
       </div>
     );
   }
@@ -369,17 +334,16 @@ function AuthGuard() {
   return <AppInner />;
 }
 
-function AuthGuardWrapper() {
-  const [location] = useHashLocation();
-  return <AuthGuard />;
-}
-
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <WouterRouter hook={useHashLocation}>
-          <AuthGuardWrapper />
+          <AnnouncementProvider>
+            <FeatureFlagProvider>
+              <AuthGuard />
+            </FeatureFlagProvider>
+          </AnnouncementProvider>
         </WouterRouter>
       </AuthProvider>
     </QueryClientProvider>
