@@ -10795,6 +10795,359 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OWNER ADMIN PANEL — Sections 1-7
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Helper: write audit log entry
+  async function auditLog(actor: string, action: string, target?: string, detail?: string) {
+    try {
+      await db.query(`INSERT INTO audit_log (actor,action,target,detail) VALUES ($1,$2,$3,$4)`,
+        [actor, action, target ?? null, detail ?? null]);
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Section 1: Enhanced user control ──────────────────────────────────────
+
+  // GET /api/admin/users/:id/history — login history
+  app.get("/api/admin/users/:id/history", requireOwner, async (req: Request, res: Response) => {
+    const logs = await db.query(
+      `SELECT action, detail, ts FROM audit_log WHERE target=$1 ORDER BY ts DESC LIMIT 30`,
+      [req.params.id]
+    );
+    res.json(logs.rows);
+  });
+
+  // POST /api/admin/users/:id/refund — trigger Stripe refund for latest charge
+  app.post("/api/admin/users/:id/refund", requireOwner, async (req: Request, res: Response) => {
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user || !user.stripe_customer_id) return res.status(400).json({ error: "No Stripe customer" });
+    try {
+      const charges = await stripe!.charges.list({ customer: user.stripe_customer_id, limit: 1 });
+      if (!charges.data.length) return res.status(404).json({ error: "No charges found" });
+      const charge = charges.data[0];
+      if (charge.refunded) return res.status(400).json({ error: "Already refunded" });
+      const refund = await stripe!.refunds.create({ charge: charge.id });
+      await auditLog((req as any).user?.email ?? "owner", "refund", req.params.id, `Refunded charge ${charge.id}`);
+      res.json({ success: true, refund_id: refund.id, amount: refund.amount });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/users/:id/cancel — cancel Stripe subscription
+  app.post("/api/admin/users/:id/cancel", requireOwner, async (req: Request, res: Response) => {
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    try {
+      if (user.stripe_sub_id) {
+        await stripe!.subscriptions.cancel(user.stripe_sub_id);
+      }
+      await db.query(`UPDATE users SET sub_status='cancelled', tier=NULL WHERE id=$1`, [req.params.id]);
+      await auditLog((req as any).user?.email ?? "owner", "cancel_sub", req.params.id, `Cancelled subscription`);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/users/:id/extend-trial — extend trial by N days
+  app.post("/api/admin/users/:id/extend-trial", requireOwner, async (req: Request, res: Response) => {
+    const { days } = req.body ?? {};
+    const d = parseInt(days);
+    if (!d || d < 1 || d > 365) return res.status(400).json({ error: "Days must be 1-365" });
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const base = user.trial_expires && new Date(user.trial_expires) > new Date() ? new Date(user.trial_expires) : new Date();
+    base.setDate(base.getDate() + d);
+    await db.query(`UPDATE users SET trial_expires=$1, sub_status='active', tier='pro' WHERE id=$2`, [base, req.params.id]);
+    await auditLog((req as any).user?.email ?? "owner", "extend_trial", req.params.id, `Extended trial by ${d} days`);
+    res.json({ success: true, trial_expires: base });
+  });
+
+  // PATCH /api/admin/users/:id/flag — flag/unflag suspicious account
+  app.patch("/api/admin/users/:id/flag", requireOwner, async (req: Request, res: Response) => {
+    const { reason } = req.body ?? {};
+    const row = await db.queryOne(
+      `UPDATE users SET is_flagged = NOT is_flagged, flag_reason = CASE WHEN NOT is_flagged THEN $2 ELSE NULL END WHERE id=$1 RETURNING id,email,is_flagged,flag_reason`,
+      [req.params.id, reason ?? "Flagged by admin"]
+    );
+    if (!row) return res.status(404).json({ error: "Not found" });
+    await auditLog((req as any).user?.email ?? "owner", row.is_flagged ? "flag_user" : "unflag_user", req.params.id, reason ?? "");
+    res.json(row);
+  });
+
+  // ── Section 2: Feature Flags ───────────────────────────────────────────────
+
+  app.get("/api/admin/feature-flags", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM feature_flags ORDER BY min_tier, label`);
+    res.json(rows.rows);
+  });
+
+  app.patch("/api/admin/feature-flags/:id", requireOwner, async (req: Request, res: Response) => {
+    const { enabled, min_tier, kill_switch } = req.body ?? {};
+    const sets: string[] = ["updated_at=NOW()"];
+    const vals: any[] = [];
+    if (enabled !== undefined) { vals.push(enabled); sets.push(`enabled=$${vals.length}`); }
+    if (min_tier !== undefined) { vals.push(min_tier); sets.push(`min_tier=$${vals.length}`); }
+    if (kill_switch !== undefined) { vals.push(kill_switch); sets.push(`kill_switch=$${vals.length}`); }
+    if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
+    vals.push(req.params.id);
+    const row = await db.queryOne(
+      `UPDATE feature_flags SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING *`,
+      vals
+    );
+    if (!row) return res.status(404).json({ error: "Flag not found" });
+    await auditLog((req as any).user?.email ?? "owner", "update_feature_flag", row.key,
+      JSON.stringify({ enabled, min_tier, kill_switch }));
+    res.json(row);
+  });
+
+  // Public endpoint: frontend reads feature flags to conditionally show tabs
+  app.get("/api/feature-flags", async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT key, enabled, min_tier, kill_switch FROM feature_flags`);
+    const map: Record<string, any> = {};
+    for (const r of rows.rows) map[r.key] = r;
+    res.json(map);
+  });
+
+  // POST /api/track-page — lightweight tab usage tracker (auth optional)
+  app.post("/api/track-page", async (req: Request, res: Response) => {
+    const { page } = req.body ?? {};
+    if (!page) return res.json({ ok: true });
+    const authHeader = req.headers.authorization;
+    let userId: number | null = null;
+    if (authHeader) {
+      try {
+        const token = authHeader.replace("Bearer ", "");
+        const payload = verifyJWT(token) as any;
+        userId = payload?.userId ?? null;
+      } catch { /* ok */ }
+    }
+    await db.query(`INSERT INTO page_events (user_id, page) VALUES ($1,$2)`, [userId, page]).catch(() => {});
+    res.json({ ok: true });
+  });
+
+  // ── Section 3: API Health ──────────────────────────────────────────────────
+
+  app.get("/api/admin/api-health", requireOwner, async (_req: Request, res: Response) => {
+    // Last result per service
+    const rows = await db.query(`
+      SELECT DISTINCT ON (service) service, status, latency_ms, error, ts
+      FROM api_health_log ORDER BY service, ts DESC
+    `);
+    // Error count last 24h per service
+    const errs = await db.query(`
+      SELECT service, COUNT(*) as err_count FROM api_health_log
+      WHERE status='error' AND ts > NOW()-INTERVAL '24 hours' GROUP BY service
+    `);
+    const errMap: Record<string,number> = {};
+    for (const r of errs.rows) errMap[r.service] = parseInt(r.err_count);
+    const result = rows.rows.map((r: any) => ({ ...r, errors_24h: errMap[r.service] ?? 0 }));
+    res.json(result);
+  });
+
+  app.get("/api/admin/api-health/logs", requireOwner, async (req: Request, res: Response) => {
+    const service = req.query.service as string | undefined;
+    const rows = service
+      ? await db.query(`SELECT * FROM api_health_log WHERE service=$1 ORDER BY ts DESC LIMIT 50`, [service])
+      : await db.query(`SELECT * FROM api_health_log ORDER BY ts DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // POST /api/admin/api-health/ping — ping a specific service and record result
+  app.post("/api/admin/api-health/ping", requireOwner, async (req: Request, res: Response) => {
+    const { service } = req.body ?? {};
+    const SERVICES: Record<string, { url: string; headers?: any }> = {
+      odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=15c62ebc-0905-4858-87e4-87160b253149` },
+      espn:           { url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard` },
+      mlb_stats:      { url: `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${new Date().toISOString().split('T')[0]}` },
+      action_network: { url: `https://api.actionnetwork.com/web/v1/scoreboard/mlb`, headers: { 'x-api-key': '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2' } },
+      weather:        { url: `https://wttr.in/Chicago?format=3` },
+    };
+    const svc = SERVICES[service];
+    if (!svc) return res.status(400).json({ error: `Unknown service: ${service}` });
+    const start = Date.now();
+    try {
+      await axios.get(svc.url, { headers: svc.headers ?? {}, timeout: 8000 });
+      const latency = Date.now() - start;
+      await db.query(`INSERT INTO api_health_log (service,status,latency_ms) VALUES ($1,'ok',$2)`, [service, latency]);
+      res.json({ service, status: 'ok', latency_ms: latency });
+    } catch (e: any) {
+      const latency = Date.now() - start;
+      const errMsg = e.response?.status ? `HTTP ${e.response.status}` : e.message;
+      await db.query(`INSERT INTO api_health_log (service,status,latency_ms,error) VALUES ($1,'error',$2,$3)`, [service, latency, errMsg]);
+      res.json({ service, status: 'error', latency_ms: latency, error: errMsg });
+    }
+  });
+
+  // ── Section 4: Analytics ──────────────────────────────────────────────────
+
+  app.get("/api/admin/analytics", requireOwner, async (_req: Request, res: Response) => {
+    try {
+      // Tab usage (last 7 days)
+      const tabUsage = await db.query(`
+        SELECT page, COUNT(*) as views FROM page_events
+        WHERE ts > NOW()-INTERVAL '7 days' GROUP BY page ORDER BY views DESC LIMIT 15
+      `);
+
+      // Conversion funnel
+      const funnel = await db.query(`
+        SELECT
+          COUNT(CASE WHEN tier IS NULL THEN 1 END) as free_count,
+          COUNT(CASE WHEN tier='basic' THEN 1 END) as basic_count,
+          COUNT(CASE WHEN tier='pro'   THEN 1 END) as pro_count
+        FROM users WHERE NOT is_owner
+      `);
+
+      // MRR from DB (approx: basic=$5, pro=$15, active subs only)
+      const mrrData = await db.query(`
+        SELECT tier, COUNT(*) as cnt FROM users
+        WHERE sub_status='active' AND tier IN ('basic','pro') AND NOT is_owner GROUP BY tier
+      `);
+      let mrr = 0;
+      for (const r of mrrData.rows) {
+        mrr += (r.tier === 'pro' ? 15 : 5) * parseInt(r.cnt);
+      }
+
+      // Churn (cancelled in last 30 days) — approximate from audit log
+      const churn = await db.query(`
+        SELECT COUNT(*) as cnt FROM audit_log
+        WHERE action='cancel_sub' AND ts > NOW()-INTERVAL '30 days'
+      `);
+
+      // Stripe revenue (real) — last 30 days
+      let stripeRevenue = 0;
+      let stripeRefunds = 0;
+      try {
+        const charges = await stripe!.charges.list({ limit: 100, created: { gte: Math.floor((Date.now() - 30*24*60*60*1000)/1000) } });
+        stripeRevenue = charges.data.filter(c => c.paid && !c.refunded).reduce((s,c) => s + c.amount, 0) / 100;
+        stripeRefunds = charges.data.filter(c => c.refunded).reduce((s,c) => s + (c.amount_refunded ?? 0), 0) / 100;
+      } catch { /* Stripe optional */ }
+
+      res.json({
+        tabUsage: tabUsage.rows,
+        funnel: funnel.rows[0],
+        mrr,
+        churn_30d: parseInt(churn.rows[0].cnt),
+        stripe_revenue_30d: stripeRevenue,
+        stripe_refunds_30d: stripeRefunds,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Section 5: Notifications & Messaging ──────────────────────────────────
+
+  // POST /api/admin/send-blast — email blast to tier(s)
+  app.post("/api/admin/send-blast", requireOwner, async (req: Request, res: Response) => {
+    const { subject, body, tiers } = req.body ?? {};
+    if (!subject || !body) return res.status(400).json({ error: "Subject and body required" });
+    const tierFilter = Array.isArray(tiers) && tiers.length > 0
+      ? tiers : ['free', 'basic', 'pro'];
+    // Map 'free' tier to NULL in DB
+    const conditions = tierFilter.map((t: string) => t === 'free' ? `tier IS NULL` : `tier='${t}'`);
+    const users = await db.query(
+      `SELECT email FROM users WHERE (${conditions.join(' OR ')}) AND NOT is_disabled AND NOT is_owner`
+    );
+    if (!users.rows.length) return res.json({ success: true, sent: 0 });
+    try {
+      const resendClient = new (await import('resend')).Resend(process.env.RESEND_API_KEY!);
+      const FROM = "Clubhouse IQ <noreply@clubhouseiq.app>";
+      let sent = 0;
+      // Send in batches of 10
+      for (let i = 0; i < users.rows.length; i += 10) {
+        const batch = users.rows.slice(i, i+10);
+        await Promise.all(batch.map((u: any) =>
+          resendClient.emails.send({ from: FROM, to: u.email, subject, html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;"><p style="white-space:pre-wrap;color:#131A24">${body}</p><hr style="margin:24px 0;border:none;border-top:1px solid #eee"/><p style="color:#8A9BB0;font-size:11px">Clubhouse IQ · <a href="https://clubhouse-iq.up.railway.app">clubhouse-iq.up.railway.app</a></p></div>` })
+        ));
+        sent += batch.length;
+      }
+      await auditLog((req as any).user?.email ?? "owner", "email_blast", undefined, `Sent to ${sent} users: "${subject}"`);
+      res.json({ success: true, sent });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/announcement — set/clear in-app banner
+  app.post("/api/admin/announcement", requireOwner, async (req: Request, res: Response) => {
+    const { message, type } = req.body ?? {}; // type: info|warning|success
+    if (message) {
+      await db.query(`INSERT INTO app_settings (key,value) VALUES ('announcement', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [JSON.stringify({ message, type: type ?? 'info', ts: new Date().toISOString() })]);
+    } else {
+      await db.query(`DELETE FROM app_settings WHERE key='announcement'`);
+    }
+    res.json({ success: true });
+  });
+
+  // GET /api/announcement — public, used by frontend to show banner
+  app.get("/api/announcement", async (_req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT value FROM app_settings WHERE key='announcement'`);
+    if (!row) return res.json(null);
+    try { res.json(JSON.parse(row.value)); } catch { res.json(null); }
+  });
+
+  // ── Section 6: Deployment / Version Info ──────────────────────────────────
+
+  app.get("/api/admin/deployment", requireOwner, async (_req: Request, res: Response) => {
+    // Read version info baked in at build time (if present)
+    let gitSha = process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? null;
+    let deployedAt = process.env.RAILWAY_DEPLOYMENT_ID ? null : null; // Railway doesn't expose this easily
+    let branch = process.env.RAILWAY_GIT_BRANCH ?? "main";
+    // Try to read from a baked-in version file
+    try {
+      const vf = require('fs').readFileSync(require('path').join(__dirname, '../version.json'), 'utf-8');
+      const vd = JSON.parse(vf);
+      gitSha = gitSha ?? vd.sha;
+      deployedAt = vd.buildTime;
+      branch = vd.branch ?? branch;
+    } catch { /* ok */ }
+    res.json({
+      git_sha: gitSha,
+      git_sha_short: gitSha ? gitSha.slice(0,8) : null,
+      branch,
+      deployed_at: deployedAt,
+      github_url: gitSha ? `https://github.com/abudnick8/prop-edge/commit/${gitSha}` : "https://github.com/abudnick8/prop-edge",
+      railway_url: "https://railway.app/project/c88d82a5-56b0-452e-8840-66587aeb94a9",
+      app_url: "https://clubhouse-iq.up.railway.app",
+    });
+  });
+
+  // ── Section 7: System Settings — API keys, audit log ─────────────────────
+
+  // GET /api/admin/audit-log
+  app.get("/api/admin/audit-log", requireOwner, async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string ?? "50"), 200);
+    const rows = await db.query(`SELECT * FROM audit_log ORDER BY ts DESC LIMIT $1`, [limit]);
+    res.json(rows.rows);
+  });
+
+  // GET/PATCH /api/admin/api-keys — owner manages API keys stored in app_settings
+  app.get("/api/admin/api-keys", requireOwner, async (_req: Request, res: Response) => {
+    const keys = ['odds_api_key', 'action_network_key'];
+    const rows = await db.query(`SELECT key,value FROM app_settings WHERE key=ANY($1)`, [keys]);
+    const result: Record<string,string> = {};
+    for (const r of rows.rows) {
+      // Mask all but last 4 chars
+      result[r.key] = r.value.length > 8 ? '•'.repeat(r.value.length - 4) + r.value.slice(-4) : r.value;
+    }
+    res.json(result);
+  });
+
+  app.patch("/api/admin/api-keys", requireOwner, async (req: Request, res: Response) => {
+    const allowed = ['odds_api_key', 'action_network_key'];
+    const updates = req.body ?? {};
+    for (const [key, value] of Object.entries(updates)) {
+      if (!allowed.includes(key)) continue;
+      await db.query(`INSERT INTO app_settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2`, [key, value]);
+    }
+    await auditLog((req as any).user?.email ?? "owner", "update_api_keys", undefined, Object.keys(updates).join(", "));
+    res.json({ success: true });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   function detectFantasyInjury(headline: string): string | null {
     const h = headline.toLowerCase();
     if (h.includes("60-day") || h.includes("season-ending") || h.includes("out for season")) return "Out (Season)";

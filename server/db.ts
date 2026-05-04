@@ -110,6 +110,84 @@ async function runMigrations() {
       ON CONFLICT (key) DO NOTHING
     `);
 
+    // ── Feature Flags ────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        id          SERIAL PRIMARY KEY,
+        key         TEXT UNIQUE NOT NULL,
+        label       TEXT NOT NULL,
+        enabled     BOOLEAN DEFAULT TRUE,
+        min_tier    TEXT DEFAULT 'free',
+        kill_switch BOOLEAN DEFAULT FALSE,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Seed default feature flags
+    const defaultFlags = [
+      ['dashboard',     'Dashboard',      true,  'basic',  false],
+      ['props_hub',     'Props Hub',      true,  'basic',  false],
+      ['lotto',         'Lotto',          true,  'basic',  false],
+      ['top_plays',     'Top Plays',      true,  'pro',    false],
+      ['all_picks',     'All Picks',      true,  'pro',    false],
+      ['line_movement', 'Line Movement',  true,  'pro',    false],
+      ['markets',       'Markets',        true,  'pro',    false],
+      ['bracket',       'Bracket',        true,  'pro',    false],
+      ['ml_intel',      'ML Intel',       true,  'pro',    false],
+      ['bts',           'Beat the Streak',true,  'pro',    false],
+      ['live_scores',   'Live Scores',    true,  'free',   false],
+      ['fantasy',       'Fantasy',        true,  'free',   false],
+    ];
+    for (const [key, label, enabled, min_tier, kill_switch] of defaultFlags) {
+      await pool.query(
+        `INSERT INTO feature_flags (key,label,enabled,min_tier,kill_switch) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (key) DO NOTHING`,
+        [key, label, enabled, min_tier, kill_switch]
+      );
+    }
+
+    // ── Page events (tab usage tracking) ──────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS page_events (
+        id         SERIAL PRIMARY KEY,
+        user_id    INT REFERENCES users(id) ON DELETE SET NULL,
+        page       TEXT NOT NULL,
+        ts         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS page_events_ts_idx ON page_events(ts)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS page_events_page_idx ON page_events(page)`);
+
+    // ── API health log ─────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS api_health_log (
+        id          SERIAL PRIMARY KEY,
+        service     TEXT NOT NULL,
+        status      TEXT NOT NULL,
+        latency_ms  INT DEFAULT NULL,
+        error       TEXT DEFAULT NULL,
+        ts          TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS api_health_log_ts_idx ON api_health_log(ts)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS api_health_log_service_idx ON api_health_log(service)`);
+
+    // ── Audit log ─────────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id         SERIAL PRIMARY KEY,
+        actor      TEXT NOT NULL,
+        action     TEXT NOT NULL,
+        target     TEXT DEFAULT NULL,
+        detail     TEXT DEFAULT NULL,
+        ts         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log(ts)`);
+
+    // ── Flagged users column ───────────────────────────────────────────────────────
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_flagged  BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS flag_reason TEXT    DEFAULT NULL`);
+
     console.log("[DB] Migrations complete");
   } catch (err: any) {
     console.warn("[DB] Migration warning:", err.message);
