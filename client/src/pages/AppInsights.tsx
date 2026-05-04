@@ -3,14 +3,14 @@
  * Sections: Dev Account · User Stats · Promo Codes · Trial Codes · Trial Usage · User Management
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import {
   Users, TrendingUp, Activity, Crown, Star, Zap,
   RefreshCw, LogIn, UserCheck, UserPlus, Tag, Gift,
   Trash2, ToggleLeft, ToggleRight, ShieldBan, ShieldCheck,
-  ChevronDown, ChevronUp, Search,
+  ChevronDown, ChevronUp, Search, KeyRound, Save,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -367,6 +367,103 @@ function TrialCodesPanel() {
   );
 }
 
+// ─── Dev Code Panel ──────────────────────────────────────────────────────────
+function DevCodePanel() {
+  const [currentCode, setCurrentCode] = useState<string | null>(null);
+  const [inputCode, setInputCode]     = useState("");
+  const [loading, setLoading]         = useState(true);
+  const [saving, setSaving]           = useState(false);
+  const [success, setSuccess]         = useState("");
+  const [error, setError]             = useState("");
+
+  // Fetch current code on mount
+  useEffect(() => {
+    fetch("/api/admin/dev-code")
+      .then(r => r.json())
+      .then(d => {
+        setCurrentCode(d.code ?? "");
+        setInputCode(d.code ?? "");
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError(""); setSuccess("");
+    const val = inputCode.toUpperCase().trim();
+    if (!val) { setError("Code cannot be empty."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/dev-code", {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ code: val }),
+      });
+      const d = await res.json();
+      if (d.error) { setError(d.error); }
+      else {
+        setCurrentCode(d.code);
+        setInputCode(d.code);
+        setSuccess("Dev code updated!");
+        setTimeout(() => setSuccess(""), 3000);
+      }
+    } catch {
+      setError("Failed to save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2" style={{ background: "rgba(19,35,58,0.04)" }}>
+        <KeyRound size={13} style={{ color: "#131A24" }} />
+        <p className="text-xs font-bold text-foreground">Active Dev Code</p>
+        <span className="ml-auto text-[10px] text-muted-foreground">Login screen · Dev tab</span>
+      </div>
+      <form onSubmit={handleSave} className="px-4 py-4">
+        {error   && <p className="text-xs text-red-600 font-semibold mb-3">{error}</p>}
+        {success && <p className="text-xs font-semibold mb-3" style={{ color: "#22c55e" }}>{success}</p>}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            {loading ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border" style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)" }}>
+                <RefreshCw size={12} className="animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Loading…</span>
+              </div>
+            ) : (
+              <input
+                value={inputCode}
+                onChange={e => setInputCode(e.target.value.toUpperCase())}
+                placeholder="Enter dev code…"
+                maxLength={20}
+                required
+                className="w-full px-3 py-2.5 rounded-xl border text-sm font-black tracking-widest uppercase outline-none"
+                style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)", color: "#131A24", letterSpacing: "0.2em" }}
+              />
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={saving || loading || inputCode.trim() === currentCode}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 disabled:opacity-40"
+            style={{ background: "#131A24", color: "#F6F1E7" }}
+          >
+            <Save size={13} />
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {currentCode && !loading && (
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Current code: <span className="font-black tracking-widest" style={{ color: "#131A24" }}>{currentCode}</span>
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}
+
 // ─── User Management Panel ────────────────────────────────────────────────────
 function UserManagementPanel() {
   const qc = useQueryClient();
@@ -681,6 +778,9 @@ export default function AppInsights() {
         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Owner Tools</span>
         <div className="flex-1 h-px" style={{ background: "rgba(19,35,58,0.12)" }} />
       </div>
+
+      {/* ── Dev Code ── */}
+      <DevCodePanel />
 
       {/* ── Promo Codes ── */}
       <PromoCodesPanel />
