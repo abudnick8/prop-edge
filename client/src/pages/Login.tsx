@@ -46,7 +46,7 @@ export default function Login() {
   const pinValue    = pin.join("");
   const confirmValue = confirmPin.join("");
 
-  // ── Dev / BREW access ──────────────────────────────────────────────────────
+  // ── Dev access ───────────────────────────────────────────────────────────
   function handleDevAccess(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -55,7 +55,7 @@ export default function Login() {
       return;
     }
     const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: false };
-    login("guest-brew-token", guestUser);
+    login("guest-dev-token", guestUser);
   }
 
   // ── Trial code access ──────────────────────────────────────────────────────
