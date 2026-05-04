@@ -479,16 +479,26 @@ function GameCard({ game }: { game: SharpGameData }) {
                   mlAway:         ml ? (ml.away > 0 ? `+${ml.away}` : String(ml.away)) : null,
                   mlHome:         ml ? (ml.home > 0 ? `+${ml.home}` : String(ml.home)) : null,
                   hasSteam:       game.sharpScore >= 70,
-                  hasMoved:       game.sharpScore >= 40,
                   sharpScore:     game.sharpScore,
                   sharpDirection: game.sharpDirection,
                   rlmDetected:    game.rlmDetected,
-                  spreadAwayMoney: game.publicMoneyPct?.away ?? null,
-                  spreadAwayPublic: game.publicBetPct?.away ?? null,
-                  totalOverMoney:  game.publicMoneyPct?.over ?? null,
-                  totalOverPublic: game.publicBetPct?.over ?? null,
-                  mlAwayMoney:     game.publicMoneyPct?.away ?? null,
-                  mlAwayPublic:    game.publicBetPct?.away ?? null,
+                  rlmDescription: game.rlmDescription,
+                  isSynthetic:    d.isSynthetic,
+                  // Spread
+                  spreadAwayTicket: d.awayTicket,
+                  spreadAwayMoney:  d.awayMoney,
+                  spreadHomeTicket: d.homeTicket,
+                  spreadHomeMoney:  d.homeMoney,
+                  // Total
+                  totalOverTicket:  d.overTicket,
+                  totalOverMoney:   d.overMoney,
+                  totalUnderTicket: d.underTicket,
+                  totalUnderMoney:  d.underMoney,
+                  // ML
+                  mlAwayTicket:  d.awayTicket,
+                  mlAwayMoney:   d.awayMoney,
+                  mlHomeTicket:  d.homeTicket,
+                  mlHomeMoney:   d.homeMoney,
                 }).catch(e => { if (e?.name !== "AbortError") console.error("[Share]", e); })
                   .finally(() => setSharing(false));
               }}
