@@ -14,7 +14,7 @@ import {
   Eye, EyeOff, Bell, Send, GitBranch, Settings,
   AlertTriangle, CheckCircle2, XCircle, Clock, Wifi,
   DollarSign, BarChart2, Megaphone, Shield, History,
-  RotateCcw, Ban, Flag, TimerReset,
+  RotateCcw, Ban, Flag, TimerReset, X,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
