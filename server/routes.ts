@@ -1611,55 +1611,53 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const tierRows = await db.query(`
         SELECT tier, sub_status, COUNT(*) as count
         FROM users
-        WHERE is_owner = FALSE
         GROUP BY tier, sub_status
         ORDER BY tier
       `);
 
       // ── Total users ──
-      const totalRow = await db.queryOne(`SELECT COUNT(*) as count FROM users WHERE is_owner = FALSE`);
+      const totalRow = await db.queryOne(`SELECT COUNT(*) as count FROM users`);
 
       // ── Active subscribers (paying, active) ──
       const activeSubRow = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE sub_status = 'active' AND tier IN ('basic','pro') AND is_owner = FALSE
+        WHERE sub_status = 'active' AND tier IN ('basic','pro')
       `);
 
       // ── Active today (last_active within last 24h) ──
       const activeToday = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE last_active > NOW() - INTERVAL '24 hours' AND is_owner = FALSE
+        WHERE last_active > NOW() - INTERVAL '24 hours'
       `);
 
       // ── Active this week ──
       const activeWeek = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE last_active > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+        WHERE last_active > NOW() - INTERVAL '7 days'
       `);
 
       // ── Active this month ──
       const activeMonth = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE last_active > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+        WHERE last_active > NOW() - INTERVAL '30 days'
       `);
 
       // ── New signups this week ──
       const newThisWeek = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE created_at > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+        WHERE created_at > NOW() - INTERVAL '7 days'
       `);
 
       // ── New signups this month ──
       const newThisMonth = await db.queryOne(`
         SELECT COUNT(*) as count FROM users
-        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+        WHERE created_at > NOW() - INTERVAL '30 days'
       `);
 
       // ── Top logins (most active users) ──
       const topUsers = await db.query(`
         SELECT email, tier, sub_status, login_count, last_login, last_active, created_at
         FROM users
-        WHERE is_owner = FALSE
         ORDER BY login_count DESC NULLS LAST
         LIMIT 20
       `);
@@ -1668,7 +1666,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const signupTrend = await db.query(`
         SELECT DATE(created_at AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
         FROM users
-        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+        WHERE created_at > NOW() - INTERVAL '30 days'
         GROUP BY day
         ORDER BY day ASC
       `);
@@ -1677,14 +1675,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const dauTrend = await db.query(`
         SELECT DATE(last_active AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
         FROM users
-        WHERE last_active > NOW() - INTERVAL '14 days' AND is_owner = FALSE
+        WHERE last_active > NOW() - INTERVAL '14 days'
         GROUP BY day
         ORDER BY day ASC
       `);
 
       // ── Avg logins per user ──
       const avgLogins = await db.queryOne(`
-        SELECT ROUND(AVG(login_count), 1) as avg FROM users WHERE is_owner = FALSE AND login_count > 0
+        SELECT ROUND(AVG(login_count), 1) as avg FROM users WHERE login_count > 0
       `);
 
       // Build tier breakdown
