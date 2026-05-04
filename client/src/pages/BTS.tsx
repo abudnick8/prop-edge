@@ -798,7 +798,7 @@ export default function BTS() {
         <div className="grid grid-cols-2 gap-2">
           {[
             { icon: <Trophy size={14} style={{ color: "#facc15" }} />, label: "Best Pick", value: bestPick ? `${bestPick.hitProbability}%` : "—" },
-            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Picks Today", value: picks.length.toString() },
+            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Picks Today", value: `${picks.length} / 10` },
           ].map(k => (
             <div
               key={k.label}
@@ -1085,22 +1085,50 @@ export default function BTS() {
       )}
 
       {/* Top Picks */}
-      {!isLoading && picks.length > 0 && (
+      {!isLoading && (picks.length > 0 || data) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Flame size={15} style={{ color: "#f87171" }} />
             <p className="text-sm font-black text-foreground">Ranked BTS Picks</p>
             <span
               className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+              style={{ background: picks.length > 0 ? "rgba(34,197,94,0.15)" : "rgba(19,35,58,0.08)", color: picks.length > 0 ? "#22c55e" : "#8A9BB0" }}
             >
-              {picks.length} players
+              {picks.length} / up to 10
             </span>
           </div>
 
           <div className="space-y-3">
             {visiblePicks.map((pick, i) => (
               <PickCard key={pick.playerId} pick={pick} rank={i + 1} />
+            ))}
+
+            {/* Empty slots — shown for remaining spots when fewer than 10 qualify */}
+            {!showAllPicks && Array.from({ length: Math.max(0, Math.min(5, 5) - picks.slice(0,5).length) }).map((_, i) => (
+              <div key={`empty-${i}`} className="rounded-2xl p-4 flex items-center gap-3"
+                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.12)" }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(19,35,58,0.06)" }}>
+                  <span className="text-[10px] font-black" style={{ color: "rgba(19,35,58,0.2)" }}>—</span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.25)" }}>No player met requirements</p>
+                  <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.18)" }}>Slot unfilled — criteria not met by any available player</p>
+                </div>
+              </div>
+            ))}
+            {showAllPicks && Array.from({ length: Math.max(0, 10 - picks.length) }).map((_, i) => (
+              <div key={`empty-all-${i}`} className="rounded-2xl p-4 flex items-center gap-3"
+                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.12)" }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(19,35,58,0.06)" }}>
+                  <span className="text-[10px] font-black" style={{ color: "rgba(19,35,58,0.2)" }}>—</span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.25)" }}>No player met requirements</p>
+                  <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.18)" }}>Slot unfilled — criteria not met by any available player</p>
+                </div>
+              </div>
             ))}
           </div>
 
@@ -1109,7 +1137,7 @@ export default function BTS() {
               onClick={() => setShowAllPicks(s => !s)}
               className="w-full mt-2 text-[11px] font-bold text-muted-foreground py-2"
             >
-              {showAllPicks ? "Show top 5 only" : `Show all ${picks.length} picks`}
+              {showAllPicks ? "Show top 5 only" : `Show all ${picks.length} picks + remaining slots`}
             </button>
           )}
         </div>
@@ -1144,10 +1172,19 @@ export default function BTS() {
       {!isLoading && !data?.error && picks.length === 0 && (
         <div className="rounded-2xl p-8 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}>
           <Trophy size={32} className="mx-auto mb-3" style={{ color: "#facc15", opacity: 0.5 }} />
-          <p className="font-bold text-foreground">No qualifying picks yet</p>
+          <p className="font-bold text-foreground">No players met requirements today</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-            Lineups usually post 2–3 hours before first pitch. Picks may also be limited if game totals are low today.
+            All available hitters were filtered out by the eligibility criteria — probability floor, platoon matchup, game total, or stat analysis. Lineups may not be confirmed yet (post 2–3 hrs before first pitch).
           </p>
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-xl p-3 flex items-center gap-3 mx-auto max-w-xs"
+                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.10)" }}>
+                <div className="w-6 h-6 rounded-full flex-shrink-0" style={{ background: "rgba(19,35,58,0.06)" }} />
+                <p className="text-[10px] font-bold text-left" style={{ color: "rgba(19,35,58,0.2)" }}>No player met requirements — slot empty</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
