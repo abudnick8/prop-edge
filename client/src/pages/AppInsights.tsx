@@ -565,8 +565,8 @@ function UserManagementPanel() {
               <tr className="border-b border-border bg-muted/20">
                 <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Email</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Plan</th>
-                <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">PIN</th>
+                <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trial</th>
                 <th className="text-right px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Last Active</th>
                 <th className="text-center px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Change Plan</th>
@@ -585,9 +585,6 @@ function UserManagementPanel() {
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <span className="px-2 py-0.5 rounded-full text-white text-[10px] font-bold" style={{ background: tc.bg }}>{tc.label}</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="text-[10px] font-semibold capitalize" style={{ color: statusColor(u.sub_status) }}>{u.sub_status}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       {editingPin === u.id ? (
@@ -633,6 +630,9 @@ function UserManagementPanel() {
                           className="text-[9px] font-semibold underline underline-offset-2"
                           style={{ color: "#A23B32" }}>Set PIN</button>
                       )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="text-[10px] font-semibold capitalize" style={{ color: statusColor(u.sub_status) }}>{u.sub_status}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center text-[10px] text-muted-foreground">
                       {u.trial_code ? <span className="font-bold" style={{ color: "#A23B32" }}>{u.trial_code}<br /><span className="font-normal text-muted-foreground">exp {fmtDate(u.trial_expires)}</span></span> : "—"}

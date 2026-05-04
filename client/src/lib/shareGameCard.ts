@@ -58,6 +58,14 @@ const RED   = "#dc2626";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  // Cap radius so it never exceeds half the shorter dimension
+  r = Math.min(r, w / 2, h / 2);
+  if (r <= 0 || w <= 0 || h <= 0) {
+    ctx.beginPath();
+    ctx.rect(x, y, Math.max(0, w), Math.max(0, h));
+    ctx.closePath();
+    return;
+  }
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);
