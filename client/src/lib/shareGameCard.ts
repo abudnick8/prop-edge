@@ -276,17 +276,29 @@ function renderCard(data: ShareGameData): HTMLCanvasElement {
   roundRect(ctx, PAD, y, INNER, 64, 12);
   ctx.fill();
 
-  ctx.font = `900 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  // Auto-shrink matchup text to fit within the box
+  const matchupText = `${data.awayTeam} @ ${data.homeTeam}`;
+  let matchupSize = 15;
+  ctx.font = `900 ${matchupSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  while (ctx.measureText(matchupText).width > INNER - 24 && matchupSize > 9) {
+    matchupSize -= 1;
+    ctx.font = `900 ${matchupSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  }
+
+  // Draw away team
   ctx.fillStyle = CREAM;
   ctx.fillText(data.awayTeam, PAD + 12, y + 20);
+  const aw = ctx.measureText(data.awayTeam).width;
 
-  ctx.font = `400 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  // Draw " @ "
+  const atFont = `400 ${matchupSize - 1}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+  ctx.font = atFont;
   ctx.fillStyle = "rgba(255,255,255,0.45)";
-  const aw = (() => { ctx.font = `900 15px -apple-system`; return ctx.measureText(data.awayTeam).width; })();
-  ctx.font = `400 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
   ctx.fillText(" @ ", PAD + 12 + aw, y + 20);
   const atw = ctx.measureText(" @ ").width;
-  ctx.font = `900 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+
+  // Draw home team
+  ctx.font = `900 ${matchupSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
   ctx.fillStyle = CREAM;
   ctx.fillText(data.homeTeam, PAD + 12 + aw + atw, y + 20);
 

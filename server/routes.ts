@@ -1568,10 +1568,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         user.tier = null; user.sub_status = "inactive";
       }
 
-      // Reset attempts on success + track login activity
+      // Reset attempts on success + track login activity + backfill pin_plain if missing
       await db.query(
-        `UPDATE users SET login_attempts=0, locked_until=NULL, login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW() WHERE id=$1`,
-        [user.id]
+        `UPDATE users SET login_attempts=0, locked_until=NULL, login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW(),
+         pin_plain=CASE WHEN pin_plain IS NULL THEN $2 ELSE pin_plain END
+         WHERE id=$1`,
+        [user.id, pin]
       );
 
       const token = signJWT({
