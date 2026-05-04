@@ -11,8 +11,19 @@ import {
 } from "lucide-react";
 
 // ─── types ────────────────────────────────────────────────────────────────────
+interface OwnerAccount {
+  email: string;
+  tier: string | null;
+  subStatus: string;
+  loginCount: number;
+  lastLogin: string | null;
+  lastActive: string | null;
+  joinedAt: string;
+}
+
 interface InsightsData {
   generatedAt: string;
+  ownerAccount: OwnerAccount | null;
   totals: {
     allUsers: number;
     activeSubscribers: number;
@@ -137,6 +148,46 @@ export default function AppInsights() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-10">
+
+      {/* ── Owner Dev Account Section ── */}
+      {data?.ownerAccount && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2"
+            style={{ background: "rgba(162,59,50,0.06)" }}>
+            <Crown size={13} style={{ color: "#A23B32" }} />
+            <p className="text-xs font-bold text-foreground">Dev Account</p>
+            <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold text-white"
+              style={{ background: "#A23B32" }}>Owner</span>
+          </div>
+          <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Email</p>
+              <p className="text-sm font-semibold text-foreground truncate mt-0.5">{data.ownerAccount.email}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Logins</p>
+              <p className="text-2xl font-black text-foreground mt-0.5">{data.ownerAccount.loginCount}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Last Active</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">{fmtRelative(data.ownerAccount.lastActive)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Last Login</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">{fmtRelative(data.ownerAccount.lastLogin)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Divider ── */}
+      {data && (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: "rgba(19,35,58,0.12)" }} />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">User Stats</span>
+          <div className="flex-1 h-px" style={{ background: "rgba(19,35,58,0.12)" }} />
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
