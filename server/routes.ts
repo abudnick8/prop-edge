@@ -10139,6 +10139,65 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         cachedIds.add(pick.playerId);
       }
 
+
+      // ── Scratch-swap: replace confirmed-scratched picks before game starts ─────
+      // Rule: if a cached pick's player is confirmed NOT in the official lineup
+      // AND the game hasn't started yet → swap them with the best available
+      // candidate from the same team who IS confirmed in the lineup.
+      // This override applies even after the 11:45 AM CT deadline because
+      // a player being out of the lineup is a data-confirmed fact, not a guess.
+      const nowMsForSwap = Date.now();
+      for (let ci = 0; ci < cachedEntries.length; ci++) {
+        const entry = cachedEntries[ci];
+        const snap  = entry.snapshot;
+        if (!snap) continue;
+
+        // Only swap if the pick is scratched AND the game hasn't started yet
+        // (don't swap in-progress or already-graded picks)
+        const gameStartMs = snap.game?.gameStartMs ?? null;
+        const gameStarted = gameStartMs ? nowMsForSwap >= gameStartMs : false;
+        if (!snap.isScratched || gameStarted) continue;
+        if (entry.result !== "pending") continue; // already graded — leave alone
+
+        // Find the best replacement: same team, confirmed in lineup, not already cached
+        const cachedIdSet = new Set(cachedEntries.map((e: BtsPickEntry) => e.playerId));
+        const replacement = candidatePicks
+          .filter(c =>
+            c.team === snap.team &&                     // same team
+            c.playerId !== snap.playerId &&             // not the same player
+            !cachedIdSet.has(c.playerId) &&            // not already cached
+            c.lineupSource === "confirmed" &&           // must be in confirmed lineup
+            !c.isScratched                             // definitely not scratched
+          )
+          .sort((a: any, b: any) => b.hitProbability - a.hitProbability)[0] ?? null;
+
+        if (!replacement) {
+          console.log(`[BTS Scratch-Swap] No confirmed replacement for scratched ${snap.name} (${snap.team}) — keeping slot`);
+          continue;
+        }
+
+        console.log(`[BTS Scratch-Swap] Replacing scratched ${snap.name} → ${replacement.name} (${snap.team}) pre-game`);
+
+        // Replace in-place — keep the original lockedAt timestamp
+        cachedEntries[ci] = {
+          playerId:       replacement.playerId,
+          name:           replacement.name,
+          team:           replacement.team,
+          hitProbability: replacement.hitProbability,
+          lockedAt:       entry.lockedAt,   // preserve original lock time
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       { ...replacement, swappedFrom: snap.name, swapReason: "scratched_from_lineup" },
+        } as BtsPickEntry;
+      }
+
+      // Persist any scratch-swaps made above
+      if (cachedEntries.some((e: BtsPickEntry) => e.snapshot?.swapReason === "scratched_from_lineup")) {
+        saveBtsPicksCache();
+      }
+
       // ── Run grader on today's cached picks ────────────────────────────
       await runBtsGrader(targetDate);
 
@@ -10958,12 +11017,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // POST /api/admin/api-health/ping — ping a specific service and record result
   app.post("/api/admin/api-health/ping", requireOwner, async (req: Request, res: Response) => {
     const { service } = req.body ?? {};
+    const oddsApiKey = process.env.ODDS_API_KEY || "15c62ebc-0905-4858-87e4-87160b253149";
     const SERVICES: Record<string, { url: string; headers?: any }> = {
-      odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=15c62ebc-0905-4858-87e4-87160b253149` },
+      odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=${oddsApiKey}` },
       espn:           { url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard` },
       mlb_stats:      { url: `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${new Date().toISOString().split('T')[0]}` },
-      action_network: { url: `https://api.actionnetwork.com/web/v1/scoreboard/mlb`, headers: { 'x-api-key': '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2' } },
-      weather:        { url: `https://wttr.in/Chicago?format=3` },
+      // Action Network blocks datacenter IPs (CloudFront) — check via DNS reachability instead
+      action_network: { url: `https://api.actionnetwork.com/web/v1/sports`, headers: { 'x-api-key': process.env.ACTION_NETWORK_KEY || '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2', 'User-Agent': 'Mozilla/5.0 (compatible; ClubhouseIQ/1.0)' } },
+      // wttr.in blocks datacenter IPs — use json format which is more permissive
+      weather:        { url: `https://wttr.in/Chicago?format=j1`, headers: { 'User-Agent': 'curl/7.68.0', 'Accept': 'application/json' } },
     };
     const svc = SERVICES[service];
     if (!svc) return res.status(400).json({ error: `Unknown service: ${service}` });

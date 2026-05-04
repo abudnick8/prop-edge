@@ -170,11 +170,18 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
             {/* Grade result badge */}
             <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
           </div>
-          {/* Scratch warning */}
-          {pick.isScratched && (
+          {/* Scratch warning — only shows if pick itself is scratched (not yet swapped) */}
+          {pick.isScratched && !pick.swapReason && (
             <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#f87171" }}>
               <AlertTriangle size={10} />
-              ⚠️ Original pick not in confirmed lineup — see replacement below
+              ⚠️ Not in confirmed lineup — could not find a confirmed replacement
+            </div>
+          )}
+          {/* Swap-in indicator — shows when a scratched player was auto-replaced */}
+          {pick.swapReason === "scratched_from_lineup" && (
+            <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#22c55e" }}>
+              <CheckCircle size={10} />
+              ✅ Auto-swapped in — {pick.swappedFrom} was scratched from lineup
             </div>
           )}
           {/* Override badge — player failed normal gates but extreme metrics qualified */}
@@ -564,7 +571,7 @@ const BTS_GLOSSARY = [
     term: "11:45 AM CT",
     label: "Daily Pick Deadline",
     emoji: "⏰",
-    def: "Picks are finalized by 11:45 AM Central Time each day. After this, no substitutions are made — even if a projected player is scratched late. Always confirm lineups on MLB.com before locking in.",
+    def: "Picks are finalized by 11:45 AM Central Time each day. After this, picks can still be added up to 30 min before a game starts but cannot be removed. Exception: if a picked player is officially missing from the confirmed lineup before first pitch, they are automatically swapped with the best available confirmed starter from the same team.",
   },
   {
     term: "Hit Prob %",
@@ -762,7 +769,7 @@ export default function BTS() {
                 {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected` : ""}
                 {" · Picks refresh as lineups post"}
               </p>
-              <p className="text-[10px] mt-0.5" style={{ color: "#b8930a" }}>After 11:45 AM CT picks lock in — later game picks continue adding up to 30 min before first pitch.</p>
+              <p className="text-[10px] mt-0.5" style={{ color: "#b8930a" }}>After 11:45 AM CT picks lock in. Later games can still add picks up to 30 min before first pitch. Scratched players are auto-swapped with the best confirmed starter from the same team before game time.</p>
             </div>
           </div>
         )
