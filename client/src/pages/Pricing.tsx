@@ -87,15 +87,14 @@ type PlanId = "free" | "basic" | "pro";
 
 // ─── Upgrade handler ──────────────────────────────────────────────────────────
 
-async function startCheckout(tier: "basic" | "pro", promoCode?: string): Promise<string | null> {
+async function upgradeTier(tier: "basic" | "pro"): Promise<boolean> {
+  const token = localStorage.getItem("ciq_token");
   const res = await fetch("/api/auth/upgrade-checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tier, promoCode }),
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ tier }),
   });
-  if (!res.ok) return null;
-  const { checkoutUrl } = await res.json();
-  return checkoutUrl ?? null;
+  return res.ok;
 }
 
 // ─── Plan card ────────────────────────────────────────────────────────────────
@@ -258,17 +257,14 @@ export default function Pricing() {
 
   async function handleSelect(id: PlanId) {
     setError("");
-    if (id === "free") {
-      // Nothing to do — free accounts are created on signup
-      return;
-    }
+    if (id === "free") return;
     setLoading(id);
     try {
-      const url = await startCheckout(id, promoCode ?? undefined);
-      if (url) {
-        window.location.href = url;
+      const ok = await upgradeTier(id);
+      if (ok) {
+        window.location.href = "/";
       } else {
-        setError("Unable to start checkout. Please try again.");
+        setError("Upgrade failed. Please try again.");
       }
     } catch {
       setError("Something went wrong. Please try again.");
