@@ -27,7 +27,6 @@ const allowlist = [
   "passport",
   "passport-local",
   "pg",
-  "@whop/sdk",
   "uuid",
   "ws",
   "xlsx",
