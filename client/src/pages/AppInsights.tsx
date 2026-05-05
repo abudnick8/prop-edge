@@ -62,7 +62,7 @@ interface InsightsData {
 interface PromoCode { id: number; code: string; discount_pct: number; applies_to: string; max_uses: number | null; uses: number; active: boolean; created_at: string; expires_at: string | null; duration_months: number | null; }
 interface TrialCode { id: number; code: string; duration_days: number; max_uses: number | null; uses: number; active: boolean; note: string | null; created_at: string; expires_at: string | null; }
 interface TrialUse  { id: number; code: string; email: string; used_at: string; trial_expires: string; }
-interface AppUser   { id: number; email: string; tier: string | null; sub_status: string; is_owner: boolean; is_disabled: boolean; is_flagged?: boolean; flag_reason?: string | null; login_count: number; last_active: string | null; created_at: string; trial_code: string | null; trial_expires: string | null; pin_plain: string | null; stripe_customer_id?: string | null; stripe_sub_id?: string | null; }
+interface AppUser   { id: number; email: string; tier: string | null; sub_status: string; is_owner: boolean; is_disabled: boolean; is_flagged?: boolean; flag_reason?: string | null; login_count: number; last_active: string | null; created_at: string; trial_code: string | null; trial_expires: string | null; pin_plain: string | null; whop_membership_id?: string | null; }
 interface FeatureFlag { id: number; key: string; label: string; enabled: boolean; min_tier: string; kill_switch: boolean; updated_at: string; }
 interface ApiHealth   { service: string; status: string; latency_ms: number | null; error: string | null; ts: string; errors_24h: number; }
 interface AuditEntry  { id: number; actor: string; action: string; target: string | null; detail: string | null; ts: string; }
