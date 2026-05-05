@@ -1,1 +1,213 @@
-aW1wb3J0IHsgUG9vbCB9IGZyb20gInBnIjsKCi8vIFJhaWx3YXkgaW5qZWN0cyBEQVRBQkFTRV9VUkwgYXV0b21hdGljYWxseSB3aGVuIFBvc3RncmVzIGFkZG9uIGlzIGFkZGVkLgovLyBGYWxscyBiYWNrIGdyYWNlZnVsbHkgaWYgbm90IHlldCBjb25maWd1cmVkIHNvIHRoZSBhcHAgc3RpbGwgYm9vdHMuCmNvbnN0IHBvb2wgPSBuZXcgUG9vbCh7CiAgY29ubmVjdGlvblN0cmluZzogcHJvY2Vzcy5lbnYuREFUQUJBU0VfVVJMLAogIHNzbDogcHJvY2Vzcy5lbnYuREFUQUJBU0VfVVJMPy5pbmNsdWRlcygicmFpbHdheSIpCiAgICA/IHsgcmVqZWN0VW5hdXRob3JpemVkOiBmYWxzZSB9CiAgICA6IGZhbHNlLAp9KTsKCmV4cG9ydCBjb25zdCBkYiA9IHsKICBxdWVyeTogKHRleHQ6IHN0cmluZywgcGFyYW1zPzogYW55W10pID0+IHBvb2wucXVlcnkodGV4dCwgcGFyYW1zKSwKCiAgLy8gQ29udmVuaWVuY2U6IHJldHVybiBmaXJzdCByb3cgb3IgbnVsbAogIHF1ZXJ5T25lOiBhc3luYyAodGV4dDogc3RyaW5nLCBwYXJhbXM/OiBhbnlbXSkgPT4gewogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgcG9vbC5xdWVyeSh0ZXh0LCBwYXJhbXMpOwogICAgcmV0dXJuIHJlc3VsdC5yb3dzWzBdID8/IG51bGw7CiAgfSwKfTsKCi8vIOKUgOKUgCBBdXRvLW1pZ3JhdGlvbnMg4pSA4pSAIHJ1biBvbiBldmVyeSBib290LCBhbGwgaWRlbXBvdGVudCDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKYXN5bmMgZnVuY3Rpb24gcnVuTWlncmF0aW9ucygpIHsKICB0cnkgewogICAgLy8gQ29yZSB1c2VycyB0YWJsZQogICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIENSRUFURSBUQUJMRSBJRiBOT1QgRVhJU1RTIHVzZXJzICgKICAgICAgICBpZCAgICAgICAgICAgICAgICBTRVJJQUwgUFJJTUFSWSBLRVksCiAgICAgICAgZW1haWwgICAgICAgICAgICAgVEVYVCBVTklRVUUgTk9UIE5VTEwsCiAgICAgICAgcGluX2hhc2ggICAgICAgICAgVEVYVCBOT1QgTlVMTCwKICAgICAgICB0aWVyICAgICAgICAgICAgICBURVhUIERFRkFVTFQgTlVMTCwKICAgICAgICBzdHJpcGVfY3VzdG9tZXJfaWQgVEVYVCBERUZBVUxUIE5VTEwsCiAgICAgICAgc3RyaXBlX3N1Yl9pZCAgICAgVEVYVCBERUZBVUxUIE5VTEwsCiAgICAgICAgc3ViX3N0YXR1cyAgICAgICAgVEVYVCBERUZBVUxUICdpbmFjdGl2ZScsCiAgICAgICAgaXNfb3duZXIgICAgICAgICAgQk9PTEVBTiBERUZBVUxUIEZBTFNFLAogICAgICAgIHJlc2V0X3Rva2VuX2hhc2ggIFRFWFQgREVGQVVMVCBOVUxMLAogICAgICAgIHJlc2V0X3Rva2VuX2V4cGlyZXMgVElNRVNUQU1QVFogREVGQVVMVCBOVUxMLAogICAgICAgIGxvZ2luX2F0dGVtcHRzICAgIElOVCBERUZBVUxUIDAsCiAgICAgICAgbG9ja2VkX3VudGlsICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOVUxMLAogICAgICAgIGNyZWF0ZWRfYXQgICAgICAgIFRJTUVTVEFNUFRaIERFRkFVTFQgTk9XKCksCiAgICAgICAgdXBkYXRlZF9hdCAgICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKQogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIHVzZXJzX2VtYWlsX2lkeCBPTiB1c2VycyhlbWFpbClgKTsKCiAgICAvLyBMb2dpbiAmIGFjdGl2aXR5IHRyYWNraW5nIGNvbHVtbnMgKGFkZGVkIGxhdGVyIOKAlCBzYWZlIHRvIHJlLXJ1bikKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyBsb2dpbl9jb3VudCAgIElOVCAgICAgICAgICBERUZBVUxUIDBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyBsYXN0X2xvZ2luICAgICBUSU1FU1RBTVBUWiAgREVGQVVMVCBOVUxMYCk7CiAgICBhd2FpdCBwb29sLnF1ZXJ5KGBBTFRFUiBUQUJMRSB1c2VycyBBREQgQ09MVU1OIElGIE5PVCBFWElTVFMgbGFzdF9hY3RpdmUgICAgVElNRVNUQU1QVFogIERFRkFVTFQgTlVMTGApOwogICAgYXdhaXQgcG9vbC5xdWVyeShgQUxURVIgVEFCTEUgdXNlcnMgQUREIENPTFVNTiBJRiBOT1QgRVhJU1RTIHRyaWFsX2NvZGUgICAgIFRFWFQgICAgICAgICBERUZBVUxUIE5VTExgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyB0cmlhbF9leHBpcmVzICBUSU1FU1RBTVBUWiAgREVGQVVMVCBOVUxMYCk7CiAgICBhd2FpdCBwb29sLnF1ZXJ5KGBBTFRFUiBUQUJMRSB1c2VycyBBREQgQ09MVU1OIElGIE5PVCBFWElTVFMgaXNfZGlzYWJsZWQgICAgQk9PTEVBTiAgICAgIERFRkFVTFQgRkFMU0VgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyBwaW5fcGxhaW4gICAgICBURVhUICAgICAgICAgREVGQVVMVCBOVUxMYCk7CiAgICAvLyDilIDilIAgVXNlciBwZXJzb25hbGl6YXRpb24gcHJlZmVyZW5jZXMgKHNwb3J0L3RlYW0vcGxheWVyIGZhdm9yaXRlcykg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgICBhd2FpdCBwb29sLnF1ZXJ5KGBBTFRFUiBUQUJMRSB1c2VycyBBREQgQ09MVU1OIElGIE5PVCBFWElTVFMgcHJlZmVyZW5jZXMgSlNPTkIgREVGQVVMVCAne30nOjpqc29uYmApOwoKICAgIC8vIOKUgOKUgCBQcm9tbyBjb2RlcyAoU3RyaXBlIGRpc2NvdW50IGNvZGVzKSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBDUkVBVEUgVEFCTEUgSUYgTk9UIEVYSVNUUyBwcm9tb19jb2RlcyAoCiAgICAgICAgaWQgICAgICAgICAgIFNFUklBTCBQUklNQVJZIEtFWSwKICAgICAgICBjb2RlICAgICAgICAgVEVYVCBVTklRVUUgTk9UIE5VTEwsCiAgICAgICAgZGlzY291bnRfcGN0IElOVCBOT1QgTlVMTCwKICAgICAgICBhcHBsaWVzX3RvICAgVEVYVCBERUZBVUxUICdib3RoJywKICAgICAgICBtYXhfdXNlcyAgICAgSU5UIERFRkFVTFQgTlVMTCwKICAgICAgICB1c2VzICAgICAgICAgSU5UIERFRkFVTFQgMCwKICAgICAgICBhY3RpdmUgICAgICAgQk9PTEVBTiBERUZBVUxUIFRSVUUsCiAgICAgICAgY3JlYXRlZF9hdCAgIFRJTUVTVEFNUFRaIERFRkFVTFQgTk9XKCksCiAgICAgICAgZXhwaXJlc19hdCAgIFRJTUVTVEFNUFRaIERFRkFVTFQgTlVMTAogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIHByb21vX2NvZGVzX2NvZGVfaWR4IE9OIHByb21vX2NvZGVzKGNvZGUpYCk7CiAgICAvLyBNaWdyYXRpb246IGFkZCBkdXJhdGlvbl9tb250aHMgaWYgbWlzc2luZwogICAgYXdhaXQgcG9vbC5xdWVyeShgQUxURVIgVEFCTEUgcHJvbW9fY29kZXMgQUREIENPTFVNTiBJRiBOT1QgRVhJU1RTIGR1cmF0aW9uX21vbnRocyBJTlQgREVGQVVMVCBOVUxMYCk7CgogICAgLy8g4pSA4pSAIFRyaWFsIGFjY2VzcyBjb2RlcyDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBDUkVBVEUgVEFCTEUgSUYgTk9UIEVYSVNUUyB0cmlhbF9jb2RlcyAoCiAgICAgICAgaWQgICAgICAgICAgIFNFUklBTCBQUklNQVJZIEtFWSwKICAgICAgICBjb2RlICAgICAgICAgVEVYVCBVTklRVUUgTk9UIE5VTEwsCiAgICAgICAgZHVyYXRpb25fZGF5cyBJTlQgREVGQVVMVCA3LAogICAgICAgIG1heF91c2VzICAgICBJTlQgREVGQVVMVCBOVUxMLAogICAgICAgIHVzZXMgICAgICAgICBJTlQgREVGQVVMVCAwLAogICAgICAgIGFjdGl2ZSAgICAgICBCT09MRUFOIERFRkFVTFQgVFJVRSwKICAgICAgICBub3RlICAgICAgICAgVEVYVCBERUZBVUxUIE5VTEwsCiAgICAgICAgY3JlYXRlZF9hdCAgIFRJTUVTVEFNUFRaIERFRkFVTFQgTk9XKCksCiAgICAgICAgZXhwaXJlc19hdCAgIFRJTUVTVEFNUFRaIERFRkFVTFQgTlVMTAogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIHRyaWFsX2NvZGVzX2NvZGVfaWR4IE9OIHRyaWFsX2NvZGVzKGNvZGUpYCk7CgogICAgLy8g4pSA4pSAIFRyaWFsIGNvZGUgdXNhZ2UgbG9nIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAogICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIENSRUFURSBUQUJMRSBJRiBOT1QgRVhJU1RTIHRyaWFsX2NvZGVfdXNlcyAoCiAgICAgICAgaWQgICAgICAgICAgIFNFUklBTCBQUklNQVJZIEtFWSwKICAgICAgICBjb2RlICAgICAgICAgVEVYVCBOT1QgTlVMTCwKICAgICAgICBlbWFpbCAgICAgICAgVEVYVCBOT1QgTlVMTCwKICAgICAgICB1c2VkX2F0ICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKSwKICAgICAgICB0cmlhbF9leHBpcmVzIFRJTUVTVEFNUFRaCiAgICAgICkKICAgIGApOwoKICAgIC8vIOKUgOKUgCBBcHAgc2V0dGluZ3MgKGtleS92YWx1ZSkg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgICBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgQ1JFQVRFIFRBQkxFIElGIE5PVCBFWElTVFMgYXBwX3NldHRpbmdzICgKICAgICAgICBrZXkgICBURVhUIFBSSU1BUlkgS0VZLAogICAgICAgIHZhbHVlIFRFWFQgTk9UIE5VTEwKICAgICAgKQogICAgYCk7CiAgICAvLyBTZWVkIGRlZmF1bHQgZGV2IGNvZGUgaWYgbm90IGFscmVhZHkgc2V0CiAgICBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgSU5TRVJUIElOVE8gYXBwX3NldHRpbmdzIChrZXksIHZhbHVlKSBWQUxVRVMgKCdkZXZfY29kZScsICdBQlVEJykKICAgICAgT04gQ09ORkxJQ1QgKGtleSkgRE8gTk9USElORwogICAgYCk7CgogICAgLy8g4pSA4pSAIEZlYXR1cmUgRmxhZ3Mg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgICBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgQ1JFQVRFIFRBQkxFIElGIE5PVCBFWElTVFMgZmVhdHVyZV9mbGFncyAoCiAgICAgICAgaWQgICAgICAgICAgU0VSSUFMIFBSSU1BUlkgS0VZLAogICAgICAgIGtleSAgICAgICAgIFRFWFQgVU5JUVVFIE5PVCBOVUxMLAogICAgICAgIGxhYmVsICAgICAgIFRFWFQgTk9UIE5VTEwsCiAgICAgICAgZW5hYmxlZCAgICAgQk9PTEVBTiBERUZBVUxUIFRSVUUsCiAgICAgICAgbWluX3RpZXIgICAgVEVYVCBERUZBVUxUICdmcmVlJywKICAgICAgICBraWxsX3N3aXRjaCBCT09MRUFOIERFRkFVTFQgRkFMU0UsCiAgICAgICAgdXBkYXRlZF9hdCAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKQogICAgICApCiAgICBgKTsKICAgIC8vIFNlZWQgZGVmYXVsdCBmZWF0dXJlIGZsYWdzCiAgICBjb25zdCBkZWZhdWx0RmxhZ3MgPSBbCiAgICAgIFsnZGFzaGJvYXJkJywgICAgICdEYXNoYm9hcmQnLCAgICAgIHRydWUsICAnYmFzaWMnLCAgZmFsc2VdLAogICAgICBbJ3Byb3BzX2h1YicsICAgICAnUHJvcHMgSHViJywgICAgICB0cnVlLCAgJ2Jhc2ljJywgIGZhbHNlXSwKICAgICAgWydsb3R0bycsICAgICAgICAgJ0xvdHRvJywgICAgICAgICAgdHJ1ZSwgICdiYXNpYycsICBmYWxzZV0sCiAgICAgIFsndG9wX3BsYXlzJywgICAgICdUb3AgUGxheXMnLCAgICAgIHRydWUsICAncHJvJywgICAgZmFsc2VdLAogICAgICBbJ2FsbF9waWNrcycsICAgICAnQWxsIFBpY2tzJywgICAgICB0cnVlLCAgJ3BybycsICAgIGZhbHNlXSwKICAgICAgWydsaW5lX21vdmVtZW50JywgJ0xpbmUgTW92ZW1lbnQnLCAgdHJ1ZSwgICdwcm8nLCAgICBmYWxzZV0sCiAgICAgIFsnbWFya2V0cycsICAgICAgICdNYXJrZXRzJywgICAgICAgIHRydWUsICAncHJvJywgICAgZmFsc2VdLAogICAgICBbJ2JyYWNrZXQnLCAgICAgICAnQnJhY2tldCcsICAgICAgICB0cnVlLCAgJ3BybycsICAgIGZhbHNlXSwKICAgICAgWydtbF9pbnRlbCcsICAgICAgJ01MIEludGVsJywgICAgICAgdHJ1ZSwgICdwcm8nLCAgICBmYWxzZV0sCiAgICAgIFsnYnRzJywgICAgICAgICAgICdCZWF0IHRoZSBTdHJlYWsnLHRydWUsICAncHJvJywgICAgZmFsc2VdLAogICAgICBbJ2xpdmVfc2NvcmVzJywgICAnTGl2ZSBTY29yZXMnLCAgICB0cnVlLCAgJ2ZyZWUnLCAgIGZhbHNlXSwKICAgICAgWydmYW50YXN5JywgICAgICAgJ0ZhbnRhc3knLCAgICAgICAgdHJ1ZSwgICdmcmVlJywgICBmYWxzZV0sCiAgICBdOwogICAgZm9yIChjb25zdCBba2V5LCBsYWJlbCwgZW5hYmxlZCwgbWluX3RpZXIsIGtpbGxfc3dpdGNoXSBvZiBkZWZhdWx0RmxhZ3MpIHsKICAgICAgYXdhaXQgcG9vbC5xdWVyeSgKICAgICAgICBgSU5TRVJUIElOVE8gZmVhdHVyZV9mbGFncyAoa2V5LGxhYmVsLGVuYWJsZWQsbWluX3RpZXIsa2lsbF9zd2l0Y2gpIFZBTFVFUyAoJDEsJDIsJDMsJDQsJDUpCiAgICAgICAgIE9OIENPTkZMSUNUIChrZXkpIERPIE5PVEhJTkdgLAogICAgICAgIFtrZXksIGxhYmVsLCBlbmFibGVkLCBtaW5fdGllciwga2lsbF9zd2l0Y2hdCiAgICAgICk7CiAgICB9CgogICAgLy8g4pSA4pSAIFBhZ2UgZXZlbnRzICh0YWIgdXNhZ2UgdHJhY2tpbmcpIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAogICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIENSRUFURSBUQUJMRSBJRiBOT1QgRVhJU1RTIHBhZ2VfZXZlbnRzICgKICAgICAgICBpZCAgICAgICAgIFNFUklBTCBQUklNQVJZIEtFWSwKICAgICAgICB1c2VyX2lkICAgIElOVCBSRUZFUkVOQ0VTIHVzZXJzKGlkKSBPTiBERUxFVEUgU0VUIE5VTEwsCiAgICAgICAgcGFnZSAgICAgICBURVhUIE5PVCBOVUxMLAogICAgICAgIHRzICAgICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKQogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIHBhZ2VfZXZlbnRzX3RzX2lkeCBPTiBwYWdlX2V2ZW50cyh0cylgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIHBhZ2VfZXZlbnRzX3BhZ2VfaWR4IE9OIHBhZ2VfZXZlbnRzKHBhZ2UpYCk7CgogICAgLy8g4pSA4pSAIEFQSSBoZWFsdGggbG9nIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAogICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIENSRUFURSBUQUJMRSBJRiBOT1QgRVhJU1RTIGFwaV9oZWFsdGhfbG9nICgKICAgICAgICBpZCAgICAgICAgICBTRVJJQUwgUFJJTUFSWSBLRVksCiAgICAgICAgc2VydmljZSAgICAgVEVYVCBOT1QgTlVMTCwKICAgICAgICBzdGF0dXMgICAgICBURVhUIE5PVCBOVUxMLAogICAgICAgIGxhdGVuY3lfbXMgIElOVCBERUZBVUxUIE5VTEwsCiAgICAgICAgZXJyb3IgICAgICAgVEVYVCBERUZBVUxUIE5VTEwsCiAgICAgICAgdHMgICAgICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKQogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIGFwaV9oZWFsdGhfbG9nX3RzX2lkeCBPTiBhcGlfaGVhbHRoX2xvZyh0cylgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIGFwaV9oZWFsdGhfbG9nX3NlcnZpY2VfaWR4IE9OIGFwaV9oZWFsdGhfbG9nKHNlcnZpY2UpYCk7CgogICAgLy8g4pSA4pSAIEF1ZGl0IGxvZyDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBDUkVBVEUgVEFCTEUgSUYgTk9UIEVYSVNUUyBhdWRpdF9sb2cgKAogICAgICAgIGlkICAgICAgICAgU0VSSUFMIFBSSU1BUlkgS0VZLAogICAgICAgIGFjdG9yICAgICAgVEVYVCBOT1QgTlVMTCwKICAgICAgICBhY3Rpb24gICAgIFRFWFQgTk9UIE5VTEwsCiAgICAgICAgdGFyZ2V0ICAgICBURVhUIERFRkFVTFQgTlVMTCwKICAgICAgICBkZXRhaWwgICAgIFRFWFQgREVGQVVMVCBOVUxMLAogICAgICAgIHRzICAgICAgICAgVElNRVNUQU1QVFogREVGQVVMVCBOT1coKQogICAgICApCiAgICBgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYENSRUFURSBJTkRFWCBJRiBOT1QgRVhJU1RTIGF1ZGl0X2xvZ190c19pZHggT04gYXVkaXRfbG9nKHRzKWApOwoKICAgIC8vIOKUgOKUgCBGbGFnZ2VkIHVzZXJzIGNvbHVtbiDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyBpc19mbGFnZ2VkICBCT09MRUFOIERFRkFVTFQgRkFMU0VgKTsKICAgIGF3YWl0IHBvb2wucXVlcnkoYEFMVEVSIFRBQkxFIHVzZXJzIEFERCBDT0xVTU4gSUYgTk9UIEVYSVNUUyBmbGFnX3JlYXNvbiBURVhUICAgIERFRkFVTFQgTlVMTGApOwoKICAgIGNvbnNvbGUubG9nKCJbREJdIE1pZ3JhdGlvbnMgY29tcGxldGUiKTsKICB9IGNhdGNoIChlcnI6IGFueSkgewogICAgY29uc29sZS53YXJuKCJbREJdIE1pZ3JhdGlvbiB3YXJuaW5nOiIsIGVyci5tZXNzYWdlKTsKICB9Cn0KCi8vIFRlc3QgY29ubmVjdGlvbiBvbiBzdGFydHVwIOKAlCBub24tZmF0YWwgaWYgREIgbm90IHlldCBjb25maWd1cmVkCnBvb2wuY29ubmVjdCgpCiAgLnRoZW4oY2xpZW50ID0+IHsKICAgIGNvbnNvbGUubG9nKCJbREJdIFBvc3RncmVTUUwgY29ubmVjdGVkIik7CiAgICBjbGllbnQucmVsZWFzZSgpOwogICAgcnVuTWlncmF0aW9ucygpOwogIH0pCiAgLmNhdGNoKGVyciA9PiB7CiAgICBjb25zb2xlLndhcm4oIltEQl0gUG9zdGdyZVNRTCBub3QgYXZhaWxhYmxlIChleHBlY3RlZCB1bnRpbCBSYWlsd2F5IFBvc3RncmVzIGFkZG9uIGFkZGVkKToiLCBlcnIubWVzc2FnZSk7CiAgfSk7CgpleHBvcnQgZGVmYXVsdCBwb29sOwo=
+import { Pool } from "pg";
+
+// Railway injects DATABASE_URL automatically when Postgres addon is added.
+// Falls back gracefully if not yet configured so the app still boots.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("railway")
+    ? { rejectUnauthorized: false }
+    : false,
+});
+
+export const db = {
+  query: (text: string, params?: any[]) => pool.query(text, params),
+
+  // Convenience: return first row or null
+  queryOne: async (text: string, params?: any[]) => {
+    const result = await pool.query(text, params);
+    return result.rows[0] ?? null;
+  },
+};
+
+// ── Auto-migrations ── run on every boot, all idempotent ────────────────────
+async function runMigrations() {
+  try {
+    // Core users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id                SERIAL PRIMARY KEY,
+        email             TEXT UNIQUE NOT NULL,
+        pin_hash          TEXT NOT NULL,
+        tier              TEXT DEFAULT NULL,
+        whop_membership_id TEXT DEFAULT NULL,
+        sub_status        TEXT DEFAULT 'inactive',
+        is_owner          BOOLEAN DEFAULT FALSE,
+        reset_token_hash  TEXT DEFAULT NULL,
+        reset_token_expires TIMESTAMPTZ DEFAULT NULL,
+        login_attempts    INT DEFAULT 0,
+        locked_until      TIMESTAMPTZ DEFAULT NULL,
+        created_at        TIMESTAMPTZ DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS users_email_idx ON users(email)`);
+
+    // Login & activity tracking columns (added later — safe to re-run)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count   INT          DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login     TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active    TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_code     TEXT         DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expires  TIMESTAMPTZ  DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled    BOOLEAN      DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_plain      TEXT         DEFAULT NULL`);
+    // ── User personalization preferences (sport/team/player favorites) ────────
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb`);
+
+    // ── Promo codes (Stripe discount codes) ──────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS promo_codes (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT UNIQUE NOT NULL,
+        discount_pct INT NOT NULL,
+        applies_to   TEXT DEFAULT 'both',
+        max_uses     INT DEFAULT NULL,
+        uses         INT DEFAULT 0,
+        active       BOOLEAN DEFAULT TRUE,
+        created_at   TIMESTAMPTZ DEFAULT NOW(),
+        expires_at   TIMESTAMPTZ DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS promo_codes_code_idx ON promo_codes(code)`);
+    // Migration: add duration_months if missing
+    await pool.query(`ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS duration_months INT DEFAULT NULL`);
+
+    // ── Trial access codes ───────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trial_codes (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT UNIQUE NOT NULL,
+        duration_days INT DEFAULT 7,
+        max_uses     INT DEFAULT NULL,
+        uses         INT DEFAULT 0,
+        active       BOOLEAN DEFAULT TRUE,
+        note         TEXT DEFAULT NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW(),
+        expires_at   TIMESTAMPTZ DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS trial_codes_code_idx ON trial_codes(code)`);
+
+    // ── Trial code usage log ─────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trial_code_uses (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT NOT NULL,
+        email        TEXT NOT NULL,
+        used_at      TIMESTAMPTZ DEFAULT NOW(),
+        trial_expires TIMESTAMPTZ
+      )
+    `);
+
+    // ── App settings (key/value) ────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    // Seed default dev code if not already set
+    await pool.query(`
+      INSERT INTO app_settings (key, value) VALUES ('dev_code', 'ABUD')
+      ON CONFLICT (key) DO NOTHING
+    `);
+
+    // ── Feature Flags ────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        id          SERIAL PRIMARY KEY,
+        key         TEXT UNIQUE NOT NULL,
+        label       TEXT NOT NULL,
+        enabled     BOOLEAN DEFAULT TRUE,
+        min_tier    TEXT DEFAULT 'free',
+        kill_switch BOOLEAN DEFAULT FALSE,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Seed default feature flags
+    const defaultFlags = [
+      ['dashboard',     'Dashboard',      true,  'basic',  false],
+      ['props_hub',     'Props Hub',      true,  'basic',  false],
+      ['lotto',         'Lotto',          true,  'basic',  false],
+      ['top_plays',     'Top Plays',      true,  'pro',    false],
+      ['all_picks',     'All Picks',      true,  'pro',    false],
+      ['line_movement', 'Line Movement',  true,  'pro',    false],
+      ['markets',       'Markets',        true,  'pro',    false],
+      ['bracket',       'Bracket',        true,  'pro',    false],
+      ['ml_intel',      'ML Intel',       true,  'pro',    false],
+      ['bts',           'Beat the Streak',true,  'pro',    false],
+      ['live_scores',   'Live Scores',    true,  'free',   false],
+      ['fantasy',       'Fantasy',        true,  'free',   false],
+    ];
+    for (const [key, label, enabled, min_tier, kill_switch] of defaultFlags) {
+      await pool.query(
+        `INSERT INTO feature_flags (key,label,enabled,min_tier,kill_switch) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (key) DO NOTHING`,
+        [key, label, enabled, min_tier, kill_switch]
+      );
+    }
+
+    // ── Page events (tab usage tracking) ──────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS page_events (
+        id         SERIAL PRIMARY KEY,
+        user_id    INT REFERENCES users(id) ON DELETE SET NULL,
+        page       TEXT NOT NULL,
+        ts         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS page_events_ts_idx ON page_events(ts)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS page_events_page_idx ON page_events(page)`);
+
+    // ── API health log ─────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS api_health_log (
+        id          SERIAL PRIMARY KEY,
+        service     TEXT NOT NULL,
+        status      TEXT NOT NULL,
+        latency_ms  INT DEFAULT NULL,
+        error       TEXT DEFAULT NULL,
+        ts          TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS api_health_log_ts_idx ON api_health_log(ts)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS api_health_log_service_idx ON api_health_log(service)`);
+
+    // ── Audit log ─────────────────────────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id         SERIAL PRIMARY KEY,
+        actor      TEXT NOT NULL,
+        action     TEXT NOT NULL,
+        target     TEXT DEFAULT NULL,
+        detail     TEXT DEFAULT NULL,
+        ts         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log(ts)`);
+
+    // ── Flagged users column ───────────────────────────────────────────────────────
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_flagged  BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS flag_reason TEXT    DEFAULT NULL`);
+    // Whop migration — replace Stripe fields
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_membership_id TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_sub_id TEXT DEFAULT NULL`);
+
+    console.log("[DB] Migrations complete");
+  } catch (err: any) {
+    console.warn("[DB] Migration warning:", err.message);
+  }
+}
+
+// Test connection on startup — non-fatal if DB not yet configured
+pool.connect()
+  .then(client => {
+    console.log("[DB] PostgreSQL connected");
+    client.release();
+    runMigrations();
+  })
+  .catch(err => {
+    console.warn("[DB] PostgreSQL not available (expected until Railway Postgres addon added):", err.message);
+  });
+
+export default pool;
