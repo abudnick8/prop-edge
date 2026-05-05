@@ -1460,9 +1460,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (tier !== "free" && tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
 
-      // Check email not already taken
-      const existing = await db.queryOne(`SELECT id FROM users WHERE email=LOWER($1)`, [email]);
-      if (existing) return res.status(409).json({ error: "An account with that email already exists" });
+      // Check email not already taken — but allow cancelled users to resubscribe
+      const existing = await db.queryOne(`SELECT id, sub_status FROM users WHERE email=LOWER($1)`, [email]);
+      if (existing && existing.sub_status !== "cancelled") {
+        return res.status(409).json({ error: "An account with that email already exists" });
+      }
+      // Resubscribe flow: cancelled user signing up again — send them to checkout
+      if (existing && existing.sub_status === "cancelled" && tier !== "free") {
+        const planId = tier === "pro" ? process.env.WHOP_PRO_PLAN_ID : process.env.WHOP_BASIC_PLAN_ID;
+        let checkoutUrl: string | null = null;
+        if (whop && planId) {
+          const session = await (whop as any).checkoutConfigurations.create({
+            mode:         "payment",
+            plan_id:      planId,
+            metadata:     { tier, email: email.toLowerCase(), resubscribe: "true" },
+            redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
+          });
+          checkoutUrl = (session as any).purchase_url ?? null;
+        }
+        return res.json({ success: true, checkoutUrl, resubscribe: true });
+      }
 
       const pinHash = await hashPIN(pin);
 
@@ -1539,10 +1556,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // Check disabled
       if (user.is_disabled) return res.status(403).json({ error: "This account has been disabled. Contact support." });
 
-      // Block cancelled subscriptions (non-owner)
-      if (user.sub_status === "cancelled" && !user.is_owner) {
-        return res.status(403).json({ error: "Your subscription has been cancelled. Resubscribe at clubhouse-iq.up.railway.app to regain access." });
-      }
+      // Cancelled users: let them log in so they can resubscribe from within the app
+      // (frontend will detect subStatus==='cancelled' and show the upgrade screen)
 
       // Check lockout
       if (user.locked_until && new Date(user.locked_until) > new Date()) {
@@ -1582,7 +1597,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         isOwner: user.is_owner ?? false,
       });
 
-      res.json({ token, tier: user.tier, isOwner: user.is_owner });
+      res.json({ token, tier: user.tier, subStatus: user.sub_status, isOwner: user.is_owner });
     } catch (e: any) {
       console.error("[Auth] Login error:", e.message);
       res.status(500).json({ error: "Login failed" });
