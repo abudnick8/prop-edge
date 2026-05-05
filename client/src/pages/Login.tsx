@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, ChevronRight, Code2, Gift } from "lucide-react";
 
-type View = "login" | "signup" | "forgot" | "dev" | "trial";
+type View = "login" | "signup" | "forgot" | "dev" | "trial" | "resubscribe";
 
 export default function Login() {
   const { login } = useAuth();
@@ -46,16 +46,21 @@ export default function Login() {
   const pinValue    = pin.join("");
   const confirmValue = confirmPin.join("");
 
-  // ── Dev access ───────────────────────────────────────────────────────────
-  function handleDevAccess(e: React.FormEvent) {
+  // ── Dev access (code fetched from server so owner can update it) ──────────
+  async function handleDevAccess(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (devCode.trim().toUpperCase() !== "ABUD") {
-      setError("Invalid access code.");
-      return;
-    }
-    const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: false };
-    login("guest-dev-token", guestUser);
+    setError(""); setLoading(true);
+    try {
+      const res = await fetch("/api/admin/dev-code");
+      const { code: serverCode } = await res.json();
+      if (devCode.trim().toUpperCase() !== (serverCode ?? "ABUD").toUpperCase()) {
+        setError("Invalid access code.");
+        return;
+      }
+      const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: false };
+      login("guest-dev-token", guestUser);
+    } catch { setError("Network error — please try again."); }
+    finally { setLoading(false); }
   }
 
   // ── Trial code access ──────────────────────────────────────────────────────
@@ -92,9 +97,33 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Login failed"); return; }
+      // Cancelled account — let them resubscribe
+      if (data.subStatus === "cancelled") {
+        setView("resubscribe");
+        return;
+      }
       const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${data.token}` } });
       const me = await meRes.json();
       login(data.token, me);
+    } catch { setError("Network error — please try again."); }
+    finally { setLoading(false); }
+  }
+
+  async function handleResubscribe(newTier: "basic" | "pro") {
+    setError(""); setLoading(true);
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, pin: pinValue, tier: newTier }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Failed to start resubscribe"); return; }
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        setError("Could not create checkout session. Contact support.");
+      }
     } catch { setError("Network error — please try again."); }
     finally { setLoading(false); }
   }
@@ -186,7 +215,7 @@ export default function Login() {
         <div className="rounded-2xl p-6 shadow-lg" style={{ background: "#fff", border: "1px solid rgba(19,35,58,0.08)" }}>
 
           {/* Tabs */}
-          {view !== "forgot" && (
+          {view !== "forgot" && view !== "resubscribe" && (
             <div className="flex rounded-xl p-1 mb-6" style={{ background: "rgba(19,35,58,0.05)" }}>
               {tabs.map(t => (
                 <button
@@ -405,6 +434,33 @@ export default function Login() {
           )}
 
           {/* ── FORGOT PIN ── */}
+          {view === "resubscribe" && (
+            <div className="space-y-4">
+              <div className="text-center mb-2">
+                <p className="text-sm font-bold" style={{ color: "#131A24" }}>Resubscribe to Clubhouse IQ</p>
+                <p className="text-xs text-muted-foreground mt-1">Your subscription was cancelled. Choose a plan to regain access.</p>
+              </div>
+              <div className="space-y-3">
+                <button onClick={() => handleResubscribe("basic")} disabled={loading}
+                  className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50 text-left px-4 border-2 transition-all"
+                  style={{ background: "#F6F1E7", borderColor: "#13233A", color: "#131A24" }}>
+                  <div className="font-black">Basic — $5/mo</div>
+                  <div className="text-xs font-normal text-muted-foreground mt-0.5">Dashboard, Props Hub, Lotto</div>
+                </button>
+                <button onClick={() => handleResubscribe("pro")} disabled={loading}
+                  className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50 text-left px-4 transition-all"
+                  style={{ background: "#13233A", color: "#F6F1E7" }}>
+                  <div className="font-black">{loading ? "Loading…" : "Pro — $15/mo"}</div>
+                  <div className="text-xs font-normal mt-0.5" style={{ color: "rgba(246,241,231,0.7)" }}>All tabs + BTS, Top Plays, ML Intel</div>
+                </button>
+              </div>
+              <button type="button" onClick={() => { setView("login"); setError(""); }}
+                className="w-full text-xs text-center text-muted-foreground hover:underline">
+                ← Back to login
+              </button>
+            </div>
+          )}
+
           {view === "forgot" && (
             <form onSubmit={handleForgot} className="space-y-5">
               <div className="text-center mb-2">
