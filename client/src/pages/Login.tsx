@@ -109,7 +109,7 @@ export default function Login() {
     finally { setLoading(false); }
   }
 
-  async function handleResubscribe(newTier: "basic" | "pro") {
+  async function handleResubscribe(newTier: "free" | "basic" | "pro") {
     setError(""); setLoading(true);
     try {
       const res = await fetch("/api/auth/signup", {
@@ -122,7 +122,9 @@ export default function Login() {
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
-        setError("Could not create checkout session. Contact support.");
+        // Free tier or reactivation without checkout — go to login
+        setSuccess("Account reactivated! Please log in.");
+        setView("login");
       }
     } catch { setError("Network error — please try again."); }
     finally { setLoading(false); }
@@ -441,6 +443,12 @@ export default function Login() {
                 <p className="text-xs text-muted-foreground mt-1">Your subscription was cancelled. Choose a plan to regain access.</p>
               </div>
               <div className="space-y-3">
+                <button onClick={() => handleResubscribe("free")} disabled={loading}
+                  className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50 text-left px-4 border-2 transition-all"
+                  style={{ background: "#F6F1E7", borderColor: "rgba(19,35,58,0.2)", color: "#131A24" }}>
+                  <div className="font-black">Free</div>
+                  <div className="text-xs font-normal text-muted-foreground mt-0.5">Live Scores, Fantasy, Settings</div>
+                </button>
                 <button onClick={() => handleResubscribe("basic")} disabled={loading}
                   className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50 text-left px-4 border-2 transition-all"
                   style={{ background: "#F6F1E7", borderColor: "#13233A", color: "#131A24" }}>
