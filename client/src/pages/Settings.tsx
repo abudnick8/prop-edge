@@ -1,1 +1,425 @@
-aW1wb3J0IHsgdXNlUXVlcnksIHVzZU11dGF0aW9uIH0gZnJvbSAiQHRhbnN0YWNrL3JlYWN0LXF1ZXJ5IjsKaW1wb3J0IHsgU2V0dGluZ3MgYXMgU2V0dGluZ3NUeXBlIH0gZnJvbSAiQHNoYXJlZC9zY2hlbWEiOwppbXBvcnQgeyBhcGlSZXF1ZXN0LCBxdWVyeUNsaWVudCB9IGZyb20gIkAvbGliL3F1ZXJ5Q2xpZW50IjsKaW1wb3J0IHsgdXNlU3RhdGUsIHVzZUVmZmVjdCB9IGZyb20gInJlYWN0IjsKaW1wb3J0IHsgdXNlVG9hc3QgfSBmcm9tICJAL2hvb2tzL3VzZS10b2FzdCI7CmltcG9ydCB7IFNldHRpbmdzIGFzIFNldHRpbmdzSWNvbiwgS2V5LCBCZWxsLCBaYXAsIFJlZnJlc2hDdywgVHJvcGh5LCBDYWxlbmRhciwgU3dvcmRzLCBNYWlsLCBTbWFydHBob25lLCBDcm93biwgRXh0ZXJuYWxMaW5rLCBBcnJvd1VwUmlnaHQsIFVzZXIsIExvZ091dCwgU3RhciB9IGZyb20gImx1Y2lkZS1yZWFjdCI7CmltcG9ydCBQcmVmZXJlbmNlc0RyYXdlciBmcm9tICJAL2NvbXBvbmVudHMvUHJlZmVyZW5jZXNEcmF3ZXIiOwppbXBvcnQgeyB1c2VBdXRoIH0gZnJvbSAiQC9jb250ZXh0L0F1dGhDb250ZXh0IjsKaW1wb3J0IHsgTGluayB9IGZyb20gIndvdXRlciI7CmltcG9ydCB7IElucHV0IH0gZnJvbSAiQC9jb21wb25lbnRzL3VpL2lucHV0IjsKaW1wb3J0IHsgTGFiZWwgfSBmcm9tICJAL2NvbXBvbmVudHMvdWkvbGFiZWwiOwppbXBvcnQgeyBTd2l0Y2ggfSBmcm9tICJAL2NvbXBvbmVudHMvdWkvc3dpdGNoIjsKaW1wb3J0IHsgU2tlbGV0b24gfSBmcm9tICJAL2NvbXBvbmVudHMvdWkvc2tlbGV0b24iOwoKLy8g4pSA4pSAIENvcmUgc3BvcnRzIChhbHdheXMgc2hvd24pIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgApjb25zdCBDT1JFX1NQT1JUUyA9IFsiTkZMIiwgIk5CQSIsICJNTEIiLCAiTkhMIl07CgovLyDilIDilIAgT3B0aW9uYWwgc3BvcnRzICh0b2dnbGVkIG9uL29mZikg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACmNvbnN0IE9QVElPTkFMX1NQT1JUUyA9IFsKICB7IGtleTogIk1NQSIsICAgbGFiZWw6ICJNTUEiLCAgICAgICAgZGVzY3JpcHRpb246ICJVRkMsIEJlbGxhdG9yLCBPTkUg4oCUIGZpZ2h0IG1vbmV5bGluZXMiIH0sCiAgeyBrZXk6ICJCb3hpbmciLCBsYWJlbDogIkJveGluZyIsICAgIGRlc2NyaXB0aW9uOiAiUHJvZmVzc2lvbmFsIGJveGluZyBtYXRjaHVwcyIgfSwKICB7IGtleTogIk5DQUFCIiwgbGFiZWw6ICJOQ0FBQiIsICAgICAgZGVzY3JpcHRpb246ICJDb2xsZWdlIGJhc2tldGJhbGwg4oCUIE1hcmNoIE1hZG5lc3MgKyByZWd1bGFyIHNlYXNvbiIgfSwKICB7IGtleTogIk5DQUFGIiwgbGFiZWw6ICJOQ0FBRiIsICAgICAgZGVzY3JpcHRpb246ICJDb2xsZWdlIGZvb3RiYWxsIiB9LAogIHsga2V5OiAiR29sZiIsICBsYWJlbDogIkdvbGYiLCAgICAgICBkZXNjcmlwdGlvbjogIk1hc3RlcnMsIFBHQSBDaGFtcGlvbnNoaXAsIFVTIE9wZW4sIFRoZSBPcGVuIOKAlCBvdXRyaWdodCB3aW5uZXJzIiB9LApdOwoKZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gU2V0dGluZ3MoKSB7CiAgY29uc3QgeyB0b2FzdCB9ID0gdXNlVG9hc3QoKTsKICBjb25zdCB7IHVzZXIsIGlzUHJvLCBpc0Jhc2ljLCBsb2dvdXQgfSA9IHVzZUF1dGgoKTsKICBjb25zdCBbcHJlZk9wZW4sIHNldFByZWZPcGVuXSA9IHVzZVN0YXRlKGZhbHNlKTsKICBjb25zdCB7IGRhdGE6IHNldHRpbmdzLCBpc0xvYWRpbmcgfSA9IHVzZVF1ZXJ5PFNldHRpbmdzVHlwZT4oewogICAgcXVlcnlLZXk6IFsiL2FwaS9zZXR0aW5ncyJdLAogIH0pOwoKICBjb25zdCBbZm9ybSwgc2V0Rm9ybV0gPSB1c2VTdGF0ZTxQYXJ0aWFsPFNldHRpbmdzVHlwZT4+KHt9KTsKICBjb25zdCBbb2Rkc0tleSwgc2V0T2Rkc0tleV0gPSB1c2VTdGF0ZSgiIik7CgogIHVzZUVmZmVjdCgoKSA9PiB7CiAgICBpZiAoc2V0dGluZ3MpIHsKICAgICAgc2V0Rm9ybShzZXR0aW5ncyk7CiAgICAgIHNldE9kZHNLZXkoc2V0dGluZ3Mub2Rkc0FwaUtleSA/PyAiIik7CiAgICB9CiAgfSwgW3NldHRpbmdzXSk7CgogIGNvbnN0IHNhdmVNdXRhdGlvbiA9IHVzZU11dGF0aW9uKHsKICAgIG11dGF0aW9uRm46IChkYXRhOiBQYXJ0aWFsPFNldHRpbmdzVHlwZT4pID0+IGFwaVJlcXVlc3QoIlBBVENIIiwgIi9hcGkvc2V0dGluZ3MiLCBkYXRhKSwKICAgIG9uU3VjY2VzczogKCkgPT4gewogICAgICBxdWVyeUNsaWVudC5pbnZhbGlkYXRlUXVlcmllcyh7IHF1ZXJ5S2V5OiBbIi9hcGkvc2V0dGluZ3MiXSB9KTsKICAgICAgdG9hc3QoeyB0aXRsZTogIlNldHRpbmdzIFNhdmVkIiwgZGVzY3JpcHRpb246ICJZb3VyIHByZWZlcmVuY2VzIGhhdmUgYmVlbiB1cGRhdGVkIiB9KTsKICAgIH0sCiAgICBvbkVycm9yOiAoKSA9PiB0b2FzdCh7IHRpdGxlOiAiRXJyb3IiLCBkZXNjcmlwdGlvbjogIkZhaWxlZCB0byBzYXZlIHNldHRpbmdzIiwgdmFyaWFudDogImRlc3RydWN0aXZlIiB9KSwKICB9KTsKCiAgY29uc3QgaGFuZGxlU2F2ZSA9ICgpID0+IHsKICAgIHNhdmVNdXRhdGlvbi5tdXRhdGUoeyAuLi5mb3JtLCBvZGRzQXBpS2V5OiBvZGRzS2V5IHx8IG51bGwgfSk7CiAgfTsKCiAgLy8gVG9nZ2xlIGEgc3BvcnQgaW4gZW5hYmxlZE9wdGlvbmFsU3BvcnRzCiAgY29uc3QgdG9nZ2xlT3B0aW9uYWxTcG9ydCA9IChzcG9ydEtleTogc3RyaW5nKSA9PiB7CiAgICBjb25zdCBjdXJyZW50ID0gKGZvcm0uZW5hYmxlZE9wdGlvbmFsU3BvcnRzIGFzIHN0cmluZ1tdKSA/PyBbXTsKICAgIGNvbnN0IHVwZGF0ZWQgPSBjdXJyZW50LmluY2x1ZGVzKHNwb3J0S2V5KQogICAgICA/IGN1cnJlbnQuZmlsdGVyKChzKSA9PiBzICE9PSBzcG9ydEtleSkKICAgICAgOiBbLi4uY3VycmVudCwgc3BvcnRLZXldOwogICAgc2V0Rm9ybSh7IC4uLmZvcm0sIGVuYWJsZWRPcHRpb25hbFNwb3J0czogdXBkYXRlZCB9KTsKICB9OwoKICBjb25zdCBpc09wdGlvbmFsRW5hYmxlZCA9IChzcG9ydEtleTogc3RyaW5nKSA9PgogICAgKChmb3JtLmVuYWJsZWRPcHRpb25hbFNwb3J0cyBhcyBzdHJpbmdbXSkgPz8gW10pLmluY2x1ZGVzKHNwb3J0S2V5KTsKCiAgaWYgKGlzTG9hZGluZykgewogICAgcmV0dXJuICgKICAgICAgPGRpdiBjbGFzc05hbWU9Im1heC13LTJ4bCBteC1hdXRvIHNwYWNlLXktNCI+CiAgICAgICAgPFNrZWxldG9uIGNsYXNzTmFtZT0iaC04IHctMzIiIC8+CiAgICAgICAgPFNrZWxldG9uIGNsYXNzTmFtZT0iaC02NCByb3VuZGVkLXhsIiAvPgogICAgICA8L2Rpdj4KICAgICk7CiAgfQoKICByZXR1cm4gKAogICAgPGRpdiBjbGFzc05hbWU9Im1heC13LTJ4bCBteC1hdXRvIHNwYWNlLXktNiI+CiAgICAgIDxkaXY+CiAgICAgICAgPGgxIGNsYXNzTmFtZT0idGV4dC14bCBmb250LWJvbGQgdGV4dC1mb3JlZ3JvdW5kIj5TZXR0aW5nczwvaDE+CiAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXNtIHRleHQtbXV0ZWQtZm9yZWdyb3VuZCBtdC0wLjUiPkNvbmZpZ3VyZSB5b3VyIHByZWRpY3Rpb24gYm90PC9wPgogICAgICA8L2Rpdj4KCiAgICAgIHsvKiBQcmVmZXJlbmNlcyBEcmF3ZXIgKi99CiAgICAgIDxQcmVmZXJlbmNlc0RyYXdlciBvcGVuPXtwcmVmT3Blbn0gb25DbG9zZT17KCkgPT4gc2V0UHJlZk9wZW4oZmFsc2UpfSAvPgoKICAgICAgey8qIOKUgOKUgCBGYXZvcml0ZXMgLyBQZXJzb25hbGl6YXRpb24g4pSA4pSAICovfQogICAgICA8ZGl2IGNsYXNzTmFtZT0iYmctY2FyZCBib3JkZXIgYm9yZGVyLWJvcmRlciByb3VuZGVkLXhsIHAtNCI+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIG1iLTMiPgogICAgICAgICAgPFN0YXIgc2l6ZT17MTV9IGNsYXNzTmFtZT0idGV4dC1wcmltYXJ5IiBzdHlsZT17eyBjb2xvcjogIiNENEE4NDMiIH19IC8+CiAgICAgICAgICA8cCBjbGFzc05hbWU9ImZvbnQtYm9sZCB0ZXh0LXNtIHRleHQtZm9yZWdyb3VuZCI+TXkgRmF2b3JpdGVzPC9wPgogICAgICAgIDwvZGl2PgogICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgbWItMyI+CiAgICAgICAgICBQZXJzb25hbGl6ZSB5b3VyIGRhc2hib2FyZCDigJQgcGluIHlvdXIgZmF2b3JpdGUgc3BvcnRzLCB0ZWFtcywgYW5kIHBsYXllcnMgdG8gc2VlIHRoZWlyIHBpY2tzIGF0IHRoZSB0b3AuCiAgICAgICAgPC9wPgogICAgICAgIDxidXR0b24KICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldFByZWZPcGVuKHRydWUpfQogICAgICAgICAgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBweC00IHB5LTIuNSByb3VuZGVkLXhsIHRleHQtc20gZm9udC1ib2xkIHRyYW5zaXRpb24tYWxsIGFjdGl2ZTpzY2FsZS05NSIKICAgICAgICAgIHN0eWxlPXt7IGJhY2tncm91bmQ6ICIjMTMyMzNBIiwgY29sb3I6ICIjRjZGMUU3IiwgYm9yZGVyOiAibm9uZSIsIGN1cnNvcjogInBvaW50ZXIiIH19CiAgICAgICAgPgogICAgICAgICAgPFN0YXIgc2l6ZT17MTR9IHN0eWxlPXt7IGZpbGw6ICIjRDRBODQzIiwgY29sb3I6ICIjRDRBODQzIiB9fSAvPgogICAgICAgICAgRWRpdCBGYXZvcml0ZXMKICAgICAgICA8L2J1dHRvbj4KICAgICAgPC9kaXY+CgogICAgICB7Lyog4pSA4pSAIEFjY291bnQg4pSA4pSAICovfQogICAgICA8ZGl2IGNsYXNzTmFtZT0iYmctY2FyZCBib3JkZXIgYm9yZGVyLWJvcmRlciByb3VuZGVkLXhsIHAtNCI+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIG1iLTMiPgogICAgICAgICAgPFVzZXIgc2l6ZT17MTV9IGNsYXNzTmFtZT0idGV4dC1wcmltYXJ5IiAvPgogICAgICAgICAgPHAgY2xhc3NOYW1lPSJmb250LWJvbGQgdGV4dC1zbSB0ZXh0LWZvcmVncm91bmQiPkFjY291bnQ8L3A+CiAgICAgICAgPC9kaXY+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlbiBnYXAtMyI+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0ibWluLXctMCI+CiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC1bMTBweF0gZm9udC1ib2xkIHRleHQtbXV0ZWQtZm9yZWdyb3VuZCB1cHBlcmNhc2UgdHJhY2tpbmctd2lkZXIgbWItMC41Ij5TaWduZWQgaW4gYXM8L3A+CiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC1zbSBmb250LXNlbWlib2xkIHRleHQtZm9yZWdyb3VuZCB0cnVuY2F0ZSI+e3VzZXI/LmVtYWlsID8/ICLigJQifTwvcD4KICAgICAgICAgIDwvZGl2PgogICAgICAgICAgPGJ1dHRvbgogICAgICAgICAgICBvbkNsaWNrPXtsb2dvdXR9CiAgICAgICAgICAgIGNsYXNzTmFtZT0iZmxleC1zaHJpbmstMCBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMS41IHB4LTMgcHktMiByb3VuZGVkLXhsIHRleHQteHMgZm9udC1ibGFjayBib3JkZXIgdHJhbnNpdGlvbi1hbGwgYWN0aXZlOnNjYWxlLTk1IgogICAgICAgICAgICBzdHlsZT17eyBib3JkZXJDb2xvcjogInJnYmEoMjM5LDY4LDY4LDAuMjUpIiwgY29sb3I6ICIjZWY0NDQ0IiwgYmFja2dyb3VuZDogInJnYmEoMjM5LDY4LDY4LDAuMDUpIiB9fQogICAgICAgICAgPgogICAgICAgICAgICA8TG9nT3V0IHNpemU9ezEzfSAvPiBMb2cgb3V0CiAgICAgICAgICA8L2J1dHRvbj4KICAgICAgICA8L2Rpdj4KICAgICAgPC9kaXY+CgogICAgICB7Lyog4pSA4pSAIEJpbGxpbmcgLyBQbGFuIOKUgOKUgCAqL30KICAgICAgPGRpdiBjbGFzc05hbWU9ImJnLWNhcmQgYm9yZGVyIGJvcmRlci1ib3JkZXIgcm91bmRlZC14bCBwLTQiPgogICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBtYi0zIj4KICAgICAgICAgIDxDcm93biBzaXplPXsxNX0gY2xhc3NOYW1lPSJ0ZXh0LXByaW1hcnkiIC8+CiAgICAgICAgICA8cCBjbGFzc05hbWU9ImZvbnQtYm9sZCB0ZXh0LXNtIHRleHQtZm9yZWdyb3VuZCI+WW91ciBQbGFuPC9wPgogICAgICAgIDwvZGl2PgogICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4iPgogICAgICAgICAgPGRpdj4KICAgICAgICAgICAgPHNwYW4KICAgICAgICAgICAgICBjbGFzc05hbWU9InRleHQteHMgZm9udC1ibGFjayBweC0yLjUgcHktMSByb3VuZGVkLWZ1bGwiCiAgICAgICAgICAgICAgc3R5bGU9e3sKICAgICAgICAgICAgICAgIGJhY2tncm91bmQ6IHVzZXI/LnRpZXIgPT09ICJwcm8iID8gInJnYmEoMTYyLDU5LDUwLDAuMSkiIDogdXNlcj8udGllciA9PT0gImJhc2ljIiA/ICJyZ2JhKDM3LDk5LDIzNSwwLjEpIiA6ICJyZ2JhKDYxLDc1LDg4LDAuMSkiLAogICAgICAgICAgICAgICAgY29sb3I6IHVzZXI/LnRpZXIgPT09ICJwcm8iID8gIiNBMjNCMzIiIDogdXNlcj8udGllciA9PT0gImJhc2ljIiA/ICIjMjU2M2ViIiA6ICIjM0Q0QjU4IiwKICAgICAgICAgICAgICB9fQogICAgICAgICAgICA+CiAgICAgICAgICAgICAge3VzZXI/LnRpZXIgPT09ICJwcm8iID8gIlBybyDigJQgJDE1L21vIiA6IHVzZXI/LnRpZXIgPT09ICJiYXNpYyIgPyAiQmFzaWMg4oCUICQ1L21vIiA6ICJGcmVlIn0KICAgICAgICAgICAgPC9zcGFuPgogICAgICAgICAgICB7IWlzUHJvICYmICgKICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQtWzExcHhdIHRleHQtbXV0ZWQtZm9yZWdyb3VuZCBtdC0xLjUiPgogICAgICAgICAgICAgICAge2lzQmFzaWMgPyAiVXBncmFkZSB0byBQcm8gZm9yIEJUUywgTUwgSW50ZWwsIFRvcCBQbGF5cywgYW5kIG1vcmUuIiA6ICJVcGdyYWRlIHRvIEJhc2ljIG9yIFBybyB0byB1bmxvY2sgcGlja3MuIn0KICAgICAgICAgICAgICA8L3A+CiAgICAgICAgICAgICl9CiAgICAgICAgICA8L2Rpdj4KICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGZsZXgtY29sIGdhcC0yIGl0ZW1zLWVuZCI+CiAgICAgICAgICAgIHshaXNQcm8gJiYgKAogICAgICAgICAgICAgIDxMaW5rIGhyZWY9Ii9wcmljaW5nIj4KICAgICAgICAgICAgICAgIDxidXR0b24gY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMS41IHB4LTMgcHktMS41IHJvdW5kZWQtbGcgdGV4dC14cyBmb250LWJsYWNrIHRyYW5zaXRpb24tYWxsIGFjdGl2ZTpzY2FsZS05NSIKICAgICAgICAgICAgICAgICAgc3R5bGU9e3sgYmFja2dyb3VuZDogIiNBMjNCMzIiLCBjb2xvcjogIiNmZmYiIH19PgogICAgICAgICAgICAgICAgICA8QXJyb3dVcFJpZ2h0IHNpemU9ezEyfSAvPiBVcGdyYWRlCiAgICAgICAgICAgICAgICA8L2J1dHRvbj4KICAgICAgICAgICAgICA8L0xpbms+CiAgICAgICAgICAgICl9CiAgICAgICAgICAgIHsoaXNCYXNpYyB8fCBpc1BybykgJiYgdXNlcj8udGllciAhPT0gImZyZWUiICYmICgKICAgICAgICAgICAgICA8YnV0dG9uCiAgICAgICAgICAgICAgICBvbkNsaWNrPXthc3luYyAoKSA9PiB7CiAgICAgICAgICAgICAgICAgIGNvbnN0IHJlcyA9IGF3YWl0IGZldGNoKCIvYXBpL2F1dGgvc3RyaXBlLXBvcnRhbCIpOwogICAgICAgICAgICAgICAgICBjb25zdCB7IHVybCB9ID0gYXdhaXQgcmVzLmpzb24oKTsKICAgICAgICAgICAgICAgICAgaWYgKHVybCkgd2luZG93LmxvY2F0aW9uLmhyZWYgPSB1cmw7CiAgICAgICAgICAgICAgICB9fQogICAgICAgICAgICAgICAgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMS41IHB4LTMgcHktMS41IHJvdW5kZWQtbGcgdGV4dC14cyBmb250LXNlbWlib2xkIGJvcmRlciB0cmFuc2l0aW9uLWFsbCBhY3RpdmU6c2NhbGUtOTUiCiAgICAgICAgICAgICAgICBzdHlsZT17eyBib3JkZXJDb2xvcjogInJnYmEoMTksMzUsNTgsMC4xNSkiLCBjb2xvcjogInJnYmEoMTksMzUsNTgsMC42KSIsIGJhY2tncm91bmQ6ICJ0cmFuc3BhcmVudCIgfX0KICAgICAgICAgICAgICA+CiAgICAgICAgICAgICAgICA8RXh0ZXJuYWxMaW5rIHNpemU9ezExfSAvPiBNYW5hZ2UgQmlsbGluZwogICAgICAgICAgICAgIDwvYnV0dG9uPgogICAgICAgICAgICApfQogICAgICAgICAgPC9kaXY+CiAgICAgICAgPC9kaXY+CiAgICAgIDwvZGl2PgoKICAgICAgey8qIOKUgOKUgCBTdXBwb3J0IOKUgOKUgCAqL30KICAgICAgPGRpdiBjbGFzc05hbWU9ImJnLWNhcmQgYm9yZGVyIGJvcmRlci1ib3JkZXIgcm91bmRlZC14bCBwLTQiPgogICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBtYi0zIj4KICAgICAgICAgIDxNYWlsIHNpemU9ezE1fSBjbGFzc05hbWU9InRleHQtcHJpbWFyeSIgLz4KICAgICAgICAgIDxwIGNsYXNzTmFtZT0iZm9udC1ib2xkIHRleHQtc20gdGV4dC1mb3JlZ3JvdW5kIj5TdXBwb3J0PC9wPgogICAgICAgIDwvZGl2PgogICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgbWItMyI+UXVlc3Rpb25zLCBpc3N1ZXMsIG9yIGZlZWRiYWNrPyBSZWFjaCBvdXIgc3VwcG9ydCB0ZWFtIGRpcmVjdGx5LjwvcD4KICAgICAgICA8YQogICAgICAgICAgaHJlZj0ibWFpbHRvOmNsdWJob3VzZWlxYmV0c0BnbWFpbC5jb20iCiAgICAgICAgICBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIHB4LTMgcHktMi41IHJvdW5kZWQteGwgYm9yZGVyIHRyYW5zaXRpb24tYWxsIGFjdGl2ZTpzY2FsZS05NSIKICAgICAgICAgIHN0eWxlPXt7IGJvcmRlckNvbG9yOiAicmdiYSgxOSwzNSw1OCwwLjE1KSIsIGJhY2tncm91bmQ6ICJyZ2JhKDE5LDM1LDU4LDAuMDMpIiwgY29sb3I6ICIjMTMxQTI0IiB9fQogICAgICAgID4KICAgICAgICAgIDxNYWlsIHNpemU9ezEzfSBzdHlsZT17eyBjb2xvcjogIiNBMjNCMzIiLCBmbGV4U2hyaW5rOiAwIH19IC8+CiAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9InRleHQtc20gZm9udC1zZW1pYm9sZCI+Y2x1YmhvdXNlaXFiZXRzQGdtYWlsLmNvbTwvc3Bhbj4KICAgICAgICAgIDxFeHRlcm5hbExpbmsgc2l6ZT17MTF9IGNsYXNzTmFtZT0ibWwtYXV0byIgc3R5bGU9e3sgY29sb3I6ICJyZ2JhKDE5LDM1LDU4LDAuMzUpIiB9fSAvPgogICAgICAgIDwvYT4KICAgICAgPC9kaXY+CgogICAgICB7LyogQWxlcnQgVGhyZXNob2xkICovfQogICAgICA8U2V0dGluZ3NTZWN0aW9uIGljb249ezxCZWxsIHNpemU9ezE2fSAvPn0gdGl0bGU9IkFsZXJ0IFRocmVzaG9sZCIgZGVzY3JpcHRpb249IlNldCB0aGUgbWluaW11bSBjb25maWRlbmNlIHNjb3JlIHRvIHJlY2VpdmUgYSBub3RpZmljYXRpb24iPgogICAgICAgIDxkaXY+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIG1iLTIiPgogICAgICAgICAgICA8TGFiZWw+TWluaW11bSBDb25maWRlbmNlIFNjb3JlPC9MYWJlbD4KICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJmb250LW1vbm8gZm9udC1ib2xkIHRleHQtcHJpbWFyeSI+e2Zvcm0uY29uZmlkZW5jZVRocmVzaG9sZCA/PyA4MH0vMTAwPC9zcGFuPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgICA8aW5wdXQKICAgICAgICAgICAgdHlwZT0icmFuZ2UiCiAgICAgICAgICAgIG1pbj17NTB9CiAgICAgICAgICAgIG1heD17OTV9CiAgICAgICAgICAgIHN0ZXA9ezV9CiAgICAgICAgICAgIHZhbHVlPXtmb3JtLmNvbmZpZGVuY2VUaHJlc2hvbGQgPz8gODB9CiAgICAgICAgICAgIG9uQ2hhbmdlPXsoZSkgPT4gc2V0Rm9ybSh7IC4uLmZvcm0sIGNvbmZpZGVuY2VUaHJlc2hvbGQ6IE51bWJlcihlLnRhcmdldC52YWx1ZSkgfSl9CiAgICAgICAgICAgIGNsYXNzTmFtZT0idy1mdWxsIGFjY2VudC1wcmltYXJ5IgogICAgICAgICAgICBkYXRhLXRlc3RpZD0iaW5wdXQtY29uZmlkZW5jZS10aHJlc2hvbGQiCiAgICAgICAgICAvPgogICAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXgganVzdGlmeS1iZXR3ZWVuIHRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIG10LTEiPgogICAgICAgICAgICA8c3Bhbj41MDwvc3Bhbj4KICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LXByaW1hcnkgZm9udC1ib2xkIj5SZWNvbW1lbmRlZDogODA8L3NwYW4+CiAgICAgICAgICAgIDxzcGFuPjk1PC9zcGFuPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIG10LTIiPgogICAgICAgICAgICBZb3UnbGwgYmUgYWxlcnRlZCB3aGVuIGFueSBwaWNrIHNjb3JlcyB7Zm9ybS5jb25maWRlbmNlVGhyZXNob2xkID8/IDgwfSsgb3V0IG9mIDEwMC4KICAgICAgICAgIDwvcD4KICAgICAgICA8L2Rpdj4KICAgICAgPC9TZXR0aW5nc1NlY3Rpb24+CgogICAgICB7LyogT3B0aW9uYWwgU3BvcnRzICovfQogICAgICA8U2V0dGluZ3NTZWN0aW9uCiAgICAgICAgaWNvbj17PFN3b3JkcyBzaXplPXsxNn0gLz59CiAgICAgICAgdGl0bGU9Ik9wdGlvbmFsIFNwb3J0cyIKICAgICAgICBkZXNjcmlwdGlvbj0iRW5hYmxlIGFkZGl0aW9uYWwgc3BvcnRzIGJleW9uZCBORkwsIE5CQSwgTUxCLCBhbmQgTkhMIgogICAgICA+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9InNwYWNlLXktMyI+CiAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIj4KICAgICAgICAgICAgQ29yZSBzcG9ydHMgKE5GTCwgTkJBLCBNTEIsIE5ITCkgYXJlIGFsd2F5cyBzY2FubmVkLiBUb2dnbGUgZXh0cmFzIGJlbG93IOKAlCBjaGFuZ2VzIGFwcGx5IG9uIG5leHQgc2Nhbi4KICAgICAgICAgIDwvcD4KICAgICAgICAgIHtPUFRJT05BTF9TUE9SVFMubWFwKChzcG9ydCkgPT4gKAogICAgICAgICAgICA8ZGl2IGtleT17c3BvcnQua2V5fSBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlbiBweS0yIGJvcmRlci1iIGJvcmRlci1ib3JkZXIgbGFzdDpib3JkZXItMCI+CiAgICAgICAgICAgICAgPGRpdj4KICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC1zbSBmb250LW1lZGl1bSB0ZXh0LWZvcmVncm91bmQiPntzcG9ydC5sYWJlbH08L3A+CiAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIj57c3BvcnQuZGVzY3JpcHRpb259PC9wPgogICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgIDxTd2l0Y2gKICAgICAgICAgICAgICAgIGNoZWNrZWQ9e2lzT3B0aW9uYWxFbmFibGVkKHNwb3J0LmtleSl9CiAgICAgICAgICAgICAgICBvbkNoZWNrZWRDaGFuZ2U9eygpID0+IHRvZ2dsZU9wdGlvbmFsU3BvcnQoc3BvcnQua2V5KX0KICAgICAgICAgICAgICAgIGRhdGEtdGVzdGlkPXtgc3dpdGNoLXNwb3J0LSR7c3BvcnQua2V5LnRvTG93ZXJDYXNlKCl9YH0KICAgICAgICAgICAgICAvPgogICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICkpfQogICAgICAgIDwvZGl2PgogICAgICA8L1NldHRpbmdzU2VjdGlvbj4KCiAgICAgIHsvKiBTZWFzb24gUHJvcHMgJiBGdXR1cmVzICovfQogICAgICA8U2V0dGluZ3NTZWN0aW9uCiAgICAgICAgaWNvbj17PENhbGVuZGFyIHNpemU9ezE2fSAvPn0KICAgICAgICB0aXRsZT0iU2Vhc29uIFByb3BzICYgRnV0dXJlcyIKICAgICAgICBkZXNjcmlwdGlvbj0iUHJlLXNlYXNvbiBhbmQgc2Vhc29uLWxvbmcgcGxheWVyIHByb3BzLCBwbHVzIGNoYW1waW9uc2hpcCBvdXRyaWdodCB3aW5uZXJzIgogICAgICA+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9InNwYWNlLXktNCI+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIj4KICAgICAgICAgICAgPGRpdj4KICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQtc20gZm9udC1tZWRpdW0gdGV4dC1mb3JlZ3JvdW5kIj5FbmFibGUgU2Vhc29uLUxvbmcgUHJvcHM8L3A+CiAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXhzIHRleHQtbXV0ZWQtZm9yZWdyb3VuZCI+CiAgICAgICAgICAgICAgICBJbmNsdWRlcyBmdWxsLXNlYXNvbiBwbGF5ZXIgdG90YWxzIChlLmcuIE1MQiBob21lIHJ1bnMgc2Vhc29uIE8vVSwgTkJBIHBvaW50cyBzZWFzb24gTy9VKQogICAgICAgICAgICAgICAgYW5kIGNoYW1waW9uc2hpcCBvdXRyaWdodCB3aW5uZXJzIOKAlCB1c2VmdWwgZXZlbiBiZWZvcmUgYSBzZWFzb24gc3RhcnRzCiAgICAgICAgICAgICAgPC9wPgogICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgPFN3aXRjaAogICAgICAgICAgICAgIGNoZWNrZWQ9eyhmb3JtLmVuYWJsZVNlYXNvblByb3BzIGFzIGJvb2xlYW4pID8/IHRydWV9CiAgICAgICAgICAgICAgb25DaGVja2VkQ2hhbmdlPXsodikgPT4gc2V0Rm9ybSh7IC4uLmZvcm0sIGVuYWJsZVNlYXNvblByb3BzOiB2IH0pfQogICAgICAgICAgICAgIGRhdGEtdGVzdGlkPSJzd2l0Y2gtc2Vhc29uLXByb3BzIgogICAgICAgICAgICAvPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iYmctbXV0ZWQvNTAgcm91bmRlZC1sZyBwLTMgdGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgc3BhY2UteS0xIGJvcmRlciBib3JkZXItYm9yZGVyIj4KICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJmb250LXNlbWlib2xkIHRleHQtZm9yZWdyb3VuZCI+V2hhdCB0aGlzIGluY2x1ZGVzOjwvcD4KICAgICAgICAgICAgPHA+4oCiIDxzcGFuIGNsYXNzTmFtZT0idGV4dC1ncmVlbi00MDAiPlBsYXllciBzZWFzb24gdG90YWxzPC9zcGFuPiDigJQgTUxCIEhSL0sgc2Vhc29uIE8vVSwgTkJBIFBUUy9SRUIvQVNUIHNlYXNvbiBPL1UsIE5GTCBwYXNzaW5nL3J1c2hpbmcgeWRzIHNlYXNvbiBPL1U8L3A+CiAgICAgICAgICAgIDxwPuKAoiA8c3BhbiBjbGFzc05hbWU9InRleHQtYW1iZXItNDAwIj5DaGFtcGlvbnNoaXAgb3V0cmlnaHRzPC9zcGFuPiDigJQgTUxCIFdvcmxkIFNlcmllcywgTkJBIHRpdGxlLCBOSEwgQ3VwLCBOQ0FBIHRvdXJuYW1lbnQsIEdvbGYgbWFqb3JzPC9wPgogICAgICAgICAgICA8cD7igKIgPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LWJsdWUtNDAwIj5QcmUtc2Vhc29uIHZhbHVlPC9zcGFuPiDigJQgVGhlc2UgbWFya2V0cyBvcGVuIG1vbnRocyBiZWZvcmUgdGhlIHNlYXNvbiwgb2Z0ZW4gd2l0aCBiZXR0ZXIgbGluZXM8L3A+CiAgICAgICAgICA8L2Rpdj4KICAgICAgICA8L2Rpdj4KICAgICAgPC9TZXR0aW5nc1NlY3Rpb24+CgogICAgICB7LyogU2NhbiBJbnRlcnZhbCAqL30KICAgICAgPFNldHRpbmdzU2VjdGlvbiBpY29uPXs8UmVmcmVzaEN3IHNpemU9ezE2fSAvPn0gdGl0bGU9IlNjYW4gRnJlcXVlbmN5IiBkZXNjcmlwdGlvbj0iSG93IG9mdGVuIHRoZSBib3QgYXV0b21hdGljYWxseSBzY2FucyBmb3IgbmV3IG1hcmtldHMiPgogICAgICAgIDxkaXY+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIG1iLTIiPgogICAgICAgICAgICA8TGFiZWw+U2NhbiBldmVyeTwvTGFiZWw+CiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT0iZm9udC1tb25vIGZvbnQtYm9sZCB0ZXh0LWZvcmVncm91bmQiPntmb3JtLnNjYW5JbnRlcnZhbE1pbnV0ZXMgPz8gMzB9IG1pbnV0ZXM8L3NwYW4+CiAgICAgICAgICA8L2Rpdj4KICAgICAgICAgIDxpbnB1dAogICAgICAgICAgICB0eXBlPSJyYW5nZSIKICAgICAgICAgICAgbWluPXs1fQogICAgICAgICAgICBtYXg9ezEyMH0KICAgICAgICAgICAgc3RlcD17NX0KICAgICAgICAgICAgdmFsdWU9e2Zvcm0uc2NhbkludGVydmFsTWludXRlcyA/PyAzMH0KICAgICAgICAgICAgb25DaGFuZ2U9eyhlKSA9PiBzZXRGb3JtKHsgLi4uZm9ybSwgc2NhbkludGVydmFsTWludXRlczogTnVtYmVyKGUudGFyZ2V0LnZhbHVlKSB9KX0KICAgICAgICAgICAgY2xhc3NOYW1lPSJ3LWZ1bGwgYWNjZW50LXByaW1hcnkiCiAgICAgICAgICAvPgogICAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXgganVzdGlmeS1iZXR3ZWVuIHRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIG10LTEiPgogICAgICAgICAgICA8c3Bhbj41IG1pbjwvc3Bhbj4KICAgICAgICAgICAgPHNwYW4+MiBob3Vyczwvc3Bhbj4KICAgICAgICAgIDwvZGl2PgogICAgICAgIDwvZGl2PgogICAgICA8L1NldHRpbmdzU2VjdGlvbj4KCiAgICAgIHsvKiBOb3RpZmljYXRpb25zICovfQogICAgICA8U2V0dGluZ3NTZWN0aW9uIGljb249ezxCZWxsIHNpemU9ezE2fSAvPn0gdGl0bGU9Ik5vdGlmaWNhdGlvbnMiIGRlc2NyaXB0aW9uPSJDb250cm9sIGhvdyB5b3UgZ2V0IGFsZXJ0ZWQgd2hlbiBhIGJldCBoaXRzIHlvdXIgY29uZmlkZW5jZSB0aHJlc2hvbGQiPgogICAgICAgIDxkaXYgY2xhc3NOYW1lPSJzcGFjZS15LTQiPgoKICAgICAgICAgIHsvKiBJbi1BcHAgKi99CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIHB5LTMgYm9yZGVyLWIgYm9yZGVyLWJvcmRlciI+CiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMyI+CiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJwLTIgcm91bmRlZC1sZyBiZy1wcmltYXJ5LzEwIHRleHQtcHJpbWFyeSI+PFNtYXJ0cGhvbmUgc2l6ZT17MTV9IC8+PC9zcGFuPgogICAgICAgICAgICAgIDxkaXY+CiAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQtc20gZm9udC1zZW1pYm9sZCB0ZXh0LWZvcmVncm91bmQiPkluLUFwcCBOb3RpZmljYXRpb25zPC9wPgogICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXhzIHRleHQtbXV0ZWQtZm9yZWdyb3VuZCI+QmVsbCBpY29uICsgYWxlcnQgZmVlZCBpbnNpZGUgdGhlIGFwcDwvcD4KICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgIDxTd2l0Y2gKICAgICAgICAgICAgICBjaGVja2VkPXtmb3JtLm5vdGlmaWNhdGlvbnNFbmFibGVkID8/IHRydWV9CiAgICAgICAgICAgICAgb25DaGVja2VkQ2hhbmdlPXsodikgPT4gc2V0Rm9ybSh7IC4uLmZvcm0sIG5vdGlmaWNhdGlvbnNFbmFibGVkOiB2IH0pfQogICAgICAgICAgICAgIGRhdGEtdGVzdGlkPSJzd2l0Y2gtbm90aWZpY2F0aW9ucy1pbmFwcCIKICAgICAgICAgICAgLz4KICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgIHsvKiBFbWFpbCAqL30KICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJzcGFjZS15LTMiPgogICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIj4KICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTMiPgogICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJwLTIgcm91bmRlZC1sZyBiZy1ibHVlLTUwMC8xMCB0ZXh0LWJsdWUtNDAwIj48TWFpbCBzaXplPXsxNX0gLz48L3NwYW4+CiAgICAgICAgICAgICAgICA8ZGl2PgogICAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQtc20gZm9udC1zZW1pYm9sZCB0ZXh0LWZvcmVncm91bmQiPkVtYWlsIE5vdGlmaWNhdGlvbnM8L3A+CiAgICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQiPkVtYWlsIGFsZXJ0IGV2ZXJ5IDMgaG91cnMgd2hlbiBoaWdoLWNvbmZpZGVuY2UgcGlja3MgYXJlIGZvdW5kPC9wPgogICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgPFN3aXRjaAogICAgICAgICAgICAgICAgY2hlY2tlZD17KGZvcm0gYXMgYW55KS5lbWFpbE5vdGlmaWNhdGlvbnNFbmFibGVkID8/IHRydWV9CiAgICAgICAgICAgICAgICBvbkNoZWNrZWRDaGFuZ2U9eyh2KSA9PiBzZXRGb3JtKHsgLi4uZm9ybSwgZW1haWxOb3RpZmljYXRpb25zRW5hYmxlZDogdiB9IGFzIGFueSl9CiAgICAgICAgICAgICAgICBkYXRhLXRlc3RpZD0ic3dpdGNoLW5vdGlmaWNhdGlvbnMtZW1haWwiCiAgICAgICAgICAgICAgLz4KICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICB7LyogRW1haWwgYWRkcmVzcyBmaWVsZCDigJQgb25seSBzaG93biB3aGVuIGVtYWlsIGlzIG9uICovfQogICAgICAgICAgICB7KChmb3JtIGFzIGFueSkuZW1haWxOb3RpZmljYXRpb25zRW5hYmxlZCA/PyB0cnVlKSAmJiAoCiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9Im1sLTExIj4KICAgICAgICAgICAgICAgIDxMYWJlbCBjbGFzc05hbWU9Im1iLTEuNSBibG9jayB0ZXh0LXhzIj5TZW5kIGFsZXJ0cyB0bzwvTGFiZWw+CiAgICAgICAgICAgICAgICA8SW5wdXQKICAgICAgICAgICAgICAgICAgdHlwZT0iZW1haWwiCiAgICAgICAgICAgICAgICAgIHZhbHVlPXsoZm9ybSBhcyBhbnkpLm5vdGlmaWNhdGlvbkVtYWlsID8/ICJhZGFtLmJ1ZG5pY2tAZ2RyaC5vcmcifQogICAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldEZvcm0oeyAuLi5mb3JtLCBub3RpZmljYXRpb25FbWFpbDogZS50YXJnZXQudmFsdWUgfSBhcyBhbnkpfQogICAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj0ieW91ckBlbWFpbC5jb20iCiAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT0iYmctbXV0ZWQgYm9yZGVyLWJvcmRlciB0ZXh0LXNtIGgtOCIKICAgICAgICAgICAgICAgICAgZGF0YS10ZXN0aWQ9ImlucHV0LW5vdGlmaWNhdGlvbi1lbWFpbCIKICAgICAgICAgICAgICAgIC8+CiAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1tdXRlZC1mb3JlZ3JvdW5kIG10LTEiPgogICAgICAgICAgICAgICAgICBBbGVydHMgZmlyZSBldmVyeSAzIGhvdXJzIOKAlCBvbmx5IHdoZW4gcGlja3MgaGl0IHlvdXIge2Zvcm0uY29uZmlkZW5jZVRocmVzaG9sZCA/PyA4MH0rIHRocmVzaG9sZC4KICAgICAgICAgICAgICAgIDwvcD4KICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgKX0KICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgIHsvKiBCb3RoLW9mZiB3YXJuaW5nICovfQogICAgICAgICAgeyEoZm9ybS5ub3RpZmljYXRpb25zRW5hYmxlZCA/PyB0cnVlKSAmJiAhKChmb3JtIGFzIGFueSkuZW1haWxOb3RpZmljYXRpb25zRW5hYmxlZCA/PyB0cnVlKSAmJiAoCiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBweC0zIHB5LTIuNSByb3VuZGVkLWxnIGJnLXllbGxvdy01MDAvMTAgYm9yZGVyIGJvcmRlci15ZWxsb3ctNTAwLzIwIHRleHQtYW1iZXItNDAwIHRleHQteHMiPgogICAgICAgICAgICAgIDxCZWxsIHNpemU9ezEzfSAvPgogICAgICAgICAgICAgIDxzcGFuPkFsbCBub3RpZmljYXRpb25zIGFyZSBvZmYuIFlvdSB3b24ndCBiZSBhbGVydGVkIHdoZW4gaGlnaC1jb25maWRlbmNlIHBpY2tzIGFwcGVhci48L3NwYW4+CiAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgKX0KICAgICAgICA8L2Rpdj4KICAgICAgPC9TZXR0aW5nc1NlY3Rpb24+CgogICAgICB7LyogQVBJIEtleXMgKi99CiAgICAgIDxTZXR0aW5nc1NlY3Rpb24gaWNvbj17PEtleSBzaXplPXsxNn0gLz59IHRpdGxlPSJBUEkgS2V5cyIgZGVzY3JpcHRpb249Ik9wdGlvbmFsOiBhZGQga2V5cyB0byB1bmxvY2sgbGl2ZSBkYXRhIGZyb20gbW9yZSBzb3VyY2VzIj4KICAgICAgICA8ZGl2IGNsYXNzTmFtZT0ic3BhY2UteS00Ij4KICAgICAgICAgIDxkaXY+CiAgICAgICAgICAgIDxMYWJlbCBjbGFzc05hbWU9Im1iLTEuNSBibG9jayI+VGhlIE9kZHMgQVBJIEtleTwvTGFiZWw+CiAgICAgICAgICAgIDxJbnB1dAogICAgICAgICAgICAgIHR5cGU9InBhc3N3b3JkIgogICAgICAgICAgICAgIHZhbHVlPXtvZGRzS2V5fQogICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZSkgPT4gc2V0T2Rkc0tleShlLnRhcmdldC52YWx1ZSl9CiAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9IkVudGVyIHlvdXIgVGhlIE9kZHMgQVBJIGtleS4uLiIKICAgICAgICAgICAgICBjbGFzc05hbWU9ImJnLW11dGVkIGJvcmRlci1ib3JkZXIgZm9udC1tb25vIgogICAgICAgICAgICAgIGRhdGEtdGVzdGlkPSJpbnB1dC1vZGRzLWFwaS1rZXkiCiAgICAgICAgICAgIC8+CiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgbXQtMS41Ij4KICAgICAgICAgICAgICBVbmxvY2tzIGxpdmUgRHJhZnRLaW5ncyBsaW5lcywgcGxheWVyIHByb3BzLCBNTUEsIGJveGluZywgY29sbGVnZSBzcG9ydHMsIGFuZCBzZWFzb24gZnV0dXJlcy4gRnJlZSB0aWVyIGF0eyIgIn0KICAgICAgICAgICAgICA8YSBocmVmPSJodHRwczovL3RoZS1vZGRzLWFwaS5jb20iIHRhcmdldD0iX2JsYW5rIiByZWw9Im5vb3BlbmVyIG5vcmVmZXJyZXIiIGNsYXNzTmFtZT0idGV4dC1wcmltYXJ5IGhvdmVyOnVuZGVybGluZSI+CiAgICAgICAgICAgICAgICB0aGUtb2Rkcy1hcGkuY29tCiAgICAgICAgICAgICAgPC9hPnsiICJ9CiAgICAgICAgICAgICAgKDUwMCByZXF1ZXN0cy9tb250aCBmcmVlKS4KICAgICAgICAgICAgPC9wPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iYmctbXV0ZWQvNTAgcm91bmRlZC1sZyBwLTMgdGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgc3BhY2UteS0xIGJvcmRlciBib3JkZXItYm9yZGVyIj4KICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJmb250LXNlbWlib2xkIHRleHQtZm9yZWdyb3VuZCI+U291cmNlcyBXaXRob3V0IEFQSSBLZXlzIChBbHdheXMgQWN0aXZlKTwvcD4KICAgICAgICAgICAgPHA+4oCiIDxzcGFuIGNsYXNzTmFtZT0idGV4dC1wcmltYXJ5Ij5LYWxzaGk8L3NwYW4+IOKAlCBQdWJsaWMgQVBJLCBubyBrZXkgbmVlZGVkPC9wPgogICAgICAgICAgICA8cD7igKIgPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LXB1cnBsZS00MDAiPlBvbHltYXJrZXQ8L3NwYW4+IOKAlCBQdWJsaWMgQVBJLCBubyBrZXkgbmVlZGVkPC9wPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgPC9kaXY+CiAgICAgIDwvU2V0dGluZ3NTZWN0aW9uPgoKICAgICAgey8qIFNhdmUgKi99CiAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGp1c3RpZnktZW5kIj4KICAgICAgICA8YnV0dG9uCiAgICAgICAgICBvbkNsaWNrPXtoYW5kbGVTYXZlfQogICAgICAgICAgZGlzYWJsZWQ9e3NhdmVNdXRhdGlvbi5pc1BlbmRpbmd9CiAgICAgICAgICBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIHB4LTUgcHktMi41IGJnLXByaW1hcnkgdGV4dC1wcmltYXJ5LWZvcmVncm91bmQgcm91bmRlZC1sZyB0ZXh0LXNtIGZvbnQtc2VtaWJvbGQgaG92ZXI6YmctcHJpbWFyeS85MCB0cmFuc2l0aW9uLWNvbG9ycyBkaXNhYmxlZDpvcGFjaXR5LTYwIgogICAgICAgICAgZGF0YS10ZXN0aWQ9ImJ1dHRvbi1zYXZlLXNldHRpbmdzIgogICAgICAgID4KICAgICAgICAgIDxaYXAgc2l6ZT17MTR9IC8+CiAgICAgICAgICB7c2F2ZU11dGF0aW9uLmlzUGVuZGluZyA/ICJTYXZpbmcuLi4iIDogIlNhdmUgU2V0dGluZ3MifQogICAgICAgIDwvYnV0dG9uPgogICAgICA8L2Rpdj4KICAgIDwvZGl2PgogICk7Cn0KCmZ1bmN0aW9uIFNldHRpbmdzU2VjdGlvbih7CiAgaWNvbiwKICB0aXRsZSwKICBkZXNjcmlwdGlvbiwKICBjaGlsZHJlbiwKfTogewogIGljb246IFJlYWN0LlJlYWN0Tm9kZTsKICB0aXRsZTogc3RyaW5nOwogIGRlc2NyaXB0aW9uOiBzdHJpbmc7CiAgY2hpbGRyZW46IFJlYWN0LlJlYWN0Tm9kZTsKfSkgewogIHJldHVybiAoCiAgICA8ZGl2IGNsYXNzTmFtZT0iYmctY2FyZCBib3JkZXIgYm9yZGVyLWJvcmRlciByb3VuZGVkLXhsIHAtNSBzcGFjZS15LTQiPgogICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1zdGFydCBnYXAtMyI+CiAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LXByaW1hcnkgbXQtMC41Ij57aWNvbn08L3NwYW4+CiAgICAgICAgPGRpdj4KICAgICAgICAgIDxwIGNsYXNzTmFtZT0iZm9udC1zZW1pYm9sZCB0ZXh0LXNtIHRleHQtZm9yZWdyb3VuZCI+e3RpdGxlfTwvcD4KICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW11dGVkLWZvcmVncm91bmQgbXQtMC41Ij57ZGVzY3JpcHRpb259PC9wPgogICAgICAgIDwvZGl2PgogICAgICA8L2Rpdj4KICAgICAgPGRpdj57Y2hpbGRyZW59PC9kaXY+CiAgICA8L2Rpdj4KICApOwp9Cg==
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Settings as SettingsType } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone, Crown, ExternalLink, ArrowUpRight, User, LogOut, Star } from "lucide-react";
+import PreferencesDrawer from "@/components/PreferencesDrawer";
+import { useAuth } from "@/context/AuthContext";
+import { Link } from "wouter";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// ── Core sports (always shown) ──────────────────────────────────────────────
+const CORE_SPORTS = ["NFL", "NBA", "MLB", "NHL"];
+
+// ── Optional sports (toggled on/off) ────────────────────────────────────────
+const OPTIONAL_SPORTS = [
+  { key: "MMA",   label: "MMA",        description: "UFC, Bellator, ONE — fight moneylines" },
+  { key: "Boxing", label: "Boxing",    description: "Professional boxing matchups" },
+  { key: "NCAAB", label: "NCAAB",      description: "College basketball — March Madness + regular season" },
+  { key: "NCAAF", label: "NCAAF",      description: "College football" },
+  { key: "Golf",  label: "Golf",       description: "Masters, PGA Championship, US Open, The Open — outright winners" },
+];
+
+export default function Settings() {
+  const { toast } = useToast();
+  const { user, isPro, isBasic, logout } = useAuth();
+  const [prefOpen, setPrefOpen] = useState(false);
+  const { data: settings, isLoading } = useQuery<SettingsType>({
+    queryKey: ["/api/settings"],
+  });
+
+  const [form, setForm] = useState<Partial<SettingsType>>({});
+  const [oddsKey, setOddsKey] = useState("");
+
+  useEffect(() => {
+    if (settings) {
+      setForm(settings);
+      setOddsKey(settings.oddsApiKey ?? "");
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: (data: Partial<SettingsType>) => apiRequest("PATCH", "/api/settings", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      toast({ title: "Settings Saved", description: "Your preferences have been updated" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save settings", variant: "destructive" }),
+  });
+
+  const handleSave = () => {
+    saveMutation.mutate({ ...form, oddsApiKey: oddsKey || null });
+  };
+
+  // Toggle a sport in enabledOptionalSports
+  const toggleOptionalSport = (sportKey: string) => {
+    const current = (form.enabledOptionalSports as string[]) ?? [];
+    const updated = current.includes(sportKey)
+      ? current.filter((s) => s !== sportKey)
+      : [...current, sportKey];
+    setForm({ ...form, enabledOptionalSports: updated });
+  };
+
+  const isOptionalEnabled = (sportKey: string) =>
+    ((form.enabledOptionalSports as string[]) ?? []).includes(sportKey);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Configure your prediction bot</p>
+      </div>
+
+      {/* Preferences Drawer */}
+      <PreferencesDrawer open={prefOpen} onClose={() => setPrefOpen(false)} />
+
+      {/* ── Favorites / Personalization ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Star size={15} className="text-primary" style={{ color: "#D4A843" }} />
+          <p className="font-bold text-sm text-foreground">My Favorites</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Personalize your dashboard — pin your favorite sports, teams, and players to see their picks at the top.
+        </p>
+        <button
+          onClick={() => setPrefOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
+          style={{ background: "#13233A", color: "#F6F1E7", border: "none", cursor: "pointer" }}
+        >
+          <Star size={14} style={{ fill: "#D4A843", color: "#D4A843" }} />
+          Edit Favorites
+        </button>
+      </div>
+
+      {/* ── Account ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <User size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Account</p>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Signed in as</p>
+            <p className="text-sm font-semibold text-foreground truncate">{user?.email ?? "—"}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition-all active:scale-95"
+            style={{ borderColor: "rgba(239,68,68,0.25)", color: "#ef4444", background: "rgba(239,68,68,0.05)" }}
+          >
+            <LogOut size={13} /> Log out
+          </button>
+        </div>
+      </div>
+
+      {/* ── Billing / Plan ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Crown size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Your Plan</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <span
+              className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{
+                background: user?.tier === "pro" ? "rgba(162,59,50,0.1)" : user?.tier === "basic" ? "rgba(37,99,235,0.1)" : "rgba(61,75,88,0.1)",
+                color: user?.tier === "pro" ? "#A23B32" : user?.tier === "basic" ? "#2563eb" : "#3D4B58",
+              }}
+            >
+              {user?.tier === "pro" ? "Pro — $15/mo" : user?.tier === "basic" ? "Basic — $5/mo" : "Free"}
+            </span>
+            {!isPro && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {isBasic ? "Upgrade to Pro for BTS, ML Intel, Top Plays, and more." : "Upgrade to Basic or Pro to unlock picks."}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 items-end">
+            {!isPro && (
+              <Link href="/pricing">
+                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95"
+                  style={{ background: "#A23B32", color: "#fff" }}>
+                  <ArrowUpRight size={12} /> Upgrade
+                </button>
+              </Link>
+            )}
+
+          </div>
+        </div>
+      </div>
+
+      {/* ── Support ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Mail size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Support</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Questions, issues, or feedback? Reach our support team directly.</p>
+        <a
+          href="mailto:clubhouseiqbets@gmail.com"
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all active:scale-95"
+          style={{ borderColor: "rgba(19,35,58,0.15)", background: "rgba(19,35,58,0.03)", color: "#131A24" }}
+        >
+          <Mail size={13} style={{ color: "#A23B32", flexShrink: 0 }} />
+          <span className="text-sm font-semibold">clubhouseiqbets@gmail.com</span>
+          <ExternalLink size={11} className="ml-auto" style={{ color: "rgba(19,35,58,0.35)" }} />
+        </a>
+      </div>
+
+      {/* Alert Threshold */}
+      <SettingsSection icon={<Bell size={16} />} title="Alert Threshold" description="Set the minimum confidence score to receive a notification">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label>Minimum Confidence Score</Label>
+            <span className="font-mono font-bold text-primary">{form.confidenceThreshold ?? 80}/100</span>
+          </div>
+          <input
+            type="range"
+            min={50}
+            max={95}
+            step={5}
+            value={form.confidenceThreshold ?? 80}
+            onChange={(e) => setForm({ ...form, confidenceThreshold: Number(e.target.value) })}
+            className="w-full accent-primary"
+            data-testid="input-confidence-threshold"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>50</span>
+            <span className="text-primary font-bold">Recommended: 80</span>
+            <span>95</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            You'll be alerted when any pick scores {form.confidenceThreshold ?? 80}+ out of 100.
+          </p>
+        </div>
+      </SettingsSection>
+
+      {/* Optional Sports */}
+      <SettingsSection
+        icon={<Swords size={16} />}
+        title="Optional Sports"
+        description="Enable additional sports beyond NFL, NBA, MLB, and NHL"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Core sports (NFL, NBA, MLB, NHL) are always scanned. Toggle extras below — changes apply on next scan.
+          </p>
+          {OPTIONAL_SPORTS.map((sport) => (
+            <div key={sport.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+              <div>
+                <p className="text-sm font-medium text-foreground">{sport.label}</p>
+                <p className="text-xs text-muted-foreground">{sport.description}</p>
+              </div>
+              <Switch
+                checked={isOptionalEnabled(sport.key)}
+                onCheckedChange={() => toggleOptionalSport(sport.key)}
+                data-testid={`switch-sport-${sport.key.toLowerCase()}`}
+              />
+            </div>
+          ))}
+        </div>
+      </SettingsSection>
+
+      {/* Season Props & Futures */}
+      <SettingsSection
+        icon={<Calendar size={16} />}
+        title="Season Props & Futures"
+        description="Pre-season and season-long player props, plus championship outright winners"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Enable Season-Long Props</p>
+              <p className="text-xs text-muted-foreground">
+                Includes full-season player totals (e.g. MLB home runs season O/U, NBA points season O/U)
+                and championship outright winners — useful even before a season starts
+              </p>
+            </div>
+            <Switch
+              checked={(form.enableSeasonProps as boolean) ?? true}
+              onCheckedChange={(v) => setForm({ ...form, enableSeasonProps: v })}
+              data-testid="switch-season-props"
+            />
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1 border border-border">
+            <p className="font-semibold text-foreground">What this includes:</p>
+            <p>• <span className="text-green-400">Player season totals</span> — MLB HR/K season O/U, NBA PTS/REB/AST season O/U, NFL passing/rushing yds season O/U</p>
+            <p>• <span className="text-amber-400">Championship outrights</span> — MLB World Series, NBA title, NHL Cup, NCAA tournament, Golf majors</p>
+            <p>• <span className="text-blue-400">Pre-season value</span> — These markets open months before the season, often with better lines</p>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* Scan Interval */}
+      <SettingsSection icon={<RefreshCw size={16} />} title="Scan Frequency" description="How often the bot automatically scans for new markets">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label>Scan every</Label>
+            <span className="font-mono font-bold text-foreground">{form.scanIntervalMinutes ?? 30} minutes</span>
+          </div>
+          <input
+            type="range"
+            min={5}
+            max={120}
+            step={5}
+            value={form.scanIntervalMinutes ?? 30}
+            onChange={(e) => setForm({ ...form, scanIntervalMinutes: Number(e.target.value) })}
+            className="w-full accent-primary"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>5 min</span>
+            <span>2 hours</span>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* Notifications */}
+      <SettingsSection icon={<Bell size={16} />} title="Notifications" description="Control how you get alerted when a bet hits your confidence threshold">
+        <div className="space-y-4">
+
+          {/* In-App */}
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-lg bg-primary/10 text-primary"><Smartphone size={15} /></span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">In-App Notifications</p>
+                <p className="text-xs text-muted-foreground">Bell icon + alert feed inside the app</p>
+              </div>
+            </div>
+            <Switch
+              checked={form.notificationsEnabled ?? true}
+              onCheckedChange={(v) => setForm({ ...form, notificationsEnabled: v })}
+              data-testid="switch-notifications-inapp"
+            />
+          </div>
+
+          {/* Email */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-lg bg-blue-500/10 text-blue-400"><Mail size={15} /></span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Email Notifications</p>
+                  <p className="text-xs text-muted-foreground">Email alert every 3 hours when high-confidence picks are found</p>
+                </div>
+              </div>
+              <Switch
+                checked={(form as any).emailNotificationsEnabled ?? true}
+                onCheckedChange={(v) => setForm({ ...form, emailNotificationsEnabled: v } as any)}
+                data-testid="switch-notifications-email"
+              />
+            </div>
+
+            {/* Email address field — only shown when email is on */}
+            {((form as any).emailNotificationsEnabled ?? true) && (
+              <div className="ml-11">
+                <Label className="mb-1.5 block text-xs">Send alerts to</Label>
+                <Input
+                  type="email"
+                  value={(form as any).notificationEmail ?? "adam.budnick@gdrh.org"}
+                  onChange={(e) => setForm({ ...form, notificationEmail: e.target.value } as any)}
+                  placeholder="your@email.com"
+                  className="bg-muted border-border text-sm h-8"
+                  data-testid="input-notification-email"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Alerts fire every 3 hours — only when picks hit your {form.confidenceThreshold ?? 80}+ threshold.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Both-off warning */}
+          {!(form.notificationsEnabled ?? true) && !((form as any).emailNotificationsEnabled ?? true) && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-amber-400 text-xs">
+              <Bell size={13} />
+              <span>All notifications are off. You won't be alerted when high-confidence picks appear.</span>
+            </div>
+          )}
+        </div>
+      </SettingsSection>
+
+      {/* API Keys */}
+      <SettingsSection icon={<Key size={16} />} title="API Keys" description="Optional: add keys to unlock live data from more sources">
+        <div className="space-y-4">
+          <div>
+            <Label className="mb-1.5 block">The Odds API Key</Label>
+            <Input
+              type="password"
+              value={oddsKey}
+              onChange={(e) => setOddsKey(e.target.value)}
+              placeholder="Enter your The Odds API key..."
+              className="bg-muted border-border font-mono"
+              data-testid="input-odds-api-key"
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Unlocks live DraftKings lines, player props, MMA, boxing, college sports, and season futures. Free tier at{" "}
+              <a href="https://the-odds-api.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                the-odds-api.com
+              </a>{" "}
+              (500 requests/month free).
+            </p>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1 border border-border">
+            <p className="font-semibold text-foreground">Sources Without API Keys (Always Active)</p>
+            <p>• <span className="text-primary">Kalshi</span> — Public API, no key needed</p>
+            <p>• <span className="text-purple-400">Polymarket</span> — Public API, no key needed</p>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* Save */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+          data-testid="button-save-settings"
+        >
+          <Zap size={14} />
+          {saveMutation.isPending ? "Saving..." : "Save Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSection({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <span className="text-primary mt-0.5">{icon}</span>
+        <div>
+          <p className="font-semibold text-sm text-foreground">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        </div>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
