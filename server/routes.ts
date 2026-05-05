@@ -17,7 +17,7 @@ import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from 
 import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
 import { sendPINResetEmail, sendWelcomeEmail, sendNewSignupNotification, SUPPORT_EMAIL } from "./email";
 import crypto from "crypto";
-import { Whop } from "@whop/sdk";
+// No payment integration — accounts are free to create, tier managed by owner
 
 // ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
@@ -1371,79 +1371,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json({ version: BUILD_HASH });
   });
 
-  // ── Whop setup ────────────────────────────────────────────────────────────────────────
-  const whop = process.env.WHOP_API_KEY
-    ? new Whop({
-        apiKey: process.env.WHOP_API_KEY,
-        webhookKey: process.env.WHOP_WEBHOOK_SECRET ? btoa(process.env.WHOP_WEBHOOK_SECRET) : undefined,
-      })
-    : null;
-
-  // ── Whop webhook ──────────────────────────────────────────────────────────
-  app.post("/api/webhook", async (req: Request, res: Response) => {
-    if (!whop) return res.status(503).json({ error: "Whop not configured" });
-    const bodyText = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-    let event: any;
-    try {
-      event = whop.webhooks.unwrap(bodyText, { headers: req.headers as Record<string, string> });
-    } catch (err: any) {
-      console.error("[Whop] Webhook signature failed:", err.message);
-      return res.status(400).json({ error: "Webhook signature invalid" });
-    }
-
-    try {
-      if (event.type === "membership.activated") {
-        const membership = event.data;
-        const userEmail  = membership.user?.email as string | undefined;
-        const productId  = membership.plan?.access_pass_id as string | undefined;
-        const tier       = productId === process.env.WHOP_PRO_PRODUCT_ID ? "pro"
-                         : productId === process.env.WHOP_BASIC_PRODUCT_ID ? "basic" : null;
-        if (userEmail && tier) {
-          await db.query(
-            `UPDATE users SET sub_status='active', tier=$1, whop_membership_id=$2, updated_at=NOW() WHERE email=LOWER($3)`,
-            [tier, membership.id, userEmail]
-          );
-          await sendWelcomeEmail(userEmail, tier).catch(() => {});
-        }
-      }
-
-      if (event.type === "membership.deactivated") {
-        const membership = event.data;
-        const userEmail  = membership.user?.email as string | undefined;
-        if (userEmail) {
-          await db.query(
-            `UPDATE users SET sub_status='cancelled', tier=NULL, updated_at=NOW() WHERE email=LOWER($1)`,
-            [userEmail]
-          );
-        }
-      }
-
-      if (event.type === "payment.succeeded") {
-        const payment   = event.data;
-        const userEmail = payment.user?.email as string | undefined;
-        if (userEmail) {
-          await db.query(
-            `UPDATE users SET sub_status='active', updated_at=NOW() WHERE email=LOWER($1) AND sub_status != 'active'`,
-            [userEmail]
-          );
-        }
-      }
-
-      if (event.type === "payment.failed") {
-        const payment   = event.data;
-        const userEmail = payment.user?.email as string | undefined;
-        if (userEmail) {
-          await db.query(
-            `UPDATE users SET sub_status='past_due', updated_at=NOW() WHERE email=LOWER($1)`,
-            [userEmail]
-          );
-        }
-      }
-    } catch (e: any) {
-      console.error("[Whop] Webhook handler error:", e.message);
-    }
-
-    res.json({ received: true });
+  // ── Webhook stub (no payment processor) ─────────────────────────────────
+  app.post("/api/webhook", async (_req: Request, res: Response) => {
+    res.status(200).json({ received: true });
   });
 
   // ── Auth routes ──────────────────────────────────────────────────────────────────────────
@@ -1460,73 +1390,44 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (tier !== "free" && tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
 
-      // Check email not already taken — but allow cancelled users to resubscribe
+      // Check if email already exists
       const existing = await db.queryOne(`SELECT id, sub_status FROM users WHERE email=LOWER($1)`, [email]);
-      if (existing && existing.sub_status !== "cancelled") {
-        return res.status(409).json({ error: "An account with that email already exists" });
-      }
-      // Resubscribe flow: cancelled user signing up again
-      if (existing && existing.sub_status === "cancelled") {
-        // Free tier — reactivate immediately, no checkout needed
-        if (tier === "free") {
+      if (existing) {
+        // Reactivate cancelled accounts instead of rejecting
+        if (existing.sub_status === "cancelled") {
           await db.query(
-            `UPDATE users SET tier='free', sub_status='active', updated_at=NOW() WHERE email=LOWER($1)`,
-            [email]
+            `UPDATE users SET tier=$1, sub_status='active', updated_at=NOW() WHERE email=LOWER($2)`,
+            [tier, email]
           );
-          return res.json({ success: true, checkoutUrl: null, resubscribe: true });
+          return res.json({ success: true });
         }
-        // Paid tier — send to Whop checkout (direct plan URL, no API call needed)
-        const checkoutUrl = tier === "pro"
-          ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
-          : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
-        return res.json({ success: true, checkoutUrl, resubscribe: true });
+        return res.status(409).json({ error: "An account with that email already exists" });
       }
 
       const pinHash = await hashPIN(pin);
 
-      // Create Stripe customer if Stripe is configured
-      let stripeCustomerId: string | null = null;
-      let checkoutUrl: string | null = null;
-
-      // Owner bypass — skip Stripe entirely, auto-activate as owner + pro
+      // Owner bypass — auto-activate as owner + pro
       const OWNER_EMAIL = "adam.budnick8@gmail.com";
-      const isOwnerSignup = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
-
-      if (isOwnerSignup) {
-        // Insert owner directly — no Stripe, no payment
+      if (email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
         await db.query(
           `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, is_owner)
-           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE)`,
+           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE)
+           ON CONFLICT (email) DO UPDATE SET pin_hash=$2, pin_plain=$3, tier='pro', sub_status='active', is_owner=TRUE`,
           [email, pinHash, pin]
         );
         sendNewSignupNotification(email, "pro").catch(() => {});
-        return res.json({ success: true, checkoutUrl: null });
+        return res.json({ success: true });
       }
 
-      if (tier !== "free") {
-        // Use direct Whop plan checkout URLs — no API call needed
-        checkoutUrl = tier === "pro"
-          ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
-          : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
-      }
-
-      // Free tier is always immediately active (no payment needed)
-      const isFreeTier = tier === "free";
+      // All tiers activate immediately — no payment required
       await db.query(
         `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status)
-         VALUES (LOWER($1), $2, $3, $4, $5)`,
-        [email, pinHash, pin, isFreeTier ? "free" : (whop ? null : tier), isFreeTier ? "active" : (whop ? "inactive" : "active")]
+         VALUES (LOWER($1), $2, $3, $4, 'active')`,
+        [email, pinHash, pin, tier]
       );
 
-      // If no Whop or free tier, auto-activate
-      if (!whop || isFreeTier) {
-        await db.query(`UPDATE users SET tier=$1, sub_status='active' WHERE email=LOWER($2)`, [tier, email]);
-      }
-
-      // Notify admins of new signup (fire-and-forget — never block the response)
       sendNewSignupNotification(email, tier).catch(() => {});
-
-      res.json({ success: true, checkoutUrl });
+      res.json({ success: true });
     } catch (e: any) {
       console.error("[Auth] Signup error:", e.message);
       res.status(500).json({ error: "Signup failed" });
@@ -2073,49 +1974,25 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // GET /api/auth/billing-portal — redirect to Whop billing management
-  app.get("/api/auth/stripe-portal", requireAuth, async (req: Request, res: Response) => {
-    // Redirect user to their Whop membership management page
-    const manageUrl = `https://whop.com/dashboard/memberships`;
-    res.json({ url: manageUrl });
+  // GET /api/auth/billing-portal — stub (no payment processor)
+  app.get("/api/auth/stripe-portal", requireAuth, async (_req: Request, res: Response) => {
+    res.json({ url: null });
   });
 
-  // POST /api/auth/upgrade-checkout — existing logged-in user wants to upgrade tier
+  // POST /api/auth/upgrade-checkout — upgrade tier directly, no payment
   app.post("/api/auth/upgrade-checkout", requireAuth, async (req: Request, res: Response) => {
     try {
-      if (!whop) return res.status(503).json({ error: "Whop not configured" });
-      const { tier, promoCode } = req.body ?? {};
+      const { tier } = req.body ?? {};
       if (tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
-
-      const user = await db.queryOne(`SELECT email FROM users WHERE id=$1`, [req.user!.userId]);
-      if (!user) return res.status(404).json({ error: "User not found" });
-
-      const productId = tier === "pro"
-        ? process.env.WHOP_PRO_PRODUCT_ID
-        : process.env.WHOP_BASIC_PRODUCT_ID;
-
-      // Resolve promo code discount if provided
-      let discountPct = 0;
-      if (promoCode) {
-        const pc = await db.queryOne(
-          `SELECT * FROM promo_codes WHERE code=$1 AND active=TRUE`, [String(promoCode).toUpperCase().trim()]
-        );
-        if (pc && !(pc.expires_at && new Date(pc.expires_at) < new Date()) && !(pc.max_uses !== null && pc.uses >= pc.max_uses)) {
-          discountPct = pc.discount_pct ?? 0;
-          await db.query(`UPDATE promo_codes SET uses=uses+1 WHERE code=$1`, [pc.code]);
-        }
-      }
-
-      // Use direct Whop plan checkout URLs
-      const checkoutUrl = tier === "pro"
-        ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
-        : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
-
-      res.json({ checkoutUrl });
+      await db.query(
+        `UPDATE users SET tier=$1, sub_status='active', updated_at=NOW() WHERE id=$2`,
+        [tier, req.user!.userId]
+      );
+      res.json({ success: true });
     } catch (e: any) {
-      console.error("[Whop] Upgrade checkout error:", e.message);
-      res.status(500).json({ error: "Failed to create checkout session" });
+      console.error("[Upgrade] Error:", e.message);
+      res.status(500).json({ error: "Upgrade failed" });
     }
   });
 
@@ -10874,31 +10751,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     res.json(logs.rows);
   });
 
-  // POST /api/admin/users/:id/refund — refund via Whop
+  // POST /api/admin/users/:id/refund — cancel and deactivate user
   app.post("/api/admin/users/:id/refund", requireOwner, async (req: Request, res: Response) => {
     const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
     if (!user) return res.status(400).json({ error: "User not found" });
     try {
-      if (whop && user.whop_membership_id) {
-        // Cancel and refund via Whop API
-        await (whop as any).memberships.cancel(user.whop_membership_id);
-      }
       await db.query(`UPDATE users SET sub_status='cancelled', tier=NULL WHERE id=$1`, [req.params.id]);
-      await auditLog((req as any).user?.email ?? "owner", "refund", req.params.id, `Refunded via Whop`);
+      await auditLog((req as any).user?.email ?? "owner", "refund", req.params.id, `Cancelled by owner`);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  // POST /api/admin/users/:id/cancel — cancel Whop membership
+  // POST /api/admin/users/:id/cancel — cancel membership
   app.post("/api/admin/users/:id/cancel", requireOwner, async (req: Request, res: Response) => {
     const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
     if (!user) return res.status(404).json({ error: "User not found" });
     try {
-      if (whop && user.whop_membership_id) {
-        await (whop as any).memberships.cancel(user.whop_membership_id);
-      }
       await db.query(`UPDATE users SET sub_status='cancelled', tier=NULL WHERE id=$1`, [req.params.id]);
       await auditLog((req as any).user?.email ?? "owner", "cancel_sub", req.params.id, `Cancelled subscription`);
       res.json({ success: true });
@@ -11108,7 +10978,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         funnel: funnel.rows[0],
         mrr,
         churn_30d: parseInt(churn.rows[0].cnt),
-        stripe_revenue_30d: whopRevenue,
+        gumroad_revenue_30d: whopRevenue,
         stripe_refunds_30d: 0,
       });
     } catch (e: any) {
