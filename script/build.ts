@@ -1,1 +1,81 @@
-aW1wb3J0IHsgYnVpbGQgYXMgZXNidWlsZCB9IGZyb20gImVzYnVpbGQiOwppbXBvcnQgeyBidWlsZCBhcyB2aXRlQnVpbGQgfSBmcm9tICJ2aXRlIjsKaW1wb3J0IHsgcm0sIHJlYWRGaWxlLCBjb3B5RmlsZSwgcmVhZGRpciB9IGZyb20gImZzL3Byb21pc2VzIjsKaW1wb3J0IHsgZXhpc3RzU3luYyB9IGZyb20gImZzIjsKaW1wb3J0ICogYXMgcGF0aCBmcm9tICJwYXRoIjsKCi8vIHNlcnZlciBkZXBzIHRvIGJ1bmRsZSB0byByZWR1Y2Ugb3BlbmF0KDIpIHN5c2NhbGxzCi8vIHdoaWNoIGhlbHBzIGNvbGQgc3RhcnQgdGltZXMKY29uc3QgYWxsb3dsaXN0ID0gWwogICJAZ29vZ2xlL2dlbmVyYXRpdmUtYWkiLAogICJheGlvcyIsCiAgImNoZWVyaW8iLAogICJjb25uZWN0LXBnLXNpbXBsZSIsCiAgImNvcnMiLAogICJkYXRlLWZucyIsCiAgImRyaXp6bGUtb3JtIiwKICAiZHJpenpsZS16b2QiLAogICJleHByZXNzIiwKICAiZXhwcmVzcy1yYXRlLWxpbWl0IiwKICAiZXhwcmVzcy1zZXNzaW9uIiwKICAianNvbndlYnRva2VuIiwKICAibWVtb3J5c3RvcmUiLAogICJtdWx0ZXIiLAogICJuYW5vaWQiLAogICJub2RlbWFpbGVyIiwKICAib3BlbmFpIiwKICAicGFzc3BvcnQiLAogICJwYXNzcG9ydC1sb2NhbCIsCiAgInBnIiwKICAic3RyaXBlIiwKICAidXVpZCIsCiAgIndzIiwKICAieGxzeCIsCiAgInpvZCIsCiAgInpvZC12YWxpZGF0aW9uLWVycm9yIiwKXTsKCmFzeW5jIGZ1bmN0aW9uIGJ1aWxkQWxsKCkgewogIGF3YWl0IHJtKCJkaXN0IiwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pOwoKICAvLyBDcmVhdGUgZGlzdC8gZGlyIGJlZm9yZSBjb3B5aW5nIChybSBhYm92ZSB3aXBlZCBpdCkKICBjb25zdCB7IG1rZGlyIH0gPSBhd2FpdCBpbXBvcnQoImZzL3Byb21pc2VzIik7CiAgYXdhaXQgbWtkaXIoImRpc3QiLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KTsKCiAgY29uc29sZS5sb2coImNvcHlpbmcgUHl0aG9uIHNlcnZlciBmaWxlcyB0byBkaXN0Ly4uLiIpOwogIGNvbnN0IHB5RmlsZXMgPSAoYXdhaXQgcmVhZGRpcigic2VydmVyIikpLmZpbHRlcihmID0+IGYuZW5kc1dpdGgoIi5weSIpKTsKICBmb3IgKGNvbnN0IGYgb2YgcHlGaWxlcykgewogICAgYXdhaXQgY29weUZpbGUocGF0aC5qb2luKCJzZXJ2ZXIiLCBmKSwgcGF0aC5qb2luKCJkaXN0IiwgZikpOwogICAgY29uc29sZS5sb2coYCAgY29waWVkICR7Zn1gKTsKICB9CgogIGNvbnNvbGUubG9nKCJidWlsZGluZyBjbGllbnQuLi4iKTsKICBhd2FpdCB2aXRlQnVpbGQoKTsKCiAgY29uc29sZS5sb2coImJ1aWxkaW5nIHNlcnZlci4uLiIpOwogIGNvbnN0IHBrZyA9IEpTT04ucGFyc2UoYXdhaXQgcmVhZEZpbGUoInBhY2thZ2UuanNvbiIsICJ1dGYtOCIpKTsKICBjb25zdCBhbGxEZXBzID0gWwogICAgLi4uT2JqZWN0LmtleXMocGtnLmRlcGVuZGVuY2llcyB8fCB7fSksCiAgICAuLi5PYmplY3Qua2V5cyhwa2cuZGV2RGVwZW5kZW5jaWVzIHx8IHt9KSwKICBdOwogIGNvbnN0IGV4dGVybmFscyA9IGFsbERlcHMuZmlsdGVyKChkZXApID0+ICFhbGxvd2xpc3QuaW5jbHVkZXMoZGVwKSk7CgogIGF3YWl0IGVzYnVpbGQoewogICAgZW50cnlQb2ludHM6IFsic2VydmVyL2luZGV4LnRzIl0sCiAgICBwbGF0Zm9ybTogIm5vZGUiLAogICAgYnVuZGxlOiB0cnVlLAogICAgZm9ybWF0OiAiY2pzIiwKICAgIG91dGZpbGU6ICJkaXN0L2luZGV4LmNqcyIsCiAgICBkZWZpbmU6IHsKICAgICAgInByb2Nlc3MuZW52Lk5PREVfRU5WIjogJyJwcm9kdWN0aW9uIicsCiAgICB9LAogICAgbWluaWZ5OiB0cnVlLAogICAgZXh0ZXJuYWw6IGV4dGVybmFscywKICAgIGxvZ0xldmVsOiAiaW5mbyIsCiAgfSk7Cn0KCmJ1aWxkQWxsKCkuY2F0Y2goKGVycikgPT4gewogIGNvbnNvbGUuZXJyb3IoZXJyKTsKICBwcm9jZXNzLmV4aXQoMSk7Cn0pOwo=
+import { build as esbuild } from "esbuild";
+import { build as viteBuild } from "vite";
+import { rm, readFile, copyFile, readdir } from "fs/promises";
+import { existsSync } from "fs";
+import * as path from "path";
+
+// server deps to bundle to reduce openat(2) syscalls
+// which helps cold start times
+const allowlist = [
+  "@google/generative-ai",
+  "axios",
+  "cheerio",
+  "connect-pg-simple",
+  "cors",
+  "date-fns",
+  "drizzle-orm",
+  "drizzle-zod",
+  "express",
+  "express-rate-limit",
+  "express-session",
+  "jsonwebtoken",
+  "memorystore",
+  "multer",
+  "nanoid",
+  "nodemailer",
+  "openai",
+  "passport",
+  "passport-local",
+  "pg",
+  "@whop/sdk",
+  "uuid",
+  "ws",
+  "xlsx",
+  "zod",
+  "zod-validation-error",
+];
+
+async function buildAll() {
+  await rm("dist", { recursive: true, force: true });
+
+  // Create dist/ dir before copying (rm above wiped it)
+  const { mkdir } = await import("fs/promises");
+  await mkdir("dist", { recursive: true });
+
+  console.log("copying Python server files to dist/...");
+  const pyFiles = (await readdir("server")).filter(f => f.endsWith(".py"));
+  for (const f of pyFiles) {
+    await copyFile(path.join("server", f), path.join("dist", f));
+    console.log(`  copied ${f}`);
+  }
+
+  console.log("building client...");
+  await viteBuild();
+
+  console.log("building server...");
+  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+  const allDeps = [
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {}),
+  ];
+  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+
+  await esbuild({
+    entryPoints: ["server/index.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/index.cjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
+}
+
+buildAll().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
