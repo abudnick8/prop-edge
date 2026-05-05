@@ -157,20 +157,83 @@ function ProLock({ section }: { section: string }) {
 // ─── Inline Favorites Picker ──────────────────────────────────────────────────
 
 const SPORT_OPTIONS = ["NFL", "NBA", "MLB", "NHL"];
-const POPULAR_TEAMS: Record<string, string[]> = {
-  NFL: ["Chiefs", "Cowboys", "Eagles", "Ravens", "49ers", "Bills", "Lions", "Packers"],
-  NBA: ["Lakers", "Celtics", "Warriors", "Nuggets", "Heat", "Bucks", "Suns", "Thunder"],
-  MLB: ["Yankees", "Dodgers", "Cubs", "Red Sox", "Braves", "Mets", "Cardinals", "Astros"],
-  NHL: ["Rangers", "Bruins", "Avalanche", "Oilers", "Maple Leafs", "Hurricanes", "Panthers", "Knights"],
+const ALL_TEAMS: Record<string, string[]> = {
+  NFL: [
+    "Arizona Cardinals","Atlanta Falcons","Baltimore Ravens","Buffalo Bills",
+    "Carolina Panthers","Chicago Bears","Cincinnati Bengals","Cleveland Browns",
+    "Dallas Cowboys","Denver Broncos","Detroit Lions","Green Bay Packers",
+    "Houston Texans","Indianapolis Colts","Jacksonville Jaguars","Kansas City Chiefs",
+    "Las Vegas Raiders","Los Angeles Chargers","Los Angeles Rams","Miami Dolphins",
+    "Minnesota Vikings","New England Patriots","New Orleans Saints","New York Giants",
+    "New York Jets","Philadelphia Eagles","Pittsburgh Steelers","San Francisco 49ers",
+    "Seattle Seahawks","Tampa Bay Buccaneers","Tennessee Titans","Washington Commanders",
+  ],
+  NBA: [
+    "Atlanta Hawks","Boston Celtics","Brooklyn Nets","Charlotte Hornets",
+    "Chicago Bulls","Cleveland Cavaliers","Dallas Mavericks","Denver Nuggets",
+    "Detroit Pistons","Golden State Warriors","Houston Rockets","Indiana Pacers",
+    "Los Angeles Clippers","Los Angeles Lakers","Memphis Grizzlies","Miami Heat",
+    "Milwaukee Bucks","Minnesota Timberwolves","New Orleans Pelicans","New York Knicks",
+    "Oklahoma City Thunder","Orlando Magic","Philadelphia 76ers","Phoenix Suns",
+    "Portland Trail Blazers","Sacramento Kings","San Antonio Spurs","Toronto Raptors",
+    "Utah Jazz","Washington Wizards",
+  ],
+  MLB: [
+    "Arizona Diamondbacks","Atlanta Braves","Baltimore Orioles","Boston Red Sox",
+    "Chicago Cubs","Chicago White Sox","Cincinnati Reds","Cleveland Guardians",
+    "Colorado Rockies","Detroit Tigers","Houston Astros","Kansas City Royals",
+    "Los Angeles Angels","Los Angeles Dodgers","Miami Marlins","Milwaukee Brewers",
+    "Minnesota Twins","New York Mets","New York Yankees","Oakland Athletics",
+    "Philadelphia Phillies","Pittsburgh Pirates","San Diego Padres","San Francisco Giants",
+    "Seattle Mariners","St. Louis Cardinals","Tampa Bay Rays","Texas Rangers",
+    "Toronto Blue Jays","Washington Nationals",
+  ],
+  NHL: [
+    "Anaheim Ducks","Arizona Coyotes","Boston Bruins","Buffalo Sabres",
+    "Calgary Flames","Carolina Hurricanes","Chicago Blackhawks","Colorado Avalanche",
+    "Columbus Blue Jackets","Dallas Stars","Detroit Red Wings","Edmonton Oilers",
+    "Florida Panthers","Los Angeles Kings","Minnesota Wild","Montreal Canadiens",
+    "Nashville Predators","New Jersey Devils","New York Islanders","New York Rangers",
+    "Ottawa Senators","Philadelphia Flyers","Pittsburgh Penguins","San Jose Sharks",
+    "Seattle Kraken","St. Louis Blues","Tampa Bay Lightning","Toronto Maple Leafs",
+    "Vancouver Canucks","Vegas Golden Knights","Washington Capitals","Winnipeg Jets",
+  ],
 };
+
+// ─── Player autocomplete pool (fetched once) ─────────────────────────────────
+function usePlayerPool() {
+  const { data: propsData } = useQuery<any>({
+    queryKey: ["/api/linemate-props"],
+    queryFn: () => apiRequest("GET", "/api/linemate-props").then(r => r.json()),
+    staleTime: 300000,
+  });
+  const { data: btsData } = useQuery<any>({
+    queryKey: ["/api/bts-picks"],
+    queryFn: () => apiRequest("GET", "/api/bts-picks").then(r => r.json()),
+    staleTime: 300000,
+  });
+  const { data: betsData } = useQuery<any>({
+    queryKey: ["/api/bets"],
+    queryFn: () => apiRequest("GET", "/api/bets").then(r => r.json()),
+    staleTime: 300000,
+  });
+  const pool = new Set<string>();
+  (propsData?.markets ?? []).forEach((m: any) => m.playerName && pool.add(m.playerName));
+  (btsData?.picks ?? []).forEach((p: any) => p.name && pool.add(p.name));
+  (Array.isArray(betsData) ? betsData : []).forEach((b: any) => b.playerName && pool.add(b.playerName));
+  return Array.from(pool).sort();
+}
 
 function InlineFavoritesSetup({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
+  const playerPool = usePlayerPool();
   const [step, setStep] = useState<"sports" | "teams" | "players">("sports");
   const [selSports, setSelSports] = useState<string[]>([]);
   const [selTeams, setSelTeams] = useState<string[]>([]);
+  const [teamSearch, setTeamSearch] = useState("");
   const [playerInput, setPlayerInput] = useState("");
   const [players, setPlayers] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async (prefs: Preferences) => {
@@ -178,7 +241,12 @@ function InlineFavoritesSetup({ onDone }: { onDone: () => void }) {
       return r.json();
     },
     onSuccess: () => {
+      // Invalidate preferences AND all dashboard data so it reloads with favorites
       qc.invalidateQueries({ queryKey: ["/api/me/preferences"] });
+      qc.invalidateQueries({ queryKey: ["/api/bets"] });
+      qc.invalidateQueries({ queryKey: ["/api/bets/high-confidence"] });
+      qc.invalidateQueries({ queryKey: ["/api/bts-picks"] });
+      qc.invalidateQueries({ queryKey: ["/api/linemate-props"] });
       onDone();
     },
   });
@@ -189,21 +257,33 @@ function InlineFavoritesSetup({ onDone }: { onDone: () => void }) {
   const toggleTeam = (t: string) =>
     setSelTeams(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
-  const addPlayer = () => {
-    const p = playerInput.trim();
+  const addPlayer = (name: string) => {
+    const p = name.trim();
     if (p && !players.includes(p)) {
       setPlayers(prev => [...prev, p]);
-      setPlayerInput("");
     }
+    setPlayerInput("");
+    setShowSuggestions(false);
   };
 
   const save = () => {
     mutation.mutate({ favoriteSports: selSports, favoriteTeams: selTeams, favoritePlayers: players });
   };
 
-  const teamOptions = selSports.length > 0
-    ? selSports.flatMap(s => POPULAR_TEAMS[s] ?? [])
-    : Object.values(POPULAR_TEAMS).flat();
+  // Teams filtered by selected sports, then by search
+  const allTeamOptions = selSports.length > 0
+    ? selSports.flatMap(s => ALL_TEAMS[s] ?? [])
+    : Object.values(ALL_TEAMS).flat();
+  const teamOptions = teamSearch.trim().length > 0
+    ? allTeamOptions.filter(t => t.toLowerCase().includes(teamSearch.toLowerCase()))
+    : allTeamOptions;
+
+  // Player suggestions: show when >= 2 chars typed
+  const suggestions = playerInput.trim().length >= 2
+    ? playerPool.filter(p =>
+        p.toLowerCase().includes(playerInput.toLowerCase()) && !players.includes(p)
+      ).slice(0, 8)
+    : [];
 
   return (
     <div style={{ background: "linear-gradient(135deg, #13233A 0%, #1a3050 100%)", borderRadius: 20, padding: "18px 16px", margin: "12px 16px 0" }}>
@@ -261,13 +341,34 @@ function InlineFavoritesSetup({ onDone }: { onDone: () => void }) {
       {/* Step: Teams */}
       {step === "teams" && (
         <div>
-          <p style={{ fontSize: 11, color: "rgba(246,241,231,0.55)", marginBottom: 10 }}>Pick your teams (optional):</p>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14, maxHeight: 120, overflowY: "auto" }}>
-            {teamOptions.map(t => (
+          <p style={{ fontSize: 11, color: "rgba(246,241,231,0.55)", marginBottom: 8 }}>Pick your teams (optional):</p>
+          {/* Search filter */}
+          <div style={{ position: "relative", marginBottom: 10 }}>
+            <Search size={12} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "rgba(246,241,231,0.35)" }} />
+            <input
+              value={teamSearch}
+              onChange={e => setTeamSearch(e.target.value)}
+              placeholder="Search teams..."
+              style={{ width: "100%", padding: "8px 10px 8px 28px", borderRadius: 10, border: "1px solid rgba(246,241,231,0.18)", background: "rgba(255,255,255,0.07)", color: "#F6F1E7", fontSize: 12, outline: "none", boxSizing: "border-box" as const }}
+            />
+          </div>
+          {/* Selected chips */}
+          {selTeams.length > 0 && (
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+              {selTeams.map(t => (
+                <div key={t} style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(212,168,67,0.2)", border: "1px solid rgba(212,168,67,0.35)", borderRadius: 14, padding: "3px 8px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#D4A843" }}>{t}</span>
+                  <button onClick={() => toggleTeam(t)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(246,241,231,0.4)", padding: 0, display: "flex" }}><X size={10} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 12, maxHeight: 150, overflowY: "auto" }}>
+            {teamOptions.filter(t => !selTeams.includes(t)).map(t => (
               <button key={t} onClick={() => toggleTeam(t)} style={{
-                padding: "5px 11px", borderRadius: 16, border: `1.5px solid ${selTeams.includes(t) ? "#D4A843" : "rgba(246,241,231,0.15)"}`,
-                background: selTeams.includes(t) ? "rgba(212,168,67,0.2)" : "rgba(255,255,255,0.04)",
-                color: selTeams.includes(t) ? "#D4A843" : "rgba(246,241,231,0.6)", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                padding: "5px 10px", borderRadius: 14, border: "1px solid rgba(246,241,231,0.15)",
+                background: "rgba(255,255,255,0.04)",
+                color: "rgba(246,241,231,0.65)", fontSize: 11, fontWeight: 600, cursor: "pointer",
               }}>
                 {t}
               </button>
@@ -283,21 +384,35 @@ function InlineFavoritesSetup({ onDone }: { onDone: () => void }) {
       {/* Step: Players */}
       {step === "players" && (
         <div>
-          <p style={{ fontSize: 11, color: "rgba(246,241,231,0.55)", marginBottom: 10 }}>Add favorite players (optional):</p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <input
-              value={playerInput}
-              onChange={e => setPlayerInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addPlayer()}
-              placeholder="Player name..."
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(246,241,231,0.2)",
-                background: "rgba(255,255,255,0.07)", color: "#F6F1E7", fontSize: 12, outline: "none",
-              }}
-            />
-            <button onClick={addPlayer} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "rgba(212,168,67,0.2)", color: "#D4A843", cursor: "pointer", display: "flex", alignItems: "center" }}>
-              <Plus size={14} />
-            </button>
+          <p style={{ fontSize: 11, color: "rgba(246,241,231,0.55)", marginBottom: 8 }}>Add favorite players (type 2+ letters):</p>
+          <div style={{ position: "relative", marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={playerInput}
+                onChange={e => { setPlayerInput(e.target.value); setShowSuggestions(true); }}
+                onKeyDown={e => { if (e.key === "Enter" && suggestions.length > 0) addPlayer(suggestions[0]); else if (e.key === "Enter") addPlayer(playerInput); }}
+                placeholder="Start typing a player name..."
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(246,241,231,0.2)", background: "rgba(255,255,255,0.07)", color: "#F6F1E7", fontSize: 12, outline: "none" }}
+              />
+              <button onClick={() => addPlayer(playerInput)} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "rgba(212,168,67,0.2)", color: "#D4A843", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                <Plus size={14} />
+              </button>
+            </div>
+            {/* Autocomplete dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 48, background: "#1a3050", border: "1px solid rgba(212,168,67,0.3)", borderRadius: 10, marginTop: 4, zIndex: 50, overflow: "hidden" }}>
+                {suggestions.map(s => (
+                  <button key={s} onMouseDown={() => addPlayer(s)} style={{
+                    width: "100%", padding: "9px 12px", background: "transparent", border: "none",
+                    borderBottom: "1px solid rgba(255,255,255,0.06)", color: "#F6F1E7",
+                    fontSize: 12, fontWeight: 600, textAlign: "left" as const, cursor: "pointer",
+                    display: "block",
+                  }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {players.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
@@ -518,7 +633,20 @@ export default function Dashboard() {
   const btsPicks = Array.isArray(btsData?.picks) ? btsData!.picks : [];
   const topBts   = btsPicks.slice(0, 5);
   const allProps  = Array.isArray((propsData as any)?.markets) ? (propsData as any).markets : (Array.isArray((propsData as any)?.props) ? (propsData as any).props : []);
-  const topProps  = allProps.slice(0, 6);
+  // Normalize linemate-props market items to match PropItem interface
+  const topProps = allProps.slice(0, 6).map((p: any) => ({
+    playerName: p.playerName ?? p.player ?? "",
+    team: p.team ?? p.teamCode ?? "",
+    sport: p.sport ?? "",
+    statType: p.statType ?? p.marketName ?? "",
+    line: p.line ?? p.consensusLine ?? 0,
+    overOdds: p.overOdds ?? null,
+    underOdds: p.underOdds ?? null,
+    recommendation: (p.recommendation ?? p.outcome ?? "OVER") as "OVER" | "UNDER",
+    edgeScore: p.edgeScore ?? p.bestHitRate ?? null,
+    gameTime: p.gameTime ?? null,
+    matchup: p.matchup ?? (p.opponent ? `vs ${p.opponent}` : ""),
+  }));
   const topPlaysList = (Array.isArray(topPlays) ? topPlays : []).slice(0, 6);
   const rawLineMoves = Array.isArray(lineMoves) ? lineMoves : [];
   const topLineMoves = rawLineMoves.slice(0, 4).map((m: any) => {
