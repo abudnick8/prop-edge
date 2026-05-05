@@ -1486,18 +1486,17 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
 
       if (whop && tier !== "free") {
-        const productId = tier === "pro"
-          ? process.env.WHOP_PRO_PRODUCT_ID
-          : process.env.WHOP_BASIC_PRODUCT_ID;
+        const planId = tier === "pro"
+          ? process.env.WHOP_PRO_PLAN_ID
+          : process.env.WHOP_BASIC_PLAN_ID;
 
-        const plan = await (whop as any).plans.create({
-          company_id:      process.env.WHOP_COMPANY_ID,
-          access_pass_id:  productId,
-          initial_price:   tier === "pro" ? 15.0 : 5.0,
-          plan_type:       "renewal",
-          billing_period:  1,
+        const session = await (whop as any).checkoutConfigurations.create({
+          mode:         "payment",
+          plan_id:      planId,
+          metadata:     { tier, email: email.toLowerCase() },
+          redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
         });
-        checkoutUrl = (plan as any).purchase_url ?? null;
+        checkoutUrl = (session as any).purchase_url ?? null;
       }
 
       // Free tier is always immediately active (no payment needed)
@@ -2099,18 +2098,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      const basePrice = tier === "pro" ? 15.0 : 5.0;
-      const finalPrice = discountPct > 0 ? basePrice * (1 - discountPct / 100) : basePrice;
+      const planId = tier === "pro"
+        ? process.env.WHOP_PRO_PLAN_ID
+        : process.env.WHOP_BASIC_PLAN_ID;
 
-      const plan = await (whop as any).plans.create({
-        company_id:     process.env.WHOP_COMPANY_ID,
-        access_pass_id: productId,
-        initial_price:  finalPrice,
-        plan_type:      "renewal",
-        billing_period: 1,
+      const session = await (whop as any).checkoutConfigurations.create({
+        mode:         "payment",
+        plan_id:      planId,
+        metadata:     { tier, userId: String(req.user!.userId) },
+        redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/settings?upgrade=success`,
       });
 
-      const checkoutUrl = (plan as any).purchase_url ?? null;
+      const checkoutUrl = (session as any).purchase_url ?? null;
       res.json({ checkoutUrl });
     } catch (e: any) {
       console.error("[Whop] Upgrade checkout error:", e.message);
