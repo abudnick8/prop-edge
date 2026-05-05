@@ -1465,18 +1465,38 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (existing && existing.sub_status !== "cancelled") {
         return res.status(409).json({ error: "An account with that email already exists" });
       }
-      // Resubscribe flow: cancelled user signing up again — send them to checkout
-      if (existing && existing.sub_status === "cancelled" && tier !== "free") {
+      // Resubscribe flow: cancelled user signing up again
+      if (existing && existing.sub_status === "cancelled") {
+        // Free tier — reactivate immediately, no checkout needed
+        if (tier === "free") {
+          await db.query(
+            `UPDATE users SET tier='free', sub_status='active', updated_at=NOW() WHERE email=LOWER($1)`,
+            [email]
+          );
+          return res.json({ success: true, checkoutUrl: null, resubscribe: true });
+        }
+        // Paid tier — send to Whop checkout
         const planId = tier === "pro" ? process.env.WHOP_PRO_PLAN_ID : process.env.WHOP_BASIC_PLAN_ID;
         let checkoutUrl: string | null = null;
         if (whop && planId) {
-          const session = await (whop as any).checkoutConfigurations.create({
-            mode:         "payment",
-            plan_id:      planId,
-            metadata:     { tier, email: email.toLowerCase(), resubscribe: "true" },
-            redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
-          });
-          checkoutUrl = (session as any).purchase_url ?? null;
+          try {
+            const session = await (whop as any).checkoutConfigurations.create({
+              mode:         "payment",
+              plan_id:      planId,
+              metadata:     { tier, email: email.toLowerCase(), resubscribe: "true" },
+              redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
+            });
+            checkoutUrl = (session as any).purchase_url ?? null;
+          } catch (whopErr: any) {
+            console.error("[Whop] Resubscribe checkout error:", whopErr.message);
+          }
+        }
+        if (!checkoutUrl) {
+          // Whop not configured or checkout failed — return a direct plan purchase URL
+          const directUrl = tier === "pro"
+            ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}`
+            : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}`;
+          checkoutUrl = directUrl;
         }
         return res.json({ success: true, checkoutUrl, resubscribe: true });
       }
