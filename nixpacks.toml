@@ -1,9 +1,1 @@
-# Cache bust: 1777328200
-[phases.setup]
-nixPkgs = ["nodejs_20", "python312", "python312Packages.numpy", "python312Packages.scipy"]
-
-[phases.install]
-cmds = ["npm install --legacy-peer-deps --omit=dev"]
-
-[start]
-cmd = "node dist/index.cjs"
+IyBDYWNoZSBidXN0OiAxNzc3MzI4MjAwCltwaGFzZXMuc2V0dXBdCm5peFBrZ3MgPSBbIm5vZGVqc18yMCIsICJweXRob24zMTIiLCAicHl0aG9uMzEyUGFja2FnZXMubnVtcHkiLCAicHl0aG9uMzEyUGFja2FnZXMuc2NpcHkiXQoKW3BoYXNlcy5pbnN0YWxsXQpjbWRzID0gWyJucG0gaW5zdGFsbCAtLWxlZ2FjeS1wZWVyLWRlcHMgLS1vbWl0PWRldiJdCgpbc3RhcnRdCmNtZCA9ICJub2RlIGRpc3QvaW5kZXguY2pzIgo=

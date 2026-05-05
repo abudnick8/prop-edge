@@ -1,9 +1,1 @@
-# Clubhouse IQ Railway Config
-[build]
-builder = "nixpacks"
-buildCommand = "npm install --legacy-peer-deps --omit=dev"
-
-[deploy]
-startCommand = "node dist/index.cjs"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+IyBDbHViaG91c2UgSVEgUmFpbHdheSBDb25maWcKW2J1aWxkXQpidWlsZGVyID0gIm5peHBhY2tzIgpidWlsZENvbW1hbmQgPSAibnBtIGluc3RhbGwgLS1sZWdhY3ktcGVlci1kZXBzIC0tb21pdD1kZXYiCgpbZGVwbG95XQpzdGFydENvbW1hbmQgPSAibm9kZSBkaXN0L2luZGV4LmNqcyIKcmVzdGFydFBvbGljeVR5cGUgPSAib25fZmFpbHVyZSIKcmVzdGFydFBvbGljeU1heFJldHJpZXMgPSAzCg==
