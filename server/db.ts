@@ -188,10 +188,11 @@ async function runMigrations() {
     // ── Flagged users column ───────────────────────────────────────────────────────
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_flagged  BOOLEAN DEFAULT FALSE`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS flag_reason TEXT    DEFAULT NULL`);
-    // Whop migration — replace Stripe fields
+    // Payment migration columns (kept for backwards compat, no active payment processor)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_membership_id TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_sub_id TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gumroad_sale_id TEXT DEFAULT NULL`);
 
     console.log("[DB] Migrations complete");
   } catch (err: any) {
