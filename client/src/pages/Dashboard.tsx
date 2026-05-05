@@ -532,11 +532,14 @@ export default function Dashboard() {
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150 }}>{b.playerName || b.title}</p>
                       <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
-                        {b.statType && <Pill label={b.statType} color="#22c55e" bg="rgba(34,197,94,0.10)" />}
-                        {b.line != null && <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{b.line}</span>}
-                        {b.recommendation && (
-                          <span style={{ fontSize: 10, fontWeight: 800, color: b.recommendation === "OVER" ? "#22c55e" : "#ef4444" }}>{b.recommendation}</span>
-                        )}
+                        {(() => {
+                          const stat = b.statType || (b as any).teamStats?.statType || "";
+                          const dir  = b.recommendation || (b as any).teamStats?.pickSide || "";
+                          const line = b.line ?? (b as any).teamStats?.statValue ?? null;
+                          if (stat) return <Pill label={`${stat}${dir ? ` ${dir[0]}` : ""}${line != null ? ` ${line}` : ""}`} color="#22c55e" bg="rgba(34,197,94,0.10)" />;
+                          if (line != null) return <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{line}</span>;
+                          return null;
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -549,39 +552,6 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-
-        {/* ── Props Hub Analysis ─────────────────────────────────────────────── */}
-        <div style={{ position: "relative" }}>
-          <Card>
-            <SectionHeader icon={<Percent size={14} style={{ color: "#8b5cf6" }} />} label="Props Hub Analysis" linkTo="/linemate" badge={filteredPropsHub.length} />
-            <SportTabs active={activeSport} onChange={setActiveSport} />
-            {propsL ? (<><Skel /><Skel /></>) : filteredPropsHub.length === 0 ? (
-              <EmptyState text={`No ${activeSport} props in hub yet`} />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {filteredPropsHub.map((p, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", background: "rgba(139,92,246,0.04)", borderRadius: 11, border: "1px solid rgba(139,92,246,0.09)" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 155 }}>{p.playerName}</p>
-                      <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
-                        {p.statType && <Pill label={p.statType} color="#8b5cf6" bg="rgba(139,92,246,0.10)" />}
-                        <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{p.line}</span>
-                        {p.team && <span style={{ fontSize: 10, color: "#94a3b8" }}>{p.team}</span>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: p.recommendation === "OVER" ? "#22c55e" : "#ef4444", background: p.recommendation === "OVER" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", padding: "2px 8px", borderRadius: 20 }}>
-                        {p.recommendation}
-                      </span>
-                      {p.edgeScore != null && <span style={{ fontSize: 10, color: "#8b5cf6", fontWeight: 700 }}>Edge {Number(p.edgeScore).toFixed(1)}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-          {!canSeePro && <ProLock section="Props Hub Analysis" />}
-        </div>
 
         {/* ── Beat The Streak (MLB only — always shown) ─────────────────────── */}
         <Card>
