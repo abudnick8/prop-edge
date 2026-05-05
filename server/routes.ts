@@ -1390,7 +1390,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       if (tier !== "free" && tier !== "basic" && tier !== "pro")
         return res.status(400).json({ error: "Invalid tier" });
 
-      // Check if email already exists
+      const pinHash = await hashPIN(pin);
+
+      // Owner bypass — always upsert, reset lockout, auto-activate as owner + pro
+      const OWNER_EMAIL = "adam.budnick8@gmail.com";
+      if (email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
+        await db.query(
+          `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, is_owner, login_attempts, locked_until)
+           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE, 0, NULL)
+           ON CONFLICT (email) DO UPDATE SET pin_hash=$2, pin_plain=$3, tier='pro', sub_status='active', is_owner=TRUE, login_attempts=0, locked_until=NULL, updated_at=NOW()`,
+          [email, pinHash, pin]
+        );
+        sendNewSignupNotification(email, "pro").catch(() => {});
+        return res.json({ success: true });
+      }
+
+      // Check if email already exists (non-owner)
       const existing = await db.queryOne(`SELECT id, sub_status FROM users WHERE email=LOWER($1)`, [email]);
       if (existing) {
         // Reactivate cancelled accounts instead of rejecting
@@ -1402,21 +1417,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           return res.json({ success: true });
         }
         return res.status(409).json({ error: "An account with that email already exists" });
-      }
-
-      const pinHash = await hashPIN(pin);
-
-      // Owner bypass — auto-activate as owner + pro
-      const OWNER_EMAIL = "adam.budnick8@gmail.com";
-      if (email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
-        await db.query(
-          `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, is_owner)
-           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE)
-           ON CONFLICT (email) DO UPDATE SET pin_hash=$2, pin_plain=$3, tier='pro', sub_status='active', is_owner=TRUE`,
-          [email, pinHash, pin]
-        );
-        sendNewSignupNotification(email, "pro").catch(() => {});
-        return res.json({ success: true });
       }
 
       // All tiers activate immediately — no payment required
