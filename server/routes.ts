@@ -1475,29 +1475,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           );
           return res.json({ success: true, checkoutUrl: null, resubscribe: true });
         }
-        // Paid tier — send to Whop checkout
-        const planId = tier === "pro" ? process.env.WHOP_PRO_PLAN_ID : process.env.WHOP_BASIC_PLAN_ID;
-        let checkoutUrl: string | null = null;
-        if (whop && planId) {
-          try {
-            const session = await (whop as any).checkoutConfigurations.create({
-              mode:         "payment",
-              plan_id:      planId,
-              metadata:     { tier, email: email.toLowerCase(), resubscribe: "true" },
-              redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
-            });
-            checkoutUrl = (session as any).purchase_url ?? null;
-          } catch (whopErr: any) {
-            console.error("[Whop] Resubscribe checkout error:", whopErr.message);
-          }
-        }
-        if (!checkoutUrl) {
-          // Whop not configured or checkout failed — return a direct plan purchase URL
-          const directUrl = tier === "pro"
-            ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}`
-            : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}`;
-          checkoutUrl = directUrl;
-        }
+        // Paid tier — send to Whop checkout (direct plan URL, no API call needed)
+        const checkoutUrl = tier === "pro"
+          ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
+          : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
         return res.json({ success: true, checkoutUrl, resubscribe: true });
       }
 
@@ -1522,18 +1503,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         return res.json({ success: true, checkoutUrl: null });
       }
 
-      if (whop && tier !== "free") {
-        const planId = tier === "pro"
-          ? process.env.WHOP_PRO_PLAN_ID
-          : process.env.WHOP_BASIC_PLAN_ID;
-
-        const session = await (whop as any).checkoutConfigurations.create({
-          mode:         "payment",
-          plan_id:      planId,
-          metadata:     { tier, email: email.toLowerCase() },
-          redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/login?signup=success`,
-        });
-        checkoutUrl = (session as any).purchase_url ?? null;
+      if (tier !== "free") {
+        // Use direct Whop plan checkout URLs — no API call needed
+        checkoutUrl = tier === "pro"
+          ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
+          : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
       }
 
       // Free tier is always immediately active (no payment needed)
@@ -2133,18 +2107,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      const planId = tier === "pro"
-        ? process.env.WHOP_PRO_PLAN_ID
-        : process.env.WHOP_BASIC_PLAN_ID;
+      // Use direct Whop plan checkout URLs
+      const checkoutUrl = tier === "pro"
+        ? `https://whop.com/checkout/${process.env.WHOP_PRO_PLAN_ID}/`
+        : `https://whop.com/checkout/${process.env.WHOP_BASIC_PLAN_ID}/`;
 
-      const session = await (whop as any).checkoutConfigurations.create({
-        mode:         "payment",
-        plan_id:      planId,
-        metadata:     { tier, userId: String(req.user!.userId) },
-        redirect_url: `${process.env.APP_URL ?? "https://clubhouse-iq.up.railway.app"}/#/settings?upgrade=success`,
-      });
-
-      const checkoutUrl = (session as any).purchase_url ?? null;
       res.json({ checkoutUrl });
     } catch (e: any) {
       console.error("[Whop] Upgrade checkout error:", e.message);
