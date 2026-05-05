@@ -520,15 +520,51 @@ export default function Dashboard() {
   const allProps  = Array.isArray((propsData as any)?.markets) ? (propsData as any).markets : (Array.isArray((propsData as any)?.props) ? (propsData as any).props : []);
   const topProps  = allProps.slice(0, 6);
   const topPlaysList = (Array.isArray(topPlays) ? topPlays : []).slice(0, 6);
-  const topLineMoves = (Array.isArray(lineMoves) ? lineMoves : []).slice(0, 4);
-  const topMarkets   = (Array.isArray(markets) ? markets : []).slice(0, 4);
+  const rawLineMoves = Array.isArray(lineMoves) ? lineMoves : [];
+  const topLineMoves = rawLineMoves.slice(0, 4).map((m: any) => {
+    // Real shape: {spread:{open,current,move}, total:{open,current,move}, moneyline:{...}}
+    const spreadMove = m.spread?.move ?? 0;
+    const totalMove  = m.total?.move  ?? 0;
+    const mlAway     = m.moneyline?.awayCurrent;
+    const mlHome     = m.moneyline?.homeCurrent;
+    const biggestMove = Math.abs(spreadMove) >= Math.abs(totalMove) ? spreadMove : totalMove;
+    const trigger = m.trigger
+      ? m.trigger
+      : Math.abs(spreadMove) > 0
+        ? `Spread moved ${spreadMove > 0 ? '+' : ''}${spreadMove}`
+        : Math.abs(totalMove) > 0
+          ? `Total moved ${totalMove > 0 ? '+' : ''}${totalMove}`
+          : mlAway != null
+            ? `ML: Away ${mlAway > 0 ? '+' : ''}${mlAway} / Home ${mlHome}`
+            : 'Line movement detected';
+    const direction = m.direction
+      ? m.direction
+      : biggestMove > 0 ? 'up' : biggestMove < 0 ? 'down' : undefined;
+    return { ...m, trigger, direction };
+  });
+  const topMarkets = (Array.isArray(markets) ? markets : []).slice(0, 4).map((m: any) => ({
+    ...m,
+    volume: typeof m.volume === 'number' ? m.volume : typeof m.vol24h === 'number' ? m.vol24h : 0,
+  }));
 
   const sharpSignalsRaw = Array.isArray(sharpData) ? sharpData : (sharpData as any)?.games ?? [];
-  const sharpSignals = sharpSignalsRaw.slice(0, 3).map((g: any) => ({
-    homeTeam: g.homeTeam, awayTeam: g.awayTeam, sport: g.sport,
-    publicPct: g.publicBetPct ?? g.publicPct, sharpPct: g.sharpScore ?? g.sharpPct,
-    side: g.sharpDirection ?? g.sharpSide ?? g.side, gameTime: g.startTime ?? g.gameTime,
-  }));
+  const sharpSignals = sharpSignalsRaw.slice(0, 3).map((g: any) => {
+    // publicBetPct is an object {home, away, over, under} — extract a usable number
+    const rawPublic = g.publicBetPct ?? g.publicPct;
+    const publicPct = typeof rawPublic === 'number'
+      ? rawPublic
+      : typeof rawPublic === 'object' && rawPublic !== null
+        ? (rawPublic.away ?? rawPublic.home ?? rawPublic.over ?? rawPublic.under ?? null)
+        : null;
+    const sharpPct = typeof g.sharpScore === 'number' ? g.sharpScore
+      : typeof g.sharpPct === 'number' ? g.sharpPct : null;
+    return {
+      homeTeam: g.homeTeam, awayTeam: g.awayTeam, sport: g.sport,
+      publicPct, sharpPct,
+      side: g.sharpDirection ?? g.sharpSide ?? g.side ?? null,
+      gameTime: g.startTime ?? g.gameTime,
+    };
+  });
 
   const liveGamesArr: Game[] = (() => {
     const raw = liveData as any;
