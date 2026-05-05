@@ -959,7 +959,7 @@ export default function Dashboard() {
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               {[
                 { label: "Streak", value: btsStreak > 0 ? `🔥 ${btsStreak}` : `${btsStreak}`, color: btsStreak > 2 ? "#D4A843" : "#131A24" },
-                { label: "Win Rate", value: `${(btsWinRate * 100).toFixed(0)}%`, color: btsWinRate >= 0.6 ? "#22c55e" : "#64748b" },
+                { label: "Win Rate", value: `${Number(btsWinRate).toFixed(0)}%`, color: Number(btsWinRate) >= 60 ? "#22c55e" : "#64748b" },
                 { label: "Record", value: `${btsTotalHits}/${btsTotalPicks}`, color: "#131A24" },
               ].map(s => (
                 <div key={s.label} style={{ flex: 1, background: "rgba(212,168,67,0.07)", border: "1px solid rgba(212,168,67,0.15)", borderRadius: 10, padding: "7px 8px", textAlign: "center" }}>
