@@ -10089,7 +10089,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch (logErr) { /* non-fatal — log failure doesn't block picks */ }
 
-      // ── 8. One-per-team rule (no hard cap — quality only) ────────────
+      // ── 8. One-per-team rule + hard 10-pick cap ─────────────────────
       // Sort override picks to the BOTTOM (show normal picks first)
       candidatePicks.sort((a, b) => {
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
@@ -10101,7 +10101,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (seenTeams.has(p.team)) continue;
         seenTeams.add(p.team);
         freshPicks.push(p);
-        // No hard cap — only include players that pass all criteria
+        if (freshPicks.length >= 10) break; // hard 10-pick ceiling
       }
 
       // ── Merge into the daily persistent cache ──────────────────────────
@@ -10122,7 +10122,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           existing.hitProbability = pick.hitProbability;
           continue;
         }
-        // No hard cap — add all qualifying players
+        if (cachedEntries.length >= 10) break; // hard cap
         cachedEntries.push({
           playerId:       pick.playerId,
           name:           pick.name,

@@ -1094,17 +1094,18 @@ export default function BTS() {
               className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
               style={{ background: picks.length > 0 ? "rgba(34,197,94,0.15)" : "rgba(19,35,58,0.08)", color: picks.length > 0 ? "#22c55e" : "#8A9BB0" }}
             >
-              {picks.length} / up to 10
+              {picks.length} / 10
             </span>
           </div>
 
           <div className="space-y-3">
+            {/* Real picks — capped at 5 initially, 10 when expanded */}
             {visiblePicks.map((pick, i) => (
               <PickCard key={pick.playerId} pick={pick} rank={i + 1} />
             ))}
 
-            {/* Empty slots — shown for remaining spots when fewer than 10 qualify */}
-            {!showAllPicks && Array.from({ length: Math.max(0, Math.min(5, 5) - picks.slice(0,5).length) }).map((_, i) => (
+            {/* Empty slots for remaining spots up to the visible limit */}
+            {Array.from({ length: Math.max(0, (showAllPicks ? 10 : Math.min(5, picks.length + (10 - picks.length))) - visiblePicks.length) }).map((_, i) => (
               <div key={`empty-${i}`} className="rounded-2xl p-4 flex items-center gap-3"
                 style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.12)" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
@@ -1117,27 +1118,15 @@ export default function BTS() {
                 </div>
               </div>
             ))}
-            {showAllPicks && Array.from({ length: Math.max(0, 10 - picks.length) }).map((_, i) => (
-              <div key={`empty-all-${i}`} className="rounded-2xl p-4 flex items-center gap-3"
-                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.12)" }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(19,35,58,0.06)" }}>
-                  <span className="text-[10px] font-black" style={{ color: "rgba(19,35,58,0.2)" }}>—</span>
-                </div>
-                <div>
-                  <p className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.25)" }}>No player met requirements</p>
-                  <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.18)" }}>Slot unfilled — criteria not met by any available player</p>
-                </div>
-              </div>
-            ))}
           </div>
 
-          {picks.length > 5 && (
+          {/* Show all / collapse toggle — only if there are more than 5 picks OR empty slots beyond 5 */}
+          {(picks.length > 5 || (picks.length < 10)) && (
             <button
               onClick={() => setShowAllPicks(s => !s)}
               className="w-full mt-2 text-[11px] font-bold text-muted-foreground py-2"
             >
-              {showAllPicks ? "Show top 5 only" : `Show all ${picks.length} picks + remaining slots`}
+              {showAllPicks ? "Show top 5 only" : `Show all slots (${picks.length} picks + ${10 - picks.length} empty)`}
             </button>
           )}
         </div>
