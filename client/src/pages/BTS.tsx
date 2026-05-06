@@ -209,10 +209,8 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
       <div className="px-4 pb-2 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
         <span>vs <span className="font-semibold text-foreground">{pick.opponentPitcher?.name ?? "TBD"}</span></span>
         <span className="opacity-40">·</span>
-        <span>{pick.game.matchup?.split(" @ ")[1] ?? pick.game.venue}</span>
-        <span className="opacity-40">·</span>
-        <span>{pick.game.gameTime}</span>
-        {pick.game.total && (
+        {pick.game && <><span>{pick.game.matchup?.split(" @ ")[1] ?? pick.game.venue}</span><span className="opacity-40">·</span><span>{pick.game.gameTime}</span></> }
+        {pick.game?.total && (
           <>
             <span className="opacity-40">·</span>
             <span
@@ -223,7 +221,7 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
             </span>
           </>
         )}
-        {pick.game.weather?.tempF > 0 && (
+        {pick.game?.weather?.tempF > 0 && (
           <>
             <span className="opacity-40">·</span>
             <span>{pick.game.weather.tempF}°F {pick.game.weather.wind}</span>
@@ -1205,7 +1203,7 @@ export default function BTS() {
             {doubleDowns.map((p, i) => (
               <div key={i} className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-foreground">{p.name}</span>
-                <span className="text-muted-foreground">{p.team} · {p.game.matchup?.split(" @ ")[1]}</span>
+                <span className="text-muted-foreground">{p.team}{p.game ? ` · ${p.game.matchup?.split(" @ ")[1]}` : ""}</span>
                 <span className="font-black" style={{ color: "#60a5fa" }}>{p.hitProbability}%</span>
               </div>
             ))}
