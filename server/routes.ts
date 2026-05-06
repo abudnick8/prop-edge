@@ -36,8 +36,58 @@ function mlLoadJSON(filePath: string, def: any = []): any {
   try { return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, "utf8")) : def; }
   catch { return def; }
 }
+
+// Writes to local disk AND upserts into Postgres ml_data_store.
+// Postgres is the authoritative backup — survives Railway redeploys
+// without needing GITHUB_TOKEN.
 function mlSaveJSON(filePath: string, data: any): void {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  const json = JSON.stringify(data, null, 2);
+  // 1. Local disk (fast, used during same process lifetime)
+  try { fs.writeFileSync(filePath, json); } catch { /* non-fatal */ }
+  // 2. Postgres (persistent across redeploys)
+  const filename = path.basename(filePath);
+  db.query(
+    `INSERT INTO ml_data_store (filename, content, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (filename) DO UPDATE
+       SET content = EXCLUDED.content, updated_at = NOW()`,
+    [filename, json]
+  ).catch((e: any) => console.warn(`[ML] DB save failed for ${filename}:`, e.message));
+}
+
+// Pull all ML files from Postgres into local disk on startup.
+// Falls back silently if DB not available or row missing.
+async function mlPullFromDB(): Promise<void> {
+  const files = [
+    "bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json",
+    "ml_insights.json", "graded_ids.json", "bts_picks.json",
+    "bts_ml_weights.json", "bts_ml_learning_log.json",
+  ];
+  let pulled = 0;
+  for (const filename of files) {
+    try {
+      const row = await db.queryOne(
+        `SELECT content, updated_at FROM ml_data_store WHERE filename = $1`,
+        [filename]
+      );
+      if (!row) continue;
+      const filepath = path.join(ML_DATA_DIR, filename);
+      // Only overwrite local file if DB version is newer or local doesn't exist
+      let localMtime = 0;
+      try { localMtime = fs.statSync(filepath).mtimeMs; } catch { /* doesn't exist */ }
+      const dbTime = new Date(row.updated_at).getTime();
+      if (dbTime >= localMtime || !fs.existsSync(filepath)) {
+        fs.mkdirSync(ML_DATA_DIR, { recursive: true });
+        fs.writeFileSync(filepath, row.content, "utf-8");
+        pulled++;
+        console.log(`[ML-DB] ✓ Restored ${filename} from Postgres (${Math.round(row.content.length/1024)}KB)`);
+      }
+    } catch (e: any) {
+      console.warn(`[ML-DB] Could not pull ${filename}:`, e.message);
+    }
+  }
+  if (pulled > 0) console.log(`[ML-DB] Restored ${pulled} ML files from Postgres`);
+  else console.log(`[ML-DB] No newer ML files in Postgres — using existing disk files`);
 }
 
 // Log a graded outcome (pure TS, no Python)
@@ -687,10 +737,12 @@ async function pullMLDataFromGitHub(): Promise<void> {
 }
 
 // Start the pull immediately at module load — before any request can be served.
-// This ensures getMLPullPromise() always returns a meaningful promise.
-_mlPullPromise = pullMLDataFromGitHub().catch((e: any) => {
-  console.warn("[MLSync] Module-level startup pull failed:", e?.message);
-});
+// DB pull runs first (no token needed), then GitHub fills any remaining gaps.
+_mlPullPromise = mlPullFromDB()
+  .then(() => pullMLDataFromGitHub())
+  .catch((e: any) => {
+    console.warn("[MLSync] Module-level startup pull failed:", e?.message);
+  });
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -8396,19 +8448,63 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     btsSeasonRecord.pending = p;
   }
 
-  // ── Persist btsPicksCache to disk and back up to GitHub ─────────────
+  // ── Persist btsPicksCache to disk + Postgres (source of truth) ─────────
   const BTS_PICKS_PATH = path.join(__dirname, "ml_data", "bts_picks.json");
 
   let _btsSyncTimer: ReturnType<typeof setTimeout> | null = null;
   function saveBtsPicksCache() {
-    // Write to local disk immediately
+    const json = JSON.stringify(btsPicksCache, null, 2);
+    // 1. Local disk
     try {
       fs.mkdirSync(path.dirname(BTS_PICKS_PATH), { recursive: true });
-      fs.writeFileSync(BTS_PICKS_PATH, JSON.stringify(btsPicksCache, null, 2), "utf-8");
+      fs.writeFileSync(BTS_PICKS_PATH, json, "utf-8");
     } catch (e: any) {
       console.warn("[BTS] Failed to save bts_picks.json:", e.message);
     }
-    // Debounced GitHub sync (30s cooldown so rapid grader updates don't spam the API)
+    // 2. Postgres ml_data_store (immediate, no token needed)
+    db.query(
+      `INSERT INTO ml_data_store (filename, content, updated_at)
+       VALUES ('bts_picks.json', $1, NOW())
+       ON CONFLICT (filename) DO UPDATE
+         SET content = EXCLUDED.content, updated_at = NOW()`,
+      [json]
+    ).catch((e: any) => console.warn("[BTS] DB save error:", e.message));
+    // 3. Also upsert each pick row into bts_picks table for direct DB querying
+    for (const [date, entries] of Object.entries(btsPicksCache)) {
+      for (const e of entries as BtsPickEntry[]) {
+        db.query(
+          `INSERT INTO bts_picks
+             (pick_date, player_id, player_name, team, hit_probability,
+              locked_at, locked, result, hits, ab, graded_at, snapshot)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (pick_date, player_id) DO UPDATE SET
+             player_name    = EXCLUDED.player_name,
+             hit_probability= EXCLUDED.hit_probability,
+             locked_at      = EXCLUDED.locked_at,
+             locked         = EXCLUDED.locked,
+             result         = EXCLUDED.result,
+             hits           = EXCLUDED.hits,
+             ab             = EXCLUDED.ab,
+             graded_at      = EXCLUDED.graded_at,
+             snapshot       = EXCLUDED.snapshot`,
+          [
+            date,
+            e.playerId,
+            e.name ?? (e as any).playerName ?? "",
+            e.team ?? "",
+            e.hitProbability ?? 0,
+            e.lockedAt ?? null,
+            e.lockedAt != null,
+            e.result ?? "pending",
+            e.hits ?? null,
+            e.ab ?? null,
+            e.gradedAt ?? null,
+            JSON.stringify(e.snapshot ?? {}),
+          ]
+        ).catch(() => { /* non-fatal */ });
+      }
+    }
+    // 4. Debounced GitHub sync (best-effort, requires GITHUB_TOKEN)
     if (_btsSyncTimer) clearTimeout(_btsSyncTimer);
     _btsSyncTimer = setTimeout(() => {
       _btsSyncTimer = null;
@@ -8416,35 +8512,65 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }, 30_000);
   }
 
-  function loadBtsPicksCache() {
-    try {
-      if (!fs.existsSync(BTS_PICKS_PATH)) return;
-      const raw = fs.readFileSync(BTS_PICKS_PATH, "utf-8");
-      const parsed = JSON.parse(raw);
-      // Merge into in-memory cache (don't overwrite newer in-memory data)
-      for (const [date, entries] of Object.entries(parsed) as [string, any][]) {
-        if (!btsPicksCache[date]) {
-          btsPicksCache[date] = entries;
-        } else {
-          // Merge: update result fields for any entries that are still pending in memory
-          for (const diskEntry of entries) {
-            const memEntry = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === diskEntry.playerId);
-            if (!memEntry) {
-              btsPicksCache[date].push(diskEntry);
-            } else if (memEntry.result === "pending" && diskEntry.result !== "pending") {
-              Object.assign(memEntry, diskEntry);
-            }
+  // Merge a parsed JSON object into btsPicksCache
+  function mergeBtsJSON(parsed: Record<string, any[]>) {
+    for (const [date, entries] of Object.entries(parsed)) {
+      if (!btsPicksCache[date]) {
+        btsPicksCache[date] = entries as BtsPickEntry[];
+      } else {
+        for (const diskEntry of entries) {
+          const memEntry = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === diskEntry.playerId);
+          if (!memEntry) {
+            btsPicksCache[date].push(diskEntry);
+          } else if (memEntry.result === "pending" && diskEntry.result !== "pending") {
+            Object.assign(memEntry, diskEntry);
           }
         }
       }
-      reconcileSeasonRecord();
-      console.log(`[BTS] Loaded bts_picks.json — ${Object.keys(btsPicksCache).length} days of history`);
-    } catch (e: any) {
-      console.warn("[BTS] Failed to load bts_picks.json:", e.message);
     }
   }
 
-  // Load persisted BTS picks after the ML pull promise resolves
+  async function loadBtsPicksCache() {
+    // 1. Load from Postgres bts_picks table first (most current after any redeploy)
+    try {
+      const rows = await db.query(`SELECT * FROM bts_picks ORDER BY pick_date DESC`);
+      if (rows.rows && rows.rows.length > 0) {
+        const fromDB: Record<string, BtsPickEntry[]> = {};
+        for (const r of rows.rows) {
+          if (!fromDB[r.pick_date]) fromDB[r.pick_date] = [];
+          fromDB[r.pick_date].push({
+            playerId:       r.player_id,
+            name:           r.player_name,
+            team:           r.team,
+            hitProbability: r.hit_probability,
+            lockedAt:       r.locked_at,
+            result:         r.result,
+            hits:           r.hits,
+            ab:             r.ab,
+            gradedAt:       r.graded_at,
+            snapshot:       r.snapshot ?? {},
+          } as BtsPickEntry);
+        }
+        mergeBtsJSON(fromDB);
+        console.log(`[BTS-DB] Loaded ${rows.rows.length} picks from Postgres (${Object.keys(fromDB).length} days)`);
+      }
+    } catch (e: any) {
+      console.warn("[BTS-DB] Could not load from Postgres:", e.message);
+    }
+    // 2. Also load from JSON file on disk (fills gaps if DB rows are missing)
+    try {
+      if (fs.existsSync(BTS_PICKS_PATH)) {
+        const parsed = JSON.parse(fs.readFileSync(BTS_PICKS_PATH, "utf-8"));
+        mergeBtsJSON(parsed);
+        console.log(`[BTS] Merged disk bts_picks.json — ${Object.keys(btsPicksCache).length} total days`);
+      }
+    } catch (e: any) {
+      console.warn("[BTS] Failed to load bts_picks.json:", e.message);
+    }
+    reconcileSeasonRecord();
+  }
+
+  // Load persisted BTS picks after the startup pull resolves
   _mlPullPromise.then(() => loadBtsPicksCache()).catch(() => loadBtsPicksCache());
 
   // ── Grader: fetch actual hit stats for a player on a given date ──────
