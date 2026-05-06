@@ -10510,6 +10510,79 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/reanalyze (owner only)
+  // Removes picks for today's date where the game hasn't started and the
+  // result is still pending, then returns a cleared list so the next
+  // GET /api/bts-picks re-runs a fresh analysis.
+  // Picks where the game is in-progress or complete are NEVER removed.
+  // ─────────────────────────────────────────────────────────────────────
+  app.post("/api/bts/reanalyze", requireOwner, async (req, res) => {
+    try {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const nowMs = Date.now();
+      const existing: BtsPickEntry[] = btsPicksCache[targetDate] ?? [];
+
+      // Keep picks where: result is NOT pending (graded win/loss/no_game)
+      // OR game is already in-progress (gameStartMs in past by more than 10 min).
+      // Remove picks where result is still pending AND game has not started yet.
+      const kept: BtsPickEntry[] = [];
+      const removed: string[] = [];
+
+      for (const entry of existing) {
+        const snap = entry.snapshot as any;
+        const gameStartMs: number | null = snap?.game?.gameStartMs ?? snap?.gameStartMs ?? null;
+        const gameState: string  = snap?.game?.state ?? snap?.state ?? "";
+        const isGraded  = entry.result !== "pending";
+        const isPlaying = gameState === "in_progress" || gameState === "in" ||
+                          (gameStartMs != null && nowMs > gameStartMs + 10 * 60_000);
+
+        if (isGraded || isPlaying) {
+          kept.push(entry);
+        } else {
+          removed.push(entry.name ?? (entry as any).playerName ?? String(entry.playerId));
+        }
+      }
+
+      // Update the in-memory cache
+      btsPicksCache[targetDate] = kept;
+
+      // Persist the cleared cache to DB + disk
+      saveBtsPicksCache();
+
+      // Also remove cleared rows from bts_picks table
+      if (removed.length > 0 && existing.length > kept.length) {
+        const keptIds = kept.map(e => e.playerId);
+        await db.query(
+          `DELETE FROM bts_picks WHERE pick_date = $1 AND player_id != ALL($2::int[]) AND result = 'pending'`,
+          [targetDate, keptIds]
+        ).catch(() => { /* non-fatal */ });
+      }
+
+      console.log(`[BTS] Reanalyze by owner: removed ${removed.length} picks (${removed.join(", ")}), kept ${kept.length}`);
+
+      res.json({
+        ok: true,
+        date: targetDate,
+        removed: removed.length,
+        removedNames: removed,
+        kept: kept.length,
+        message: removed.length === 0
+          ? "No eligible picks to remove — all picks are graded or their game is in progress."
+          : `Removed ${removed.length} pre-game pick${removed.length > 1 ? "s" : ""}. Refresh BTS to get fresh analysis.`,
+      });
+    } catch (e: any) {
+      console.error("[BTS] reanalyze error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /api/bts-history — all historical BTS picks grouped by date
   // Survives redeployments via bts_picks.json persisted to GitHub.
   // ─────────────────────────────────────────────────────────────────────
