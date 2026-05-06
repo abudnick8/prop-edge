@@ -1225,6 +1225,136 @@ function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
   );
 }
 
+// ── SharpPublicChart ────────────────────────────────────────────────────────
+// Horizontal grouped bar chart: Bets% vs Money% for two sides
+interface SharpSide {
+  label: string;
+  bets: number | null | undefined;
+  money: number | null | undefined;
+}
+function SharpPublicChart({ sides, betType }: { sides: SharpSide[]; betType: string }) {
+  const hasSomeData = sides.some(s => s.bets != null || s.money != null);
+  if (!hasSomeData) return <p style={{ fontSize: 10, color: "#94a3b8", padding: "6px 0" }}>No public % data available for this game.</p>;
+
+  const BAR_H = 14;
+  const GAP = 6;
+  const ROW_H = BAR_H * 2 + GAP + 20; // label + 2 bars
+  const W = 260;
+  const PAD_L = 52;
+  const PAD_R = 36;
+  const barW = W - PAD_L - PAD_R;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(99,102,241,0.65)" }} />
+          <span style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>Bets %</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(74,222,128,0.75)" }} />
+          <span style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>Money %</span>
+        </div>
+      </div>
+      {sides.map((side, si) => {
+        const bets = side.bets ?? 0;
+        const money = side.money ?? 0;
+        const divergence = side.bets != null && side.money != null ? Math.abs(money - bets) : null;
+        const isSharp = divergence != null && divergence >= 15;
+        return (
+          <div key={si} style={{ marginBottom: si < sides.length - 1 ? 10 : 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#131A24" }}>{side.label}</span>
+              {isSharp && (
+                <span style={{ fontSize: 9, fontWeight: 800, color: "#22c55e", background: "rgba(34,197,94,0.12)", padding: "1px 6px", borderRadius: 6 }}>
+                  ⚡ {divergence}pt sharp gap
+                </span>
+              )}
+            </div>
+            {/* Bets bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 9, color: "#94a3b8", width: 44, textAlign: "right", fontWeight: 600 }}>Bets</span>
+              <div style={{ flex: 1, height: BAR_H, background: "rgba(19,35,58,0.06)", borderRadius: 6, overflow: "hidden" }}>
+                {side.bets != null && (
+                  <div style={{
+                    width: `${bets}%`, height: "100%",
+                    background: "rgba(99,102,241,0.65)",
+                    borderRadius: 6,
+                    transition: "width 0.4s ease",
+                  }} />
+                )}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#6366f1", width: 30, textAlign: "right", fontFamily: "monospace" }}>
+                {side.bets != null ? `${side.bets}%` : "—"}
+              </span>
+            </div>
+            {/* Money bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, color: "#94a3b8", width: 44, textAlign: "right", fontWeight: 600 }}>Money</span>
+              <div style={{ flex: 1, height: BAR_H, background: "rgba(19,35,58,0.06)", borderRadius: 6, overflow: "hidden" }}>
+                {side.money != null && (
+                  <div style={{
+                    width: `${money}%`, height: "100%",
+                    background: side.money >= 65 ? "rgba(74,222,128,0.75)" : "rgba(245,158,11,0.55)",
+                    borderRadius: 6,
+                    transition: "width 0.4s ease",
+                  }} />
+                )}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, width: 30, textAlign: "right", fontFamily: "monospace",
+                color: side.money != null ? (side.money >= 65 ? "#22c55e" : side.money >= 55 ? "#f59e0b" : "#3D4B58") : "#94a3b8"
+              }}>
+                {side.money != null ? `${side.money}%` : "—"}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      <p style={{ fontSize: 9, color: "#94a3b8", marginTop: 8, fontStyle: "italic" }}>
+        Sharp gap ≥15pt = money flowing opposite to public bets
+      </p>
+    </div>
+  );
+}
+
+// ── SharpChartDrawer ─────────────────────────────────────────────────────────
+function SharpChartDrawer({ label, sides }: { label: string; sides: SharpSide[] }) {
+  const [show, setShow] = useState(false);
+  const hasSomeData = sides.some(s => s.bets != null || s.money != null);
+  if (!hasSomeData) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => setShow(s => !s)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          fontSize: 10, fontWeight: 700,
+          color: show ? "#13233A" : "#3D4B58",
+          background: show ? "rgba(99,102,241,0.12)" : "rgba(99,102,241,0.07)",
+          border: "1px solid rgba(99,102,241,0.20)",
+          borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+      >
+        <Users size={10} />
+        {show ? "Hide Sharp/Public" : "Sharp vs Public"}
+        {show ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {show && (
+        <div style={{
+          marginTop: 6, padding: "10px 10px 8px",
+          background: "#F6F1E7", borderRadius: 12,
+          border: "1px solid rgba(99,102,241,0.15)",
+        }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", marginBottom: 6 }}>{label} — Bets vs Money</p>
+          <SharpPublicChart sides={sides} betType={label} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── OddsMovementChart ─────────────────────────────────────────────────────────
 // Renders a step-line SVG chart: open → midpoint → current
 function OddsMovementChart({
@@ -1679,6 +1809,13 @@ function GameCard({ game }: { game: GameLine }) {
                 current={game.spread.current}
                 fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
               />
+              <SharpChartDrawer
+                label={game.sport === "MLB" ? "Run Line" : "Spread"}
+                sides={[
+                  { label: `${game.awayTeam.split(" ").pop()} (away)`, bets: game.spread.awayPublic, money: game.spread.awayMoney },
+                  { label: `${game.homeTeam.split(" ").pop()} (home)`, bets: game.spread.homePublic, money: game.spread.homeMoney },
+                ]}
+              />
             </div>
 
             {/* Total */}
@@ -1700,6 +1837,13 @@ function GameCard({ game }: { game: GameLine }) {
                 open={game.total.open}
                 current={game.total.current}
                 fmtValue={(v) => String(v)}
+              />
+              <SharpChartDrawer
+                label="Total"
+                sides={[
+                  { label: "Over",  bets: game.total.overPublic,  money: game.total.overMoney  },
+                  { label: "Under", bets: game.total.underPublic, money: game.total.underMoney },
+                ]}
               />
             </div>
 
@@ -1755,6 +1899,13 @@ function GameCard({ game }: { game: GameLine }) {
                 open={game.moneyline.homeOpen}
                 current={game.moneyline.homeCurrent}
                 fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
+              <SharpChartDrawer
+                label="Moneyline"
+                sides={[
+                  { label: game.awayTeam.split(" ").pop()!, bets: game.moneyline.awayPublic, money: game.moneyline.awayMoney },
+                  { label: game.homeTeam.split(" ").pop()!, bets: game.moneyline.homePublic, money: game.moneyline.homeMoney },
+                ]}
               />
             </div>
           </div>
