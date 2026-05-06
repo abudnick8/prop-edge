@@ -6573,6 +6573,88 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const LINE_MOVEMENT_CACHE = new Map<string, { data: any; ts: number }>();
   const LM_TTL = 3 * 60 * 1000; // 3-min cache
 
+  // ── SBR MLB Consensus cache (free public % data) ──────────────────────────
+  // SBR's consensus page embeds pick % in __NEXT_DATA__ gameView.consensus
+  // Fields: awayMoneyLinePickPercent, homeMoneyLinePickPercent,
+  //         overPickPercent, underPickPercent
+  // Note: spreadPickPercent is always 0 for MLB (not tracked by SBR)
+  interface SbrMlbEntry {
+    awayTeam: string;       // full name, lowercased
+    homeTeam: string;
+    mlAwayPct: number | null;
+    mlHomePct: number | null;
+    overPct: number | null;
+    underPct: number | null;
+  }
+  let SBR_MLB_CACHE: SbrMlbEntry[] = [];
+  let SBR_MLB_CACHE_TS = 0;
+  const SBR_MLB_TTL = 2 * 60 * 60 * 1000; // 2-hour refresh
+
+  async function fetchSbrMlbConsensus(): Promise<SbrMlbEntry[]> {
+    try {
+      const { data: html } = await axios.get(
+        "https://www.sportsbookreview.com/betting-odds/mlb-baseball/consensus/",
+        {
+          timeout: 15000,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          responseType: "text",
+          decompress: true,
+        }
+      );
+      const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+      if (!match) { console.warn("[SBR] __NEXT_DATA__ not found"); return SBR_MLB_CACHE; }
+      const nd = JSON.parse(match[1]);
+      const gameRows: any[] = nd?.props?.pageProps?.oddsTableModel?.gameRows ?? [];
+      const entries: SbrMlbEntry[] = [];
+      for (const row of gameRows) {
+        const gv = row?.gameView ?? {};
+        const c  = gv?.consensus ?? {};
+        const awayTeam = (gv?.awayTeam?.fullName ?? "").toLowerCase();
+        const homeTeam = (gv?.homeTeam?.fullName ?? "").toLowerCase();
+        if (!awayTeam || !homeTeam) continue;
+        entries.push({
+          awayTeam,
+          homeTeam,
+          mlAwayPct: c.awayMoneyLinePickPercent ?? null,
+          mlHomePct: c.homeMoneyLinePickPercent ?? null,
+          overPct:   c.overPickPercent   ?? null,
+          underPct:  c.underPickPercent  ?? null,
+        });
+      }
+      console.log(`[SBR] Fetched MLB consensus for ${entries.length} games`);
+      SBR_MLB_CACHE = entries;
+      SBR_MLB_CACHE_TS = Date.now();
+      return entries;
+    } catch (e: any) {
+      console.warn("[SBR] fetchSbrMlbConsensus error:", e.message);
+      return SBR_MLB_CACHE; // return stale data on error
+    }
+  }
+
+  // Initial fetch at startup + refresh every 2 hours
+  fetchSbrMlbConsensus().catch(() => {});
+  setInterval(() => fetchSbrMlbConsensus().catch(() => {}), SBR_MLB_TTL);
+
+  // Helper: match a team name against SBR entries by last word of team name
+  function matchSbrEntry(awayTeam: string, homeTeam: string): SbrMlbEntry | null {
+    const awLast = awayTeam.toLowerCase().split(" ").pop() ?? "";
+    const hwLast = homeTeam.toLowerCase().split(" ").pop() ?? "";
+    if (awLast.length < 3 || hwLast.length < 3) return null;
+    for (const e of SBR_MLB_CACHE) {
+      const eAwLast = e.awayTeam.split(" ").pop() ?? "";
+      const eHwLast = e.homeTeam.split(" ").pop() ?? "";
+      if (eAwLast === awLast && eHwLast === hwLast) return e;
+      // Also try full name contains
+      if (e.awayTeam.includes(awLast) && e.homeTeam.includes(hwLast)) return e;
+    }
+    return null;
+  }
+
   // ── Proactive game-time lookup: populated at startup + every 15 min ──────
   // Maps "awayTeamLower::homeTeamLower" → ISO gameTime string, for all 4 sports today.
   // Used by /api/bets to fill null gameTime on Kalshi player props.
@@ -6868,6 +6950,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           console.warn(`[LineMovement] ${slug} error:`, e.message);
         }
       }));
+
+      // ── Inject SBR MLB public pick % into MLB games ──────────────────────
+      // If the SBR cache is stale, trigger a background refresh
+      if (Date.now() - SBR_MLB_CACHE_TS > SBR_MLB_TTL) {
+        fetchSbrMlbConsensus().catch(() => {});
+      }
+      for (const game of results) {
+        if (game.sport !== "MLB") continue;
+        const sbr = matchSbrEntry(game.awayTeam, game.homeTeam);
+        if (!sbr) continue;
+        // Only fill in if ActionNetwork didn't already provide values
+        const ml = game.moneyline;
+        if (ml.awayPublic == null && sbr.mlAwayPct != null) {
+          ml.awayPublic = Math.round(sbr.mlAwayPct);
+        }
+        if (ml.homePublic == null && sbr.mlHomePct != null) {
+          ml.homePublic = Math.round(sbr.mlHomePct);
+        }
+        const tot = game.total;
+        if (tot.overPublic == null && sbr.overPct != null) {
+          tot.overPublic = Math.round(sbr.overPct);
+        }
+        if (tot.underPublic == null && sbr.underPct != null) {
+          tot.underPublic = Math.round(sbr.underPct);
+        }
+      }
 
       // Sort: most movement first
       results.sort((a, b) => {
