@@ -1165,7 +1165,7 @@ function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
         <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Lines</div>
         {/* Spread */}
         {row(
-          game.sport === "MLB" ? "Run Line" : "Spread",
+          game.sport === "MLB" ? `Run Line — ${game.awayTeam.split(" ").pop()}` : "Spread",
           game.spread.current != null ? fmtLine(game.spread.current) : "—",
           game.spread.open != null && game.spread.current !== game.spread.open
             ? `was ${fmtLine(game.spread.open)} (${spreadMove != null && spreadMove !== 0 ? (spreadMove > 0 ? "+" : "") + spreadMove : "no move"})`
@@ -1201,7 +1201,7 @@ function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
       {(game.spread.awayMoney != null || game.total.overMoney != null || game.moneyline.awayMoney != null) && (
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Public Money %</div>
-          {game.spread.awayMoney != null && row(`Spread — ${game.awayTeam.split(" ").pop()}`, `${game.spread.awayMoney}% $`, game.spread.awayPublic != null ? `${game.spread.awayPublic}% bets` : undefined)}
+          {game.spread.awayMoney != null && row(`${game.sport === "MLB" ? "Run Line" : "Spread"} — ${game.awayTeam.split(" ").pop()}`, `${game.spread.awayMoney}% $`, game.spread.awayPublic != null ? `${game.spread.awayPublic}% bets` : undefined)}
           {game.total.overMoney != null && row("Total — Over", `${game.total.overMoney}% $`, game.total.overPublic != null ? `${game.total.overPublic}% bets` : undefined)}
           {game.moneyline.awayMoney != null && row(`ML — ${game.awayTeam.split(" ").pop()}`, `${game.moneyline.awayMoney}% $`, game.moneyline.awayPublic != null ? `${game.moneyline.awayPublic}% bets` : undefined)}
         </div>
@@ -1790,7 +1790,7 @@ function GameCard({ game }: { game: GameLine }) {
             {/* Spread / Run Line */}
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                {game.sport === "MLB" ? "Run Line" : `Spread (${game.awayTeam})`}
+                {game.sport === "MLB" ? `Run Line (${game.awayTeam})` : `Spread (${game.awayTeam})`}
               </p>
               <MovementBar open={game.spread.open} current={game.spread.current} move={game.spread.move} label="Line" />
               {game.spread.awayPublic != null || game.spread.homePublic != null ? (
