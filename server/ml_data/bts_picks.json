@@ -4666,5 +4666,97 @@
         "ab": 4
       }
     }
+  ],
+  "2026-05-06": [
+    {
+      "playerId": 694192,
+      "name": "Jackson Chourio",
+      "team": "MIL",
+      "hitProbability": 72,
+      "lockedAt": "2026-05-06T21:39:20.638222+00:00",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "snapshot": {
+        "playerId": 694192,
+        "name": "Jackson Chourio",
+        "team": "MIL",
+        "hitProbability": 72,
+        "manuallyAdded": true
+      }
+    },
+    {
+      "playerId": 683737,
+      "name": "Michael Busch",
+      "team": "CHC",
+      "hitProbability": 70,
+      "lockedAt": "2026-05-06T21:39:20.638222+00:00",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "snapshot": {
+        "playerId": 683737,
+        "name": "Michael Busch",
+        "team": "CHC",
+        "hitProbability": 70,
+        "manuallyAdded": true
+      }
+    },
+    {
+      "playerId": 593428,
+      "name": "Xander Bogaerts",
+      "team": "SD",
+      "hitProbability": 68,
+      "lockedAt": "2026-05-06T21:39:20.638222+00:00",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "snapshot": {
+        "playerId": 593428,
+        "name": "Xander Bogaerts",
+        "team": "SD",
+        "hitProbability": 68,
+        "manuallyAdded": true
+      }
+    },
+    {
+      "playerId": 663656,
+      "name": "Kyle Tucker",
+      "team": "LAD",
+      "hitProbability": 74,
+      "lockedAt": "2026-05-06T21:39:20.638222+00:00",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "snapshot": {
+        "playerId": 663656,
+        "name": "Kyle Tucker",
+        "team": "LAD",
+        "hitProbability": 74,
+        "manuallyAdded": true
+      }
+    },
+    {
+      "playerId": 672640,
+      "name": "Otto Lopez",
+      "team": "MIA",
+      "hitProbability": 66,
+      "lockedAt": "2026-05-06T21:39:20.638222+00:00",
+      "result": "pending",
+      "hits": null,
+      "ab": null,
+      "gradedAt": null,
+      "snapshot": {
+        "playerId": 672640,
+        "name": "Otto Lopez",
+        "team": "MIA",
+        "hitProbability": 66,
+        "manuallyAdded": true
+      }
+    }
   ]
 }
