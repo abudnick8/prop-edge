@@ -194,6 +194,38 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_sub_id TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gumroad_sale_id TEXT DEFAULT NULL`);
 
+    // ── BTS Picks (persistent across redeploys — source of truth) ──────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bts_picks (
+        id          SERIAL PRIMARY KEY,
+        pick_date   TEXT NOT NULL,          -- "YYYY-MM-DD"
+        player_id   INT  NOT NULL,
+        player_name TEXT NOT NULL,
+        team        TEXT NOT NULL,
+        hit_probability INT NOT NULL DEFAULT 0,
+        locked_at   TEXT DEFAULT NULL,
+        locked      BOOLEAN DEFAULT FALSE,
+        result      TEXT DEFAULT 'pending', -- 'win'|'loss'|'pending'|'no_game'
+        hits        INT DEFAULT NULL,
+        ab          INT DEFAULT NULL,
+        graded_at   TEXT DEFAULT NULL,
+        snapshot    JSONB DEFAULT '{}'::jsonb,
+        UNIQUE(pick_date, player_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bts_picks_date_idx ON bts_picks(pick_date)`);
+
+    // ── ML data store (key/value JSON blobs, survives redeploys) ─────────────
+    // Replaces GitHub sync which requires GITHUB_TOKEN env var.
+    // Each ML file is stored as a single row keyed by filename.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ml_data_store (
+        filename    TEXT PRIMARY KEY,
+        content     TEXT NOT NULL,       -- raw JSON string
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     console.log("[DB] Migrations complete");
   } catch (err: any) {
     console.warn("[DB] Migration warning:", err.message);
