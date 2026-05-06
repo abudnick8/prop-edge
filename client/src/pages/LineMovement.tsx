@@ -1225,6 +1225,151 @@ function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
   );
 }
 
+// ── OddsMovementChart ─────────────────────────────────────────────────────────
+// Renders a step-line SVG chart: open → midpoint → current
+function OddsMovementChart({
+  open, current, label, fmtValue,
+}: {
+  open: number | null;
+  current: number | null;
+  label: string;
+  fmtValue?: (v: number) => string;
+}) {
+  if (open == null || current == null) return null;
+  const fmt = fmtValue ?? ((v: number) => (v > 0 ? `+${v}` : String(v)));
+
+  // Build 3-point step path: open → mid-open → mid-current → current
+  const W = 280, H = 110, PAD_L = 46, PAD_R = 10, PAD_T = 14, PAD_B = 28;
+  const gW = W - PAD_L - PAD_R;
+  const gH = H - PAD_T - PAD_B;
+
+  // Values — create a smooth 5-point step curve
+  const pts = [
+    { t: 0,    v: open },
+    { t: 0.25, v: open },
+    { t: 0.5,  v: (open + current) / 2 },
+    { t: 0.75, v: current },
+    { t: 1,    v: current },
+  ];
+
+  const best = Math.max(open, current);
+  const worst = Math.min(open, current);
+  const range = best - worst || 1;
+  const margin = range * 0.45;
+  const vMin = worst - margin;
+  const vMax = best + margin;
+  const vRange = vMax - vMin;
+
+  const toX = (t: number) => PAD_L + t * gW;
+  const toY = (v: number) => PAD_T + gH - ((v - vMin) / vRange) * gH;
+
+  // Build SVG path as step-line
+  const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.v).toFixed(1)}`).join(" ");
+
+  // Y-axis ticks
+  const ticks = [worst, (worst + best) / 2, best];
+  const moved = current !== open;
+  const lineColor = !moved ? "#94a3b8" : current > open ? "#22c55e" : "#ef4444";
+
+  return (
+    <div style={{ marginTop: 10, marginBottom: 2 }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible", display: "block" }}>
+        {/* Y-axis grid lines */}
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line
+              x1={PAD_L} y1={toY(v)} x2={W - PAD_R} y2={toY(v)}
+              stroke="rgba(19,35,58,0.08)" strokeWidth="1" strokeDasharray="3 3"
+            />
+            <text
+              x={PAD_L - 5} y={toY(v) + 3.5}
+              textAnchor="end" fontSize="9" fill="#64748b" fontFamily="monospace" fontWeight="600"
+            >
+              {fmt(Math.round(v))}
+            </text>
+          </g>
+        ))}
+        {/* Gradient fill under line */}
+        <defs>
+          <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d={`${pathD} L ${toX(1).toFixed(1)} ${toY(vMin).toFixed(1)} L ${toX(0).toFixed(1)} ${toY(vMin).toFixed(1)} Z`}
+          fill={`url(#grad-${label})`}
+        />
+        {/* Step-line */}
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Open dot */}
+        <circle cx={toX(0)} cy={toY(open)} r={3.5} fill="#F6F1E7" stroke={lineColor} strokeWidth="2" />
+        {/* Current dot */}
+        <circle cx={toX(1)} cy={toY(current)} r={4} fill={lineColor} />
+        {/* X-axis labels */}
+        <text x={toX(0)} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">Open</text>
+        <text x={toX(1)} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">Now</text>
+      </svg>
+      {/* Summary row */}
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", background: "rgba(19,35,58,0.04)", borderRadius: 8, marginTop: 4 }}>
+        {[
+          { label: "Open",    val: fmt(open) },
+          { label: "Current", val: fmt(current), highlight: true },
+          { label: "Best",    val: fmt(best) },
+          { label: "Worst",   val: fmt(worst) },
+        ].map(({ label: l, val, highlight }) => (
+          <div key={l} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{l}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: highlight ? lineColor : "#131A24", fontFamily: "monospace" }}>{val}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── ChartDrawer ─────────────────────────────────────────────────────────────
+function ChartDrawer({
+  label, open, current, fmtValue,
+}: {
+  label: string;
+  open: number | null;
+  current: number | null;
+  fmtValue?: (v: number) => string;
+}) {
+  const [show, setShow] = useState(false);
+  if (open == null && current == null) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => setShow(s => !s)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          fontSize: 10, fontWeight: 700, color: show ? "#13233A" : "#3D4B58",
+          background: show ? "rgba(19,35,58,0.10)" : "rgba(19,35,58,0.05)",
+          border: "1px solid rgba(19,35,58,0.12)",
+          borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+      >
+        <BarChart2 size={10} />
+        {show ? "Hide Chart" : "View Chart"}
+        {show ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {show && (
+        <div style={{
+          marginTop: 6, padding: "10px 10px 6px",
+          background: "#F6F1E7", borderRadius: 12,
+          border: "1px solid rgba(19,35,58,0.10)",
+        }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", marginBottom: 2 }}>{label} Movement</p>
+          <OddsMovementChart open={open} current={current} label={label} fmtValue={fmtValue} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── GameCard ───────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
@@ -1528,6 +1673,12 @@ function GameCard({ game }: { game: GameLine }) {
                   {game.sport === "MLB" ? "Run line vig shifted" : "Line moved"} {game.spread.move > 0 ? "+" : ""}{game.spread.move} — implied sharp action
                 </p>
               ) : null}
+              <ChartDrawer
+                label={game.sport === "MLB" ? "Run Line" : "Spread"}
+                open={game.spread.open}
+                current={game.spread.current}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
             </div>
 
             {/* Total */}
@@ -1544,6 +1695,12 @@ function GameCard({ game }: { game: GameLine }) {
                   Total moved {game.total.move > 0 ? "+" : ""}{game.total.move} — sharp action on the {game.total.move > 0 ? "Over" : "Under"}
                 </p>
               ) : null}
+              <ChartDrawer
+                label="Total (O/U)"
+                open={game.total.open}
+                current={game.total.current}
+                fmtValue={(v) => String(v)}
+              />
             </div>
 
             {/* Moneyline */}
@@ -1585,6 +1742,20 @@ function GameCard({ game }: { game: GameLine }) {
                   ML shifted — {mlAwayMove != null && mlAwayMove !== 0 ? `${game.awayTeam.split(" ").pop()} ${mlAwayMove > 0 ? "+" : ""}${mlAwayMove}` : `${game.homeTeam.split(" ").pop()} ${mlHomeMove! > 0 ? "+" : ""}${mlHomeMove}`}
                 </p>
               ) : null}
+              {/* Away ML chart */}
+              <ChartDrawer
+                label={`${game.awayTeam.split(" ").pop()} ML`}
+                open={game.moneyline.awayOpen}
+                current={game.moneyline.awayCurrent}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
+              {/* Home ML chart */}
+              <ChartDrawer
+                label={`${game.homeTeam.split(" ").pop()} ML`}
+                open={game.moneyline.homeOpen}
+                current={game.moneyline.homeCurrent}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
             </div>
           </div>
 
