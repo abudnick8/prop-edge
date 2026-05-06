@@ -236,7 +236,14 @@ export default function Dashboard() {
       homeScore: Number(home?.score ?? g.homeScore ?? 0),
       awayScore: Number(away?.score ?? g.awayScore ?? 0),
       status: g.status?.state === "in" ? "in_progress" : g.status?.completed ? "final" : "scheduled",
-      period: g.status?.period ? `Q${g.status.period}` : g.period ?? "",
+      period: (() => {
+        const p = g.status?.period ?? null;
+        const sp = (g.sport ?? "").toUpperCase();
+        if (!p) return g.period ?? "";
+        if (sp === "MLB") return `I${p}`;
+        if (sp === "NHL") return `P${p}`;
+        return `Q${p}`; // NBA, NFL
+      })(),
       gameTime: g.date ?? g.gameTime,
     };
   }
@@ -316,7 +323,10 @@ export default function Dashboard() {
     return [];
   })();
   const liveGamesNorm = liveGamesArr.map(normGame);
-  const liveGames  = liveGamesNorm.filter(g => g.status === "in_progress");
+  const LIVE_SPORT_ORDER: Record<string, number> = { MLB: 0, NFL: 1, NBA: 2, NHL: 2 };
+  const liveGames  = liveGamesNorm
+    .filter(g => g.status === "in_progress")
+    .sort((a, b) => (LIVE_SPORT_ORDER[a.sport?.toUpperCase() ?? ""] ?? 9) - (LIVE_SPORT_ORDER[b.sport?.toUpperCase() ?? ""] ?? 9));
   const todayGames = liveGamesNorm.filter(g => g.status !== "final");
 
   // ── Sport-filtered data ────────────────────────────────────────────────────────
