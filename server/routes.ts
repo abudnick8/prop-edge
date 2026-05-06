@@ -10516,6 +10516,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // GET /api/bts-picks re-runs a fresh analysis.
   // Picks where the game is in-progress or complete are NEVER removed.
   // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/inject — owner-only: force-add specific players into today's cache immediately
+  // Body: { players: [{ playerId, name, team, hitProbability }] }
+  app.post("/api/bts/inject", requireOwner, async (req, res) => {
+    try {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+      const players: any[] = req.body?.players ?? [];
+      if (!players.length) return res.status(400).json({ error: "players array required" });
+      if (!btsPicksCache[targetDate]) btsPicksCache[targetDate] = [];
+      const cache = btsPicksCache[targetDate];
+      const existingIds = new Set(cache.map((e: BtsPickEntry) => e.playerId));
+      const added: string[] = [];
+      for (const p of players) {
+        if (existingIds.has(p.playerId)) { continue; }
+        if (cache.length >= 10) break;
+        cache.push({
+          playerId:       p.playerId,
+          name:           p.name,
+          team:           p.team ?? "",
+          hitProbability: p.hitProbability ?? 70,
+          lockedAt:       new Date().toISOString(),
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       { playerId: p.playerId, name: p.name, team: p.team, hitProbability: p.hitProbability, manuallyAdded: true },
+        } as BtsPickEntry);
+        existingIds.add(p.playerId);
+        added.push(p.name);
+      }
+      saveBtsPicksCache();
+      console.log(`[BTS] Injected by owner: ${added.join(", ")}`);
+      res.json({ ok: true, added, total: cache.length, date: targetDate });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/bts/reanalyze", requireOwner, async (req, res) => {
     try {
       const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
