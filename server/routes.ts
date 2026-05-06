@@ -10197,7 +10197,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch (logErr) { /* non-fatal — log failure doesn't block picks */ }
 
-      // ── 8. One-per-team rule + hard 10-pick cap ─────────────────────
+      // ── 8. One-per-team rule + hard 15-pick cap ─────────────────────
       // Sort override picks to the BOTTOM (show normal picks first)
       candidatePicks.sort((a, b) => {
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
@@ -10209,7 +10209,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (seenTeams.has(p.team)) continue;
         seenTeams.add(p.team);
         freshPicks.push(p);
-        if (freshPicks.length >= 10) break; // hard 10-pick ceiling
+        if (freshPicks.length >= 10) break; // hard 10-pick ceiling for auto-analysis (manual adds can go to 15)
       }
 
       // ── Merge into the daily persistent cache ──────────────────────────
@@ -10230,7 +10230,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           existing.hitProbability = pick.hitProbability;
           continue;
         }
-        if (cachedEntries.length >= 10) break; // hard cap
+        if (cachedEntries.length >= (targetDate === "2026-05-06" ? 15 : 10)) break; // 15 cap on 5/6/26 only, 10 all other days
         cachedEntries.push({
           playerId:       pick.playerId,
           name:           pick.name,
@@ -10534,7 +10534,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const added: string[] = [];
       for (const p of players) {
         if (existingIds.has(p.playerId)) { continue; }
-        if (cache.length >= 10) break;
+        if (cache.length >= (targetDate === "2026-05-06" ? 15 : 10)) break; // 15 cap on 5/6/26 only, 10 all other days
         cache.push({
           playerId:       p.playerId,
           name:           p.name,
