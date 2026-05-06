@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import ShareCard from "@/components/ShareCard";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -670,7 +671,24 @@ export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [reanalyzeMsg, setReanalyzeMsg] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { isOwner } = useAuth();
+
+  const reanalyzeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bts/reanalyze").then(r => r.json()),
+    onSuccess: (result: any) => {
+      setReanalyzeMsg(result.message ?? "Reanalysis complete.");
+      // Invalidate + refetch so fresh picks load immediately
+      queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
+      refetch();
+      setTimeout(() => setReanalyzeMsg(null), 7000);
+    },
+    onError: () => {
+      setReanalyzeMsg("Reanalyze failed — check server logs.");
+      setTimeout(() => setReanalyzeMsg(null), 5000);
+    },
+  });
 
   // Compute today's date in Central Time so late-night hours (after midnight UTC
   // but before midnight CT) don't roll over to tomorrow's date.
@@ -726,18 +744,56 @@ export default function BTS() {
             Top MLB hitters most likely to get a hit today
           </p>
         </div>
-        <button
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
-            refetch();
-          }}
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
-          style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.12)" }}
-        >
-          <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
-          {isLoading ? "Loading…" : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Reanalyze — owner only */}
+          {isOwner && (
+            <button
+              onClick={() => {
+                if (!window.confirm(
+                  "Remove all pre-game pending picks and re-run analysis?\n\nPicks where the game is in-progress or already finished will be kept."
+                )) return;
+                reanalyzeMutation.mutate();
+              }}
+              disabled={reanalyzeMutation.isPending}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
+              style={{
+                background: reanalyzeMutation.isPending ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.08)",
+                borderColor: "rgba(239,68,68,0.25)",
+                color: "#dc2626",
+                opacity: reanalyzeMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              <RotateCcw size={12} className={reanalyzeMutation.isPending ? "animate-spin" : ""} />
+              {reanalyzeMutation.isPending ? "Running…" : "Reanalyze"}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
+              refetch();
+            }}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
+            style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.12)" }}
+          >
+            <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+            {isLoading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
+
+      {/* Reanalyze result banner */}
+      {reanalyzeMsg && (
+        <div
+          className="rounded-xl px-3 py-2.5 flex items-center gap-2"
+          style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.22)" }}
+        >
+          <RotateCcw size={13} style={{ color: "#dc2626", flexShrink: 0 }} />
+          <p className="text-xs font-semibold" style={{ color: "#dc2626" }}>{reanalyzeMsg}</p>
+          <button className="ml-auto" onClick={() => setReanalyzeMsg(null)}><X size={12} style={{ color: "#dc2626" }} /></button>
+        </div>
+      )}
+      {/* Spacer to prevent double </div> */}
+      <span style={{ display: "none" }} />
 
       {/* Updated at */}
       {dataUpdatedAt > 0 && (
