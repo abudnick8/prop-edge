@@ -1900,6 +1900,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json({ code: row?.value ?? "ABUD" });
   });
 
+  // ── POST /api/auth/dev-login — public, accepts dev code, returns real owner JWT ──
+  app.post("/api/auth/dev-login", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.body ?? {};
+      const row = await db.queryOne(`SELECT value FROM app_settings WHERE key='dev_code'`);
+      const serverCode: string = row?.value ?? "ABUD";
+      if (!code || String(code).toUpperCase().trim() !== serverCode) {
+        return res.status(401).json({ error: "Invalid access code." });
+      }
+      const token = signJWT({ userId: 0, email: "guest@clubhouseiq.app", tier: "pro", isOwner: true });
+      res.json({ token, user: { id: 0, email: "guest@clubhouseiq.app", tier: "pro", subStatus: "active", isOwner: true } });
+    } catch (e: any) {
+      res.status(500).json({ error: "Dev login failed" });
+    }
+  });
+
   // ── PATCH /api/admin/dev-code — owner-only, update dev code ─────────────────
   app.patch("/api/admin/dev-code", requireOwner, async (req: Request, res: Response) => {
     const { code } = req.body ?? {};

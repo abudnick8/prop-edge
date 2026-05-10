@@ -46,19 +46,19 @@ export default function Login() {
   const pinValue    = pin.join("");
   const confirmValue = confirmPin.join("");
 
-  // ── Dev access (code fetched from server so owner can update it) ──────────
+  // ── Dev access — calls server to get a real signed JWT with isOwner=true ──────
   async function handleDevAccess(e: React.FormEvent) {
     e.preventDefault();
     setError(""); setLoading(true);
     try {
-      const res = await fetch("/api/admin/dev-code");
-      const { code: serverCode } = await res.json();
-      if (devCode.trim().toUpperCase() !== (serverCode ?? "ABUD").toUpperCase()) {
-        setError("Invalid access code.");
-        return;
-      }
-      const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: true };
-      login("guest-dev-token", guestUser);
+      const res = await fetch("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: devCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Invalid access code."); return; }
+      login(data.token, data.user);
     } catch { setError("Network error — please try again."); }
     finally { setLoading(false); }
   }
