@@ -11819,14 +11819,71 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // ─ GET /api/book/props?sport=mlb&eventId=xxx ────────────────
+  // ─ GET /api/book/props?sport=mlb&eventId=xxx&homeTeam=X&awayTeam=Y ─────────
   app.get("/api/book/props", requireOwner, async (req: Request, res: Response) => {
     try {
-      const sport   = (req.query.sport as string) ?? "mlb";
-      const eventId = req.query.eventId as string;
+      const sport     = (req.query.sport as string) ?? "mlb";
+      const eventId   = req.query.eventId as string;
+      const homeTeam  = (req.query.homeTeam as string) ?? "";
+      const awayTeam  = (req.query.awayTeam as string) ?? "";
       if (!eventId) return res.status(400).json({ error: "eventId required" });
       const markets = await fetchDraftKingsProps(sport, eventId);
-      res.json({ markets });
+
+      // Build player→team map from MLB rosters when sport is mlb and teams known
+      let playerTeamMap: Record<string, string> = {};
+      let playerPosMap: Record<string, string> = {};
+      if (sport === "mlb" && (homeTeam || awayTeam)) {
+        try {
+          const teamNames = [homeTeam, awayTeam].filter(Boolean);
+          // Fetch all MLB teams once, then fetch rosters in parallel
+          const allTeamsResp = await axios.get(
+            `https://statsapi.mlb.com/api/v1/teams?sportId=1&season=2026`,
+            { timeout: 4000 }
+          );
+          const allTeams: any[] = allTeamsResp.data?.teams ?? [];
+
+          const rosterResults = await Promise.all(teamNames.map(async teamName => {
+            try {
+              const keyword = teamName.split(" ").pop()?.toLowerCase() ?? "";
+              const matched = allTeams.find((t: any) =>
+                t.name?.toLowerCase().includes(keyword) ||
+                t.teamName?.toLowerCase().includes(keyword) ||
+                t.abbreviation?.toLowerCase() === keyword
+              );
+              if (!matched) return { teamName, players: [] as any[] };
+              const rosterResp = await axios.get(
+                `https://statsapi.mlb.com/api/v1/teams/${matched.id}/roster?rosterType=active&season=2026`,
+                { timeout: 4000 }
+              );
+              const roster: any[] = rosterResp.data?.roster ?? [];
+              return { teamName, players: roster.map((r: any) => ({
+                name: r.person?.fullName ?? "",
+                position: r.position?.abbreviation ?? "",
+              })) };
+            } catch { return { teamName, players: [] as any[] }; }
+          }));
+          for (const { teamName, players } of rosterResults) {
+            for (const p of players) {
+              const key = p.name.toLowerCase();
+              playerTeamMap[key] = teamName;
+              playerPosMap[key] = p.position;
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      // Enrich markets: attach team + position to each outcome
+      const enriched = markets.map((m: any) => ({
+        ...m,
+        outcomes: (m.outcomes ?? []).map((o: any) => {
+          const pname = (o.description ?? o.name ?? "").toLowerCase();
+          const team = playerTeamMap[pname] ?? null;
+          const position = playerPosMap[pname] ?? null;
+          return { ...o, team, position };
+        }),
+      }));
+
+      res.json({ markets: enriched, homeTeam, awayTeam });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
