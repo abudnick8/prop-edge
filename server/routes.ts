@@ -12363,18 +12363,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       let where = `WHERE s.account_id=$1`;
       if (status === "open")    where += ` AND s.status='open'`;
       if (status === "settled") where += ` AND s.status IN ('won','lost','push','void')`;
+
+      // LEFT JOIN so RR parent slips (no direct legs) still appear.
+      // For RR parents, aggregate child legs separately and merge in.
       const slips = await db.query(
         `SELECT s.*,
-           json_agg(l ORDER BY l.id) as legs
+           COALESCE(json_agg(l ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]'::json) as legs
          FROM book_slips s
-         JOIN book_legs l ON l.slip_id = s.id
+         LEFT JOIN book_legs l ON l.slip_id = s.id
          ${where} AND s.rr_parent_id IS NULL
          GROUP BY s.id
          ORDER BY s.placed_at DESC
          LIMIT $2`,
         [accountId, limit]
       );
-      res.json({ slips: slips.rows });
+
+      // For round_robin parent slips (legs=[]), fetch all child legs so UI can display them
+      const rows = slips.rows;
+      const rrParentIds = rows
+        .filter((r: any) => r.slip_type === "round_robin" && (!r.legs || r.legs.length === 0))
+        .map((r: any) => r.id);
+
+      if (rrParentIds.length > 0) {
+        // Fetch child slips with their legs grouped per combo
+        const childSlipsQ = await db.query(
+          `SELECT cs.id, cs.rr_parent_id, cs.status as child_status, cs.potential_payout as child_payout,
+                  COALESCE(json_agg(l ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]'::json) as legs
+           FROM book_slips cs
+           LEFT JOIN book_legs l ON l.slip_id = cs.id
+           WHERE cs.rr_parent_id = ANY($1::int[])
+           GROUP BY cs.id`,
+          [rrParentIds]
+        );
+        // Map: parentId -> array of child slips
+        const childSlipsByParent: Record<number, any[]> = {};
+        for (const cs of childSlipsQ.rows) {
+          if (!childSlipsByParent[cs.rr_parent_id]) childSlipsByParent[cs.rr_parent_id] = [];
+          childSlipsByParent[cs.rr_parent_id].push(cs);
+        }
+        // Merge into parent rows
+        for (const row of rows) {
+          if (row.slip_type === "round_robin" && childSlipsByParent[row.id]) {
+            row.rr_combos = childSlipsByParent[row.id]; // array of {id, child_status, child_payout, legs[]}
+            // For display: flatten all unique legs across combos
+            const legMap = new Map<string, any>();
+            for (const combo of childSlipsByParent[row.id]) {
+              for (const leg of combo.legs) {
+                const key = `${leg.game_id}:${leg.bet_type}:${leg.pick_label}`;
+                if (!legMap.has(key)) legMap.set(key, leg);
+              }
+            }
+            row.legs = Array.from(legMap.values());
+          }
+        }
+      }
+
+      res.json({ slips: rows });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

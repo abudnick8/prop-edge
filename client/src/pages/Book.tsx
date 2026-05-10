@@ -113,6 +113,7 @@ interface Slip {
   settled_at?: string;
   legs: SlipLeg[];
   combo_count?: number;
+  rr_combos?: { id: number; child_status: string; child_payout: number; legs: SlipLeg[] }[];
 }
 
 interface InsightsData {
@@ -1563,8 +1564,34 @@ function MyBetsTab({
                 {/* Expanded legs + override controls */}
                 {expanded && (
                   <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {slip.slip_type === "round_robin" && slip.combo_count && (
-                      <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>{slip.combo_count} combos</div>
+                    {/* RR combos breakdown */}
+                    {slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>
+                          {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · Stake per combo: {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)}
+                        </div>
+                        {slip.rr_combos.map((combo: any, ci: number) => {
+                          const csc = statusColor(combo.child_status);
+                          return (
+                            <div key={combo.id} style={{ background: "#f1f5f9", borderRadius: 8, padding: "7px 10px", marginBottom: 5 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: FG }}>Combo {ci + 1} — {combo.legs?.length ?? 0}-leg parlay</span>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 8 }}>{combo.child_status?.toUpperCase()}</span>
+                                  <span style={{ fontSize: 10, color: GOLD, fontWeight: 700 }}>→ {fmtCoins(combo.child_payout)}</span>
+                                </div>
+                              </div>
+                              {combo.legs?.map((cl: any, li: number) => (
+                                <div key={li} style={{ fontSize: 10, color: MUTED, paddingLeft: 8, lineHeight: 1.6 }}>
+                                  • {cl.pick_label} <span style={{ color: FG, fontWeight: 600 }}>{fmtOdds(cl.odds_american)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                        <div style={{ borderBottom: "1px solid #e2e8f0", marginBottom: 8, marginTop: 4 }} />
+                        <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 4 }}>All legs selected:</div>
+                      </div>
                     )}
                     {slip.legs.map((leg, i) => {
                       const rc = legResultColor(leg.result);
