@@ -11963,23 +11963,63 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (leg.game_date > today) continue;
 
         try {
-          if (leg.bet_type === "prop" && leg.player_id && leg.stat_type) {
-            // Use MLB Stats API for player props
-            const glResp = await axios.get(
-              `https://statsapi.mlb.com/api/v1/people/${leg.player_id}/stats?stats=gameLog&season=${leg.game_date.slice(0,4)}&group=hitting,pitching`,
-              { timeout: 5000 }
-            );
-            const splits = glResp.data?.stats?.flatMap((s: any) => s.splits ?? []) ?? [];
-            const daySplit = splits.find((s: any) => s.date === leg.game_date);
-            if (!daySplit) continue; // no data yet
+          if (leg.bet_type === "prop" && leg.stat_type) {
+            // Resolve player_id by name if not stored
+            let playerId = leg.player_id ?? null;
+            if (!playerId && leg.player_name) {
+              try {
+                const searchResp = await axios.get(
+                  `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(leg.player_name)}&sportId=1`,
+                  { timeout: 4000 }
+                );
+                const people = searchResp.data?.people ?? [];
+                if (people.length > 0) {
+                  playerId = people[0].id;
+                  // Persist it so we don’t look it up again
+                  await db.query(`UPDATE book_legs SET player_id=$1 WHERE id=$2`, [playerId, leg.id]);
+                }
+              } catch { /* search failed, fall through */ }
+            }
 
-            const statMap: Record<string, string> = {
-              hits: "hits", home_runs: "homeRuns", total_bases: "totalBases",
-              rbis: "rbi", stolen_bases: "stolenBases", strikeouts: "strikeOuts",
-              pitcher_strikeouts: "strikeOuts", points: "hits", rebounds: "hits", assists: "hits",
+            // Use ESPN boxscore via existing mlExtractPlayerStat for all sports
+            const sportKey = (leg.sport ?? "mlb").toLowerCase();
+            const espnSport = ({ baseball_mlb:"MLB", mlb:"MLB", basketball_nba:"NBA", nba:"NBA", icehockey_nhl:"NHL", nhl:"NHL", americanfootball_nfl:"NFL", nfl:"NFL" } as Record<string,string>)[sportKey] ?? "MLB";
+            const PROP_TO_STAT: Record<string,string> = {
+              hits:"HITS", home_runs:"HR", rbis:"RBI", runs_scored:"RUNS_SCORED",
+              total_bases:"TOTAL_BASES", singles:"SINGLES", doubles:"DOUBLES",
+              stolen_bases:"STOLEN_BASES", strikeouts:"STRIKEOUTS_BATTER",
+              pitcher_strikeouts:"PITCHER_K", pitcher_outs:"PITCHER_OUTS",
+              hits_allowed:"HITS_ALLOWED", earned_runs:"EARNED_RUNS",
+              walks:"WALKS", pitcher_walks:"WALKS_ALLOWED",
+              points:"POINTS", rebounds:"REBOUNDS", assists:"ASSISTS",
+              threes:"3PM", blocks:"BLOCKS", steals:"STEALS",
+              points_rebounds_assists:"PRA",
+              passing_yards:"PASS_YDS", rushing_yards:"RUSH_YDS",
+              reception_yards:"REC_YDS", receptions:"RECEPTIONS",
+              passing_tds:"TOUCHDOWNS", shots_on_goal:"SHOTS_ON_GOAL", goals:"GOALS",
             };
-            const statKey = statMap[leg.stat_type] ?? leg.stat_type;
-            actualValue = parseFloat(daySplit.stat?.[statKey] ?? "0");
+            const statCat = PROP_TO_STAT[leg.stat_type] ?? leg.stat_type?.toUpperCase();
+
+            // Fetch ESPN scoreboard for today’s games
+            const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,"");
+            const events = await mlFetchScoreboard(espnSport, todayStr);
+            const matchedEvent = events.find((ev: any) => {
+              const comp = ev.competitions?.[0];
+              const teams = (comp?.competitors ?? []).map((c: any) => c.team?.displayName ?? "");
+              return teams.some((t: string) => mlTeamsMatch(t, leg.home_team ?? "")) ||
+                     teams.some((t: string) => mlTeamsMatch(t, leg.away_team ?? ""));
+            });
+            if (!matchedEvent) continue;
+
+            const statusType = matchedEvent.competitions?.[0]?.status?.type;
+            if (!statusType?.completed) continue; // game not finished yet
+
+            const summary = await mlFetchGameSummary(espnSport, matchedEvent.id);
+            if (!summary) continue;
+
+            const stat = mlExtractPlayerStat(summary, espnSport, leg.player_name ?? "", statCat);
+            if (stat === null) continue;
+            actualValue = stat;
 
             if (actualValue === leg.line) result = "push";
             else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
