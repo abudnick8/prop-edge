@@ -55,10 +55,12 @@ interface Game {
 }
 
 interface PropOutcome {
-  name: string;   // player name
+  name: string;       // "Over" or "Under"
+  description?: string; // player name
   price: number;
   point?: number;
-  description?: string;
+  team?: string | null;
+  position?: string | null;
 }
 
 interface PropMarket {
@@ -410,6 +412,19 @@ const BET_FILTERS: { id: BetFilter; label: string }[] = [
   { id: "props",      label: "Props" },
 ];
 
+// ─── Positions by sport ───────────────────────────────────────────────────────
+const POSITION_GROUPS: Record<Sport, string[]> = {
+  mlb: ["SP", "RP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "OF"],
+  nfl: ["QB", "RB", "WR", "TE", "K"],
+  nba: ["PG", "SG", "SF", "PF", "C"],
+  nhl: ["G", "D", "LW", "RW", "C"],
+};
+
+// Batter vs Pitcher grouping for MLB
+const MLB_PITCHER_MARKETS = new Set(["player_pitcher_strikeouts", "player_pitcher_outs", "player_hits_allowed", "player_earned_runs", "player_walks"]);
+const MLB_BATTER_POS = new Set(["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "OF"]);
+const MLB_PITCHER_POS = new Set(["SP", "RP", "P"]);
+
 // ─── Props expansion panel per game ──────────────────────────────────────────
 function GamePropsPanel({
   token, sport, game, legs, toggleLeg, showToast,
@@ -422,11 +437,22 @@ function GamePropsPanel({
   showToast: (msg: string, type?: "success" | "error") => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterStat, setFilterStat] = useState<string>("all");
+  const [filterTeam, setFilterTeam] = useState<string>("all");
+  const [filterDir, setFilterDir] = useState<"all" | "over" | "under">("all");
+  const [filterPos, setFilterPos] = useState<string>("all");
 
-  const { data, isLoading, error } = useQuery<{ markets: PropMarket[] }>({
+  const { data, isLoading, error } = useQuery<{ markets: PropMarket[]; homeTeam?: string; awayTeam?: string }>({
     queryKey: ["book-props", sport, game.id],
     queryFn: async () => {
-      const r = await fetch(`/api/book/props?sport=${sport}&eventId=${game.id}`, {
+      const params = new URLSearchParams({
+        sport,
+        eventId: game.id,
+        homeTeam: game.home_team,
+        awayTeam: game.away_team,
+      });
+      const r = await fetch(`/api/book/props?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(await r.text());
@@ -439,18 +465,37 @@ function GamePropsPanel({
   const markets = data?.markets ?? [];
   const gd = new Date(game.commence_time);
 
-  function buildPropLeg(market: PropMarket, outcome: PropOutcome, ou: "over" | "under"): Leg {
+  // Derive team options from the game
+  const teamOptions = [
+    { label: "Both Teams", value: "all" },
+    { label: game.away_team.split(" ").pop()!, value: game.away_team },
+    { label: game.home_team.split(" ").pop()!, value: game.home_team },
+  ];
+
+  // Build stat type options from available markets
+  const statOptions = [
+    { label: "All Stats", value: "all" },
+    ...markets.map(m => ({ label: statLabel(m.key), value: m.key })),
+  ];
+
+  // Position options for this sport
+  const posOptions = [
+    { label: "All Pos", value: "all" },
+    ...(POSITION_GROUPS[sport] ?? []).map(p => ({ label: p, value: p })),
+  ];
+
+  function buildPropLeg(market: PropMarket, playerName: string, outcome: PropOutcome, ou: "over" | "under"): Leg {
     return {
       sport,
       betType: "prop",
       gameId: game.id,
       homeTeam: game.home_team,
       awayTeam: game.away_team,
-      playerName: outcome.name,
+      playerName,
       statType: market.key.replace("player_", ""),
       line: outcome.point,
       overUnder: ou,
-      pickLabel: `${outcome.name} ${ou === "over" ? "O" : "U"}${outcome.point} ${statLabel(market.key)} (${fmtOdds(outcome.price)})`,
+      pickLabel: `${playerName} ${ou === "over" ? "O" : "U"}${outcome.point} ${statLabel(market.key)} (${fmtOdds(outcome.price)})`,
       oddsAmerican: outcome.price,
       gameDate: gd.toISOString().slice(0, 10),
       gameTime: game.commence_time,
@@ -461,119 +506,310 @@ function GamePropsPanel({
     return legs.some(l => l.pickLabel === leg.pickLabel && l.gameId === leg.gameId);
   }
 
-  // Group outcomes into over/under pairs by player
-  function groupByPlayer(market: PropMarket) {
-    const players: Record<string, { over?: PropOutcome; under?: PropOutcome }> = {};
+  // Group outcomes by player — each player has { over?, under?, team?, position? }
+  type PlayerEntry = { over?: PropOutcome; under?: PropOutcome; team?: string | null; position?: string | null };
+
+  function groupByPlayer(market: PropMarket): Record<string, PlayerEntry> {
+    const players: Record<string, PlayerEntry> = {};
     for (const oc of market.outcomes) {
-      const desc = oc.description ?? oc.name;
-      if (!players[desc]) players[desc] = {};
+      const playerName = oc.description ?? "";
+      if (!playerName) continue;
+      if (!players[playerName]) players[playerName] = { team: oc.team, position: oc.position };
       const isOver = oc.name.toLowerCase() === "over";
-      if (isOver) players[desc].over = { ...oc, name: desc };
-      else players[desc].under = { ...oc, name: desc };
+      if (isOver) players[playerName].over = oc;
+      else players[playerName].under = oc;
     }
     return players;
   }
 
+  // Apply filters across all markets — flatten to { playerName, market, over?, under?, team?, position? }
+  type FlatRow = {
+    playerName: string;
+    market: PropMarket;
+    over?: PropOutcome;
+    under?: PropOutcome;
+    team?: string | null;
+    position?: string | null;
+  };
+
+  const allRows: FlatRow[] = [];
+  for (const market of markets) {
+    if (filterStat !== "all" && market.key !== filterStat) continue;
+    const grouped = groupByPlayer(market);
+    for (const [playerName, entry] of Object.entries(grouped)) {
+      // Search filter
+      if (search && !playerName.toLowerCase().includes(search.toLowerCase())) continue;
+      // Team filter
+      if (filterTeam !== "all" && entry.team && entry.team !== filterTeam) continue;
+      // Position filter
+      if (filterPos !== "all") {
+        const pos = entry.position ?? "";
+        // MLB batter/pitcher grouping
+        if (sport === "mlb") {
+          if (filterPos === "SP" || filterPos === "RP") {
+            if (!MLB_PITCHER_POS.has(pos)) continue;
+          } else {
+            if (!MLB_BATTER_POS.has(pos) && pos !== filterPos) continue;
+          }
+        } else {
+          if (pos !== filterPos) continue;
+        }
+      }
+      // Direction filter — only show rows that have the requested side
+      if (filterDir === "over" && !entry.over) continue;
+      if (filterDir === "under" && !entry.under) continue;
+      allRows.push({ playerName, market, over: entry.over, under: entry.under, team: entry.team, position: entry.position });
+    }
+  }
+
+  const totalProps = markets.reduce((sum, m) => {
+    const g = groupByPlayer(m);
+    return sum + Object.keys(g).length;
+  }, 0);
+
+  function chipBtn(label: string, active: boolean, onClick: () => void, small = false) {
+    return (
+      <button
+        key={label}
+        onClick={onClick}
+        style={{
+          padding: small ? "3px 8px" : "4px 10px",
+          borderRadius: 14,
+          border: `1px solid ${active ? GOLD : "#e2e8f0"}`,
+          background: active ? `rgba(212,168,67,0.14)` : "transparent",
+          color: active ? GOLD : MUTED,
+          fontSize: small ? 10 : 11,
+          fontWeight: 700,
+          cursor: "pointer",
+          flexShrink: 0,
+          whiteSpace: "nowrap" as const,
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
+
   return (
     <div style={{ marginTop: 6, border: `1.5px solid ${open ? GOLD : "#e2e8f0"}`, borderRadius: 10, overflow: "hidden" }}>
+      {/* Header toggle */}
       <button
         onClick={() => setOpen(v => !v)}
         style={{
-          width: "100%", padding: "8px 12px", background: open ? `rgba(212,168,67,0.08)` : "#f8fafc",
-          border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", padding: "8px 12px",
+          background: open ? `rgba(212,168,67,0.08)` : "#f8fafc",
+          border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
         }}
       >
-        <span style={{ fontSize: 11, fontWeight: 700, color: open ? GOLD : MUTED }}>
-          <User size={11} style={{ marginRight: 5, verticalAlign: "middle" }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: open ? GOLD : MUTED, display: "flex", alignItems: "center", gap: 5 }}>
+          <User size={11} />
           PLAYER PROPS
+          {!isLoading && totalProps > 0 && (
+            <span style={{ background: open ? GOLD : "#e2e8f0", color: open ? NAVY : MUTED, borderRadius: 10, padding: "0 6px", fontSize: 9, fontWeight: 800 }}>
+              {totalProps}
+            </span>
+          )}
         </span>
         {open ? <ChevronUp size={13} color={GOLD} /> : <ChevronDown size={13} color={MUTED} />}
       </button>
 
       {open && (
-        <div style={{ padding: "8px 10px", background: "#fff" }}>
-          {isLoading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <Skeleton h={40} r={8} />
-              <Skeleton h={40} r={8} />
+        <div style={{ background: "#fff" }}>
+          {/* ── Filter bar ── */}
+          <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid #f1f5f9", display: "flex", flexDirection: "column", gap: 6 }}>
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search player..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: "100%", padding: "6px 10px", borderRadius: 8,
+                border: "1.5px solid #e2e8f0", fontSize: 12, color: FG,
+                background: "#f8fafc", boxSizing: "border-box" as const,
+                outline: "none",
+              }}
+            />
+
+            {/* Stat type chips */}
+            {markets.length > 1 && (
+              <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 1 }}>
+                {statOptions.map(o => chipBtn(o.label, filterStat === o.value, () => setFilterStat(o.value), true))}
+              </div>
+            )}
+
+            {/* Team + direction chips side by side */}
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {/* Team */}
+              {teamOptions.slice(1).map(o => chipBtn(o.label, filterTeam === o.value, () => setFilterTeam(filterTeam === o.value ? "all" : o.value), true))}
+              {/* Direction */}
+              {(["over", "under"] as const).map(d => chipBtn(d === "over" ? "Overs" : "Unders", filterDir === d, () => setFilterDir(filterDir === d ? "all" : d), true))}
+              {/* Clear */}
+              {(search || filterStat !== "all" || filterTeam !== "all" || filterDir !== "all" || filterPos !== "all") && (
+                <button
+                  onClick={() => { setSearch(""); setFilterStat("all"); setFilterTeam("all"); setFilterDir("all"); setFilterPos("all"); }}
+                  style={{ padding: "3px 8px", borderRadius: 14, border: "1px solid #fca5a5", background: "transparent", color: RED, fontSize: 10, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                >
+                  Clear
+                </button>
+              )}
             </div>
-          ) : error ? (
-            <div style={{ color: RED, fontSize: 12, textAlign: "center", padding: "8px 0" }}>
-              Failed to load props
-            </div>
-          ) : markets.length === 0 ? (
-            <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "8px 0" }}>
-              No props available for this game
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {markets.map(market => {
-                const players = groupByPlayer(market);
-                const playerNames = Object.keys(players);
-                if (!playerNames.length) return null;
-                return (
-                  <div key={market.key}>
-                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 7px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>
-                        {statLabel(market.key)}
-                      </span>
+
+            {/* Position chips (MLB: Pitchers/Batters; others: individual pos) */}
+            {sport === "mlb" ? (
+              <div style={{ display: "flex", gap: 5 }}>
+                {chipBtn("Pitchers", filterPos === "SP", () => setFilterPos(filterPos === "SP" ? "all" : "SP"), true)}
+                {chipBtn("Batters", filterPos === "1B", () => setFilterPos(filterPos === "1B" ? "all" : "1B"), true)}
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 5, overflowX: "auto" }}>
+                {posOptions.slice(1).map(o => chipBtn(o.label, filterPos === o.value, () => setFilterPos(filterPos === o.value ? "all" : o.value), true))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Content ── */}
+          <div style={{ padding: "8px 10px" }}>
+            {isLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <Skeleton h={40} r={8} />
+                <Skeleton h={40} r={8} />
+                <Skeleton h={40} r={8} />
+              </div>
+            ) : error ? (
+              <div style={{ color: RED, fontSize: 12, textAlign: "center", padding: "8px 0" }}>Failed to load props</div>
+            ) : allRows.length === 0 ? (
+              <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "8px 0" }}>
+                {markets.length === 0 ? "No props available for this game" : "No players match your filters"}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {/* Group by stat type when showing all stats */}
+                {filterStat === "all" ? (
+                  // Group rows by market key
+                  Object.entries(
+                    allRows.reduce((acc, row) => {
+                      const key = row.market.key;
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(row);
+                      return acc;
+                    }, {} as Record<string, FlatRow[]>)
+                  ).map(([mkey, rows]) => (
+                    <div key={mkey} style={{ marginBottom: 4 }}>
+                      <div style={{ marginBottom: 5 }}>
+                        <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>
+                          {statLabel(mkey)}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {rows.map(row => <PropRow key={row.playerName} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
+                      </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                      {playerNames.slice(0, 20).map(playerName => {
-                        const p = players[playerName];
-                        const overLeg = p.over ? buildPropLeg(market, p.over, "over") : null;
-                        const underLeg = p.under ? buildPropLeg(market, p.under, "under") : null;
-                        return (
-                          <div key={playerName} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {playerName}
-                              </div>
-                              {p.over?.point != null && (
-                                <div style={{ fontSize: 10, color: MUTED }}>{statLabel(market.key)} {p.over.point}</div>
-                              )}
-                            </div>
-                            {overLeg && (
-                              <button
-                                className="book-chip"
-                                onClick={() => toggleLeg(overLeg)}
-                                style={{
-                                  padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                                  border: `1.5px solid ${isActive(overLeg) ? GOLD : "#e2e8f0"}`,
-                                  background: isActive(overLeg) ? `rgba(212,168,67,0.12)` : "#f8fafc",
-                                  color: isActive(overLeg) ? GOLD : "#16a34a",
-                                  minWidth: 52, textAlign: "center",
-                                }}
-                              >
-                                O {fmtOdds(p.over!.price)}
-                              </button>
-                            )}
-                            {underLeg && (
-                              <button
-                                className="book-chip"
-                                onClick={() => toggleLeg(underLeg)}
-                                style={{
-                                  padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                                  border: `1.5px solid ${isActive(underLeg) ? GOLD : "#e2e8f0"}`,
-                                  background: isActive(underLeg) ? `rgba(212,168,67,0.12)` : "#f8fafc",
-                                  color: isActive(underLeg) ? GOLD : RED,
-                                  minWidth: 52, textAlign: "center",
-                                }}
-                              >
-                                U {fmtOdds(p.under!.price)}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                  ))
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {allRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Individual prop row ──────────────────────────────────────────────────────
+type FlatRowType = {
+  playerName: string;
+  market: PropMarket;
+  over?: PropOutcome;
+  under?: PropOutcome;
+  team?: string | null;
+  position?: string | null;
+};
+
+function PropRow({
+  row, filterDir, buildPropLeg, isActive, toggleLeg,
+}: {
+  row: FlatRowType;
+  filterDir: "all" | "over" | "under";
+  buildPropLeg: (market: PropMarket, playerName: string, outcome: PropOutcome, ou: "over" | "under") => Leg;
+  isActive: (leg: Leg) => boolean;
+  toggleLeg: (leg: Leg) => void;
+}) {
+  const { playerName, market, over, under, team, position } = row;
+  const refOc = over ?? under;
+  const showOver = filterDir !== "under" && !!over;
+  const showUnder = filterDir !== "over" && !!under;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 4px", borderRadius: 8, background: "#f8fafc" }}>
+      {/* Player info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {playerName}
+        </div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
+          {refOc?.point != null && (
+            <span style={{ fontSize: 10, color: MUTED }}>{statLabel(market.key)} {refOc.point}</span>
+          )}
+          {team && (
+            <span style={{ fontSize: 9, fontWeight: 700, color: NAVY, background: "rgba(19,35,58,0.08)", borderRadius: 5, padding: "0 5px" }}>
+              {team.split(" ").pop()}
+            </span>
+          )}
+          {position && (
+            <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, background: "#f1f5f9", borderRadius: 5, padding: "0 5px" }}>
+              {position}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Over button */}
+      {showOver && over && (() => {
+        const leg = buildPropLeg(market, playerName, over, "over");
+        const active = isActive(leg);
+        return (
+          <button
+            className="book-chip"
+            onClick={() => toggleLeg(leg)}
+            style={{
+              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+              border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
+              background: active ? `rgba(212,168,67,0.12)` : "#fff",
+              color: active ? GOLD : "#16a34a",
+              minWidth: 54, textAlign: "center" as const,
+            }}
+          >
+            O {fmtOdds(over.price)}
+          </button>
+        );
+      })()}
+
+      {/* Under button */}
+      {showUnder && under && (() => {
+        const leg = buildPropLeg(market, playerName, under, "under");
+        const active = isActive(leg);
+        return (
+          <button
+            className="book-chip"
+            onClick={() => toggleLeg(leg)}
+            style={{
+              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+              border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
+              background: active ? `rgba(212,168,67,0.12)` : "#fff",
+              color: active ? GOLD : RED,
+              minWidth: 54, textAlign: "center" as const,
+            }}
+          >
+            U {fmtOdds(under.price)}
+          </button>
+        );
+      })()}
     </div>
   );
 }
