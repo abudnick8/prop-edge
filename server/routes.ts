@@ -1910,6 +1910,66 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json({ code: upper });
   });
 
+  // ── POST /api/admin/force-sync — owner-only, flush all ML+BTS to Postgres+GitHub ──
+  app.post("/api/admin/force-sync", requireOwner, async (_req: Request, res: Response) => {
+    const results: string[] = [];
+    // 1. Force-save all ML JSON files to Postgres
+    const mlFiles = [
+      { path: ML_OUTCOME_LOG, name: "bet_outcome_log.json" },
+      { path: ML_SNAPSHOT_FILE, name: "pick_snapshots.json" },
+      { path: ML_WEIGHTS_FILE, name: "ml_weights.json" },
+      { path: ML_INSIGHTS_FILE, name: "ml_insights.json" },
+      { path: ML_GRADED_IDS, name: "graded_ids.json" },
+      { path: path.join(ML_DATA_DIR, "bts_ml_weights.json"), name: "bts_ml_weights.json" },
+      { path: path.join(ML_DATA_DIR, "bts_ml_learning_log.json"), name: "bts_ml_learning_log.json" },
+    ];
+    for (const { path: fp, name } of mlFiles) {
+      try {
+        if (!fs.existsSync(fp)) { results.push(`skip: ${name} (no file)`); continue; }
+        const content = fs.readFileSync(fp, "utf-8");
+        await db.query(
+          `INSERT INTO ml_data_store (filename, content, updated_at) VALUES ($1,$2,NOW())
+           ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+          [name, content]
+        );
+        results.push(`db: ${name} (${Math.round(content.length/1024)}KB)`);
+      } catch (e: any) { results.push(`err: ${name} — ${e.message}`); }
+    }
+    // 2. Force-save BTS picks to Postgres (ml_data_store + bts_picks rows)
+    try {
+      const btsJson = JSON.stringify(btsPicksCache, null, 2);
+      await db.query(
+        `INSERT INTO ml_data_store (filename, content, updated_at) VALUES ('bts_picks.json',$1,NOW())
+         ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+        [btsJson]
+      );
+      let upserted = 0;
+      for (const [date, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries as BtsPickEntry[]) {
+          await db.query(
+            `INSERT INTO bts_picks (pick_date,player_id,player_name,team,hit_probability,locked_at,locked,result,hits,ab,graded_at,snapshot)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+             ON CONFLICT (pick_date,player_id) DO UPDATE SET
+               player_name=EXCLUDED.player_name, hit_probability=EXCLUDED.hit_probability,
+               locked_at=EXCLUDED.locked_at, locked=EXCLUDED.locked, result=EXCLUDED.result,
+               hits=EXCLUDED.hits, ab=EXCLUDED.ab, graded_at=EXCLUDED.graded_at, snapshot=EXCLUDED.snapshot`,
+            [date,e.playerId,e.name??(e as any).playerName??"",e.team??"",e.hitProbability??0,
+             e.lockedAt??null,e.lockedAt!=null,e.result??"pending",e.hits??null,e.ab??null,
+             e.gradedAt??null,JSON.stringify(e.snapshot??{})]
+          );
+          upserted++;
+        }
+      }
+      results.push(`db: bts_picks.json + ${upserted} bts_picks rows`);
+    } catch (e: any) { results.push(`err: bts_picks — ${e.message}`); }
+    // 3. Trigger GitHub sync
+    try {
+      await syncMLDataToGitHub();
+      results.push("github: sync triggered");
+    } catch (e: any) { results.push(`github-err: ${e.message}`); }
+    res.json({ ok: true, results });
+  });
+
   // ── GET /api/admin/validate-promo — used by Pricing page ──────────────────
   app.get("/api/admin/validate-promo", async (req: Request, res: Response) => {
     const code = String(req.query.code ?? "").toUpperCase().trim();
