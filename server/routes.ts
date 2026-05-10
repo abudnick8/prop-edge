@@ -11546,6 +11546,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // ─ Fetch DraftKings odds from The Odds API ──────────────────
+  async function getOddsApiKey(): Promise<string> {
+    // Prefer env var, fall back to DB settings
+    if (process.env.ODDS_API_KEY) return process.env.ODDS_API_KEY;
+    try {
+      const s = await storage.getSettings();
+      return s?.oddsApiKey ?? "";
+    } catch { return ""; }
+  }
+
   async function fetchDraftKingsOdds(sport: string): Promise<any[]> {
     const sportMap: Record<string, string> = {
       mlb: "baseball_mlb",
@@ -11555,10 +11564,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     };
     const sportKey = sportMap[sport.toLowerCase()];
     if (!sportKey) return [];
-    const apiKey = process.env.ODDS_API_KEY;
+    const apiKey = await getOddsApiKey();
     if (!apiKey) return [];
     try {
-      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings&oddsFormat=american`;
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings,fanduel,betmgm&oddsFormat=american`;
       const resp = await axios.get(url, { timeout: 8000 });
       const now = Date.now();
       // Only return games that have NOT started yet (commence_time in the future)
@@ -11573,7 +11582,45 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   }
 
-  // ─ Fetch DraftKings player props ───────────────────────────
+  // MLB prop market keys allowed (per user rules)
+  const MLB_PROP_MARKETS = [
+    "player_hits",
+    "player_home_runs",
+    "player_runs_scored",
+    "player_rbis",
+    "player_total_bases",
+    "player_singles",
+    "player_doubles",
+    "player_stolen_bases",
+    "player_strikeouts",
+    "player_pitcher_strikeouts",
+    "player_pitcher_outs",
+    "player_hits_allowed",
+    "player_earned_runs",
+    "player_walks",
+    "player_pitcher_walks",
+    "player_first_innings_runs_allowed",
+  ];
+
+  const NBA_NHL_NFL_PROP_MARKETS = [
+    "player_points",
+    "player_rebounds",
+    "player_assists",
+    "player_threes",
+    "player_blocks",
+    "player_steals",
+    "player_points_rebounds_assists",
+    "player_anytime_td",
+    "player_reception_yards",
+    "player_rushing_yards",
+    "player_passing_yards",
+    "player_passing_tds",
+    "player_receptions",
+    "player_shots_on_goal",
+    "player_goal_scorer",
+  ];
+
+  // ─ Fetch player props from The Odds API (multi-bookmaker) ─────────────────
   async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
     const sportMap: Record<string, string> = {
       mlb: "baseball_mlb",
@@ -11583,14 +11630,57 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     };
     const sportKey = sportMap[sport.toLowerCase()];
     if (!sportKey) return [];
-    const apiKey = process.env.ODDS_API_KEY;
-    if (!apiKey) return [];
-    try {
-      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=player_hits,player_home_runs,player_total_bases,player_rbis,player_stolen_bases,player_strikeouts,player_pitcher_strikeouts,player_points,player_rebounds,player_assists,player_threes&bookmakers=draftkings&oddsFormat=american`;
-      const resp = await axios.get(url, { timeout: 8000 });
-      const bk = (resp.data?.bookmakers ?? []).find((b: any) => b.key === "draftkings");
-      return bk?.markets ?? [];
-    } catch { return []; }
+    const apiKey = await getOddsApiKey();
+    if (!apiKey) {
+      console.warn("[Book Props] No Odds API key found");
+      return [];
+    }
+
+    // Pick market list for this sport
+    const marketList = sport.toLowerCase() === "mlb" ? MLB_PROP_MARKETS : NBA_NHL_NFL_PROP_MARKETS;
+
+    // Try multiple bookmakers — merge markets, deduplicating by key
+    const bookmakers = ["draftkings", "fanduel", "betmgm", "bovada", "betus"];
+    const marketMap: Record<string, any> = {};
+
+    // Fetch in batches (The Odds API allows up to ~10 markets per call)
+    const batchSize = 10;
+    for (let i = 0; i < marketList.length; i += batchSize) {
+      const batch = marketList.slice(i, i + batchSize);
+      try {
+        const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=${batch.join(",")}&bookmakers=${bookmakers.join(",")}&oddsFormat=american`;
+        const resp = await axios.get(url, { timeout: 10000 });
+        const allBookmakers: any[] = resp.data?.bookmakers ?? [];
+
+        // Merge markets across all bookmakers — use first bookmaker that has each market
+        for (const bk of allBookmakers) {
+          for (const mkt of (bk.markets ?? [])) {
+            if (!marketMap[mkt.key]) {
+              marketMap[mkt.key] = { ...mkt, bookmaker: bk.key };
+            } else {
+              // Merge outcomes — add any players not already present
+              const existing = marketMap[mkt.key];
+              const existingPlayers = new Set(
+                existing.outcomes.map((o: any) => `${o.description ?? o.name}|${o.name}`)
+              );
+              for (const oc of mkt.outcomes) {
+                const key = `${oc.description ?? oc.name}|${oc.name}`;
+                if (!existingPlayers.has(key)) {
+                  existing.outcomes.push(oc);
+                  existingPlayers.add(key);
+                }
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[Book Props] Batch fetch error (${batch[0]}..):`, e.message);
+      }
+    }
+
+    const markets = Object.values(marketMap);
+    console.log(`[Book Props] ${sport} event ${eventId}: ${markets.length} markets, ${markets.reduce((s: number, m: any) => s + (m.outcomes?.length ?? 0), 0)} outcomes`);
+    return markets;
   }
 
   // ─ Book grader: grade all open legs that have results available ───
