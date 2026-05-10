@@ -908,7 +908,7 @@ function BetSlipTab({
   const [betFilter, setBetFilter] = useState<BetFilter>("all");
   const [legs, setLegs] = useState<Leg[]>([]);
   const [slipType, setSlipType] = useState<SlipType>("single");
-  const [rrSize, setRrSize] = useState<number>(2);
+  const [rrSizes, setRrSizes] = useState<Set<number>>(new Set([2]));
   const [stake, setStake] = useState<string>("");
   const [placing, setPlacing] = useState(false);
 
@@ -927,12 +927,26 @@ function BetSlipTab({
   // Max legs by slip type
   const maxLegs = slipType === "single" ? 1 : 10;
 
-  // Clamp rrSize if legs are removed (rrSize must be <= legs.length - 1)
+  // Clamp rrSizes when legs are removed — drop any size that exceeds legs.length - 1
   React.useEffect(() => {
-    if (slipType === "round_robin" && legs.length >= 3 && rrSize > legs.length - 1) {
-      setRrSize(legs.length - 1);
+    if (slipType === "round_robin") {
+      const maxSize = legs.length - 1;
+      setRrSizes(prev => {
+        const next = new Set([...prev].filter(s => s >= 2 && s <= maxSize));
+        // If nothing valid remains, default back to 2 (if enough legs)
+        if (next.size === 0 && legs.length >= 3) next.add(2);
+        return next;
+      });
     }
   }, [legs.length, slipType]);
+
+  function toggleRrSize(n: number) {
+    setRrSizes(prev => {
+      const next = new Set(prev);
+      if (next.has(n)) { next.delete(n); } else { next.add(n); }
+      return next;
+    });
+  }
 
   function isInSlip(gameId: string, betType: string, pickLabel: string): boolean {
     return legs.some(l => l.gameId === gameId && l.betType === betType && l.pickLabel === pickLabel);
@@ -970,10 +984,12 @@ function BetSlipTab({
     const dec = legs.reduce((a, l) => a * toDecimal(l.oddsAmerican), 1);
     const combinedAmerican = dec >= 2 ? Math.round((dec - 1) * 100) : Math.round(-100 / (dec - 1));
     payoutDisplay = `${fmtOdds(combinedAmerican)} → ${fmtCoins(Math.round(calcParlayPayout(stakeNum, legs)))} coins`;
-  } else if (slipType === "round_robin" && legs.length >= 3 && stakeNum > 0) {
-    const n = numCombos(legs.length, rrSize);
-    totalStake = stakeNum * n;
-    payoutDisplay = `${n} combos × ${fmtCoins(stakeNum)} = ${fmtCoins(totalStake)} total`;
+  } else if (slipType === "round_robin" && legs.length >= 3 && stakeNum > 0 && rrSizes.size > 0) {
+    const sortedSizes = [...rrSizes].sort((a, b) => a - b);
+    const totalCombos = sortedSizes.reduce((sum, s) => sum + numCombos(legs.length, s), 0);
+    totalStake = stakeNum * totalCombos;
+    const sizeLabels = sortedSizes.map(s => `${numCombos(legs.length, s)}×${s}-leg`).join(" + ");
+    payoutDisplay = `${sizeLabels} = ${totalCombos} combos · ${fmtCoins(totalStake)} total`;
   }
 
   const hasAccount = accounts.length > 0 && selectedAccountId !== null;
@@ -982,7 +998,7 @@ function BetSlipTab({
     if (!hasAccount || stakeNum <= 0) return false;
     if (slipType === "single" && legs.length !== 1) return false;
     if (slipType === "parlay" && legs.length < 2) return false;
-    if (slipType === "round_robin" && legs.length < 3) return false;
+    if (slipType === "round_robin" && (legs.length < 3 || rrSizes.size === 0)) return false;
     if (selectedAccount && totalStake > selectedAccount.balance) return false;
     return true;
   })();
@@ -991,25 +1007,37 @@ function BetSlipTab({
     if (!canPlace || !selectedAccountId) return;
     setPlacing(true);
     try {
-      const body: Record<string, unknown> = {
-        accountId: selectedAccountId,
-        slipType,
-        stake: stakeNum,
-        legs,
-      };
-      if (slipType === "round_robin") body.rrSize = rrSize;
-
-      const r = await fetch("/api/book/bet", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: "Failed to place bet" }));
-        showToast(err.error ?? "Failed to place bet", "error");
-        return;
+      if (slipType === "round_robin") {
+        // Fire one POST per selected combo size
+        const sortedSizes = [...rrSizes].sort((a, b) => a - b);
+        const results = await Promise.all(sortedSizes.map(size =>
+          fetch("/api/book/bet", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId: selectedAccountId, slipType, stake: stakeNum, legs, rrSize: size }),
+          })
+        ));
+        const failed = results.filter(r => !r.ok);
+        if (failed.length > 0) {
+          const err = await failed[0].json().catch(() => ({ error: "Failed to place bet" }));
+          showToast(err.error ?? "Failed to place bet", "error");
+          return;
+        }
+        showToast(`${sortedSizes.length} RR slip${sortedSizes.length > 1 ? "s" : ""} placed!`);
+      } else {
+        const body: Record<string, unknown> = { accountId: selectedAccountId, slipType, stake: stakeNum, legs };
+        const r = await fetch("/api/book/bet", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ error: "Failed to place bet" }));
+          showToast(err.error ?? "Failed to place bet", "error");
+          return;
+        }
+        showToast("Bet placed!");
       }
-      showToast("Bet placed!");
       setLegs([]);
       setStake("");
       qc.invalidateQueries({ queryKey: ["book-accounts"] });
@@ -1313,27 +1341,43 @@ function BetSlipTab({
           ))}
         </div>
 
-        {/* RR size — dynamic: 2-leg up to legs.length */}
+        {/* RR size — multi-select: tap any combo size to include/exclude it */}
         {slipType === "round_robin" && legs.length >= 3 && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>Combo size:</span>
-            {Array.from({ length: legs.length - 1 }, (_, i) => i + 2).map(n => {
-              const count = numCombos(legs.length, n);
-              return (
-                <button
-                  key={n}
-                  onClick={() => setRrSize(n)}
-                  style={{
-                    padding: "4px 12px", borderRadius: 16, border: `1.5px solid ${rrSize === n ? GOLD : "#ddd"}`,
-                    background: rrSize === n ? `rgba(212,168,67,0.12)` : "transparent",
-                    color: rrSize === n ? GOLD : MUTED,
-                    fontWeight: 700, fontSize: 12, cursor: "pointer",
-                  }}
-                >
-                  {n}-leg <span style={{ fontSize: 10, fontWeight: 500 }}>({count})</span>
-                </button>
-              );
-            })}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 6 }}>Combo sizes (select any):</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {Array.from({ length: legs.length - 1 }, (_, i) => i + 2).map(n => {
+                const count = numCombos(legs.length, n);
+                const active = rrSizes.has(n);
+                return (
+                  <button
+                    key={n}
+                    onClick={() => toggleRrSize(n)}
+                    style={{
+                      padding: "5px 13px", borderRadius: 16,
+                      border: `1.5px solid ${active ? GOLD : "#ddd"}`,
+                      background: active ? `rgba(212,168,67,0.15)` : "transparent",
+                      color: active ? GOLD : MUTED,
+                      fontWeight: 700, fontSize: 12, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 5,
+                    }}
+                  >
+                    <span style={{
+                      width: 12, height: 12, borderRadius: 3,
+                      border: `1.5px solid ${active ? GOLD : "#bbb"}`,
+                      background: active ? GOLD : "transparent",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 9, color: "#fff", flexShrink: 0,
+                    }}>{active ? "✓" : ""}</span>
+                    {n}-leg
+                    <span style={{ fontSize: 10, fontWeight: 500, color: active ? GOLD : MUTED }}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+            {rrSizes.size === 0 && (
+              <div style={{ fontSize: 10, color: RED, marginTop: 4 }}>Select at least one combo size</div>
+            )}
           </div>
         )}
 
