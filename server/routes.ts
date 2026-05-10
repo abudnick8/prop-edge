@@ -1953,7 +1953,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
                player_name=EXCLUDED.player_name, hit_probability=EXCLUDED.hit_probability,
                locked_at=EXCLUDED.locked_at, locked=EXCLUDED.locked, result=EXCLUDED.result,
                hits=EXCLUDED.hits, ab=EXCLUDED.ab, graded_at=EXCLUDED.graded_at, snapshot=EXCLUDED.snapshot`,
-            [date,e.playerId,e.name??(e as any).playerName??"",e.team??"",e.hitProbability??0,
+            [date,e.playerId,e.name??(e as any).playerName??"",e.team??"",Math.round(e.hitProbability??0),
              e.lockedAt??null,e.lockedAt!=null,e.result??"pending",e.hits??null,e.ab??null,
              e.gradedAt??null,JSON.stringify(e.snapshot??{})]
           );
@@ -8552,7 +8552,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             e.playerId,
             e.name ?? (e as any).playerName ?? "",
             e.team ?? "",
-            e.hitProbability ?? 0,
+            Math.round(e.hitProbability ?? 0),
             e.lockedAt ?? null,
             e.lockedAt != null,
             e.result ?? "pending",
