@@ -11768,7 +11768,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const marketMap: Record<string, any> = {};
 
       // Work from raw linemate data when available to get alternates
-      const rawLmData: any[] = lmCached?.data?.rawMarkets ?? [];
+      // Re-read from cache after potential fresh fetch (lmCached captured before fetch may be stale)
+      const freshLmCached = linemateCache.get(sportKey);
+      const rawLmData: any[] = freshLmCached?.data?.rawMarkets ?? lmCached?.data?.rawMarkets ?? [];
       const sourceArr = rawLmData.length > 0 ? rawLmData : linemateMarkets;
       const usingRaw  = rawLmData.length > 0;
 
