@@ -1,0 +1,1617 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthContext";
+import {
+  BookOpen, Plus, RefreshCw, ChevronDown, X, Check,
+  TrendingUp, TrendingDown, DollarSign, BarChart2,
+  Lightbulb, Wallet, Clock, Trophy, AlertCircle,
+  Edit2, PlusCircle, Loader2, ChevronRight, ChevronUp,
+} from "lucide-react";
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const BG       = "#F6F1E7";
+const FG       = "#131A24";
+const NAVY     = "#13233A";
+const GOLD     = "#D4A843";
+const RED      = "#A23B32";
+const MUTED    = "#3D4B58";
+const CARD_BG  = "#FFFFFF";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Account {
+  id: number;
+  name: string;
+  balance: number;
+  total_profit: number;
+  settled_slips: number;
+  won_slips: number;
+  open_slips: number;
+}
+
+interface Outcome {
+  name: string;
+  price: number;
+  point?: number;
+}
+
+interface Market {
+  key: "h2h" | "spreads" | "totals";
+  outcomes: Outcome[];
+}
+
+interface Bookmaker {
+  key: string;
+  markets: Market[];
+}
+
+interface Game {
+  id: string;
+  home_team: string;
+  away_team: string;
+  commence_time: string;
+  bookmakers: Bookmaker[];
+}
+
+interface Leg {
+  sport: string;
+  betType: string;
+  gameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  playerId?: number;
+  playerName?: string;
+  statType?: string;
+  line?: number;
+  overUnder?: "over" | "under";
+  pickLabel: string;
+  oddsAmerican: number;
+  gameDate: string;
+  gameTime?: string;
+}
+
+interface SlipLeg {
+  id: number;
+  pick_label: string;
+  odds_american: number;
+  result?: "pending" | "win" | "loss" | "push" | "void";
+  sport?: string;
+  bet_type?: string;
+}
+
+interface Slip {
+  id: number;
+  slip_type: "single" | "parlay" | "round_robin";
+  status: "open" | "won" | "lost" | "push" | "void";
+  stake: number;
+  potential_payout: number;
+  payout_received?: number;
+  placed_at: string;
+  settled_at?: string;
+  legs: SlipLeg[];
+  combo_count?: number;
+}
+
+interface InsightsData {
+  roiByType: Record<string, number>;
+  roiBySport: Record<string, number>;
+  roiByStatType: Record<string, number>;
+  bankrollCurve: { ts: string; balance: number; type: string }[];
+  tips: string[];
+}
+
+type SubTab = "slip" | "bets" | "accounts" | "insights";
+type SlipType = "single" | "parlay" | "round_robin";
+type Sport = "mlb" | "nfl" | "nba" | "nhl";
+type BetFilter = "all" | "moneyline" | "spread" | "total" | "props";
+type BetsFilter = "open" | "settled" | "all";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function fmtOdds(n: number): string {
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+function fmtCoins(n: number): string {
+  return n.toLocaleString();
+}
+
+function fmtTime(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+}
+
+function fmtDate(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function fmtDateTime(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function toDecimal(american: number): number {
+  if (american > 0) return american / 100 + 1;
+  return 100 / Math.abs(american) + 1;
+}
+
+function calcPayout(stake: number, odds: number): number {
+  if (odds < 0) return stake * (100 / Math.abs(odds)) + stake;
+  return stake * (odds / 100) + stake;
+}
+
+function calcParlayPayout(stake: number, legs: Leg[]): number {
+  const dec = legs.reduce((acc, l) => acc * toDecimal(l.oddsAmerican), 1);
+  return stake * dec;
+}
+
+function numCombos(total: number, size: number): number {
+  // C(n, k)
+  if (size > total) return 0;
+  let result = 1;
+  for (let i = 0; i < size; i++) {
+    result = (result * (total - i)) / (i + 1);
+  }
+  return Math.round(result);
+}
+
+function getCombinations<T>(arr: T[], size: number): T[][] {
+  if (size === 1) return arr.map(x => [x]);
+  const result: T[][] = [];
+  for (let i = 0; i <= arr.length - size; i++) {
+    const rest = getCombinations(arr.slice(i + 1), size - 1);
+    rest.forEach(r => result.push([arr[i], ...r]));
+  }
+  return result;
+}
+
+function statusColor(status: string): { bg: string; text: string } {
+  switch (status) {
+    case "open":  return { bg: "rgba(59,130,246,0.12)", text: "#3b82f6" };
+    case "won":   return { bg: "rgba(34,197,94,0.12)",  text: "#16a34a" };
+    case "lost":  return { bg: "rgba(162,59,50,0.12)",  text: RED };
+    case "push":  return { bg: "rgba(148,163,184,0.12)", text: MUTED };
+    case "void":  return { bg: "rgba(234,179,8,0.12)",  text: "#ca8a04" };
+    default:      return { bg: "rgba(148,163,184,0.12)", text: MUTED };
+  }
+}
+
+function legResultColor(result?: string): { text: string } {
+  switch (result) {
+    case "win":   return { text: "#16a34a" };
+    case "loss":  return { text: RED };
+    case "push":  return { text: MUTED };
+    case "void":  return { text: "#ca8a04" };
+    default:      return { text: "#64748b" };
+  }
+}
+
+function slipTypeBg(type: string): string {
+  switch (type) {
+    case "single":       return MUTED;
+    case "parlay":       return NAVY;
+    case "round_robin":  return "#7c3aed";
+    default:             return MUTED;
+  }
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+interface ToastMsg { id: number; msg: string; type: "success" | "error" }
+
+function useToast() {
+  const [toasts, setToasts] = useState<ToastMsg[]>([]);
+  const show = useCallback((msg: string, type: "success" | "error" = "success") => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  }, []);
+  return { toasts, show };
+}
+
+function ToastContainer({ toasts }: { toasts: ToastMsg[] }) {
+  return (
+    <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          background: t.type === "success" ? "#16a34a" : RED,
+          color: "#fff", padding: "10px 20px", borderRadius: 12,
+          fontSize: 14, fontWeight: 600, boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          whiteSpace: "nowrap",
+        }}>
+          {t.type === "success" ? "✓ " : "✗ "}{t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Skeleton({ h = 20, w = "100%", r = 8 }: { h?: number; w?: number | string; r?: number }) {
+  return (
+    <div style={{ height: h, width: w, borderRadius: r, background: "linear-gradient(90deg, #e2d9c8 25%, #ede8dc 50%, #e2d9c8 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite" }} />
+  );
+}
+
+// ─── Sub-tab bar ──────────────────────────────────────────────────────────────
+
+const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
+  { id: "slip",     label: "Bet Slip",  icon: <BookOpen size={15} /> },
+  { id: "bets",     label: "My Bets",   icon: <Trophy size={15} /> },
+  { id: "accounts", label: "Accounts",  icon: <Wallet size={15} /> },
+  { id: "insights", label: "Insights",  icon: <TrendingUp size={15} /> },
+];
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function Book() {
+  const { user } = useAuth();
+  const token = localStorage.getItem("ciq_token") ?? "";
+  const qc = useQueryClient();
+
+  const { toasts, show: showToast } = useToast();
+
+  const [subTab, setSubTab] = useState<SubTab>("slip");
+
+  // ── Accounts query ────────────────────────────────────────────────────────
+  const { data: accountsData, isLoading: accountsLoading, refetch: refetchAccounts } = useQuery<{ accounts: Account[] }>({
+    queryKey: ["book-accounts"],
+    queryFn: async () => {
+      const r = await fetch("/api/book/accounts", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+  });
+
+  const accounts = accountsData?.accounts ?? [];
+
+  // Auto-prompt to create first account
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  useEffect(() => {
+    if (!accountsLoading && accounts.length === 0) {
+      setShowCreateAccount(true);
+    }
+  }, [accountsLoading, accounts.length]);
+
+  // ── Selected account for slips / insights ────────────────────────────────
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  useEffect(() => {
+    if (accounts.length > 0 && selectedAccountId === null) {
+      setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
+
+  const selectedAccount = accounts.find(a => a.id === selectedAccountId) ?? null;
+
+  return (
+    <div style={{ background: BG, minHeight: "100vh", color: FG, fontFamily: "inherit" }}>
+      <style>{`
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .book-tab-btn { transition: all 0.18s ease; }
+        .book-chip { transition: all 0.15s ease; cursor: pointer; user-select: none; }
+        .book-chip:active { transform: scale(0.96); }
+        .book-btn-gold { transition: all 0.18s ease; }
+        .book-btn-gold:hover { filter: brightness(1.08); }
+        .book-btn-gold:active { transform: scale(0.97); }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ background: NAVY, padding: "14px 16px 10px", position: "sticky", top: 0, zIndex: 50 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <BookOpen size={20} color={GOLD} />
+            <span style={{ color: "#fff", fontWeight: 700, fontSize: 18, letterSpacing: 0.3 }}>The Book</span>
+          </div>
+          <span style={{ color: GOLD, fontSize: 12, fontWeight: 600, opacity: 0.85 }}>Paper Sportsbook</span>
+        </div>
+
+        {/* Sub-tabs */}
+        <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
+          {SUB_TABS.map(tab => (
+            <button
+              key={tab.id}
+              className="book-tab-btn"
+              onClick={() => setSubTab(tab.id)}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                gap: 3, padding: "6px 4px", borderRadius: 8, border: "none", cursor: "pointer",
+                background: subTab === tab.id ? GOLD : "rgba(255,255,255,0.07)",
+                color: subTab === tab.id ? NAVY : "rgba(255,255,255,0.65)",
+                fontWeight: subTab === tab.id ? 700 : 500,
+                fontSize: 10,
+              }}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: "0 0 80px" }}>
+        {subTab === "slip"     && <BetSlipTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} showToast={showToast} />}
+        {subTab === "bets"     && <MyBetsTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} />}
+        {subTab === "accounts" && <AccountsTab token={token} accounts={accounts} accountsLoading={accountsLoading} showCreateAccount={showCreateAccount} setShowCreateAccount={setShowCreateAccount} refetchAccounts={refetchAccounts} showToast={showToast} />}
+        {subTab === "insights" && <InsightsTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} showToast={showToast} />}
+      </div>
+
+      <ToastContainer toasts={toasts} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 1 — BET SLIP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SPORTS_LIST: { id: Sport; label: string }[] = [
+  { id: "mlb", label: "MLB" },
+  { id: "nfl", label: "NFL" },
+  { id: "nba", label: "NBA" },
+  { id: "nhl", label: "NHL" },
+];
+
+const BET_FILTERS: { id: BetFilter; label: string }[] = [
+  { id: "all",        label: "All" },
+  { id: "moneyline",  label: "Moneyline" },
+  { id: "spread",     label: "Spread" },
+  { id: "total",      label: "Total" },
+];
+
+function BetSlipTab({
+  token, accounts, selectedAccountId, setSelectedAccountId, showToast,
+}: {
+  token: string;
+  accounts: Account[];
+  selectedAccountId: number | null;
+  setSelectedAccountId: (id: number) => void;
+  showToast: (msg: string, type?: "success" | "error") => void;
+}) {
+  const qc = useQueryClient();
+  const [sport, setSport] = useState<Sport>("mlb");
+  const [betFilter, setBetFilter] = useState<BetFilter>("all");
+  const [legs, setLegs] = useState<Leg[]>([]);
+  const [slipType, setSlipType] = useState<SlipType>("single");
+  const [rrSize, setRrSize] = useState<2 | 3>(2);
+  const [stake, setStake] = useState<string>("");
+  const [placing, setPlacing] = useState(false);
+
+  const { data: oddsData, isLoading: oddsLoading, error: oddsError } = useQuery<{ games: Game[] }>({
+    queryKey: ["book-odds", sport],
+    queryFn: async () => {
+      const r = await fetch(`/api/book/odds?sport=${sport}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    staleTime: 120_000,
+  });
+
+  const games = oddsData?.games ?? [];
+
+  // Max legs by slip type
+  const maxLegs = slipType === "single" ? 1 : 10;
+
+  function isInSlip(gameId: string, betType: string, pickLabel: string): boolean {
+    return legs.some(l => l.gameId === gameId && l.betType === betType && l.pickLabel === pickLabel);
+  }
+
+  function toggleLeg(leg: Leg) {
+    if (isInSlip(leg.gameId, leg.betType, leg.pickLabel)) {
+      setLegs(prev => prev.filter(l => !(l.gameId === leg.gameId && l.betType === leg.betType && l.pickLabel === leg.pickLabel)));
+    } else {
+      if (legs.length >= maxLegs) {
+        showToast(slipType === "single" ? "Single bets allow only 1 leg" : "Maximum 10 legs allowed", "error");
+        return;
+      }
+      setLegs(prev => [...prev, leg]);
+    }
+  }
+
+  function removeLeg(idx: number) {
+    setLegs(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  // When slip type changes to single, trim to 1 leg
+  function handleSlipTypeChange(t: SlipType) {
+    setSlipType(t);
+    if (t === "single") setLegs(prev => prev.slice(0, 1));
+  }
+
+  const stakeNum = parseFloat(stake) || 0;
+  const selectedAccount = accounts.find(a => a.id === selectedAccountId) ?? null;
+
+  // Payout calculation
+  let payoutDisplay = "";
+  let totalStake = stakeNum;
+  if (slipType === "single" && legs.length === 1 && stakeNum > 0) {
+    payoutDisplay = fmtCoins(Math.round(calcPayout(stakeNum, legs[0].oddsAmerican)));
+  } else if (slipType === "parlay" && legs.length >= 2 && stakeNum > 0) {
+    payoutDisplay = fmtCoins(Math.round(calcParlayPayout(stakeNum, legs)));
+    const dec = legs.reduce((a, l) => a * toDecimal(l.oddsAmerican), 1);
+    const combinedAmerican = dec >= 2 ? Math.round((dec - 1) * 100) : Math.round(-100 / (dec - 1));
+    payoutDisplay = `${fmtOdds(combinedAmerican)} → ${fmtCoins(Math.round(calcParlayPayout(stakeNum, legs)))} coins`;
+  } else if (slipType === "round_robin" && legs.length >= 3 && stakeNum > 0) {
+    const n = numCombos(legs.length, rrSize);
+    totalStake = stakeNum * n;
+    payoutDisplay = `${n} combos × ${fmtCoins(stakeNum)} = ${fmtCoins(totalStake)} total`;
+  }
+
+  const canPlace = (() => {
+    if (!selectedAccountId || stakeNum <= 0) return false;
+    if (slipType === "single" && legs.length !== 1) return false;
+    if (slipType === "parlay" && legs.length < 2) return false;
+    if (slipType === "round_robin" && legs.length < 3) return false;
+    if (selectedAccount && totalStake > selectedAccount.balance) return false;
+    return true;
+  })();
+
+  async function placeBet() {
+    if (!canPlace || !selectedAccountId) return;
+    setPlacing(true);
+    try {
+      const body: Record<string, unknown> = {
+        accountId: selectedAccountId,
+        slipType,
+        stake: slipType === "round_robin" ? stakeNum : stakeNum,
+        legs,
+      };
+      if (slipType === "round_robin") body.rrSize = rrSize;
+
+      const r = await fetch("/api/book/bet", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: "Failed to place bet" }));
+        showToast(err.error ?? "Failed to place bet", "error");
+        return;
+      }
+      showToast("Bet placed successfully!");
+      setLegs([]);
+      setStake("");
+      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      qc.invalidateQueries({ queryKey: ["book-slips"] });
+    } catch (e: any) {
+      showToast(e.message ?? "Network error", "error");
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  // Get DraftKings bookmaker from game, fallback to first
+  function getBkm(game: Game): Bookmaker | undefined {
+    return game.bookmakers.find(b => b.key === "draftkings") ?? game.bookmakers[0];
+  }
+
+  function getMarket(game: Game, key: string): Market | undefined {
+    const bkm = getBkm(game);
+    return bkm?.markets.find(m => m.key === key);
+  }
+
+  function buildMLLeg(game: Game, outcome: Outcome): Leg {
+    const gd = new Date(game.commence_time);
+    return {
+      sport,
+      betType: "moneyline",
+      gameId: game.id,
+      homeTeam: game.home_team,
+      awayTeam: game.away_team,
+      pickLabel: `${outcome.name} ML`,
+      oddsAmerican: outcome.price,
+      gameDate: gd.toISOString().slice(0, 10),
+      gameTime: game.commence_time,
+    };
+  }
+
+  function buildSpreadLeg(game: Game, outcome: Outcome): Leg {
+    const gd = new Date(game.commence_time);
+    const sign = outcome.point != null && outcome.point > 0 ? "+" : "";
+    return {
+      sport,
+      betType: "spread",
+      gameId: game.id,
+      homeTeam: game.home_team,
+      awayTeam: game.away_team,
+      line: outcome.point,
+      pickLabel: `${outcome.name} ${sign}${outcome.point} (${fmtOdds(outcome.price)})`,
+      oddsAmerican: outcome.price,
+      gameDate: gd.toISOString().slice(0, 10),
+      gameTime: game.commence_time,
+    };
+  }
+
+  function buildTotalLeg(game: Game, outcome: Outcome): Leg {
+    const gd = new Date(game.commence_time);
+    const isOver = outcome.name.toLowerCase() === "over";
+    return {
+      sport,
+      betType: "total",
+      gameId: game.id,
+      homeTeam: game.home_team,
+      awayTeam: game.away_team,
+      line: outcome.point,
+      overUnder: isOver ? "over" : "under",
+      pickLabel: `${isOver ? "O" : "U"}${outcome.point} (${fmtOdds(outcome.price)})`,
+      oddsAmerican: outcome.price,
+      gameDate: gd.toISOString().slice(0, 10),
+      gameTime: game.commence_time,
+    };
+  }
+
+  function showGame(game: Game): boolean {
+    if (betFilter === "all") return true;
+    if (betFilter === "moneyline") return !!getMarket(game, "h2h");
+    if (betFilter === "spread")    return !!getMarket(game, "spreads");
+    if (betFilter === "total")     return !!getMarket(game, "totals");
+    return true;
+  }
+
+  return (
+    <div>
+      {/* Game Browser */}
+      <div style={{ padding: "12px 12px 0" }}>
+        {/* Sport tabs */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+          {SPORTS_LIST.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setSport(s.id)}
+              style={{
+                padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 700,
+                fontSize: 12, flexShrink: 0,
+                background: sport === s.id ? GOLD : "rgba(19,35,58,0.08)",
+                color: sport === s.id ? NAVY : MUTED,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Bet type filter */}
+        <div style={{ display: "flex", gap: 5, marginTop: 8, overflowX: "auto" }}>
+          {BET_FILTERS.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setBetFilter(f.id)}
+              style={{
+                padding: "4px 10px", borderRadius: 16, border: `1px solid ${betFilter === f.id ? GOLD : "#ddd"}`,
+                cursor: "pointer", fontSize: 11, fontWeight: 600, flexShrink: 0,
+                background: betFilter === f.id ? `rgba(212,168,67,0.12)` : "transparent",
+                color: betFilter === f.id ? GOLD : MUTED,
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Games list */}
+      <div style={{ padding: "10px 12px 0" }}>
+        {oddsLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[1, 2, 3].map(i => <Skeleton key={i} h={110} r={12} />)}
+          </div>
+        ) : oddsError ? (
+          <div style={{ textAlign: "center", padding: "24px 0", color: RED, fontSize: 13 }}>
+            <AlertCircle size={20} style={{ marginBottom: 6 }} />
+            <div>Failed to load games</div>
+          </div>
+        ) : games.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "24px 0", color: MUTED, fontSize: 13 }}>
+            No games available for {sport.toUpperCase()}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {games.filter(showGame).map(game => {
+              const mlMkt   = getMarket(game, "h2h");
+              const spMkt   = getMarket(game, "spreads");
+              const totMkt  = getMarket(game, "totals");
+              const gameTime = new Date(game.commence_time);
+
+              return (
+                <div key={game.id} style={{ background: CARD_BG, borderRadius: 12, padding: "12px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+                  {/* Teams & time */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: FG }}>{game.away_team} @ {game.home_team}</div>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
+                        <Clock size={10} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                        {gameTime.toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {gameTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, background: "rgba(19,35,58,0.08)", padding: "2px 8px", borderRadius: 10, color: MUTED, fontWeight: 600 }}>
+                      {sport.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* Bet chips */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {/* Moneyline */}
+                    {mlMkt && (betFilter === "all" || betFilter === "moneyline") && (
+                      <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 3 }}>MONEYLINE</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {mlMkt.outcomes.map(oc => {
+                            const leg = buildMLLeg(game, oc);
+                            const active = isInSlip(game.id, "moneyline", leg.pickLabel);
+                            return (
+                              <button
+                                key={oc.name}
+                                className="book-chip"
+                                onClick={() => toggleLeg(leg)}
+                                style={{
+                                  flex: 1, padding: "6px 4px", borderRadius: 8,
+                                  border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
+                                  background: active ? `rgba(212,168,67,0.12)` : "#f8fafc",
+                                  color: active ? GOLD : FG, fontSize: 12, fontWeight: 700,
+                                }}
+                              >
+                                <span style={{ display: "block", fontSize: 10, color: active ? GOLD : MUTED }}>{oc.name.length > 12 ? oc.name.slice(0, 12) + ".." : oc.name}</span>
+                                {fmtOdds(oc.price)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Spread */}
+                    {spMkt && (betFilter === "all" || betFilter === "spread") && (
+                      <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 3 }}>SPREAD</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {spMkt.outcomes.map(oc => {
+                            const leg = buildSpreadLeg(game, oc);
+                            const active = isInSlip(game.id, "spread", leg.pickLabel);
+                            return (
+                              <button
+                                key={oc.name + oc.point}
+                                className="book-chip"
+                                onClick={() => toggleLeg(leg)}
+                                style={{
+                                  flex: 1, padding: "6px 4px", borderRadius: 8,
+                                  border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
+                                  background: active ? `rgba(212,168,67,0.12)` : "#f8fafc",
+                                  color: active ? GOLD : FG, fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                <span style={{ display: "block", fontSize: 10, color: active ? GOLD : MUTED }}>{oc.name.length > 10 ? oc.name.slice(0, 10) + ".." : oc.name}</span>
+                                {oc.point != null ? (oc.point > 0 ? "+" : "") + oc.point : ""} ({fmtOdds(oc.price)})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Total */}
+                    {totMkt && (betFilter === "all" || betFilter === "total") && (
+                      <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 3 }}>TOTAL</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {totMkt.outcomes.map(oc => {
+                            const leg = buildTotalLeg(game, oc);
+                            const active = isInSlip(game.id, "total", leg.pickLabel);
+                            return (
+                              <button
+                                key={oc.name}
+                                className="book-chip"
+                                onClick={() => toggleLeg(leg)}
+                                style={{
+                                  flex: 1, padding: "6px 4px", borderRadius: 8,
+                                  border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
+                                  background: active ? `rgba(212,168,67,0.12)` : "#f8fafc",
+                                  color: active ? GOLD : FG, fontSize: 11, fontWeight: 700,
+                                }}
+                              >
+                                {oc.name.toUpperCase().slice(0, 1)}{oc.point} ({fmtOdds(oc.price)})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Active Slip ── */}
+      <div style={{ margin: "16px 12px 0", background: CARD_BG, borderRadius: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.09)", padding: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: FG }}>Active Slip</span>
+          {legs.length > 0 && (
+            <button onClick={() => setLegs([])} style={{ fontSize: 11, color: RED, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {/* Slip type toggle */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "#f1f5f9", borderRadius: 10, padding: 3 }}>
+          {(["single", "parlay", "round_robin"] as SlipType[]).map(t => (
+            <button
+              key={t}
+              onClick={() => handleSlipTypeChange(t)}
+              style={{
+                flex: 1, padding: "6px 4px", borderRadius: 8, border: "none", cursor: "pointer",
+                background: slipType === t ? NAVY : "transparent",
+                color: slipType === t ? "#fff" : MUTED,
+                fontWeight: 700, fontSize: 10,
+              }}
+            >
+              {t === "round_robin" ? "RR" : t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* RR size */}
+        {slipType === "round_robin" && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>Combo size:</span>
+            {([2, 3] as (2 | 3)[]).map(n => (
+              <button
+                key={n}
+                onClick={() => setRrSize(n)}
+                style={{
+                  padding: "4px 12px", borderRadius: 16, border: `1.5px solid ${rrSize === n ? GOLD : "#ddd"}`,
+                  background: rrSize === n ? `rgba(212,168,67,0.12)` : "transparent",
+                  color: rrSize === n ? GOLD : MUTED,
+                  fontWeight: 700, fontSize: 12, cursor: "pointer",
+                }}
+              >
+                {n}-leg
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Legs */}
+        {legs.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "16px 0", color: MUTED, fontSize: 12 }}>
+            Tap any odds chip above to add legs
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+            {legs.map((leg, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: FG }}>{leg.pickLabel}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>{leg.sport.toUpperCase()} · {leg.betType}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: leg.oddsAmerican > 0 ? "#16a34a" : MUTED }}>
+                    {fmtOdds(leg.oddsAmerican)}
+                  </span>
+                  <button onClick={() => removeLeg(i)} style={{ background: "none", border: "none", cursor: "pointer", color: RED, lineHeight: 1 }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Account selector */}
+        {accounts.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>Account</div>
+            <select
+              value={selectedAccountId ?? ""}
+              onChange={e => setSelectedAccountId(Number(e.target.value))}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, background: "#f8fafc", color: FG, fontWeight: 600 }}
+            >
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name} — {fmtCoins(a.balance)} coins</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Stake */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>Stake (coins)</div>
+          <input
+            type="number"
+            value={stake}
+            onChange={e => setStake(e.target.value)}
+            placeholder="0"
+            min={1}
+            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 15, background: "#f8fafc", color: FG, fontWeight: 700, boxSizing: "border-box" }}
+          />
+          {selectedAccount && stakeNum > selectedAccount.balance && (
+            <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>Insufficient balance ({fmtCoins(selectedAccount.balance)} coins)</div>
+          )}
+        </div>
+
+        {/* Payout preview */}
+        {payoutDisplay && (
+          <div style={{ background: "rgba(212,168,67,0.08)", border: `1px solid rgba(212,168,67,0.3)`, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 12, color: GOLD, fontWeight: 600 }}>
+            {slipType === "round_robin" ? payoutDisplay : `Payout: ${payoutDisplay}`}
+          </div>
+        )}
+
+        {/* Validation hints */}
+        {slipType === "single" && legs.length === 0 && (
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>Add 1 leg for a single bet</div>
+        )}
+        {slipType === "parlay" && legs.length < 2 && (
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>Add at least 2 legs for a parlay</div>
+        )}
+        {slipType === "round_robin" && legs.length < 3 && (
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>Add at least 3 legs for a round robin</div>
+        )}
+
+        {/* Place bet */}
+        <button
+          className="book-btn-gold"
+          onClick={placeBet}
+          disabled={!canPlace || placing}
+          style={{
+            width: "100%", padding: "12px", borderRadius: 10, border: "none", cursor: canPlace ? "pointer" : "not-allowed",
+            background: canPlace ? GOLD : "#e2e8f0", color: canPlace ? NAVY : MUTED,
+            fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          {placing ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : null}
+          Place Bet
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 2 — MY BETS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function MyBetsTab({
+  token, accounts, selectedAccountId, setSelectedAccountId,
+}: {
+  token: string;
+  accounts: Account[];
+  selectedAccountId: number | null;
+  setSelectedAccountId: (id: number) => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
+  const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
+  const [overrideLegId, setOverrideLegId] = useState<number | null>(null);
+  const [overrideResult, setOverrideResult] = useState<"win"|"loss"|"push"|"void">("win");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [overriding, setOverriding] = useState(false);
+  const [voidingSlip, setVoidingSlip] = useState<number | null>(null);
+  const qc = useQueryClient();
+
+  const { data, isLoading, error, refetch } = useQuery<{ slips: Slip[] }>({
+    queryKey: ["book-slips", selectedAccountId, statusFilter],
+    queryFn: async () => {
+      if (!selectedAccountId) return { slips: [] };
+      const r = await fetch(`/api/book/slips?accountId=${selectedAccountId}&status=${statusFilter}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    enabled: !!selectedAccountId,
+    refetchInterval: statusFilter === "open" ? 30_000 : false,
+  });
+
+  const slips = data?.slips ?? [];
+
+  return (
+    <div style={{ padding: "12px 12px 0" }}>
+      {/* Account selector */}
+      {accounts.length > 0 && (
+        <select
+          value={selectedAccountId ?? ""}
+          onChange={e => setSelectedAccountId(Number(e.target.value))}
+          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, background: CARD_BG, color: FG, fontWeight: 600, marginBottom: 10 }}
+        >
+          {accounts.map(a => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+      )}
+
+      {/* Status filter */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 12 }}>
+        {(["open", "settled", "all"] as BetsFilter[]).map(f => (
+          <button
+            key={f}
+            onClick={() => setStatusFilter(f)}
+            style={{
+              flex: 1, padding: "7px 4px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: statusFilter === f ? NAVY : "rgba(19,35,58,0.06)",
+              color: statusFilter === f ? "#fff" : MUTED,
+              fontWeight: 700, fontSize: 12,
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {statusFilter === "open" && (
+        <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, textAlign: "right" }}>Auto-refreshes every 30s</div>
+      )}
+
+      {isLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[1, 2, 3].map(i => <Skeleton key={i} h={90} r={12} />)}
+        </div>
+      ) : error ? (
+        <div style={{ textAlign: "center", padding: "24px 0", color: RED, fontSize: 13 }}>
+          <AlertCircle size={20} style={{ marginBottom: 6 }} />
+          <div>Failed to load bets</div>
+        </div>
+      ) : slips.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "32px 0", color: MUTED, fontSize: 13 }}>
+          No {statusFilter !== "all" ? statusFilter : ""} bets found
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {slips.map(slip => {
+            const sc = statusColor(slip.status);
+            const expanded = expandedSlip === slip.id;
+            return (
+              <div key={slip.id} style={{ background: CARD_BG, borderRadius: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                {/* Slip header */}
+                <div
+                  style={{ padding: "12px 14px", cursor: "pointer" }}
+                  onClick={() => setExpandedSlip(expanded ? null : slip.id)}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {/* Type badge */}
+                      <span style={{ background: slipTypeBg(slip.slip_type), color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10, letterSpacing: 0.5 }}>
+                        {slip.slip_type === "round_robin" ? "RR" : slip.slip_type.toUpperCase()}
+                      </span>
+                      {/* Status badge */}
+                      <span style={{ background: sc.bg, color: sc.text, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>
+                        {slip.status.toUpperCase()}
+                      </span>
+                    </div>
+                    {expanded ? <ChevronUp size={14} color={MUTED} /> : <ChevronRight size={14} color={MUTED} />}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: MUTED }}>
+                        Stake: <span style={{ fontWeight: 700, color: FG }}>{fmtCoins(slip.stake)}</span> → {" "}
+                        {slip.status !== "open" && slip.payout_received != null
+                          ? <span style={{ fontWeight: 700, color: slip.payout_received > 0 ? "#16a34a" : RED }}>{fmtCoins(slip.payout_received)}</span>
+                          : <span style={{ fontWeight: 700, color: GOLD }}>{fmtCoins(slip.potential_payout)}</span>
+                        }
+                      </div>
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+                        <Clock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                        {fmtDateTime(slip.placed_at)}
+                        {slip.settled_at && ` · Settled ${fmtDateTime(slip.settled_at)}`}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>
+                      {slip.legs.length} leg{slip.legs.length !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded legs + override controls */}
+                {expanded && (
+                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {slip.slip_type === "round_robin" && slip.combo_count && (
+                      <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>{slip.combo_count} combos</div>
+                    )}
+                    {slip.legs.map((leg, i) => {
+                      const rc = legResultColor(leg.result);
+                      const isOverriding = overrideLegId === leg.id;
+                      return (
+                        <div key={i} style={{ background: "#f8fafc", borderRadius: 8, padding: "7px 10px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: FG }}>{leg.pick_label}</div>
+                              <div style={{ fontSize: 10, color: MUTED }}>{fmtOdds(leg.odds_american)}{leg.game_date ? ` · ${leg.game_date}` : ""}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: rc.text, textTransform: "uppercase" }}>
+                                {leg.result ?? "pending"}
+                              </span>
+                              {/* Override button — owner only */}
+                              <button
+                                onClick={() => { setOverrideLegId(isOverriding ? null : leg.id); setOverrideResult("win"); setOverrideNote(""); }}
+                                title="Override grade"
+                                style={{ background: "none", border: "1.5px solid #cbd5e1", borderRadius: 6, padding: "2px 7px", cursor: "pointer", fontSize: 10, color: MUTED, fontWeight: 700 }}
+                              >
+                                {isOverriding ? "×" : "✎"}
+                              </button>
+                            </div>
+                          </div>
+                          {/* Inline override form */}
+                          {isOverriding && (
+                            <div style={{ marginTop: 8, padding: "10px", background: "#fff", borderRadius: 8, border: "1.5px solid #D4A843", display: "flex", flexDirection: "column", gap: 8 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: GOLD }}>Override Grade — Leg #{leg.id}</div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                {(["win","loss","push","void"] as const).map(r => (
+                                  <button key={r} onClick={() => setOverrideResult(r)}
+                                    style={{ flex: 1, padding: "5px 2px", borderRadius: 6, border: "1.5px solid",
+                                      borderColor: overrideResult === r ? GOLD : "#e2e8f0",
+                                      background: overrideResult === r ? GOLD : "transparent",
+                                      color: overrideResult === r ? "#fff" : FG,
+                                      fontWeight: 700, fontSize: 11, cursor: "pointer", textTransform: "uppercase" }}
+                                  >{r}</button>
+                                ))}
+                              </div>
+                              <input
+                                placeholder="Note (optional, e.g. 'box score error')"
+                                value={overrideNote}
+                                onChange={e => setOverrideNote(e.target.value)}
+                                style={{ padding: "6px 10px", borderRadius: 6, border: "1.5px solid #e2e8f0", fontSize: 12, color: FG, background: "#f8fafc" }}
+                              />
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button
+                                  onClick={async () => {
+                                    setOverriding(true);
+                                    try {
+                                      const r = await fetch(`/api/book/legs/${leg.id}/override`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                        body: JSON.stringify({ result: overrideResult, note: overrideNote || undefined }),
+                                      });
+                                      const d = await r.json();
+                                      if (!r.ok) throw new Error(d.error);
+                                      setOverrideLegId(null);
+                                      qc.invalidateQueries({ queryKey: ["book-slips"] });
+                                      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                                    } catch (e: any) { alert("Override failed: " + e.message); }
+                                    setOverriding(false);
+                                  }}
+                                  disabled={overriding}
+                                  style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                                >
+                                  {overriding ? "Saving..." : "Apply Override"}
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`Void entire slip #${slip.id}? Stake will be refunded.`)) return;
+                                    setVoidingSlip(slip.id);
+                                    try {
+                                      const r = await fetch(`/api/book/slips/${slip.id}/void`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                        body: JSON.stringify({ note: overrideNote || "Owner void" }),
+                                      });
+                                      const d = await r.json();
+                                      if (!r.ok) throw new Error(d.error);
+                                      setOverrideLegId(null);
+                                      setExpandedSlip(null);
+                                      qc.invalidateQueries({ queryKey: ["book-slips"] });
+                                      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                                    } catch (e: any) { alert("Void failed: " + e.message); }
+                                    setVoidingSlip(null);
+                                  }}
+                                  disabled={voidingSlip === slip.id}
+                                  style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #ef4444", background: "transparent", color: "#ef4444", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                                >
+                                  Void Slip
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 3 — ACCOUNTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function AccountsTab({
+  token, accounts, accountsLoading, showCreateAccount, setShowCreateAccount, refetchAccounts, showToast,
+}: {
+  token: string;
+  accounts: Account[];
+  accountsLoading: boolean;
+  showCreateAccount: boolean;
+  setShowCreateAccount: (v: boolean) => void;
+  refetchAccounts: () => void;
+  showToast: (msg: string, type?: "success" | "error") => void;
+}) {
+  const [newAcctName, setNewAcctName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // Per-account inline state
+  const [addCoinsId, setAddCoinsId] = useState<number | null>(null);
+  const [addCoinsAmt, setAddCoinsAmt] = useState("");
+  const [renameId, setRenameId] = useState<number | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [patchingId, setPatchingId] = useState<number | null>(null);
+
+  async function createAccount() {
+    if (!newAcctName.trim()) return;
+    setCreating(true);
+    try {
+      const r = await fetch("/api/book/accounts", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newAcctName.trim() }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      showToast("Account created!");
+      setNewAcctName("");
+      setShowCreateAccount(false);
+      refetchAccounts();
+    } catch (e: any) {
+      showToast(e.message ?? "Failed to create account", "error");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function patchAccount(id: number, body: Record<string, unknown>) {
+    setPatchingId(id);
+    try {
+      const r = await fetch(`/api/book/accounts/${id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      showToast("Account updated!");
+      setAddCoinsId(null);
+      setAddCoinsAmt("");
+      setRenameId(null);
+      setRenameName("");
+      refetchAccounts();
+    } catch (e: any) {
+      showToast(e.message ?? "Failed to update account", "error");
+    } finally {
+      setPatchingId(null);
+    }
+  }
+
+  return (
+    <div style={{ padding: "12px 12px 0" }}>
+      {/* Create account prompt */}
+      {(showCreateAccount || accounts.length === 0) && (
+        <div style={{ background: CARD_BG, borderRadius: 14, padding: "16px", marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,0.08)", border: `1.5px solid ${GOLD}` }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: FG, marginBottom: 8 }}>
+            {accounts.length === 0 ? "Create your first account" : "New Account"}
+          </div>
+          <input
+            type="text"
+            value={newAcctName}
+            onChange={e => setNewAcctName(e.target.value)}
+            placeholder="Account name (e.g. Main Bankroll)"
+            onKeyDown={e => e.key === "Enter" && createAccount()}
+            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box", marginBottom: 8 }}
+          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={createAccount}
+              disabled={creating || !newAcctName.trim()}
+              className="book-btn-gold"
+              style={{
+                flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: creating || !newAcctName.trim() ? "not-allowed" : "pointer",
+                background: newAcctName.trim() ? GOLD : "#e2e8f0",
+                color: newAcctName.trim() ? NAVY : MUTED, fontWeight: 700, fontSize: 13,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+              }}
+            >
+              {creating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={14} />}
+              Create
+            </button>
+            {accounts.length > 0 && (
+              <button onClick={() => setShowCreateAccount(false)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "transparent", color: MUTED, cursor: "pointer", fontSize: 13 }}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* New account button */}
+      {accounts.length > 0 && !showCreateAccount && (
+        <button
+          onClick={() => setShowCreateAccount(true)}
+          className="book-btn-gold"
+          style={{
+            width: "100%", padding: "10px", borderRadius: 10, border: `1.5px dashed ${GOLD}`,
+            background: "rgba(212,168,67,0.06)", color: GOLD, fontWeight: 700, fontSize: 13,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 12,
+          }}
+        >
+          <PlusCircle size={16} /> New Account
+        </button>
+      )}
+
+      {/* Account cards */}
+      {accountsLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[1, 2].map(i => <Skeleton key={i} h={130} r={14} />)}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {accounts.map(acct => {
+            const winRate = acct.settled_slips > 0 ? (acct.won_slips / acct.settled_slips * 100) : 0;
+            const profitPos = acct.total_profit >= 0;
+            const isAddCoins = addCoinsId === acct.id;
+            const isRename = renameId === acct.id;
+            const patching = patchingId === acct.id;
+
+            return (
+              <div key={acct.id} style={{ background: CARD_BG, borderRadius: 14, padding: "16px", boxShadow: "0 1px 8px rgba(0,0,0,0.07)" }}>
+                {/* Name row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  {isRename ? (
+                    <div style={{ flex: 1, display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={renameName}
+                        onChange={e => setRenameName(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && patchAccount(acct.id, { name: renameName })}
+                        style={{ flex: 1, padding: "6px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13 }}
+                        autoFocus
+                      />
+                      <button onClick={() => patchAccount(acct.id, { name: renameName })} disabled={patching} style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: GOLD, color: NAVY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                        {patching ? <Loader2 size={12} /> : <Check size={12} />}
+                      </button>
+                      <button onClick={() => setRenameId(null)} style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: "#f1f5f9", color: MUTED, cursor: "pointer" }}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: FG }}>{acct.name}</span>
+                      <button onClick={() => { setRenameId(acct.id); setRenameName(acct.name); }} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, padding: "2px" }}>
+                        <Edit2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Balance */}
+                <div style={{ fontSize: 28, fontWeight: 800, color: FG, marginBottom: 6 }}>
+                  {fmtCoins(acct.balance)} <span style={{ fontSize: 13, fontWeight: 600, color: MUTED }}>coins</span>
+                </div>
+
+                {/* Stats row */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                  <div style={{ flex: 1, textAlign: "center", background: profitPos ? "rgba(34,197,94,0.08)" : "rgba(162,59,50,0.08)", borderRadius: 8, padding: "6px 4px" }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>P/L</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: profitPos ? "#16a34a" : RED }}>
+                      {profitPos ? "+" : ""}{fmtCoins(acct.total_profit)}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: "center", background: "#f8fafc", borderRadius: 8, padding: "6px 4px" }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>Win Rate</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>{winRate.toFixed(0)}%</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: "center", background: "rgba(59,130,246,0.07)", borderRadius: 8, padding: "6px 4px" }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>Open</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#3b82f6" }}>{acct.open_slips}</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: "center", background: "#f8fafc", borderRadius: 8, padding: "6px 4px" }}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>Settled</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: FG }}>{acct.settled_slips}</div>
+                  </div>
+                </div>
+
+                {/* Add coins */}
+                {isAddCoins ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="number"
+                      value={addCoinsAmt}
+                      onChange={e => setAddCoinsAmt(e.target.value)}
+                      placeholder="Amount to add"
+                      min={1}
+                      style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => patchAccount(acct.id, { addCoins: parseFloat(addCoinsAmt) })}
+                      disabled={patching || !addCoinsAmt}
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: GOLD, color: NAVY, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                    >
+                      {patching ? <Loader2 size={14} /> : "Add"}
+                    </button>
+                    <button onClick={() => { setAddCoinsId(null); setAddCoinsAmt(""); }} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#f1f5f9", color: MUTED, cursor: "pointer" }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddCoinsId(acct.id)}
+                    style={{
+                      width: "100%", padding: "9px", borderRadius: 9, border: `1px solid ${GOLD}`,
+                      background: "rgba(212,168,67,0.08)", color: GOLD, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                    }}
+                  >
+                    <PlusCircle size={14} /> Add Coins
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 4 — INSIGHTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ROIBar({ label, value }: { label: string; value: number }) {
+  const pos = value >= 0;
+  const pct = Math.min(Math.abs(value), 100);
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+        <span style={{ fontSize: 12, color: FG, fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: pos ? "#16a34a" : RED }}>
+          {pos ? "+" : ""}{value.toFixed(1)}%
+        </span>
+      </div>
+      <div style={{ height: 8, background: "#e2e8f0", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: pos ? "#16a34a" : RED, borderRadius: 4, transition: "width 0.5s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+function BankrollSVG({ curve }: { curve: { ts: string; balance: number; type: string }[] }) {
+  if (!curve || curve.length < 2) {
+    return <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: MUTED, fontSize: 12 }}>Not enough data</div>;
+  }
+
+  const W = 320;
+  const H = 110;
+  const PAD_L = 50;
+  const PAD_R = 12;
+  const PAD_T = 12;
+  const PAD_B = 20;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  const balances = curve.map(p => p.balance);
+  const minB = Math.min(...balances);
+  const maxB = Math.max(...balances);
+  const range = maxB - minB || 1;
+
+  function px(i: number): number {
+    return PAD_L + (i / (curve.length - 1)) * plotW;
+  }
+  function py(b: number): number {
+    return PAD_T + plotH - ((b - minB) / range) * plotH;
+  }
+
+  const points = curve.map((p, i) => `${px(i)},${py(p.balance)}`).join(" ");
+  const areaPoints = `${PAD_L},${PAD_T + plotH} ${points} ${px(curve.length - 1)},${PAD_T + plotH}`;
+
+  const startBal = curve[0].balance;
+  const endBal = curve[curve.length - 1].balance;
+  const lineColor = endBal >= startBal ? "#16a34a" : RED;
+
+  // Grid lines (3 horizontal)
+  const gridVals = [minB, minB + range / 2, maxB];
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+      <defs>
+        <linearGradient id="bankroll-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+
+      {/* Grid lines */}
+      {gridVals.map((v, i) => (
+        <g key={i}>
+          <line x1={PAD_L} y1={py(v)} x2={W - PAD_R} y2={py(v)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3,3" />
+          <text x={PAD_L - 4} y={py(v) + 4} textAnchor="end" fontSize="9" fill={MUTED}>
+            {v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}
+          </text>
+        </g>
+      ))}
+
+      {/* Area fill */}
+      <polygon points={areaPoints} fill="url(#bankroll-grad)" />
+
+      {/* Line */}
+      <polyline points={points} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
+
+      {/* Start dot */}
+      <circle cx={px(0)} cy={py(startBal)} r="3" fill={lineColor} />
+
+      {/* End dot */}
+      <circle cx={px(curve.length - 1)} cy={py(endBal)} r="4" fill={lineColor} stroke="#fff" strokeWidth="1.5" />
+
+      {/* Current balance label */}
+      <text x={Math.min(px(curve.length - 1) + 4, W - 4)} y={py(endBal) - 5} fontSize="10" fontWeight="700" fill={lineColor}>
+        {fmtCoins(Math.round(endBal))}
+      </text>
+
+      {/* X labels: start & end */}
+      <text x={PAD_L} y={H - 3} fontSize="9" fill={MUTED}>{fmtDate(curve[0].ts)}</text>
+      <text x={W - PAD_R} y={H - 3} fontSize="9" fill={MUTED} textAnchor="end">{fmtDate(curve[curve.length - 1].ts)}</text>
+    </svg>
+  );
+}
+
+function InsightsTab({
+  token, accounts, selectedAccountId, setSelectedAccountId, showToast,
+}: {
+  token: string;
+  accounts: Account[];
+  selectedAccountId: number | null;
+  setSelectedAccountId: (id: number) => void;
+  showToast: (msg: string, type?: "success" | "error") => void;
+}) {
+  const [grading, setGrading] = useState(false);
+
+  const { data, isLoading, error } = useQuery<InsightsData>({
+    queryKey: ["book-insights", selectedAccountId],
+    queryFn: async () => {
+      if (!selectedAccountId) throw new Error("No account");
+      const r = await fetch(`/api/book/insights?accountId=${selectedAccountId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    enabled: !!selectedAccountId,
+  });
+
+  async function gradeNow() {
+    setGrading(true);
+    try {
+      const r = await fetch("/api/book/grade-now", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(await r.text());
+      showToast("Grader triggered — check back shortly!");
+    } catch (e: any) {
+      showToast(e.message ?? "Failed to trigger grader", "error");
+    } finally {
+      setGrading(false);
+    }
+  }
+
+  return (
+    <div style={{ padding: "12px 12px 0" }}>
+      {/* Account selector */}
+      {accounts.length > 0 && (
+        <select
+          value={selectedAccountId ?? ""}
+          onChange={e => setSelectedAccountId(Number(e.target.value))}
+          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, background: CARD_BG, color: FG, fontWeight: 600, marginBottom: 12 }}
+        >
+          {accounts.map(a => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+      )}
+
+      {isLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Skeleton h={120} r={12} />
+          <Skeleton h={80} r={12} />
+          <Skeleton h={80} r={12} />
+          <Skeleton h={80} r={12} />
+        </div>
+      ) : error ? (
+        <div style={{ textAlign: "center", padding: "24px 0", color: RED, fontSize: 13 }}>
+          <AlertCircle size={20} style={{ marginBottom: 6 }} />
+          <div>Failed to load insights</div>
+        </div>
+      ) : !data ? null : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Bankroll curve */}
+          <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              <BarChart2 size={15} color={GOLD} /> Bankroll Curve
+            </div>
+            <BankrollSVG curve={data.bankrollCurve} />
+          </div>
+
+          {/* ROI by Bet Type */}
+          {Object.keys(data.roiByType ?? {}).length > 0 && (
+            <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <TrendingUp size={15} color={GOLD} /> ROI by Bet Type
+              </div>
+              {Object.entries(data.roiByType).map(([k, v]) => (
+                <ROIBar key={k} label={k.charAt(0).toUpperCase() + k.slice(1)} value={v} />
+              ))}
+            </div>
+          )}
+
+          {/* ROI by Sport */}
+          {Object.keys(data.roiBySport ?? {}).length > 0 && (
+            <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Trophy size={15} color={GOLD} /> ROI by Sport
+              </div>
+              {Object.entries(data.roiBySport).map(([k, v]) => (
+                <ROIBar key={k} label={k.toUpperCase()} value={v} />
+              ))}
+            </div>
+          )}
+
+          {/* ROI by Prop Type */}
+          {Object.keys(data.roiByStatType ?? {}).length > 0 && (
+            <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <BarChart2 size={15} color={GOLD} /> ROI by Prop Type
+              </div>
+              {Object.entries(data.roiByStatType).map(([k, v]) => (
+                <ROIBar key={k} label={k} value={v} />
+              ))}
+            </div>
+          )}
+
+          {/* Tips */}
+          {data.tips && data.tips.length > 0 && (
+            <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Lightbulb size={15} color={GOLD} /> Insights & Tips
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {data.tips.map((tip, i) => (
+                  <div key={i} style={{ border: `1.5px solid rgba(212,168,67,0.35)`, borderRadius: 10, padding: "10px 12px", background: "rgba(212,168,67,0.05)" }}>
+                    <div style={{ fontSize: 12, color: FG, lineHeight: 1.5 }}>{tip}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Grade Now */}
+          <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 6 }}>Manual Grader</div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>Trigger the bet grader to check and settle any completed bets.</div>
+            <button
+              onClick={gradeNow}
+              disabled={grading}
+              className="book-btn-gold"
+              style={{
+                width: "100%", padding: "10px", borderRadius: 9, border: "none",
+                background: grading ? "#e2e8f0" : GOLD,
+                color: grading ? MUTED : NAVY,
+                fontWeight: 700, fontSize: 13, cursor: grading ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              {grading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={14} />}
+              Grade Now
+            </button>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
