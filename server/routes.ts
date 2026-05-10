@@ -1951,8 +1951,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
              ON CONFLICT (pick_date,player_id) DO UPDATE SET
                player_name=EXCLUDED.player_name, hit_probability=EXCLUDED.hit_probability,
-               locked_at=EXCLUDED.locked_at, locked=EXCLUDED.locked, result=EXCLUDED.result,
-               hits=EXCLUDED.hits, ab=EXCLUDED.ab, graded_at=EXCLUDED.graded_at, snapshot=EXCLUDED.snapshot`,
+               locked_at=COALESCE(bts_picks.locked_at,EXCLUDED.locked_at), locked=EXCLUDED.locked,
+               result   =CASE WHEN bts_picks.result!='pending' THEN bts_picks.result ELSE EXCLUDED.result END,
+               hits     =CASE WHEN bts_picks.result!='pending' THEN bts_picks.hits ELSE EXCLUDED.hits END,
+               ab       =CASE WHEN bts_picks.result!='pending' THEN bts_picks.ab ELSE EXCLUDED.ab END,
+               graded_at=CASE WHEN bts_picks.result!='pending' THEN bts_picks.graded_at ELSE EXCLUDED.graded_at END,
+               snapshot =EXCLUDED.snapshot`,
             [date,e.playerId,e.name??(e as any).playerName??"",e.team??"",Math.round(e.hitProbability??0),
              e.lockedAt??null,e.lockedAt!=null,e.result??"pending",e.hits??null,e.ab??null,
              e.gradedAt??null,JSON.stringify(e.snapshot??{})]
@@ -8540,12 +8544,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
            ON CONFLICT (pick_date, player_id) DO UPDATE SET
              player_name    = EXCLUDED.player_name,
              hit_probability= EXCLUDED.hit_probability,
-             locked_at      = EXCLUDED.locked_at,
+             locked_at      = COALESCE(bts_picks.locked_at, EXCLUDED.locked_at),
              locked         = EXCLUDED.locked,
-             result         = EXCLUDED.result,
-             hits           = EXCLUDED.hits,
-             ab             = EXCLUDED.ab,
-             graded_at      = EXCLUDED.graded_at,
+             result         = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.result ELSE EXCLUDED.result END,
+             hits           = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.hits ELSE EXCLUDED.hits END,
+             ab             = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.ab ELSE EXCLUDED.ab END,
+             graded_at      = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.graded_at ELSE EXCLUDED.graded_at END,
              snapshot       = EXCLUDED.snapshot`,
           [
             date,
@@ -8578,12 +8582,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (!btsPicksCache[date]) {
         btsPicksCache[date] = entries as BtsPickEntry[];
       } else {
-        for (const diskEntry of entries) {
-          const memEntry = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === diskEntry.playerId);
-          if (!memEntry) {
-            btsPicksCache[date].push(diskEntry);
-          } else if (memEntry.result === "pending" && diskEntry.result !== "pending") {
-            Object.assign(memEntry, diskEntry);
+        for (const incoming of entries) {
+          const existing = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === incoming.playerId);
+          if (!existing) {
+            // New pick not yet in memory — always add it
+            btsPicksCache[date].push(incoming);
+          } else {
+            // Graded result always wins over pending; also keep best snapshot
+            if (existing.result === "pending" && incoming.result !== "pending") {
+              Object.assign(existing, incoming);
+            } else if (existing.result !== "pending" && incoming.result === "pending") {
+              // Keep existing graded — only refresh snapshot
+              existing.snapshot = incoming.snapshot ?? existing.snapshot;
+            } else if (existing.result !== "pending" && incoming.result !== "pending") {
+              // Both graded — keep the more recent graded_at
+              const existMs = existing.gradedAt ? new Date(existing.gradedAt).getTime() : 0;
+              const incomMs = incoming.gradedAt ? new Date(incoming.gradedAt).getTime() : 0;
+              if (incomMs > existMs) Object.assign(existing, incoming);
+            }
+            // Both pending — keep existing (already in memory, no change needed)
           }
         }
       }
