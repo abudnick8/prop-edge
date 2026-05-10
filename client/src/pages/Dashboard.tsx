@@ -7,7 +7,7 @@ import {
   Trophy, Target, Flame, TrendingUp, Activity, Brain,
   ChevronRight, Zap, Star, Clock, CheckCircle, XCircle,
   BarChart2, Layers, Radio, DollarSign, Eye, ArrowUp,
-  ArrowDown, Minus, Calendar, Shield, Percent,
+  ArrowDown, Minus, Calendar, Shield, Percent, BookOpen,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -159,6 +159,119 @@ function ProLock({ section }: { section: string }) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
+// ─── Open Bets Widget ────────────────────────────────────────────────────────
+function OpenBetsWidget() {
+  const token = localStorage.getItem("ciq_token") ?? "";
+
+  const { data: accountsData } = useQuery<{ accounts: any[] }>({
+    queryKey: ["book-accounts-dash"],
+    queryFn: async () => {
+      const r = await fetch("/api/book/accounts", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return { accounts: [] };
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const accounts = accountsData?.accounts ?? [];
+  const primaryAcct = accounts[0] ?? null;
+
+  const { data: slipsData, isLoading } = useQuery<{ slips: any[] }>({
+    queryKey: ["book-open-slips-dash", primaryAcct?.id],
+    queryFn: async () => {
+      if (!primaryAcct) return { slips: [] };
+      const r = await fetch(`/api/book/slips?accountId=${primaryAcct.id}&status=open`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return { slips: [] };
+      return r.json();
+    },
+    enabled: !!primaryAcct,
+    refetchInterval: 30_000,
+  });
+
+  const openSlips = slipsData?.slips ?? [];
+
+  if (!primaryAcct || (!isLoading && openSlips.length === 0)) return null;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <BookOpen size={14} style={{ color: "#D4A843" }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#131A24" }}>Open Bets</span>
+          {openSlips.length > 0 && (
+            <span style={{ background: "#D4A843", color: "#13233A", fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 10 }}>
+              {openSlips.length}
+            </span>
+          )}
+        </div>
+        <Link href="/book">
+          <span style={{ fontSize: 11, color: "#D4A843", fontWeight: 700, cursor: "pointer" }}>The Book →</span>
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div style={{ fontSize: 12, color: "#64748b" }}>Loading bets...</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {openSlips.slice(0, 4).map((slip: any) => {
+            const pendingLegs = slip.legs.filter((l: any) => !l.result || l.result === "pending").length;
+            const wonLegs = slip.legs.filter((l: any) => l.result === "win").length;
+            const lostLegs = slip.legs.filter((l: any) => l.result === "loss").length;
+            const totalLegs = slip.legs.length;
+            const progressPct = totalLegs > 0 ? Math.round(((wonLegs + lostLegs) / totalLegs) * 100) : 0;
+            const typeLabel = slip.slip_type === "round_robin" ? "RR" : slip.slip_type.charAt(0).toUpperCase() + slip.slip_type.slice(1);
+            return (
+              <div key={slip.id} style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ background: "#13233A", color: "#D4A843", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 8 }}>{typeLabel}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#131A24" }}>
+                      {slip.stake.toLocaleString()} → <span style={{ color: "#D4A843" }}>{slip.potential_payout.toLocaleString()}</span>
+                    </span>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>coins</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: wonLegs > 0 ? "#16a34a" : "#64748b", fontWeight: 700 }}>
+                    {wonLegs}W / {lostLegs}L / {pendingLegs}P
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div style={{ height: 5, background: "#e2e8f0", borderRadius: 99, overflow: "hidden", marginBottom: 5 }}>
+                  <div style={{ height: "100%", width: `${progressPct}%`, background: lostLegs > 0 ? "#A23B32" : "#16a34a", borderRadius: 99, transition: "width .5s ease" }} />
+                </div>
+                {/* Leg summaries */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {slip.legs.slice(0, 3).map((leg: any, i: number) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "75%" }}>
+                        {leg.pick_label}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, flexShrink: 0, color: leg.result === "win" ? "#16a34a" : leg.result === "loss" ? "#A23B32" : "#94a3b8" }}>
+                        {leg.result === "win" ? "✓" : leg.result === "loss" ? "✗" : "·"}
+                      </span>
+                    </div>
+                  ))}
+                  {slip.legs.length > 3 && (
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>+{slip.legs.length - 3} more leg{slip.legs.length - 3 !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {openSlips.length > 4 && (
+            <Link href="/book">
+              <div style={{ textAlign: "center", fontSize: 11, color: "#D4A843", fontWeight: 700, padding: "4px 0", cursor: "pointer" }}>
+                View all {openSlips.length} open bets →
+              </div>
+            </Link>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { isPro, isOwner, isBasic } = useAuth();
@@ -808,6 +921,9 @@ export default function Dashboard() {
             </div>
           </Card>
         )}
+
+        {/* ── Open Bets Widget (owner only) ──────────────────────────────────── */}
+        {isOwner && <OpenBetsWidget />}
 
         {/* ── Quick Nav Grid ─────────────────────────────────────────────────── */}
         <div>
