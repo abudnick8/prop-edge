@@ -235,19 +235,6 @@
       "type": "Player"
     },
     {
-      "id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
-      "badges": [],
-      "lineup_status_id": null,
-      "match_id": 142919,
-      "match_type": "Game",
-      "multiple_picks_allowed": true,
-      "player_id": "8c8dc56d-caaa-4742-9e6f-4b485be8dbd8",
-      "position_id": "2672c0fa-e94d-4c8f-bbc5-c04562df6ace",
-      "sort_by": null,
-      "team_id": "61cc4195-1a95-4f1a-acf4-44b806f937f5",
-      "type": "Player"
-    },
-    {
       "id": "19a4ec8a-d9a8-4f4d-8332-867c9b4fa87e",
       "badges": [],
       "lineup_status_id": null,
@@ -271,6 +258,19 @@
       "position_id": "7b9d18f2-94f9-48e0-a366-5f78710b2f10",
       "sort_by": null,
       "team_id": "b921da74-fa62-477c-87b5-84885a6fe0e4",
+      "type": "Player"
+    },
+    {
+      "id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
+      "badges": [],
+      "lineup_status_id": null,
+      "match_id": 142919,
+      "match_type": "Game",
+      "multiple_picks_allowed": true,
+      "player_id": "8c8dc56d-caaa-4742-9e6f-4b485be8dbd8",
+      "position_id": "2672c0fa-e94d-4c8f-bbc5-c04562df6ace",
+      "sort_by": null,
+      "team_id": "61cc4195-1a95-4f1a-acf4-44b806f937f5",
       "type": "Player"
     }
   ],
@@ -1380,24 +1380,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "7b1b2955-9cb5-4812-874f-659c0aa66887",
-          "american_price": "+749",
+          "id": "a82f27b4-eb23-49b7-b40b-563bbd6b5450",
+          "american_price": "+728",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "8.49",
+          "decimal_price": "8.28",
           "grouping_id": null,
           "over_under_line_id": "0e498ae4-fc7d-43b6-83d9-c2f0d8c1cbb6",
-          "payout_multiplier": "3.96",
+          "payout_multiplier": "3.85",
           "raw_probability": null,
           "selection_header": "Riley Greene",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T20:36:15Z"
+          "updated_at": "2026-05-10T21:15:42Z"
         }
       ],
       "over_under": {
@@ -1429,7 +1429,89 @@
       "stable_id": "85388961-b8d4-4067-885d-82898337273d|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T20:36:15Z"
+      "updated_at": "2026-05-10T21:15:42Z"
+    },
+    {
+      "id": "f878f046-1e0c-4d78-babb-5fbbf6eed895",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "ab4fa4a1-f960-4971-b230-b170e6a3ea11",
+          "american_price": "+145",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "2+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "2.45",
+          "grouping_id": null,
+          "over_under_line_id": "f878f046-1e0c-4d78-babb-5fbbf6eed895",
+          "payout_multiplier": "1.1",
+          "raw_probability": null,
+          "selection_header": "Riley Greene",
+          "selection_subheader": "Higher 1.5 Total Bases",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T20:39:45Z"
+        },
+        {
+          "id": "4a84d76a-df4f-43c0-b8d8-5ea73c9078dc",
+          "american_price": "-197",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "1-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.51",
+          "grouping_id": null,
+          "over_under_line_id": "f878f046-1e0c-4d78-babb-5fbbf6eed895",
+          "payout_multiplier": "0.75",
+          "raw_probability": null,
+          "selection_header": "Riley Greene",
+          "selection_subheader": "Lower 1.5 Total Bases",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T20:39:45Z"
+        }
+      ],
+      "over_under": {
+        "id": "d7d2196e-3070-4f4f-93a5-4687aac8efce",
+        "appearance_stat": {
+          "id": "27963164-e225-4db5-9ad6-bc81dea0a332-1f670d50-4b2e-4fde-b9c7-598418a986a1",
+          "appearance_id": "27963164-e225-4db5-9ad6-bc81dea0a332",
+          "display_stat": "Total Bases",
+          "graded_by": "high_score",
+          "pickem_stat_id": "1f670d50-4b2e-4fde-b9c7-598418a986a1",
+          "rank": 7,
+          "stat": "total_bases"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Riley Greene Total Bases O/U"
+      },
+      "over_under_id": "d7d2196e-3070-4f4f-93a5-4687aac8efce",
+      "provider_id": "swish",
+      "rank": 1101151050700,
+      "sort_by": null,
+      "stable_id": "d7d2196e-3070-4f4f-93a5-4687aac8efce|balanced",
+      "stat_value": "1.5",
+      "status": "active",
+      "updated_at": "2026-05-10T20:39:45Z"
     },
     {
       "id": "50cf6a51-05ef-40ea-b775-47be4f9718fd",
@@ -2572,24 +2654,24 @@
           "updated_at": "2026-05-10T18:57:50Z"
         },
         {
-          "id": "3ae0a449-ea45-4592-8bdd-714d644e6591",
-          "american_price": "-271",
+          "id": "ae054d39-b310-4137-a78d-a32377e50036",
+          "american_price": "-264",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.37",
+          "decimal_price": "1.38",
           "grouping_id": null,
           "over_under_line_id": "028e1ad2-2e0b-469b-8561-11f173b323cf",
-          "payout_multiplier": "0.69",
+          "payout_multiplier": "0.7",
           "raw_probability": null,
           "selection_header": "Spencer Torkelson",
           "selection_subheader": "Lower 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:52:08Z"
+          "updated_at": "2026-05-10T20:39:45Z"
         }
       ],
       "over_under": {
@@ -2621,7 +2703,7 @@
       "stable_id": "9fda1497-2272-4bb2-8724-f44036ffeeb3|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:57:50Z"
+      "updated_at": "2026-05-10T20:39:45Z"
     },
     {
       "id": "7c7cc4d1-a52f-42f5-917b-553a47421eb5",
@@ -2634,24 +2716,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "3ef958f2-edce-4591-9df1-0bc5a30946dc",
-          "american_price": "+125",
+          "id": "4988b6d6-d2d2-49f6-b924-04cd655c2ed8",
+          "american_price": "+128",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.25",
+          "decimal_price": "2.28",
           "grouping_id": null,
           "over_under_line_id": "7c7cc4d1-a52f-42f5-917b-553a47421eb5",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.05",
           "raw_probability": null,
           "selection_header": "Spencer Torkelson",
           "selection_subheader": "Higher 0.5 Singles",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T17:33:52Z"
+          "updated_at": "2026-05-10T20:57:46Z"
         }
       ],
       "over_under": {
@@ -2683,7 +2765,7 @@
       "stable_id": "d26d8610-0f12-4439-8bea-9067d3a87b52|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T17:33:52Z"
+      "updated_at": "2026-05-10T20:57:46Z"
     },
     {
       "id": "89b83259-7de1-425e-b9b9-1c651c1c5146",
@@ -2984,24 +3066,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "74a51ff1-6c81-4fa4-9806-cb297f687fe8",
-          "american_price": "+540",
+          "id": "013646a5-0485-4990-a8fe-4644849b1a89",
+          "american_price": "+554",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "6.4",
+          "decimal_price": "6.54",
           "grouping_id": null,
           "over_under_line_id": "8caa5a55-c8f7-4920-86cb-2b5adf94f145",
-          "payout_multiplier": "2.99",
+          "payout_multiplier": "3.06",
           "raw_probability": null,
           "selection_header": "Vinnie Pasquantino",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:40Z"
+          "updated_at": "2026-05-10T21:15:46Z"
         }
       ],
       "over_under": {
@@ -3033,7 +3115,7 @@
       "stable_id": "d4419fbf-cec6-4142-bc72-84447f6bb5c8|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:54:40Z"
+      "updated_at": "2026-05-10T21:15:46Z"
     },
     {
       "id": "757101f6-f596-46ce-a914-4f2ec87ea271",
@@ -6848,44 +6930,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "e6028442-c1d6-402d-92c1-2a479b6fc908",
-          "american_price": "+114",
+          "id": "62bc703c-9843-4ea0-b6ea-ad8c35a5b3b8",
+          "american_price": "+117",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.14",
+          "decimal_price": "2.17",
           "grouping_id": null,
           "over_under_line_id": "ed3395cf-2fc6-48a3-8cf7-da3f63c1d16f",
-          "payout_multiplier": "1.05",
+          "payout_multiplier": "1.07",
           "raw_probability": null,
           "selection_header": "Isaac Collins",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T19:47:59Z"
+          "updated_at": "2026-05-10T20:39:45Z"
         },
         {
-          "id": "c9bc4026-da4e-437c-a278-b5ffa0aefeea",
-          "american_price": "-170",
+          "id": "186ded38-98ad-4454-baec-7fc59d6bb83b",
+          "american_price": "-176",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.59",
+          "decimal_price": "1.57",
           "grouping_id": null,
           "over_under_line_id": "ed3395cf-2fc6-48a3-8cf7-da3f63c1d16f",
-          "payout_multiplier": "0.81",
+          "payout_multiplier": "0.8",
           "raw_probability": null,
           "selection_header": "Isaac Collins",
           "selection_subheader": "Lower 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T19:47:59Z"
+          "updated_at": "2026-05-10T21:15:46Z"
         }
       ],
       "over_under": {
@@ -6917,7 +6999,7 @@
       "stable_id": "070d5d54-e47b-4c30-a958-ce075d738e76|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T19:47:59Z"
+      "updated_at": "2026-05-10T21:15:46Z"
     },
     {
       "id": "2493cda9-2af0-46c8-b4e6-01f08053e62a",
@@ -7156,24 +7238,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "18982442-2828-4c97-a230-3fa56bde9933",
-          "american_price": "+582",
+          "id": "78339466-5e2f-45a2-a2fc-236d8faf7302",
+          "american_price": "+567",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "6.82",
+          "decimal_price": "6.67",
           "grouping_id": null,
           "over_under_line_id": "30f555b4-29e1-4b5f-862a-b591fc9ac5a7",
-          "payout_multiplier": "3.21",
+          "payout_multiplier": "3.13",
           "raw_probability": null,
           "selection_header": "Dillon Dingler",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:52:08Z"
+          "updated_at": "2026-05-10T21:15:42Z"
         }
       ],
       "over_under": {
@@ -7205,7 +7287,7 @@
       "stable_id": "325fd584-9a53-4234-8054-c2ec3b96096d|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:52:08Z"
+      "updated_at": "2026-05-10T21:15:42Z"
     },
     {
       "id": "13a29bed-6885-4188-9825-aebe1750c1f4",
@@ -7906,68 +7988,6 @@
       "updated_at": "2026-05-10T15:42:50Z"
     },
     {
-      "id": "26546739-c30a-47e0-933e-957ec72786a8",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "9e8b43a6-0a02-484e-be46-1cbe92c66f1f",
-          "american_price": "+2070",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "21.7",
-          "grouping_id": null,
-          "over_under_line_id": "26546739-c30a-47e0-933e-957ec72786a8",
-          "payout_multiplier": "11.5",
-          "raw_probability": null,
-          "selection_header": "Kyle Isbel",
-          "selection_subheader": "Higher 0.5 Home Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:57:49Z"
-        }
-      ],
-      "over_under": {
-        "id": "8ca11449-a157-4cfe-a6f0-6f47db63a646",
-        "appearance_stat": {
-          "id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "appearance_id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a",
-          "display_stat": "Home Runs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "rank": 6,
-          "stat": "home_runs"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Kyle Isbel Home Runs O/U"
-      },
-      "over_under_id": "8ca11449-a157-4cfe-a6f0-6f47db63a646",
-      "provider_id": "swish",
-      "rank": 1101151410600,
-      "sort_by": null,
-      "stable_id": "8ca11449-a157-4cfe-a6f0-6f47db63a646|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-05-10T18:57:49Z"
-    },
-    {
       "id": "66c38a72-b86b-40a7-9e94-a3874d9ec152",
       "contract_terms_url": null,
       "contract_url": null,
@@ -8028,6 +8048,68 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-05-10T19:09:35Z"
+    },
+    {
+      "id": "26546739-c30a-47e0-933e-957ec72786a8",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "9e8b43a6-0a02-484e-be46-1cbe92c66f1f",
+          "american_price": "+2070",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "21.7",
+          "grouping_id": null,
+          "over_under_line_id": "26546739-c30a-47e0-933e-957ec72786a8",
+          "payout_multiplier": "11.5",
+          "raw_probability": null,
+          "selection_header": "Kyle Isbel",
+          "selection_subheader": "Higher 0.5 Home Runs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:57:49Z"
+        }
+      ],
+      "over_under": {
+        "id": "8ca11449-a157-4cfe-a6f0-6f47db63a646",
+        "appearance_stat": {
+          "id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "appearance_id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a",
+          "display_stat": "Home Runs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "rank": 6,
+          "stat": "home_runs"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Kyle Isbel Home Runs O/U"
+      },
+      "over_under_id": "8ca11449-a157-4cfe-a6f0-6f47db63a646",
+      "provider_id": "swish",
+      "rank": 1101151410600,
+      "sort_by": null,
+      "stable_id": "8ca11449-a157-4cfe-a6f0-6f47db63a646|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-05-10T18:57:49Z"
     },
     {
       "id": "3bb332e4-16eb-4a66-8e2f-321c51e7ccaa",
@@ -8112,88 +8194,6 @@
       "updated_at": "2026-05-10T20:39:44Z"
     },
     {
-      "id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "dacf3e6e-fc30-4834-b4ab-82dbb3e5848d",
-          "american_price": "-112",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "7+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "1.9",
-          "grouping_id": null,
-          "over_under_line_id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
-          "payout_multiplier": "1.0",
-          "raw_probability": null,
-          "selection_header": "Wenceel Pérez",
-          "selection_subheader": "Higher 6.5 Fantasy Points",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T03:26:02Z"
-        },
-        {
-          "id": "c832679a-e675-478e-93a5-7a06c6353b73",
-          "american_price": "-112",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "6-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.9",
-          "grouping_id": null,
-          "over_under_line_id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
-          "payout_multiplier": "1.0",
-          "raw_probability": null,
-          "selection_header": "Wenceel Pérez",
-          "selection_subheader": "Lower 6.5 Fantasy Points",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T03:26:02Z"
-        }
-      ],
-      "over_under": {
-        "id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe",
-        "appearance_stat": {
-          "id": "60b89a21-964c-460e-98c3-00f1082e29fb-5efeda12-bacd-48b5-9d52-f64e00f7c9fd",
-          "appearance_id": "60b89a21-964c-460e-98c3-00f1082e29fb",
-          "display_stat": "Fantasy Points",
-          "graded_by": "high_score",
-          "pickem_stat_id": "5efeda12-bacd-48b5-9d52-f64e00f7c9fd",
-          "rank": 8,
-          "stat": "fantasy_points"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": "bf747c72-4183-4d04-90e2-485b14cb077a",
-        "team_divider": null,
-        "title": "Wenceel Perez Fantasy Points O/U"
-      },
-      "over_under_id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe",
-      "provider_id": null,
-      "rank": 1101151410800,
-      "sort_by": null,
-      "stable_id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe|balanced",
-      "stat_value": "6.5",
-      "status": "active",
-      "updated_at": "2026-05-10T11:40:37Z"
-    },
-    {
       "id": "53446e95-ed8b-484f-82a1-ae3dfcbdc866",
       "contract_terms_url": null,
       "contract_url": null,
@@ -8272,6 +8272,88 @@
       "sort_by": null,
       "stable_id": "03e95726-3708-4d7c-b5e4-1f8cd21ecf8d|balanced",
       "stat_value": "5.5",
+      "status": "active",
+      "updated_at": "2026-05-10T11:40:37Z"
+    },
+    {
+      "id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "dacf3e6e-fc30-4834-b4ab-82dbb3e5848d",
+          "american_price": "-112",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "7+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "1.9",
+          "grouping_id": null,
+          "over_under_line_id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
+          "payout_multiplier": "1.0",
+          "raw_probability": null,
+          "selection_header": "Wenceel Pérez",
+          "selection_subheader": "Higher 6.5 Fantasy Points",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T03:26:02Z"
+        },
+        {
+          "id": "c832679a-e675-478e-93a5-7a06c6353b73",
+          "american_price": "-112",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "6-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.9",
+          "grouping_id": null,
+          "over_under_line_id": "5b7e8b29-6caf-407f-83a0-cf5738c791a1",
+          "payout_multiplier": "1.0",
+          "raw_probability": null,
+          "selection_header": "Wenceel Pérez",
+          "selection_subheader": "Lower 6.5 Fantasy Points",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T03:26:02Z"
+        }
+      ],
+      "over_under": {
+        "id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe",
+        "appearance_stat": {
+          "id": "60b89a21-964c-460e-98c3-00f1082e29fb-5efeda12-bacd-48b5-9d52-f64e00f7c9fd",
+          "appearance_id": "60b89a21-964c-460e-98c3-00f1082e29fb",
+          "display_stat": "Fantasy Points",
+          "graded_by": "high_score",
+          "pickem_stat_id": "5efeda12-bacd-48b5-9d52-f64e00f7c9fd",
+          "rank": 8,
+          "stat": "fantasy_points"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": "bf747c72-4183-4d04-90e2-485b14cb077a",
+        "team_divider": null,
+        "title": "Wenceel Perez Fantasy Points O/U"
+      },
+      "over_under_id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe",
+      "provider_id": null,
+      "rank": 1101151410800,
+      "sort_by": null,
+      "stable_id": "7ac76c62-dea2-4c10-83cd-f4aa50c1f6fe|balanced",
+      "stat_value": "6.5",
       "status": "active",
       "updated_at": "2026-05-10T11:40:37Z"
     },
@@ -8728,88 +8810,6 @@
       "updated_at": "2026-05-10T18:54:39Z"
     },
     {
-      "id": "4676b37b-f0a4-424e-b927-fb9047846b41",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "888c3afa-5cd5-40fe-960a-ae2dc4a5c87d",
-          "american_price": "+177",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.77",
-          "grouping_id": null,
-          "over_under_line_id": "4676b37b-f0a4-424e-b927-fb9047846b41",
-          "payout_multiplier": "1.29",
-          "raw_probability": null,
-          "selection_header": "Wenceel Pérez",
-          "selection_subheader": "Higher 0.5 RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:39Z"
-        },
-        {
-          "id": "31e801a9-fc9e-4f53-b47e-e9d4ad8bc653",
-          "american_price": "-271",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "0-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.37",
-          "grouping_id": null,
-          "over_under_line_id": "4676b37b-f0a4-424e-b927-fb9047846b41",
-          "payout_multiplier": "0.69",
-          "raw_probability": null,
-          "selection_header": "Wenceel Pérez",
-          "selection_subheader": "Lower 0.5 RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:39Z"
-        }
-      ],
-      "over_under": {
-        "id": "c393425e-4063-484e-9848-c787b097dae8",
-        "appearance_stat": {
-          "id": "60b89a21-964c-460e-98c3-00f1082e29fb-a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
-          "appearance_id": "60b89a21-964c-460e-98c3-00f1082e29fb",
-          "display_stat": "RBIs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
-          "rank": 16,
-          "stat": "rbis"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Wenceel Perez RBIs O/U"
-      },
-      "over_under_id": "c393425e-4063-484e-9848-c787b097dae8",
-      "provider_id": "swish",
-      "rank": 1101151411600,
-      "sort_by": null,
-      "stable_id": "c393425e-4063-484e-9848-c787b097dae8|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-05-10T18:54:39Z"
-    },
-    {
       "id": "34a854a1-f145-4655-9d09-28b8b6322d66",
       "contract_terms_url": null,
       "contract_url": null,
@@ -8892,7 +8892,7 @@
       "updated_at": "2026-05-10T19:47:47Z"
     },
     {
-      "id": "80c9380c-c428-4ae2-ac28-e4a47d679b64",
+      "id": "4676b37b-f0a4-424e-b927-fb9047846b41",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -8902,36 +8902,56 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "7dfdd2f7-0dc4-47fa-a87b-09f08bc77366",
-          "american_price": "+658",
+          "id": "888c3afa-5cd5-40fe-960a-ae2dc4a5c87d",
+          "american_price": "+177",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "7.58",
+          "decimal_price": "2.77",
           "grouping_id": null,
-          "over_under_line_id": "80c9380c-c428-4ae2-ac28-e4a47d679b64",
-          "payout_multiplier": "3.72",
+          "over_under_line_id": "4676b37b-f0a4-424e-b927-fb9047846b41",
+          "payout_multiplier": "1.29",
           "raw_probability": null,
-          "selection_header": "Kyle Isbel",
-          "selection_subheader": "Higher 0.5 Stolen Bases",
+          "selection_header": "Wenceel Pérez",
+          "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:52:07Z"
+          "updated_at": "2026-05-10T18:54:39Z"
+        },
+        {
+          "id": "31e801a9-fc9e-4f53-b47e-e9d4ad8bc653",
+          "american_price": "-271",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "0-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.37",
+          "grouping_id": null,
+          "over_under_line_id": "4676b37b-f0a4-424e-b927-fb9047846b41",
+          "payout_multiplier": "0.69",
+          "raw_probability": null,
+          "selection_header": "Wenceel Pérez",
+          "selection_subheader": "Lower 0.5 RBIs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:54:39Z"
         }
       ],
       "over_under": {
-        "id": "8805f31d-ee77-45a4-83fa-c526300b1296",
+        "id": "c393425e-4063-484e-9848-c787b097dae8",
         "appearance_stat": {
-          "id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a-b6cbee93-b117-42be-b337-acb8f7b10385",
-          "appearance_id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a",
-          "display_stat": "Stolen Bases",
+          "id": "60b89a21-964c-460e-98c3-00f1082e29fb-a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
+          "appearance_id": "60b89a21-964c-460e-98c3-00f1082e29fb",
+          "display_stat": "RBIs",
           "graded_by": "high_score",
-          "pickem_stat_id": "b6cbee93-b117-42be-b337-acb8f7b10385",
-          "rank": 20,
-          "stat": "stolen_bases"
+          "pickem_stat_id": "a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
+          "rank": 16,
+          "stat": "rbis"
         },
         "boost": null,
         "category": "player_prop",
@@ -8942,16 +8962,16 @@
         "prediction_market": false,
         "scoring_type_id": null,
         "team_divider": null,
-        "title": "Kyle Isbel Stolen Bases O/U"
+        "title": "Wenceel Perez RBIs O/U"
       },
-      "over_under_id": "8805f31d-ee77-45a4-83fa-c526300b1296",
+      "over_under_id": "c393425e-4063-484e-9848-c787b097dae8",
       "provider_id": "swish",
-      "rank": 1101151412000,
+      "rank": 1101151411600,
       "sort_by": null,
-      "stable_id": "8805f31d-ee77-45a4-83fa-c526300b1296|balanced",
+      "stable_id": "c393425e-4063-484e-9848-c787b097dae8|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:52:07Z"
+      "updated_at": "2026-05-10T18:54:39Z"
     },
     {
       "id": "8de4bee3-e53f-47d8-85f7-7a8503f215bc",
@@ -9014,6 +9034,68 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-05-10T20:39:45Z"
+    },
+    {
+      "id": "80c9380c-c428-4ae2-ac28-e4a47d679b64",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "7dfdd2f7-0dc4-47fa-a87b-09f08bc77366",
+          "american_price": "+658",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "7.58",
+          "grouping_id": null,
+          "over_under_line_id": "80c9380c-c428-4ae2-ac28-e4a47d679b64",
+          "payout_multiplier": "3.72",
+          "raw_probability": null,
+          "selection_header": "Kyle Isbel",
+          "selection_subheader": "Higher 0.5 Stolen Bases",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:52:07Z"
+        }
+      ],
+      "over_under": {
+        "id": "8805f31d-ee77-45a4-83fa-c526300b1296",
+        "appearance_stat": {
+          "id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a-b6cbee93-b117-42be-b337-acb8f7b10385",
+          "appearance_id": "d0e93abc-cca8-4b0b-b8f7-083d7a86023a",
+          "display_stat": "Stolen Bases",
+          "graded_by": "high_score",
+          "pickem_stat_id": "b6cbee93-b117-42be-b337-acb8f7b10385",
+          "rank": 20,
+          "stat": "stolen_bases"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Kyle Isbel Stolen Bases O/U"
+      },
+      "over_under_id": "8805f31d-ee77-45a4-83fa-c526300b1296",
+      "provider_id": "swish",
+      "rank": 1101151412000,
+      "sort_by": null,
+      "stable_id": "8805f31d-ee77-45a4-83fa-c526300b1296|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-05-10T18:52:07Z"
     },
     {
       "id": "9b3b354f-4323-4673-a6a5-0e4d079bfef8",
@@ -9108,24 +9190,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "f20813bc-c145-40ce-9706-d7bdbb6c548f",
-          "american_price": "+1010",
+          "id": "5793efef-6dfc-4300-b9ae-be86852c8a71",
+          "american_price": "+980",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "11.1",
+          "decimal_price": "10.8",
           "grouping_id": null,
           "over_under_line_id": "53d30683-52c3-43f8-ae1e-1f6425cacc5f",
-          "payout_multiplier": "5.39",
+          "payout_multiplier": "5.18",
           "raw_probability": null,
           "selection_header": "Elias Díaz",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:57:25Z"
+          "updated_at": "2026-05-10T21:21:43Z"
         }
       ],
       "over_under": {
@@ -9157,7 +9239,7 @@
       "stable_id": "2138f8d0-9299-41ed-a292-662ef4ff9c80|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:57:25Z"
+      "updated_at": "2026-05-10T21:21:43Z"
     },
     {
       "id": "3c0829b0-6fc2-41fa-ad11-a8d329186405",
@@ -9252,24 +9334,24 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "a187c5b9-ff8c-48a9-8aff-1c3ac3a6ef15",
-          "american_price": "+184",
+          "id": "01373af5-2cbb-4d35-b2ef-04f7356e5e06",
+          "american_price": "+178",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.84",
+          "decimal_price": "2.78",
           "grouping_id": null,
           "over_under_line_id": "eeba1203-a6a6-4c6c-8be1-42f849e3cca8",
-          "payout_multiplier": "1.33",
+          "payout_multiplier": "1.3",
           "raw_probability": null,
           "selection_header": "Elias Díaz",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:50Z"
+          "updated_at": "2026-05-10T20:57:45Z"
         },
         {
           "id": "16fb6b0e-aa4f-44da-8d10-cb9ed818881f",
@@ -9321,7 +9403,7 @@
       "stable_id": "593888f4-a343-4035-876e-d72aafd9bdb3|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:54:50Z"
+      "updated_at": "2026-05-10T20:57:45Z"
     },
     {
       "id": "38fb3d55-7cef-43d1-a830-ede77254dcf6",
@@ -9632,7 +9714,7 @@
       "updated_at": "2026-05-10T11:40:34Z"
     },
     {
-      "id": "86e620fe-dba8-4488-b809-3ad88f04e655",
+      "id": "87efbd83-0ec2-4807-9f95-cf785058742d",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -9642,44 +9724,44 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "a4595b25-350a-4977-aca8-c3489579b425",
+          "id": "9d5d45ff-007e-4c78-aa79-3dae980ee70c",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "8+",
+          "choice_display_name_shorter": "7+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "86e620fe-dba8-4488-b809-3ad88f04e655",
+          "over_under_line_id": "87efbd83-0ec2-4807-9f95-cf785058742d",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Matt Vierling",
-          "selection_subheader": "Higher 7.5 Fantasy Points",
+          "selection_subheader": "Higher 6.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T03:25:51Z"
+          "updated_at": "2026-05-10T21:09:19Z"
         },
         {
-          "id": "bb964fa2-d061-4f71-bc01-b09f6c46b4bc",
+          "id": "bbd821e0-f8f6-415a-99ea-74a013e55ed7",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "7-",
+          "choice_display_name_shorter": "6-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "86e620fe-dba8-4488-b809-3ad88f04e655",
+          "over_under_line_id": "87efbd83-0ec2-4807-9f95-cf785058742d",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "selection_header": "Matt Vierling",
-          "selection_subheader": "Lower 7.5 Fantasy Points",
+          "selection_subheader": "Lower 6.5 Fantasy Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T03:25:51Z"
+          "updated_at": "2026-05-10T21:09:19Z"
         }
       ],
       "over_under": {
@@ -9709,9 +9791,9 @@
       "rank": 1101151470800,
       "sort_by": null,
       "stable_id": "04512194-1050-4abb-ab62-be1808c1a987|balanced",
-      "stat_value": "7.5",
+      "stat_value": "6.5",
       "status": "active",
-      "updated_at": "2026-05-10T11:40:37Z"
+      "updated_at": "2026-05-10T21:09:19Z"
     },
     {
       "id": "add6bece-502b-42ed-9571-2ca7a8c8e526",
@@ -9838,7 +9920,7 @@
       "updated_at": "2026-05-10T11:40:37Z"
     },
     {
-      "id": "fa62ccf2-5322-4782-bed7-4ddfe49aa799",
+      "id": "5210a8ef-0e79-4ed4-90a0-bbcc866e6c48",
       "contract_terms_url": null,
       "contract_url": null,
       "expires_at": null,
@@ -9848,7 +9930,7 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "59a3bf27-2bf3-4539-89be-ddc1abefeaf5",
+          "id": "6de53e85-f757-4a7e-955b-1661f921b512",
           "american_price": "-286",
           "appearance_id": null,
           "choice": "higher",
@@ -9858,17 +9940,17 @@
           "choice_id": "over__",
           "decimal_price": "1.35",
           "grouping_id": null,
-          "over_under_line_id": "fa62ccf2-5322-4782-bed7-4ddfe49aa799",
+          "over_under_line_id": "5210a8ef-0e79-4ed4-90a0-bbcc866e6c48",
           "payout_multiplier": "0.68",
           "raw_probability": null,
           "selection_header": "Matt Vierling",
           "selection_subheader": "Higher 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T20:36:15Z"
+          "updated_at": "2026-05-10T21:15:41Z"
         },
         {
-          "id": "11eb2109-d080-4c0c-9a99-1e8ec4415731",
+          "id": "f1be63d4-c67f-4391-8826-687a61be3c12",
           "american_price": "+200",
           "appearance_id": null,
           "choice": "lower",
@@ -9878,14 +9960,14 @@
           "choice_id": "under__",
           "decimal_price": "3",
           "grouping_id": null,
-          "over_under_line_id": "fa62ccf2-5322-4782-bed7-4ddfe49aa799",
+          "over_under_line_id": "5210a8ef-0e79-4ed4-90a0-bbcc866e6c48",
           "payout_multiplier": "1.25",
           "raw_probability": null,
           "selection_header": "Matt Vierling",
           "selection_subheader": "Lower 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T20:36:15Z"
+          "updated_at": "2026-05-10T21:15:42Z"
         }
       ],
       "over_under": {
@@ -9917,7 +9999,7 @@
       "stable_id": "73498669-a6b2-400f-88de-75e33c58ca36|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T20:36:15Z"
+      "updated_at": "2026-05-10T21:15:41Z"
     },
     {
       "id": "df55cd54-fa4a-4b7c-ae63-0f6757953187",
@@ -10730,24 +10812,24 @@
           "updated_at": "2026-05-10T18:55:02Z"
         },
         {
-          "id": "91b8cde5-3017-4162-b0a6-47f07a90ac9d",
-          "american_price": "+131",
+          "id": "fcef97dd-e190-42fe-a7f2-0bfc0a47ca2b",
+          "american_price": "+127",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.31",
+          "decimal_price": "2.27",
           "grouping_id": null,
           "over_under_line_id": "61588570-648d-457f-af7e-540159a951a6",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.09",
           "raw_probability": null,
           "selection_header": "Nick Loftin",
           "selection_subheader": "Lower 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:55:02Z"
+          "updated_at": "2026-05-10T21:15:46Z"
         }
       ],
       "over_under": {
@@ -10779,7 +10861,7 @@
       "stable_id": "476b7774-e4d0-4751-97ff-463aaee0f52c|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-05-10T18:55:02Z"
+      "updated_at": "2026-05-10T21:15:46Z"
     },
     {
       "id": "3ba5ccdb-e89c-4278-b5fe-7f92f7d0dfba",
@@ -11562,88 +11644,6 @@
       "updated_at": "2026-05-10T18:58:22Z"
     },
     {
-      "id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "bc524ac7-85cb-404a-ae30-9a747a50748c",
-          "american_price": "+104",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "2+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.04",
-          "grouping_id": null,
-          "over_under_line_id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
-          "payout_multiplier": "1.06",
-          "raw_probability": null,
-          "selection_header": "Carter Jensen",
-          "selection_subheader": "Higher 1.5 Hits + Runs + RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:56Z"
-        },
-        {
-          "id": "d0b1b458-a8ae-4ac2-a927-f0fd2660bcf5",
-          "american_price": "-141",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "1-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.71",
-          "grouping_id": null,
-          "over_under_line_id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
-          "payout_multiplier": "0.86",
-          "raw_probability": null,
-          "selection_header": "Carter Jensen",
-          "selection_subheader": "Lower 1.5 Hits + Runs + RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:56Z"
-        }
-      ],
-      "over_under": {
-        "id": "811e711b-26ca-4b30-9cec-34309b8e714e",
-        "appearance_stat": {
-          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-4969134d-144f-4b30-b0bc-3e1932c84385",
-          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
-          "display_stat": "Hits + Runs + RBIs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "4969134d-144f-4b30-b0bc-3e1932c84385",
-          "rank": 5,
-          "stat": "hits_runs_rbis"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Carter Jensen Hits + Runs + RBIs O/U"
-      },
-      "over_under_id": "811e711b-26ca-4b30-9cec-34309b8e714e",
-      "provider_id": "swish",
-      "rank": 1101151990500,
-      "sort_by": null,
-      "stable_id": "811e711b-26ca-4b30-9cec-34309b8e714e|balanced",
-      "stat_value": "1.5",
-      "status": "active",
-      "updated_at": "2026-05-10T18:54:56Z"
-    },
-    {
       "id": "19025a1f-d180-4a27-b604-ec07f53008df",
       "contract_terms_url": null,
       "contract_url": null,
@@ -11808,6 +11808,150 @@
       "updated_at": "2026-05-10T18:52:08Z"
     },
     {
+      "id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "bc524ac7-85cb-404a-ae30-9a747a50748c",
+          "american_price": "+104",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "2+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "2.04",
+          "grouping_id": null,
+          "over_under_line_id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
+          "payout_multiplier": "1.06",
+          "raw_probability": null,
+          "selection_header": "Carter Jensen",
+          "selection_subheader": "Higher 1.5 Hits + Runs + RBIs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:54:56Z"
+        },
+        {
+          "id": "d0b1b458-a8ae-4ac2-a927-f0fd2660bcf5",
+          "american_price": "-141",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "1-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.71",
+          "grouping_id": null,
+          "over_under_line_id": "a66c2b63-7ec9-49a3-9b63-c315bb78307f",
+          "payout_multiplier": "0.86",
+          "raw_probability": null,
+          "selection_header": "Carter Jensen",
+          "selection_subheader": "Lower 1.5 Hits + Runs + RBIs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:54:56Z"
+        }
+      ],
+      "over_under": {
+        "id": "811e711b-26ca-4b30-9cec-34309b8e714e",
+        "appearance_stat": {
+          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-4969134d-144f-4b30-b0bc-3e1932c84385",
+          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
+          "display_stat": "Hits + Runs + RBIs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "4969134d-144f-4b30-b0bc-3e1932c84385",
+          "rank": 5,
+          "stat": "hits_runs_rbis"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Carter Jensen Hits + Runs + RBIs O/U"
+      },
+      "over_under_id": "811e711b-26ca-4b30-9cec-34309b8e714e",
+      "provider_id": "swish",
+      "rank": 1101151990500,
+      "sort_by": null,
+      "stable_id": "811e711b-26ca-4b30-9cec-34309b8e714e|balanced",
+      "stat_value": "1.5",
+      "status": "active",
+      "updated_at": "2026-05-10T18:54:56Z"
+    },
+    {
+      "id": "b0afdb18-b576-441f-99d1-73b9b80df417",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "e7657aa5-103a-406e-a116-836a9849f9c3",
+          "american_price": "+736",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "8.36",
+          "grouping_id": null,
+          "over_under_line_id": "b0afdb18-b576-441f-99d1-73b9b80df417",
+          "payout_multiplier": "3.9",
+          "raw_probability": null,
+          "selection_header": "Carter Jensen",
+          "selection_subheader": "Higher 0.5 Home Runs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T20:39:45Z"
+        }
+      ],
+      "over_under": {
+        "id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8",
+        "appearance_stat": {
+          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
+          "display_stat": "Home Runs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "rank": 6,
+          "stat": "home_runs"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Carter Jensen Home Runs O/U"
+      },
+      "over_under_id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8",
+      "provider_id": "swish",
+      "rank": 1101151990600,
+      "sort_by": null,
+      "stable_id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-05-10T20:39:45Z"
+    },
+    {
       "id": "565b1276-36a0-4747-8276-8a612cb34955",
       "contract_terms_url": null,
       "contract_url": null,
@@ -11930,68 +12074,6 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-05-10T18:57:25Z"
-    },
-    {
-      "id": "b0afdb18-b576-441f-99d1-73b9b80df417",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "2659eda0-2438-4a1d-a185-bc76a24b73c3",
-          "american_price": "+761",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "8.61",
-          "grouping_id": null,
-          "over_under_line_id": "b0afdb18-b576-441f-99d1-73b9b80df417",
-          "payout_multiplier": "4.03",
-          "raw_probability": null,
-          "selection_header": "Carter Jensen",
-          "selection_subheader": "Higher 0.5 Home Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:56Z"
-        }
-      ],
-      "over_under": {
-        "id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8",
-        "appearance_stat": {
-          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
-          "display_stat": "Home Runs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "rank": 6,
-          "stat": "home_runs"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Carter Jensen Home Runs O/U"
-      },
-      "over_under_id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8",
-      "provider_id": "swish",
-      "rank": 1101151990600,
-      "sort_by": null,
-      "stable_id": "fce3ae83-452e-4a8c-9b6f-a767adc5e8a8|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-05-10T18:54:56Z"
     },
     {
       "id": "b4408aca-76c8-43c8-8ffc-1351e063529e",
@@ -12856,88 +12938,6 @@
       "updated_at": "2026-05-10T16:15:24Z"
     },
     {
-      "id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "7efc1ddf-2fc4-4f56-b236-9cffed4d378e",
-          "american_price": "+193",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.93",
-          "grouping_id": null,
-          "over_under_line_id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
-          "payout_multiplier": "1.25",
-          "raw_probability": null,
-          "selection_header": "Hao-Yu Lee",
-          "selection_subheader": "Higher 0.5 Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T17:10:19Z"
-        },
-        {
-          "id": "1082000b-c838-42f7-bce9-468ef5a09920",
-          "american_price": "-313",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "0-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.32",
-          "grouping_id": null,
-          "over_under_line_id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
-          "payout_multiplier": "0.68",
-          "raw_probability": null,
-          "selection_header": "Hao-Yu Lee",
-          "selection_subheader": "Lower 0.5 Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T15:42:51Z"
-        }
-      ],
-      "over_under": {
-        "id": "f2f66044-45db-4b79-8ce4-bf66713b4d67",
-        "appearance_stat": {
-          "id": "5c41b00e-808e-4e83-ac4b-659c9eb8f66f-349c9245-79da-45e9-b1c0-9d8977c23ce4",
-          "appearance_id": "5c41b00e-808e-4e83-ac4b-659c9eb8f66f",
-          "display_stat": "Runs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "349c9245-79da-45e9-b1c0-9d8977c23ce4",
-          "rank": 15,
-          "stat": "runs"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Hao-Yu Lee Runs O/U"
-      },
-      "over_under_id": "f2f66044-45db-4b79-8ce4-bf66713b4d67",
-      "provider_id": "swish",
-      "rank": 1101151991500,
-      "sort_by": null,
-      "stable_id": "f2f66044-45db-4b79-8ce4-bf66713b4d67|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-05-10T17:10:19Z"
-    },
-    {
       "id": "bfa171ab-ad8b-4b69-93b3-64cda38b92cc",
       "contract_terms_url": null,
       "contract_url": null,
@@ -13102,6 +13102,170 @@
       "updated_at": "2026-05-10T11:40:35Z"
     },
     {
+      "id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "7efc1ddf-2fc4-4f56-b236-9cffed4d378e",
+          "american_price": "+193",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "2.93",
+          "grouping_id": null,
+          "over_under_line_id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
+          "payout_multiplier": "1.25",
+          "raw_probability": null,
+          "selection_header": "Hao-Yu Lee",
+          "selection_subheader": "Higher 0.5 Runs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T17:10:19Z"
+        },
+        {
+          "id": "1082000b-c838-42f7-bce9-468ef5a09920",
+          "american_price": "-313",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "0-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.32",
+          "grouping_id": null,
+          "over_under_line_id": "7a9361c7-2e8e-465f-9284-3725de18a7d1",
+          "payout_multiplier": "0.68",
+          "raw_probability": null,
+          "selection_header": "Hao-Yu Lee",
+          "selection_subheader": "Lower 0.5 Runs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T15:42:51Z"
+        }
+      ],
+      "over_under": {
+        "id": "f2f66044-45db-4b79-8ce4-bf66713b4d67",
+        "appearance_stat": {
+          "id": "5c41b00e-808e-4e83-ac4b-659c9eb8f66f-349c9245-79da-45e9-b1c0-9d8977c23ce4",
+          "appearance_id": "5c41b00e-808e-4e83-ac4b-659c9eb8f66f",
+          "display_stat": "Runs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "349c9245-79da-45e9-b1c0-9d8977c23ce4",
+          "rank": 15,
+          "stat": "runs"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Hao-Yu Lee Runs O/U"
+      },
+      "over_under_id": "f2f66044-45db-4b79-8ce4-bf66713b4d67",
+      "provider_id": "swish",
+      "rank": 1101151991500,
+      "sort_by": null,
+      "stable_id": "f2f66044-45db-4b79-8ce4-bf66713b4d67|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-05-10T17:10:19Z"
+    },
+    {
+      "id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "11b9b84f-2148-4285-a6f7-f5ad1824ea5c",
+          "american_price": "+179",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "2.79",
+          "grouping_id": null,
+          "over_under_line_id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
+          "payout_multiplier": "1.31",
+          "raw_probability": null,
+          "selection_header": "Carter Jensen",
+          "selection_subheader": "Higher 0.5 RBIs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:54:57Z"
+        },
+        {
+          "id": "0b4eadb9-9659-4420-86b6-84dc05b1665b",
+          "american_price": "-278",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "0-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.36",
+          "grouping_id": null,
+          "over_under_line_id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
+          "payout_multiplier": "0.69",
+          "raw_probability": null,
+          "selection_header": "Carter Jensen",
+          "selection_subheader": "Lower 0.5 RBIs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-05-10T18:54:57Z"
+        }
+      ],
+      "over_under": {
+        "id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b",
+        "appearance_stat": {
+          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
+          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
+          "display_stat": "RBIs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
+          "rank": 16,
+          "stat": "rbis"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Carter Jensen RBIs O/U"
+      },
+      "over_under_id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b",
+      "provider_id": "swish",
+      "rank": 1101151991600,
+      "sort_by": null,
+      "stable_id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-05-10T18:54:57Z"
+    },
+    {
       "id": "88f7292c-5cbf-435e-828a-9b40a68dd977",
       "contract_terms_url": null,
       "contract_url": null,
@@ -13264,88 +13428,6 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-05-10T18:52:08Z"
-    },
-    {
-      "id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "11b9b84f-2148-4285-a6f7-f5ad1824ea5c",
-          "american_price": "+179",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.79",
-          "grouping_id": null,
-          "over_under_line_id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
-          "payout_multiplier": "1.31",
-          "raw_probability": null,
-          "selection_header": "Carter Jensen",
-          "selection_subheader": "Higher 0.5 RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:57Z"
-        },
-        {
-          "id": "0b4eadb9-9659-4420-86b6-84dc05b1665b",
-          "american_price": "-278",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "0-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.36",
-          "grouping_id": null,
-          "over_under_line_id": "4f5718e2-4ba2-4b4e-972f-4a02ca930981",
-          "payout_multiplier": "0.69",
-          "raw_probability": null,
-          "selection_header": "Carter Jensen",
-          "selection_subheader": "Lower 0.5 RBIs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-05-10T18:54:57Z"
-        }
-      ],
-      "over_under": {
-        "id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b",
-        "appearance_stat": {
-          "id": "6a25a92b-61a8-4a78-a95e-db76333211eb-a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
-          "appearance_id": "6a25a92b-61a8-4a78-a95e-db76333211eb",
-          "display_stat": "RBIs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "a8bb8a04-0a17-4bd0-aaad-86bbd9df7abc",
-          "rank": 16,
-          "stat": "rbis"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Carter Jensen RBIs O/U"
-      },
-      "over_under_id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b",
-      "provider_id": "swish",
-      "rank": 1101151991600,
-      "sort_by": null,
-      "stable_id": "f209861f-b4e3-4f41-8ff2-337dfcdf897b|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-05-10T18:54:57Z"
     },
     {
       "id": "c7bfea84-2e13-480f-8123-2e4496c42fae",
@@ -14254,22 +14336,6 @@
       "team_id": "b921da74-fa62-477c-87b5-84885a6fe0e4"
     },
     {
-      "id": "8c8dc56d-caaa-4742-9e6f-4b485be8dbd8",
-      "action_path": null,
-      "country": null,
-      "dark_image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
-      "first_name": "Carter",
-      "image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
-      "jersey_number": "22",
-      "last_name": "Jensen",
-      "light_image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
-      "position_display_name": "Catcher",
-      "position_id": "2672c0fa-e94d-4c8f-bbc5-c04562df6ace",
-      "position_name": "C",
-      "sport_id": "MLB",
-      "team_id": "61cc4195-1a95-4f1a-acf4-44b806f937f5"
-    },
-    {
       "id": "465a9981-45e9-4c5a-ba94-83dfe66d0af7",
       "action_path": null,
       "country": null,
@@ -14300,9 +14366,25 @@
       "position_name": "3B",
       "sport_id": "MLB",
       "team_id": "b921da74-fa62-477c-87b5-84885a6fe0e4"
+    },
+    {
+      "id": "8c8dc56d-caaa-4742-9e6f-4b485be8dbd8",
+      "action_path": null,
+      "country": null,
+      "dark_image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
+      "first_name": "Carter",
+      "image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
+      "jersey_number": "22",
+      "last_name": "Jensen",
+      "light_image_url": "https://assets.underdogfantasy.com/player-images/mlb/20260325_03-22b70e15-8bc4-4ffc-81a9-8d3251303ed5.png",
+      "position_display_name": "Catcher",
+      "position_id": "2672c0fa-e94d-4c8f-bbc5-c04562df6ace",
+      "position_name": "C",
+      "sport_id": "MLB",
+      "team_id": "61cc4195-1a95-4f1a-acf4-44b806f937f5"
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-05-10T20:39:44Z",
+  "cached_at": "2026-05-10T21:40:41Z",
   "sport": "MLB"
 }
