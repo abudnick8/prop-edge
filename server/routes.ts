@@ -11620,7 +11620,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     "player_goal_scorer",
   ];
 
-  // ─ Fetch player props from The Odds API (multi-bookmaker) ─────────────────
+  // Prop market cache: sport → { markets per eventId, fetched timestamp }
+  const propCache: Record<string, { byEvent: Record<string, any[]>; fetchedAt: number }> = {};
+  const PROP_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+  // ─ Fetch player props from The Odds API (bulk endpoint, cached per sport) ─────
   async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
     const sportMap: Record<string, string> = {
       mlb: "baseball_mlb",
@@ -11636,51 +11640,75 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       return [];
     }
 
+    // Return from cache if fresh
+    const cached = propCache[sport];
+    if (cached && Date.now() - cached.fetchedAt < PROP_CACHE_TTL) {
+      return cached.byEvent[eventId] ?? [];
+    }
+
     // Pick market list for this sport
     const marketList = sport.toLowerCase() === "mlb" ? MLB_PROP_MARKETS : NBA_NHL_NFL_PROP_MARKETS;
+    const bookmakers = ["draftkings", "fanduel", "betmgm", "bovada"];
 
-    // Try multiple bookmakers — merge markets, deduplicating by key
-    const bookmakers = ["draftkings", "fanduel", "betmgm", "bovada", "betus"];
-    const marketMap: Record<string, any> = {};
+    // Use the BULK odds endpoint (not event-specific) — this is what's available on standard plans
+    // Fetch in batches of 4 markets (bulk endpoint has stricter limits)
+    const byEvent: Record<string, Record<string, any>> = {}; // eventId -> marketKey -> market
+    const batchSize = 4;
 
-    // Fetch in batches (The Odds API allows up to ~10 markets per call)
-    const batchSize = 10;
     for (let i = 0; i < marketList.length; i += batchSize) {
       const batch = marketList.slice(i, i + batchSize);
       try {
-        const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=${batch.join(",")}&bookmakers=${bookmakers.join(",")}&oddsFormat=american`;
-        const resp = await axios.get(url, { timeout: 10000 });
-        const allBookmakers: any[] = resp.data?.bookmakers ?? [];
+        const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=${batch.join(",")}&bookmakers=${bookmakers.join(",")}&oddsFormat=american`;
+        const resp = await axios.get(url, { timeout: 12000 });
+        const events: any[] = Array.isArray(resp.data) ? resp.data : [];
+        const now = Date.now();
 
-        // Merge markets across all bookmakers — use first bookmaker that has each market
-        for (const bk of allBookmakers) {
-          for (const mkt of (bk.markets ?? [])) {
-            if (!marketMap[mkt.key]) {
-              marketMap[mkt.key] = { ...mkt, bookmaker: bk.key };
-            } else {
-              // Merge outcomes — add any players not already present
-              const existing = marketMap[mkt.key];
-              const existingPlayers = new Set(
-                existing.outcomes.map((o: any) => `${o.description ?? o.name}|${o.name}`)
-              );
-              for (const oc of mkt.outcomes) {
-                const key = `${oc.description ?? oc.name}|${oc.name}`;
-                if (!existingPlayers.has(key)) {
-                  existing.outcomes.push(oc);
-                  existingPlayers.add(key);
+        for (const event of events) {
+          // Only include future (unstarted) events
+          const ct = event.commence_time ? new Date(event.commence_time).getTime() : 0;
+          if (ct <= now) continue;
+
+          const eid = event.id;
+          if (!byEvent[eid]) byEvent[eid] = {};
+
+          for (const bk of (event.bookmakers ?? [])) {
+            for (const mkt of (bk.markets ?? [])) {
+              if (!byEvent[eid][mkt.key]) {
+                byEvent[eid][mkt.key] = { ...mkt, bookmaker: bk.key };
+              } else {
+                // Merge outcomes from additional bookmakers
+                const existing = byEvent[eid][mkt.key];
+                const existingSet = new Set(
+                  existing.outcomes.map((o: any) => `${o.description ?? o.name}|${o.name}`)
+                );
+                for (const oc of mkt.outcomes) {
+                  const key = `${oc.description ?? oc.name}|${oc.name}`;
+                  if (!existingSet.has(key)) {
+                    existing.outcomes.push(oc);
+                    existingSet.add(key);
+                  }
                 }
               }
             }
           }
         }
+
+        console.log(`[Book Props] Bulk batch ${batch.join(",")}: ${events.length} events`);
       } catch (e: any) {
-        console.error(`[Book Props] Batch fetch error (${batch.join(",")}):`, e.response?.data ?? e.message);
+        console.error(`[Book Props] Bulk fetch error (${batch[0]}..):`, e.response?.data?.message ?? e.message);
       }
     }
 
-    const markets = Object.values(marketMap);
-    console.log(`[Book Props] ${sport} event ${eventId}: ${markets.length} markets, ${markets.reduce((s: number, m: any) => s + (m.outcomes?.length ?? 0), 0)} outcomes`);
-    return markets;
+    // Convert to array form and store in cache
+    const byEventArr: Record<string, any[]> = {};
+    for (const [eid, mktMap] of Object.entries(byEvent)) {
+      byEventArr[eid] = Object.values(mktMap);
+    }
+    propCache[sport] = { byEvent: byEventArr, fetchedAt: Date.now() };
+
+    const result = byEventArr[eventId] ?? [];
+    console.log(`[Book Props] ${sport} event ${eventId}: ${result.length} markets`);
+    return result;
   }
 
   // ─ Book grader: grade all open legs that have results available ───
