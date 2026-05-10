@@ -54,6 +54,12 @@ interface Game {
   bookmakers: Bookmaker[];
 }
 
+interface AlternateLine {
+  line: number;
+  overOdds: number | null;
+  underOdds: number | null;
+}
+
 interface PropOutcome {
   name: string;       // "Over" or "Under"
   description?: string; // player name
@@ -61,6 +67,7 @@ interface PropOutcome {
   point?: number;
   team?: string | null;
   position?: string | null;
+  alternates?: AlternateLine[]; // sorted by line asc
 }
 
 interface PropMarket {
@@ -758,75 +765,128 @@ function PropRow({
   toggleLeg: (leg: Leg) => void;
 }) {
   const { playerName, market, over, under, team, position } = row;
-  const refOc = over ?? under;
-  const showOver = filterDir !== "under" && !!over;
-  const showUnder = filterDir !== "over" && !!under;
+  const showOver  = filterDir !== "under" && !!over;
+  const showUnder = filterDir !== "over"  && !!under;
+
+  // Build sorted list of available lines (merged from over + under alternates)
+  const allLines: AlternateLine[] = React.useMemo(() => {
+    const map = new Map<number, AlternateLine>();
+    const addLine = (l: AlternateLine) => {
+      const ex = map.get(l.line);
+      if (!ex) map.set(l.line, { ...l });
+      else {
+        if (l.overOdds  != null && ex.overOdds  == null) ex.overOdds  = l.overOdds;
+        if (l.underOdds != null && ex.underOdds == null) ex.underOdds = l.underOdds;
+      }
+    };
+    // Seed from primary outcomes
+    if (over)  addLine({ line: over.point  ?? 0, overOdds:  over.price,  underOdds: under?.price ?? null });
+    if (under) addLine({ line: under.point ?? 0, overOdds:  over?.price ?? null, underOdds: under.price });
+    // Add alternates
+    (over?.alternates  ?? []).forEach(addLine);
+    (under?.alternates ?? []).forEach(addLine);
+    return Array.from(map.values()).sort((a, b) => a.line - b.line);
+  }, [over, under]);
+
+  // Selected line index (default: index of primary outcome's line)
+  const defaultIdx = React.useMemo(() => {
+    const primaryLine = over?.point ?? under?.point ?? allLines[0]?.line;
+    const idx = allLines.findIndex(l => l.line === primaryLine);
+    return idx >= 0 ? idx : 0;
+  }, [allLines, over, under]);
+
+  const [lineIdx, setLineIdx] = React.useState(defaultIdx);
+  const selectedLine = allLines[lineIdx] ?? allLines[0];
+
+  // Build synthetic outcomes at selected line
+  const overAtLine: PropOutcome | undefined = (showOver && selectedLine?.overOdds != null)
+    ? { ...over!, point: selectedLine.line, price: selectedLine.overOdds! }
+    : undefined;
+  const underAtLine: PropOutcome | undefined = (showUnder && selectedLine?.underOdds != null)
+    ? { ...under!, point: selectedLine.line, price: selectedLine.underOdds! }
+    : undefined;
+
+  const hasAlternates = allLines.length > 1;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 4px", borderRadius: 8, background: "#f8fafc" }}>
-      {/* Player info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {playerName}
+    <div style={{ padding: "5px 4px", borderRadius: 8, background: "#f8fafc" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {/* Player info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {playerName}
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
+            {team && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: NAVY, background: "rgba(19,35,58,0.08)", borderRadius: 5, padding: "0 5px" }}>
+                {team.split(" ").pop()}
+              </span>
+            )}
+            {position && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, background: "#f1f5f9", borderRadius: 5, padding: "0 5px" }}>
+                {position}
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
-          {refOc?.point != null && (
-            <span style={{ fontSize: 10, color: MUTED }}>{statLabel(market.key)} {refOc.point}</span>
-          )}
-          {team && (
-            <span style={{ fontSize: 9, fontWeight: 700, color: NAVY, background: "rgba(19,35,58,0.08)", borderRadius: 5, padding: "0 5px" }}>
-              {team.split(" ").pop()}
+
+        {/* Line stepper + bet buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          {/* Line control */}
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {hasAlternates && (
+              <button
+                onClick={() => setLineIdx(i => Math.max(0, i - 1))}
+                disabled={lineIdx === 0}
+                style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #e2e8f0", background: lineIdx === 0 ? "#f1f5f9" : "#fff", color: lineIdx === 0 ? "#cbd5e1" : MUTED, fontSize: 12, cursor: lineIdx === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
+              >−</button>
+            )}
+            <span style={{ fontSize: 11, fontWeight: 700, color: FG, minWidth: 28, textAlign: "center" as const }}>
+              {selectedLine?.line ?? ""}
             </span>
+            {hasAlternates && (
+              <button
+                onClick={() => setLineIdx(i => Math.min(allLines.length - 1, i + 1))}
+                disabled={lineIdx === allLines.length - 1}
+                style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #e2e8f0", background: lineIdx === allLines.length - 1 ? "#f1f5f9" : "#fff", color: lineIdx === allLines.length - 1 ? "#cbd5e1" : MUTED, fontSize: 12, cursor: lineIdx === allLines.length - 1 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
+              >+</button>
+            )}
+          </div>
+
+          {/* Stat label */}
+          <span style={{ fontSize: 9, color: MUTED, fontWeight: 600, minWidth: 30, textAlign: "center" as const }}>
+            {statLabel(market.key).split(" ")[0]}
+          </span>
+
+          {/* Over button */}
+          {showOver && overAtLine && (() => {
+            const leg = buildPropLeg(market, playerName, overAtLine, "over");
+            const active = isActive(leg);
+            return (
+              <button className="book-chip" onClick={() => toggleLeg(leg)} style={{ padding: "5px 8px", borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`, background: active ? `rgba(212,168,67,0.12)` : "#fff", color: active ? GOLD : "#16a34a", minWidth: 50, textAlign: "center" as const }}>
+                O {fmtOdds(overAtLine.price)}
+              </button>
+            );
+          })()}
+          {showOver && !overAtLine && (
+            <span style={{ fontSize: 10, color: "#cbd5e1", minWidth: 50, textAlign: "center" as const }}>—</span>
           )}
-          {position && (
-            <span style={{ fontSize: 9, fontWeight: 700, color: MUTED, background: "#f1f5f9", borderRadius: 5, padding: "0 5px" }}>
-              {position}
-            </span>
+
+          {/* Under button */}
+          {showUnder && underAtLine && (() => {
+            const leg = buildPropLeg(market, playerName, underAtLine, "under");
+            const active = isActive(leg);
+            return (
+              <button className="book-chip" onClick={() => toggleLeg(leg)} style={{ padding: "5px 8px", borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`, background: active ? `rgba(212,168,67,0.12)` : "#fff", color: active ? GOLD : RED, minWidth: 50, textAlign: "center" as const }}>
+                U {fmtOdds(underAtLine.price)}
+              </button>
+            );
+          })()}
+          {showUnder && !underAtLine && (
+            <span style={{ fontSize: 10, color: "#cbd5e1", minWidth: 50, textAlign: "center" as const }}>—</span>
           )}
         </div>
       </div>
-
-      {/* Over button */}
-      {showOver && over && (() => {
-        const leg = buildPropLeg(market, playerName, over, "over");
-        const active = isActive(leg);
-        return (
-          <button
-            className="book-chip"
-            onClick={() => toggleLeg(leg)}
-            style={{
-              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
-              background: active ? `rgba(212,168,67,0.12)` : "#fff",
-              color: active ? GOLD : "#16a34a",
-              minWidth: 54, textAlign: "center" as const,
-            }}
-          >
-            O {fmtOdds(over.price)}
-          </button>
-        );
-      })()}
-
-      {/* Under button */}
-      {showUnder && under && (() => {
-        const leg = buildPropLeg(market, playerName, under, "under");
-        const active = isActive(leg);
-        return (
-          <button
-            className="book-chip"
-            onClick={() => toggleLeg(leg)}
-            style={{
-              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${active ? GOLD : "#e2e8f0"}`,
-              background: active ? `rgba(212,168,67,0.12)` : "#fff",
-              color: active ? GOLD : RED,
-              minWidth: 54, textAlign: "center" as const,
-            }}
-          >
-            U {fmtOdds(under.price)}
-          </button>
-        );
-      })()}
     </div>
   );
 }
