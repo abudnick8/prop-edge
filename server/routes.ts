@@ -11727,41 +11727,100 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       //    Raw linemate data has books.bookname.over.alternates with additional lines+odds
 
       // Helper: extract all {line, overOdds, underOdds} from raw linemate books object
+      // ── Odds math helpers ───────────────────────────────────────────────────
+      function americanToProb(odds: number): number {
+        return odds < 0 ? (-odds) / (-odds + 100) : 100 / (odds + 100);
+      }
+      function probToAmerican(prob: number): number {
+        if (prob <= 0 || prob >= 1) return -110;
+        return prob >= 0.5
+          ? Math.round(-prob / (1 - prob) * 100)
+          : Math.round((1 - prob) / prob * 100);
+      }
+      function medianOf(arr: number[]): number {
+        if (!arr.length) return 0;
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+      }
+
       function extractLines(books: any): { line: number; overOdds: number | null; underOdds: number | null }[] {
-        const map = new Map<number, { overOdds: number | null; underOdds: number | null }>();
         if (!books || typeof books !== "object") return [];
+
+        // Collect ALL over and under odds per line across every book
+        // overSamples / underSamples: Map<line, number[]>
+        const overSamples  = new Map<number, number[]>();
+        const underSamples = new Map<number, number[]>();
+
+        const addSample = (map: Map<number, number[]>, line: number, odds: number) => {
+          if (!map.has(line)) map.set(line, []);
+          map.get(line)!.push(odds);
+        };
+
         for (const bdata of Object.values(books as Record<string, any>)) {
           if (!bdata || typeof bdata !== "object") continue;
           const over  = (bdata as any).over  ?? null;
           const under = (bdata as any).under ?? null;
-          // Main line
-          const mainVal = over?.current?.value ?? under?.current?.value ?? null;
-          if (mainVal != null) {
-            const e = map.get(mainVal) ?? { overOdds: null, underOdds: null };
-            if (over?.current?.odds?.american  != null && e.overOdds  == null) e.overOdds  = over.current.odds.american;
-            if (under?.current?.odds?.american != null && e.underOdds == null) e.underOdds = under.current.odds.american;
-            map.set(mainVal, e);
-          }
-          // Over alternates
-          for (const [altKey, altData] of Object.entries((over?.alternates ?? {}) as Record<string, any>)) {
+
+          // Main line for this book
+          const overMain  = over?.current  ?? null;
+          const underMain = under?.current ?? null;
+          if (overMain?.value  != null && overMain?.odds?.american  != null)
+            addSample(overSamples,  overMain.value,  overMain.odds.american);
+          if (underMain?.value != null && underMain?.odds?.american != null)
+            addSample(underSamples, underMain.value, underMain.odds.american);
+
+          // Over alternates (most books only supply over alts, not under alts)
+          for (const [altKey, altData] of Object.entries((over?.alternates  ?? {}) as Record<string, any>)) {
             const aVal = parseFloat(altKey);
-            if (isNaN(aVal)) continue;
-            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
-            if (altData?.odds?.american != null && e.overOdds == null) e.overOdds = altData.odds.american;
-            map.set(aVal, e);
+            if (isNaN(aVal) || altData?.odds?.american == null) continue;
+            addSample(overSamples, aVal, altData.odds.american);
           }
-          // Under alternates
+          // Under alternates (rarely present, but capture if available)
           for (const [altKey, altData] of Object.entries((under?.alternates ?? {}) as Record<string, any>)) {
             const aVal = parseFloat(altKey);
-            if (isNaN(aVal)) continue;
-            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
-            if (altData?.odds?.american != null && e.underOdds == null) e.underOdds = altData.odds.american;
-            map.set(aVal, e);
+            if (isNaN(aVal) || altData?.odds?.american == null) continue;
+            addSample(underSamples, aVal, altData.odds.american);
           }
         }
-        return Array.from(map.entries())
-          .map(([line, odds]) => ({ line, ...odds }))
-          .sort((a, b) => a.line - b.line);
+
+        // Compute median over odds per line
+        const allLines = new Set([...overSamples.keys(), ...underSamples.keys()]);
+        if (!allLines.size) return [];
+
+        // Observe vig from the line that has BOTH over and under real odds
+        let observedVig = 1.045; // default 4.5% vig
+        for (const line of allLines) {
+          const oSamples = overSamples.get(line) ?? [];
+          const uSamples = underSamples.get(line) ?? [];
+          if (oSamples.length > 0 && uSamples.length > 0) {
+            const oProb = americanToProb(medianOf(oSamples));
+            const uProb = americanToProb(medianOf(uSamples));
+            const v = oProb + uProb;
+            if (v > 1.0 && v < 1.15) { observedVig = v; break; }
+          }
+        }
+
+        const result: { line: number; overOdds: number; underOdds: number }[] = [];
+        for (const line of allLines) {
+          const oSamples = overSamples.get(line) ?? [];
+          const uSamples = underSamples.get(line) ?? [];
+          if (!oSamples.length && !uSamples.length) continue;
+
+          const overOdds  = oSamples.length  ? Math.round(medianOf(oSamples))  : null;
+          const underOdds = uSamples.length  ? Math.round(medianOf(uSamples)) : null;
+
+          // Derive missing side from the other using observed vig
+          const finalOver  = overOdds  ?? (underOdds != null
+            ? probToAmerican(observedVig - americanToProb(underOdds)) : null);
+          const finalUnder = underOdds ?? (overOdds  != null
+            ? probToAmerican(observedVig - americanToProb(overOdds))  : null);
+
+          if (finalOver == null || finalUnder == null) continue;
+          result.push({ line, overOdds: finalOver, underOdds: finalUnder });
+        }
+
+        return result.sort((a, b) => a.line - b.line);
       }
 
       // Group by market type (prop key)
