@@ -11839,6 +11839,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const sourceArr = rawLmData.length > 0 ? rawLmData : linemateMarkets;
       const usingRaw  = rawLmData.length > 0;
 
+      // Dedup map: key = "propKey:playerName:Over|Under" → best outcome candidate
+      // "Best" = most alternates (most book data = most accurate median odds)
+      const playerOutcomeMap = new Map<string, any>();
+
       for (const m of sourceArr) {
         const playerName = usingRaw ? (m.player?.fullName ?? "") : (m.playerName ?? "");
         const marketName = usingRaw ? (m.name ?? "")            : (m.marketName ?? "");
@@ -11870,13 +11874,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Primary line: lowest line that has overOdds, or just first
         const primaryLine = allLines.find(l => l.overOdds != null) ?? allLines[0];
 
-        if (!marketMap[propKey]) {
-          marketMap[propKey] = { key: propKey, outcomes: [], bookmaker: "linemate" };
-        }
-
         // Over outcome — includes all alternate lines with odds
         const overAlternates = allLines.filter(l => l.overOdds != null).map(l => ({ line: l.line, overOdds: l.overOdds!, underOdds: l.underOdds }));
-        marketMap[propKey].outcomes.push({
+        const overCandidate = {
           name:        "Over",
           description: playerName,
           point:       primaryLine.line,
@@ -11885,14 +11885,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           position:    position || null,
           gameId,
           alternates:  overAlternates,
-        });
+          _propKey:    propKey,
+        };
+        const overKey = `${propKey}:${playerName}:Over`;
+        const existingOver = playerOutcomeMap.get(overKey);
+        // Keep whichever has more alternates (more book samples = better median odds)
+        if (!existingOver || overAlternates.length > (existingOver.alternates?.length ?? 0)) {
+          playerOutcomeMap.set(overKey, overCandidate);
+        }
 
         // Under outcome — skip for HR and SB (user rule: only overs shown)
         if (propKey !== "player_home_runs" && propKey !== "player_stolen_bases") {
           const underLines = allLines.filter(l => l.underOdds != null);
           const underPrimary = underLines[underLines.length - 1] ?? primaryLine; // highest line for under
           const underAlternates = underLines.map(l => ({ line: l.line, overOdds: l.overOdds, underOdds: l.underOdds! }));
-          marketMap[propKey].outcomes.push({
+          const underCandidate = {
             name:        "Under",
             description: playerName,
             point:       underPrimary.line,
@@ -11901,8 +11908,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             position:    position || null,
             gameId,
             alternates:  underAlternates,
-          });
+            _propKey:    propKey,
+          };
+          const underKey = `${propKey}:${playerName}:Under`;
+          const existingUnder = playerOutcomeMap.get(underKey);
+          if (!existingUnder || underAlternates.length > (existingUnder.alternates?.length ?? 0)) {
+            playerOutcomeMap.set(underKey, underCandidate);
+          }
         }
+      }
+
+      // Populate marketMap from deduplicated outcomes
+      for (const outcome of playerOutcomeMap.values()) {
+        const { _propKey, ...outcomeData } = outcome;
+        if (!marketMap[_propKey]) {
+          marketMap[_propKey] = { key: _propKey, outcomes: [], bookmaker: "linemate" };
+        }
+        marketMap[_propKey].outcomes.push(outcomeData);
       }
 
       const markets = Object.values(marketMap);
