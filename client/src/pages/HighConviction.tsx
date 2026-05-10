@@ -46,7 +46,7 @@ interface GameLine {
 // ─────────────────────────────────────────────────────────────────────────────
 // Confluence Signal Types
 // ─────────────────────────────────────────────────────────────────────────────
-type SignalType = "model" | "line_movement" | "whale";
+type SignalType = "model" | "line_movement" | "whale" | "props_hub";
 
 interface ConvictionSignal {
   type: SignalType;
@@ -313,7 +313,8 @@ function extractStatType(bet: Bet): string {
 function buildConvictionPlays(
   bets: Bet[],
   markets: PredMkt[],
-  games: GameLine[]
+  games: GameLine[],
+  linematePicks: any[]
 ): ConvictionPlay[] {
   const plays: ConvictionPlay[] = [];
 
@@ -375,6 +376,94 @@ function buildConvictionPlays(
         bg: "rgba(52,211,153,0.10)",
         icon: "🐋",
       });
+    }
+
+    // ── Signal 4: Props Hub — 100% Club or high hit rate match ───────────
+    if (bet.betType === "player_prop") {
+      const playerName = extractPlayerName(bet);
+      const statRaw    = extractStatType(bet);
+
+      const lmMatch = (linematePicks ?? []).find((lm: any) => {
+        try {
+          if (!lm || !playerName || !lm.playerName) return false;
+          const nameLower = playerName.toLowerCase();
+          const lmLower   = lm.playerName.toLowerCase();
+          const lastName = nameLower.split(" ").slice(-1)[0] ?? "";
+          const lmLast   = lmLower.split(" ").slice(-1)[0] ?? "";
+          if (lastName.length < 2) return false;
+          if (!lmLower.includes(lastName) && !lmLast.includes(lastName)) return false;
+          const betStat  = statRaw.toLowerCase();
+          const lmStat   = (lm.marketName ?? "").toLowerCase();
+          const statWords = betStat.split(" ").filter((w: string) => w.length > 2);
+          return statWords.some((w: string) => lmStat.includes(w));
+        } catch { return false; }
+      });
+
+      if (lmMatch) {
+        const hitRate = lmMatch.hitRateL5 ?? lmMatch.hitRateL10 ?? lmMatch.bestHitRate;
+        const is100   = lmMatch.is100Club || hitRate === 100;
+        const hitPct  = hitRate != null ? Math.round(hitRate) : null;
+
+        if (is100 || (hitPct != null && hitPct >= 80)) {
+          signals.push({
+            type: "props_hub",
+            label: is100 ? "Props Hub — 100% Club" : `Props Hub — ${hitPct}% Hit Rate`,
+            detail: is100
+              ? `${lmMatch.playerName} is in the Props Hub 100% Club — hit this prop in 100% of recent tracked games${lmMatch.hitRateL5 === 100 ? " (L5)" : lmMatch.hitRateL10 === 100 ? " (L10)" : ""}. Strong recurring trend.`
+              : `${lmMatch.playerName} has a ${hitPct}% hit rate on this prop type recently. Props Hub data reinforces the model signal.`,
+            strength: is100 ? "strong" : "moderate",
+            color: "#8b5cf6",
+            bg: "rgba(139,92,246,0.10)",
+            icon: is100 ? "💯" : "📊",
+          });
+        }
+
+        // Line movement in player's team favor — check team's game line
+        const playerTeam = lmMatch.teamCode ?? "";
+        const matchedForProp = games.find(g => {
+          const teams = [g.homeTeam, g.awayTeam].join(" ").toLowerCase();
+          const teamWords = playerTeam.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+          return teamWords.some((w: string) => teams.includes(w));
+        });
+
+        if (matchedForProp && !signals.find(s => s.type === "line_movement")) {
+          // Favorable line movement = team ML shortened (favorite getting more action)
+          const awayML  = matchedForProp.moneyline.awayCurrent ?? matchedForProp.moneyline.awayOpen;
+          const homeML  = matchedForProp.moneyline.homeCurrent ?? matchedForProp.moneyline.homeOpen;
+          const awayOpen = matchedForProp.moneyline.awayOpen;
+          const homeOpen = matchedForProp.moneyline.homeOpen;
+          const isHome   = lmMatch.isHome;
+
+          let lineMoveFavorable = false;
+          let lineMoveDetail = "";
+
+          if (isHome && homeML != null && homeOpen != null) {
+            const shift = homeML - homeOpen;
+            if ((homeOpen < 0 && shift < -3) || (homeOpen > 0 && shift < -5)) {
+              lineMoveFavorable = true;
+              lineMoveDetail = `Home ML shortened from ${fmtOdds(homeOpen)} → ${fmtOdds(homeML)} (money flowing in on ${matchedForProp.homeTeam})`;
+            }
+          } else if (!isHome && awayML != null && awayOpen != null) {
+            const shift = awayML - awayOpen;
+            if ((awayOpen < 0 && shift < -3) || (awayOpen > 0 && shift < -5)) {
+              lineMoveFavorable = true;
+              lineMoveDetail = `Away ML shortened from ${fmtOdds(awayOpen)} → ${fmtOdds(awayML)} (money flowing in on ${matchedForProp.awayTeam})`;
+            }
+          }
+
+          if (lineMoveFavorable) {
+            signals.push({
+              type: "line_movement",
+              label: "Line Movement — Team Favored",
+              detail: lineMoveDetail + ". Sharp money supporting the player's team increases prop hit probability.",
+              strength: "moderate",
+              color: "#0ea5e9",
+              bg: "rgba(14,165,233,0.10)",
+              icon: "📈",
+            });
+          }
+        }
+      }
     }
 
     // ── Only include if at least 2 signals (model + 1 more) ──────────────
@@ -457,7 +546,8 @@ function buildWatchingPlays(
   bets: Bet[],
   markets: PredMkt[],
   games: GameLine[],
-  convictionIds: Set<string>   // exclude anything already in High Conviction
+  convictionIds: Set<string>,   // exclude anything already in High Conviction
+  linematePicks: any[] = []
 ): WatchingPlay[] {
   const candidates: WatchingPlay[] = [];
 
@@ -599,6 +689,65 @@ function buildWatchingPlays(
         hint: "No matching prediction market found yet. Whale signal would confirm this play.",
         icon: "🐋",
       });
+    }
+
+    // ── Props Hub signal (player props only) ─────────────────────────────────
+    if (bet.betType === "player_prop" && linematePicks.length > 0) {
+      const playerName = extractPlayerName(bet);
+      const statRaw    = extractStatType(bet);
+
+      const lmMatch = (linematePicks ?? []).find((lm: any) => {
+        try {
+          if (!lm || !playerName || !lm.playerName) return false;
+          const lastName = playerName.toLowerCase().split(" ").slice(-1)[0] ?? "";
+          const lmLast   = lm.playerName.toLowerCase().split(" ").slice(-1)[0] ?? "";
+          if (lastName.length < 2) return false;
+          if (lastName !== lmLast && !lmLast.includes(lastName) && !lastName.includes(lmLast)) return false;
+          const betStat  = statRaw.toLowerCase();
+          const lmStat   = (lm.marketName ?? "").toLowerCase();
+          const statWords = betStat.split(" ").filter((w: string) => w.length > 2);
+          return statWords.some((w: string) => lmStat.includes(w));
+        } catch { return false; }
+      });
+
+      if (lmMatch) {
+        const hitRate = lmMatch.hitRateL5 ?? lmMatch.hitRateL10 ?? lmMatch.bestHitRate;
+        const is100   = lmMatch.is100Club || hitRate === 100;
+        const hitPct  = hitRate != null ? Math.round(hitRate) : null;
+
+        if (is100 || (hitPct != null && hitPct >= 80)) {
+          confirmedSignals.push({
+            type: "props_hub",
+            label: is100 ? "Props Hub — 100% Club" : `Props Hub — ${hitPct}% Hit Rate`,
+            detail: is100
+              ? `${lmMatch.playerName} is in the Props Hub 100% Club. Strong recurring trend confirms the model signal.`
+              : `${lmMatch.playerName} has a ${hitPct}% hit rate on this prop in Props Hub data.`,
+            strength: is100 ? "strong" : "moderate",
+            color: "#8b5cf6",
+            bg: "rgba(139,92,246,0.10)",
+            icon: is100 ? "💯" : "📊",
+          });
+          proximity += is100 ? 12 : 7;
+        } else {
+          // Has a Props Hub entry but below threshold — show as watching signal
+          missingSignals.push({
+            type: "props_hub" as any,
+            label: "Watching Props Hub Hit Rate",
+            hint: hitPct != null
+              ? `${lmMatch.playerName} is at ${hitPct}% hit rate in Props Hub — watching for ≥80% to confirm.`
+              : "Found in Props Hub but insufficient hit rate data yet.",
+            icon: "💯",
+          });
+          proximity += 3;
+        }
+      } else {
+        missingSignals.push({
+          type: "props_hub" as any,
+          label: "Not in Props Hub 100% Club",
+          hint: "No matching Props Hub entry found yet. A 100% Club match would boost this play's conviction.",
+          icon: "💯",
+        });
+      }
     }
 
     // ── Only include if there's at least one missing signal (not already full HC) ──
@@ -935,16 +1084,29 @@ function ConvictionCard({ play }: { play: ConvictionPlay }) {
           <div className="flex-1 min-w-0">
             {/* Signal count badge + sport */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              {allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.45)" }}>
-                  🔥 ALL 3 SIGNALS
-                </span>
-              )}
-              {!allThree && (
-                <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", borderColor: "rgba(146,64,14,0.40)" }}>
-                  ⚡ {signalCount} SIGNALS
-                </span>
-              )}
+              {(() => {
+                const hasWhale    = play.signals.some(s => s.type === "whale");
+                const hasPropsHub = play.signals.some(s => s.type === "props_hub");
+                const hasLineMov  = play.signals.some(s => s.type === "line_movement");
+                const hasModel    = play.signals.some(s => s.type === "model");
+                // 🔥 = whale + at least one other aligned signal, OR all 4 signals
+                const isOnFire = hasWhale && (hasPropsHub || hasLineMov || hasModel);
+                if (isOnFire) return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.55)" }}>
+                    🔥 WHALE ALERT
+                  </span>
+                );
+                if (allThree) return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(185,28,28,0.13)", color: "#b91c1c", borderColor: "rgba(185,28,28,0.45)" }}>
+                    🔥 ALL SIGNALS
+                  </span>
+                );
+                return (
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full border" style={{ background: "rgba(146,64,14,0.12)", color: "#92400e", borderColor: "rgba(146,64,14,0.40)" }}>
+                    ⚡ {signalCount} SIGNALS
+                  </span>
+                );
+              })()}
               <span className="text-[9px] font-semibold" style={{ color: "#3D4B58" }}>
                 {SPORT_EMOJI[play.sport] ?? "🏟"} {play.sport}
               </span>
@@ -1159,7 +1321,7 @@ function EmptyState() {
       <div>
         <p className="font-bold text-foreground">No High Conviction Plays Right Now</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-          This tab only surfaces plays where the Clubhouse IQ model, line movement, AND a prediction market whale signal all point the same direction. Check back closer to game time.
+          This tab surfaces plays where at least 2 of 4 signals align: Clubhouse IQ model, line movement, Props Hub hit rate, or a prediction market whale. Check back closer to game time.
         </p>
       </div>
       <div className="rounded-xl p-4 text-left max-w-sm border border-border/40 space-y-2" style={{ background: "rgba(19,35,58,0.03)" }}>
@@ -1167,7 +1329,8 @@ function EmptyState() {
         <div className="space-y-1.5">
           {[
             { icon: "⭐", text: "Clubhouse IQ model ≥82/100 confidence" },
-            { icon: "🔥", text: "Line movement aligned (steam or RLM)" },
+            { icon: "📈", text: "Line movement aligned (steam or RLM)" },
+            { icon: "💯", text: "Props Hub — 100% Club or ≥80% hit rate" },
             { icon: "🐋", text: "Prediction market whale buying same side" },
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -1208,9 +1371,46 @@ export default function HighConviction() {
 
   const isLoading = betsLoading || mktLoading || linesLoading;
 
+  // Fetch Linemate picks for all MLB + NBA props to cross-reference
+  const { data: lmMlb = [] } = useQuery<any[]>({
+    queryKey: ["/api/linemate-props", "mlb"],
+    queryFn: async () => {
+      try {
+        const d = await fetch("/api/linemate-props?sport=mlb").then(r => r.json());
+        if (!d || typeof d !== "object") return [];
+        const picks = d.picks ?? {};
+        return [
+          ...(Array.isArray(picks.SAFE)        ? picks.SAFE        : []),
+          ...(Array.isArray(picks.RISKY)       ? picks.RISKY       : []),
+          ...(Array.isArray(picks["100_CLUB"]) ? picks["100_CLUB"] : []),
+          ...(Array.isArray(d.markets)         ? d.markets         : []),
+        ];
+      } catch { return []; }
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: lmNba = [] } = useQuery<any[]>({
+    queryKey: ["/api/linemate-props", "nba"],
+    queryFn: async () => {
+      try {
+        const d = await fetch("/api/linemate-props?sport=nba").then(r => r.json());
+        if (!d || typeof d !== "object") return [];
+        const picks = d.picks ?? {};
+        return [
+          ...(Array.isArray(picks.SAFE)        ? picks.SAFE        : []),
+          ...(Array.isArray(picks.RISKY)       ? picks.RISKY       : []),
+          ...(Array.isArray(picks["100_CLUB"]) ? picks["100_CLUB"] : []),
+          ...(Array.isArray(d.markets)         ? d.markets         : []),
+        ];
+      } catch { return []; }
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const linematePicks = useMemo(() => [...(lmMlb ?? []), ...(lmNba ?? [])], [lmMlb, lmNba]);
+
   const allPlays = useMemo(
-    () => buildConvictionPlays(bets as Bet[], markets as PredMkt[], games as GameLine[]),
-    [bets, markets, games]
+    () => buildConvictionPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], linematePicks),
+    [bets, markets, games, linematePicks]
   );
 
   const filtered = useMemo(() => {
@@ -1227,8 +1427,8 @@ export default function HighConviction() {
   const convictionIds = useMemo(() => new Set(allPlays.map(p => p.id)), [allPlays]);
 
   const watchingPlays = useMemo(
-    () => buildWatchingPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], convictionIds),
-    [bets, markets, games, convictionIds]
+    () => buildWatchingPlays(bets as Bet[], markets as PredMkt[], games as GameLine[], convictionIds, linematePicks),
+    [bets, markets, games, convictionIds, linematePicks]
   );
 
   const sports = ["All", ...Array.from(new Set(allPlays.map(p => p.sport))).sort()];
@@ -1246,7 +1446,7 @@ export default function HighConviction() {
             <h1 className="text-xl font-black text-foreground">High Conviction Plays</h1>
           </div>
           <p className="text-xs text-muted-foreground max-w-md">
-            Only shows plays where Clubhouse IQ model, line movement, AND prediction market whale signals all align. Minimum 2 of 3 signals required.
+            Surfaces plays where at least 2 of 4 signals align: model, line movement, Props Hub hit rate, or whale buy.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refetchAll} className="gap-1.5 flex-shrink-0">
@@ -1259,7 +1459,7 @@ export default function HighConviction() {
       {!isLoading && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "All 3 Signals", value: tripleCount, color: "#f87171", bg: "rgba(248,113,113,0.08)", icon: "🔥" },
+            { label: "3+ Signals", value: tripleCount, color: "#f87171", bg: "rgba(248,113,113,0.08)", icon: "🔥" },
             { label: "2 Signals", value: doubleCount, color: "#facc15", bg: "rgba(250,204,21,0.08)", icon: "⚡" },
             { label: "Total Plays", value: allPlays.length, color: "#94a3b8", bg: "rgba(148,163,184,0.06)", icon: "📋" },
           ].map(k => (
@@ -1271,43 +1471,42 @@ export default function HighConviction() {
         </div>
       )}
 
-      {/* Signal filter */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {/* Sport filters */}
-        <div className="flex gap-1 flex-wrap">
-          {sports.map(s => (
-            <button key={s} onClick={() => setSportFilter(s)}
-              className="px-2.5 py-1 rounded-full text-xs font-bold transition-all"
-              style={{
-                background: sportFilter === s ? "#facc15" : "rgba(19,35,58,0.06)",
-                color: sportFilter === s ? "#1a1a1a" : "var(--muted-foreground)",
-                border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
-                boxShadow: sportFilter === s ? "0 0 8px #facc1580" : "none",
-              }}>
-              {s}
-            </button>
-          ))}
-        </div>
+      {/* Filters — sport + signal count in one row */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Sport pills */}
+        {sports.map(s => (
+          <button key={s} onClick={() => setSportFilter(s)}
+            className="px-2.5 py-1 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: sportFilter === s ? "#facc15" : "rgba(19,35,58,0.06)",
+              color: sportFilter === s ? "#1a1a1a" : "var(--muted-foreground)",
+              border: sportFilter === s ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
+              boxShadow: sportFilter === s ? "0 0 8px #facc1580" : "none",
+            }}>
+            {s}
+          </button>
+        ))}
 
-        {/* Signal count filter */}
-        <div className="flex gap-1 ml-auto">
-          {[
-            { val: 0, label: "All Signals" },
-            { val: 3, label: "🔥 3 Only" },
-            { val: 2, label: "⚡ 2 Only" },
-          ].map(f => (
-            <button key={f.val} onClick={() => setSignalFilter(f.val)}
-              className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
-              style={{
-                background: signalFilter === f.val ? "#facc15" : "rgba(19,35,58,0.06)",
-                color: signalFilter === f.val ? "#1a1a1a" : "var(--muted-foreground)",
-                border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
-                boxShadow: signalFilter === f.val ? "0 0 8px #facc1580" : "none",
-              }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {/* Divider */}
+        <div className="w-px h-4 mx-0.5" style={{ background: "rgba(19,35,58,0.15)" }} />
+
+        {/* Signal count pills */}
+        {[
+          { val: 0, label: "All" },
+          { val: 3, label: "🔥 3+" },
+          { val: 2, label: "⚡ 2" },
+        ].map(f => (
+          <button key={f.val} onClick={() => setSignalFilter(f.val)}
+            className="px-2.5 py-1 rounded-full text-[10px] font-bold transition-all"
+            style={{
+              background: signalFilter === f.val ? "#facc15" : "rgba(19,35,58,0.06)",
+              color: signalFilter === f.val ? "#1a1a1a" : "var(--muted-foreground)",
+              border: signalFilter === f.val ? "1px solid #facc15" : "1px solid rgba(19,35,58,0.11)",
+              boxShadow: signalFilter === f.val ? "0 0 8px #facc1580" : "none",
+            }}>
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Loading */}
@@ -1416,7 +1615,7 @@ export default function HighConviction() {
               <Eye size={22} className="text-foreground/70" />
               <p className="text-sm font-semibold text-foreground/70">Nothing on the watchlist</p>
               <p className="text-[11px] text-foreground/70 max-w-xs">
-                Plays appear here when the Clubhouse IQ model likes them but they're still waiting on a line movement or whale signal.
+                Plays appear here when the model likes them but still need a 2nd signal — line movement, Props Hub, or a whale buy.
               </p>
             </div>
           )}
@@ -1426,13 +1625,14 @@ export default function HighConviction() {
       {/* How it works */}
       <div className="rounded-xl p-4 border border-border/30 space-y-3" style={{ background: "rgba(19,35,58,0.01)" }}>
         <p className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "#3D4B58" }}>
-          <AlertCircle size={10} /> How Confluence Works
+          <AlertCircle size={10} /> How Signals Work (need 2 of 4)
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+        <div className="grid grid-cols-2 gap-3 text-[11px]">
           {[
-            { icon: "⭐", title: "Clubhouse IQ Model", desc: "Must score ≥82/100. The model factors in recent stats, opponent matchup, line value, and historical trends." },
-            { icon: "🔥", title: "Line Movement", desc: "Spread or total must move ≥1.5 pts in the same direction as the pick, OR reverse line movement detected." },
-            { icon: "🐋", title: "Whale Signal", desc: "A prediction market (Kalshi or Polymarket) must show a whale buying YES on the same outcome — $100K+ size or 5¢+ price move." },
+            { icon: "⭐", title: "Clubhouse IQ Model", desc: "Must score ≥82/100. Factors in recent stats, opponent matchup, line value, and historical trends." },
+            { icon: "📈", title: "Line Movement", desc: "Spread or total moves ≥1.5 pts in the pick's direction, OR reverse line movement detected." },
+            { icon: "💯", title: "Props Hub", desc: "Player is in the 100% Club or hits ≥80% on this prop type in L5/L10 games per Props Hub data." },
+            { icon: "🐋", title: "Whale Signal", desc: "A prediction market (Kalshi or Polymarket) shows a whale buying YES — $100K+ size or 5¢+ price move." },
           ].map((item, i) => (
             <div key={i} className="space-y-1">
               <p className="font-bold text-foreground flex items-center gap-1.5">{item.icon} {item.title}</p>

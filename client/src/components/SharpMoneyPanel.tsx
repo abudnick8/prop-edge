@@ -1,6 +1,8 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, BarChart2, AlertTriangle, DollarSign, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, BarChart2, AlertTriangle, DollarSign, Zap, ChevronDown, ChevronUp, Share2 } from "lucide-react";
+import { shareGameCard } from "@/lib/shareGameCard";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 const BG     = "#F6F1E7";
@@ -250,6 +252,109 @@ function deriveData(game: SharpGameData) {
   };
 }
 
+// ── How to Read panel ─────────────────────────────────────────────────────────
+function HowToRead() {
+  const [open, setOpen] = useState(false);
+
+  const rows: { icon: ReactNode; label: string; desc: string }[] = [
+    {
+      icon: <div style={{ width: 36, height: 7, borderRadius: 99, background: "linear-gradient(to right, #d97706, #16a34a)" }} />,
+      label: "$ Bar (Sharp Money)",
+      desc: "How much of the total wagered dollars are on this side. Gold = low money, Green = heavy sharp money. ≥70% green = strong sharp signal.",
+    },
+    {
+      icon: <div style={{ width: 36, height: 7, borderRadius: 99, background: "linear-gradient(to right, #60a5fa, #a78bfa)" }} />,
+      label: "👤 Bar (Public Tickets)",
+      desc: "% of individual bets (not dollars) placed on this side. Blue = few tickets, Purple = heavy public action. Tracks crowd sentiment, not money weight.",
+    },
+    {
+      icon: <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a" }}>Sharp ↑</span>,
+      label: "Sharp ↑",
+      desc: "Money % is above 55% on this side — professional money is clearly leaning here. The stronger the green bar, the more conviction.",
+    },
+    {
+      icon: <span style={{ fontSize: 11, fontWeight: 800, color: "#dc2626" }}>Fade ↓</span>,
+      label: "Fade ↓",
+      desc: "Money % is below 45% — sharp money is fading (betting against) this side. The public may still love it, but the dollars say no.",
+    },
+    {
+      icon: <span style={{ fontSize: 11, fontWeight: 800, color: "#3D4B58" }}>Even –</span>,
+      label: "Even –",
+      desc: "Money is split 45–55%. No clear sharp lean — treat as a neutral signal. Look at the ticket bar to see which side the public favors.",
+    },
+    {
+      icon: <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "#d9770620", color: "#d97706", border: "1px solid #d9770640" }}>RLM</span>,
+      label: "RLM Badge",
+      desc: "Reverse Line Movement — the line moved in the direction opposite to where most public tickets went. Almost always caused by sharp money. Strong buy signal on the RLM side.",
+    },
+    {
+      icon: <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 99, background: "#16a34a18", color: "#16a34a", border: "1px solid #16a34a40" }}>SHARP 75</span>,
+      label: "SHARP / LEAN Score",
+      desc: "Composite score (0–100) combining line movement, money %, ticket split, and RLM signals. LEAN = 40–69 (worth watching). SHARP = 70+ (strong professional signal). Higher = more conviction.",
+    },
+    {
+      icon: <span style={{ fontSize: 10, color: "#d97706", fontWeight: 600 }}>(est.)</span>,
+      label: "(est.) Tag",
+      desc: "Live bet% data unavailable — values are estimated from the Pinnacle or soft-book moneyline. Still directionally useful but treat with less certainty.",
+    },
+  ];
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 12px", borderRadius: 10,
+          background: "#fff", border: `1px solid ${BORDER}`,
+          cursor: "pointer", textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13 }}>📖</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: FG }}>How to Read Sharp Signals</span>
+        </div>
+        {open
+          ? <ChevronUp size={13} style={{ color: MUTED, flexShrink: 0 }} />
+          : <ChevronDown size={13} style={{ color: MUTED, flexShrink: 0 }} />
+        }
+      </button>
+
+      {open && (
+        <div style={{
+          marginTop: 4, borderRadius: 10, border: `1px solid ${BORDER}`,
+          background: "#fff", overflow: "hidden",
+        }}>
+          {rows.map((row, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              padding: "10px 14px",
+              borderBottom: i < rows.length - 1 ? `1px solid ${BORDER}` : "none",
+            }}>
+              {/* Icon / visual */}
+              <div style={{ minWidth: 60, display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 2, flexShrink: 0 }}>
+                {row.icon}
+              </div>
+              {/* Text */}
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: FG, margin: "0 0 2px 0" }}>{row.label}</p>
+                <p style={{ fontSize: 11, color: MUTED, margin: 0, lineHeight: 1.5 }}>{row.desc}</p>
+              </div>
+            </div>
+          ))}
+          {/* Quick tip at the bottom */}
+          <div style={{ padding: "10px 14px", background: `${NAV}08`, borderTop: `1px solid ${BORDER}` }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: FG, margin: "0 0 2px 0" }}>Quick Read</p>
+            <p style={{ fontSize: 11, color: MUTED, margin: 0, lineHeight: 1.5 }}>
+              Best plays = Sharp ↑ label + green $ bar above 65% + RLM badge. If the public tickets bar (purple) is low but the dollar bar (green) is high — that's classic sharp vs. public divergence.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Color legend ──────────────────────────────────────────────────────────────
 function ColorLegend() {
   return (
@@ -273,6 +378,7 @@ function ColorLegend() {
 // ── Game card ─────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: SharpGameData }) {
   const [expanded, setExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const d = deriveData(game);
 
   const spread = game.pinnacleSpread ?? game.softSpread;
@@ -336,7 +442,7 @@ function GameCard({ game }: { game: SharpGameData }) {
             {startCT && <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{startCT}</p>}
           </div>
 
-          {/* Badges */}
+          {/* Badges + share */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {game.rlmDetected && (
               <span style={{
@@ -354,6 +460,60 @@ function GameCard({ game }: { game: SharpGameData }) {
                 {game.sharpScore >= 70 ? "SHARP" : "LEAN"} {game.sharpScore}
               </span>
             )}
+            {/* Share button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sharing) return;
+                setSharing(true);
+                const spread = game.pinnacleSpread ?? game.softSpread;
+                const total  = game.pinnacleTotal  ?? game.softTotal;
+                const ml     = d.ml;
+                shareGameCard({
+                  sport:          game.sport,
+                  awayTeam:       game.awayTeam,
+                  homeTeam:       game.homeTeam,
+                  gameTime:       game.startTime,
+                  spread:         spread != null ? (spread > 0 ? `+${spread.toFixed(1)}` : spread.toFixed(1)) : null,
+                  total:          total != null ? String(total.toFixed(1)) : null,
+                  mlAway:         ml ? (ml.away > 0 ? `+${ml.away}` : String(ml.away)) : null,
+                  mlHome:         ml ? (ml.home > 0 ? `+${ml.home}` : String(ml.home)) : null,
+                  hasSteam:       game.sharpScore >= 70,
+                  sharpScore:     game.sharpScore,
+                  sharpDirection: game.sharpDirection,
+                  rlmDetected:    game.rlmDetected,
+                  rlmDescription: game.rlmDescription,
+                  isSynthetic:    d.isSynthetic,
+                  // Spread
+                  spreadAwayTicket: d.awayTicket,
+                  spreadAwayMoney:  d.awayMoney,
+                  spreadHomeTicket: d.homeTicket,
+                  spreadHomeMoney:  d.homeMoney,
+                  // Total
+                  totalOverTicket:  d.overTicket,
+                  totalOverMoney:   d.overMoney,
+                  totalUnderTicket: d.underTicket,
+                  totalUnderMoney:  d.underMoney,
+                  // ML
+                  mlAwayTicket:  d.awayTicket,
+                  mlAwayMoney:   d.awayMoney,
+                  mlHomeTicket:  d.homeTicket,
+                  mlHomeMoney:   d.homeMoney,
+                }).catch(e => { if (e?.name !== "AbortError") console.error("[Share]", e); })
+                  .finally(() => setSharing(false));
+              }}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                background: "rgba(19,35,58,0.07)", border: "1px solid rgba(19,35,58,0.15)",
+                cursor: sharing ? "wait" : "pointer", opacity: sharing ? 0.5 : 1,
+              }}
+            >
+              {sharing
+                ? <RefreshCw size={11} color={MUTED} style={{ animation: "spin 1s linear infinite" }} />
+                : <Share2 size={11} color={MUTED} />
+              }
+            </button>
             {expanded
               ? <ChevronUp size={14} style={{ color: MUTED }} />
               : <ChevronDown size={14} style={{ color: MUTED }} />
@@ -607,6 +767,9 @@ export function SharpMoneyPanel() {
 
       {/* Color legend */}
       <ColorLegend />
+
+      {/* How to read guide */}
+      <HowToRead />
 
       {/* Sport filter pills */}
       <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>

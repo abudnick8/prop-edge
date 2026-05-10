@@ -138,25 +138,72 @@ STAT_MAP = {
         "REB+AST": ("REB+AST", "combo"),
     },
     "MLB": {
-        # Batting
-        "H":     ("H",     "int"),
-        "HITS":  ("H",     "int"),
-        "HR":    ("HR",    "int"),
-        "HOME_RUNS": ("HR","int"),
-        "RBI":   ("RBI",   "int"),
-        "R":     ("R",     "int"),
-        "RUNS":  ("R",     "int"),
-        "BB":    ("BB",    "int"),
-        "K":     ("K",     "int"),
-        "SB":    ("SB",    "int"),
-        "TB":    ("TB",    "int"),
-        # Pitching
-        "IP":    ("IP",    "float"),
-        "ER":    ("ER",    "int"),
-        "STRIKEOUTS": ("K","int"),    # pitcher K
-        "PITCHING_K": ("K","int"),
-        "WALKS":  ("BB",   "int"),
-        "ERA":   ("ERA",   "float"),
+        # ── Batting ───────────────────────────────────────────────
+        "H":              ("H",   "int"),
+        "HITS":           ("H",   "int"),
+        "HR":             ("HR",  "int"),
+        "HOME_RUNS":      ("HR",  "int"),
+        "RBI":            ("RBI", "int"),
+        "RUNS_BATTED_IN": ("RBI", "int"),
+        "RBIS":           ("RBI", "int"),
+        "R":              ("R",   "int"),
+        "RUNS":           ("R",   "int"),
+        "RUNS_SCORED":    ("R",   "int"),
+        "BB":             ("BB",  "int"),
+        "WALKS":          ("BB",  "int"),
+        "K":              ("K",   "int"),
+        "SO":             ("K",   "int"),
+        "STRIKEOUTS_BATTER": ("K","int"),
+        # Singles — ESPN doesn't expose singles directly; compute as H - HR - 2B - 3B
+        "1B":             ("H",   "int"),   # fallback to H; true singles need combo
+        "SINGLES":        ("H",   "int"),   # approximate; best available from ESPN
+        # Doubles
+        "2B":             ("2B",  "int"),
+        "DOUBLES":        ("2B",  "int"),
+        # Triples (banned from display but kept for grading accuracy)
+        "3B":             ("3B",  "int"),
+        "TRIPLES":        ("3B",  "int"),
+        # Stolen bases
+        "SB":             ("SB",  "int"),
+        "STOLEN_BASES":   ("SB",  "int"),
+        "STOLEN_BASE":    ("SB",  "int"),
+        # Total bases
+        "TB":             ("TB",  "int"),
+        "TOTAL_BASES":    ("TB",  "int"),
+        # ── Pitching ──────────────────────────────────────────────
+        "IP":             ("IP",  "float"),
+        "PITCHER_OUTS":   ("OUT", "int"),   # ESPN uses "OUT" for outs recorded
+        "OUTS":           ("OUT", "int"),
+        "ER":             ("ER",  "int"),
+        "EARNED_RUNS":    ("ER",  "int"),
+        "STRIKEOUTS":     ("K",   "int"),   # pitcher K
+        "PITCHING_K":     ("K",   "int"),
+        "PITCHER_K":      ("K",   "int"),
+        "PITCHER_STRIKEOUTS": ("K","int"),
+        "HITS_ALLOWED":   ("H",   "int"),   # ESPN pitching "H" = hits allowed
+        "PITCHER_HITS":   ("H",   "int"),
+        "WALKS_ALLOWED":  ("BB",  "int"),   # ESPN pitching "BB" = walks issued
+        "PITCHER_BB":     ("BB",  "int"),
+        "ERA":            ("ERA", "float"),
+    },
+    "NBA": {
+        "PTS":    ("PTS",   "int"),
+        "POINTS": ("PTS",   "int"),
+        "REB":    ("REB",   "int"),
+        "REBOUNDS": ("REB", "int"),
+        "AST":    ("AST",   "int"),
+        "ASSISTS": ("AST",  "int"),
+        "STL":    ("STL",   "int"),
+        "STEALS": ("STL",   "int"),
+        "BLK":    ("BLK",   "int"),
+        "BLOCKS": ("BLK",   "int"),
+        "TO":     ("TO",    "int"),
+        "TURNOVERS": ("TO", "int"),
+        "3PM":    ("3PM",   "int"),
+        "3-POINTERS": ("3PM","int"),
+        "THREES": ("3PM",   "int"),
+        "PTS+REB+AST": ("PTS+REB+AST", "combo"),
+        "PRA":    ("PTS+REB+AST", "combo"),
     },
     "NHL": {
         "G":     ("G",     "int"),
@@ -506,6 +553,8 @@ def extract_combo_stat(
 # ── Grade a team bet ───────────────────────────────────────────────────────────
 
 def find_game(scores: list, home_team: str, away_team: str) -> dict | None:
+    home_team = home_team or ""
+    away_team = away_team or ""
     if not home_team and not away_team:
         return None
     for g in scores:
@@ -533,8 +582,25 @@ def grade_team_bet(snap: dict, game: dict) -> str | None:
     Returns 'won', 'lost', or 'push'. None if unresolvable.
     """
     bet_type  = (snap.get("betType") or "").lower()
-    pick_side = (snap.get("pickSide") or "").lower()
     line      = snap.get("line")
+
+    # For totals: always derive pickSide from the title — the stored pickSide field
+    # was historically unreliable (defaulted to "over" when formEdgePct was 0).
+    # Title always contains the keyword OVER or UNDER and is the ground truth.
+    raw_pick_side = (snap.get("pickSide") or "").lower()
+    if bet_type == "total":
+        title_upper = (snap.get("title") or "").upper()
+        import re as _re
+        if _re.search(r"\bUNDER\b", title_upper):
+            pick_side = "under"
+        elif _re.search(r"\bOVER\b", title_upper):
+            pick_side = "over"
+        else:
+            pick_side = raw_pick_side  # fallback to stored value if title unclear
+        if pick_side != raw_pick_side and raw_pick_side:
+            print(f"    [Grader] pickSide corrected from title: {raw_pick_side!r} → {pick_side!r} | {snap.get('title','')[:60]}")
+    else:
+        pick_side = raw_pick_side
     home      = snap.get("homeTeam", "")
     away      = snap.get("awayTeam", "")
 
@@ -598,8 +664,22 @@ def grade_player_prop(snap: dict, summary: dict) -> str | None:
     player_name   = snap.get("playerName") or snap.get("player_name") or ""
     stat_category = snap.get("statCategory") or snap.get("stat_category") or ""
     line          = snap.get("line")
-    pick_side     = (snap.get("pickSide") or "").lower()  # "over" or "under"
     sport         = (snap.get("sport") or "").upper()
+
+    # Derive pickSide: title is authoritative; stored pickSide is fallback
+    # Kalshi HR props are binary YES/NO — treat YES as "over" (player hits ≥ line HRs)
+    raw_side = snap.get("pickSide")
+    title_upper = (snap.get("title") or "").upper()
+    import re as _re2
+    if raw_side:
+        pick_side = raw_side.lower()
+    elif _re2.search(r"\bUNDER\b", title_upper):
+        pick_side = "under"
+    elif _re2.search(r"\bOVER\b", title_upper):
+        pick_side = "over"
+    else:
+        # Kalshi binary HR contracts — "YES" = player hits ≥ threshold = over
+        pick_side = "over"
 
     if not player_name or not stat_category or line is None:
         return None
@@ -637,8 +717,13 @@ def run_grader() -> dict:
 
     existing_bet_ids = {r.get("betId") for r in outcomes}
 
-    # Only grade picks where the game finished (game_time < now - 3h)
-    cutoff = NOW - datetime.timedelta(hours=3)
+    # Grade picks where:
+    #   a) the stored gameTime is at least 2h in the past (standard path), OR
+    #   b) the gameTime is within the next 24h (scanner logs future start times;
+    #      the game may already be finished by the time grader runs — ESPN is
+    #      authoritative, so we pass these through and let the ESPN lookup decide)
+    cutoff_past   = NOW - datetime.timedelta(hours=2)
+    cutoff_future = NOW + datetime.timedelta(hours=24)
 
     pending = []
     for snap in snapshots:
@@ -649,20 +734,20 @@ def run_grader() -> dict:
         btype = (snap.get("betType") or "").lower()
 
         if not gt_str:
-            # Player props logged before gameTime fix: use yesterday as fallback
-            # (they were logged for today's games, so yesterday = games already played)
             if btype == "player_prop":
                 gt = NOW - datetime.timedelta(days=1)
             else:
-                continue  # non-props without gameTime: skip
+                continue
         else:
             try:
                 gt = datetime.datetime.fromisoformat(str(gt_str).replace("Z", "").replace("+00:00", ""))
             except Exception:
                 continue
 
-        if gt > cutoff:
-            continue
+        # Accept if game started more than 2h ago OR is within next 24h
+        # (ESPN completed-status check will filter out truly future games)
+        if gt > cutoff_future:
+            continue  # more than 24h from now — genuinely future, skip
         pending.append(snap)
 
     print(f"[Grader] {len(pending)} picks to grade out of {len(snapshots)} snapshots")
@@ -693,17 +778,21 @@ def run_grader() -> dict:
     for sport, snaps in by_sport.items():
         print(f"\n  [Grader] Grading {len(snaps)} {sport} picks...")
 
-        # Collect all unique dates needed
+        # Collect all unique dates needed.
+        # Always include the last 3 days from NOW so we catch games that
+        # finished even if the stored gameTime is a future UTC timestamp
+        # (scanner logs the scheduled start time; grader runs after completion).
         dates_needed: set[str] = set()
+        for delta in range(-3, 2):
+            dates_needed.add((NOW + datetime.timedelta(days=delta)).strftime("%Y%m%d"))
         for snap in snaps:
             gt_str = snap.get("gameTime") or snap.get("game_time", "")
             try:
                 dt = datetime.datetime.fromisoformat(str(gt_str).replace("Z", "").replace("+00:00", ""))
-                for delta in [-2, -1, 0, 1, 2]:
+                for delta in [-2, -1, 0, 1]:
                     dates_needed.add((dt + datetime.timedelta(days=delta)).strftime("%Y%m%d"))
             except Exception:
-                for delta in range(0, 7):
-                    dates_needed.add((NOW - datetime.timedelta(days=delta)).strftime("%Y%m%d"))
+                pass
 
         # Batch-fetch all scores for this sport
         all_scores: list[dict] = []
@@ -721,8 +810,8 @@ def run_grader() -> dict:
         for snap in snaps:
           try:
             bet_type   = (snap.get("betType") or "").lower()
-            home       = snap.get("homeTeam", "")
-            away       = snap.get("awayTeam", "")
+            home       = snap.get("homeTeam") or ""
+            away       = snap.get("awayTeam") or ""
             bid        = snap.get("betId") or snap.get("id")
             game_time  = snap.get("gameTime") or snap.get("game_time")
 

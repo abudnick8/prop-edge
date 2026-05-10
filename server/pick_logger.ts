@@ -89,10 +89,18 @@ export function logPicks(bets: any[]): void {
     if (bet.pickSide) {
       pickSide = String(bet.pickSide).toLowerCase();
     } else if (btype === "total") {
-      // For totals, infer from whether we like over or under
-      // formEdgePct > 0 = over, < 0 = under
-      const fe = bet.formEdgePct ?? 0;
-      pickSide = fe >= 0 ? "over" : "under";
+      // Parse pickSide from the title — titles always contain "OVER" or "UNDER"
+      // e.g. "Team A @ Team B — UNDER 6.5 (-125)" or "[TAKE OVER 8.5 @ -115] ..."
+      const titleUpper = (bet.title || "").toUpperCase();
+      if (/\bUNDER\b/.test(titleUpper)) {
+        pickSide = "under";
+      } else if (/\bOVER\b/.test(titleUpper)) {
+        pickSide = "over";
+      } else {
+        // Fallback: use formEdgePct direction
+        const fe = bet.formEdgePct ?? 0;
+        pickSide = fe >= 0 ? "over" : "under";
+      }
     } else if (btype === "spread" || btype === "moneyline") {
       // Default: if confidenceScore > 50 pick is on the team flagged in title
       // We'll store raw and let the grader figure it out

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ShareCard from "@/components/ShareCard";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bet } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -984,6 +985,7 @@ interface BetDetailDrawerProps {
 }
 
 export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }: BetDetailDrawerProps) {
+  const [showShare, setShowShare] = useState(false);
   if (!bet) return null;
 
   const score = bet.confidenceScore ?? 0;
@@ -1046,6 +1048,16 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
               {bet.gameTime && <p className="text-[10px] mt-0.5" style={{ color: "rgba(19,35,58,0.49)" }}>{formatDistanceToNow(new Date(bet.gameTime), { addSuffix: true })}</p>}
             </div>
 
+            {/* Share button */}
+            <button
+              onClick={() => setShowShare(true)}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold"
+              style={{ background: "rgba(184,147,10,0.1)", color: "#b8930a", border: "1px solid rgba(184,147,10,0.25)", WebkitTapHighlightColor: "transparent" }}
+            >
+              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><circle cx={18} cy={5} r={3}/><circle cx={6} cy={12} r={3}/><circle cx={18} cy={19} r={3}/><line x1={8.59} y1={13.51} x2={15.42} y2={17.49}/><line x1={15.41} y1={6.51} x2={8.59} y2={10.49}/></svg>
+              Share
+            </button>
+
             <DrawerClose asChild>
               <button
                 className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
@@ -1054,6 +1066,14 @@ export default function BetDetailDrawer({ bet, open, onOpenChange, onSelectBet }
                 <X size={15} style={{ color: "rgba(19,35,58,0.7)" }} />
               </button>
             </DrawerClose>
+
+            {showShare && (
+              <ShareCard
+                type={bet.betType === "player_prop" ? "prop" : "team"}
+                data={bet}
+                onClose={() => setShowShare(false)}
+              />
+            )}
           </div>
         </div>
 

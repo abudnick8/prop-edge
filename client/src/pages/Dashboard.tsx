@@ -1,1048 +1,956 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bet } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import BetCard from "@/components/BetCard";
-import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Target, Zap, TrendingUp, Activity, AlertCircle, BookOpen, ChevronDown, ChevronUp, Calendar, Trophy, Users, MessageCircleQuestion, Send, Sparkles, SlidersHorizontal, Search } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/context/AuthContext";
 import { Link } from "wouter";
-import { useState, useEffect, useRef } from "react";
-import { filterByDay, countByDay, DayFilter } from "@/lib/dateFilter";
-import { useBookErrors, BookErrorsFilterButton, BookErrorsSection } from "@/components/BookErrors";
-import { CheatSheetButton, CheatSheetDrawer } from "@/components/CheatSheet";
+import { useState } from "react";
+import {
+  Trophy, Target, Flame, TrendingUp, Activity, Brain,
+  ChevronRight, Zap, Star, Clock, CheckCircle, XCircle,
+  BarChart2, Layers, Radio, DollarSign, Eye, ArrowUp,
+  ArrowDown, Minus, Calendar, Shield, Percent, BookOpen,
+} from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Stats {
-  total: number;
-  highConf: number;
-  bySource: Record<string, number>;
-  bySport: Record<string, number>;
-  avgScore: number;
-  threshold: number;
+  total: number; highConf: number; avgScore: number;
+  threshold: number; bySport: Record<string, number>; bySource: Record<string, number>;
+}
+interface BtsPick {
+  name: string; team: string; hitProbability: number;
+  lockedAt?: string; result?: "hit" | "miss" | "pending"; snapshot?: any;
+}
+interface Bet {
+  id?: string; title: string; sport: string; betType: string; confidenceScore: number;
+  playerName?: string; homeTeam?: string; awayTeam?: string; gameTime?: string;
+  description?: string; source?: string; statType?: string; line?: number;
+  overOdds?: number; underOdds?: number; recommendation?: string;
+}
+interface PropItem {
+  playerName: string; team: string; sport: string; statType: string; line: number;
+  overOdds?: number; underOdds?: number; recommendation: "OVER" | "UNDER";
+  edgeScore?: number; gameTime?: string; matchup?: string;
+}
+interface LineMove {
+  homeTeam: string; awayTeam: string; sport: string; trigger: string;
+  gameTime?: string; moveSize?: number; direction?: "up" | "down";
+}
+interface MlInsights {
+  overall: { total_graded: number; win_rate: number; avg_score: number };
+  by_sport: Record<string, { wins: number; losses: number; win_rate: number }>;
+  by_bet_type?: Record<string, { wins: number; losses: number; win_rate: number }>;
+}
+interface Market {
+  title: string; sport: string; yesPrice: number; noPrice: number;
+  volume: number; category?: string; question?: string;
+}
+interface SharpSignal {
+  homeTeam: string; awayTeam: string; sport: string;
+  publicPct?: number; sharpPct?: number; side?: string; gameTime?: string;
+}
+interface Game {
+  homeTeam: string; awayTeam: string; homeScore: number; awayScore: number;
+  status: string; sport: string; period?: string; gameTime?: string;
 }
 
-type MainTab = "props" | "team" | "season";
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-// ── Sort: confidence desc, MLB player props win tiebreakers ───────────────────
-const SPORT_PRIORITY: Record<string, number> = { MLB: 3, NBA: 2, NHL: 1, NFL: 1 };
-function byConfThenSport(a: Bet, b: Bet): number {
-  const scoreDiff = (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
-  if (scoreDiff !== 0) return scoreDiff;
-  // Tiebreak: MLB player props float to top, then other sports
-  const aPrio = a.betType === "player_prop" ? (SPORT_PRIORITY[a.sport] ?? 0) : 0;
-  const bPrio = b.betType === "player_prop" ? (SPORT_PRIORITY[b.sport] ?? 0) : 0;
-  return bPrio - aPrio;
+const SPORTS = ["MLB", "NBA", "NFL", "NHL"] as const;
+type Sport = typeof SPORTS[number];
+
+const SPORT_EMOJI: Record<string, string> = {
+  MLB: "⚾", NBA: "🏀", NFL: "🏈", NHL: "🏒", Soccer: "⚽", MLS: "⚽", NCAAF: "🏈", NCAAB: "🏀",
+};
+const se = (s: string) => SPORT_EMOJI[s?.toUpperCase()] ?? "🏅";
+
+const fmtVol = (v: number) =>
+  v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `$${(v / 1_000).toFixed(1)}K` : `$${v}`;
+
+const scoreColor = (n: number) => n >= 85 ? "#22c55e" : n >= 70 ? "#D4A843" : "#94a3b8";
+const scoreBg    = (n: number) => n >= 85 ? "rgba(34,197,94,0.12)" : n >= 70 ? "rgba(212,168,67,0.12)" : "rgba(148,163,184,0.10)";
+
+const fmtDate = () => new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+const fmtTime = (s?: string) => {
+  if (!s) return "";
+  const d = new Date(s);
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+};
+const fmtOdds = (n?: number) => (!n ? "" : n > 0 ? `+${n}` : `${n}`);
+
+// ─── Sport Tabs ───────────────────────────────────────────────────────────────
+
+function SportTabs({ active, onChange }: { active: Sport; onChange: (s: Sport) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+      {SPORTS.map(s => (
+        <button key={s} onClick={() => onChange(s)} style={{
+          flex: 1, padding: "5px 4px", borderRadius: 9, border: "none", cursor: "pointer",
+          background: active === s ? "#13233A" : "rgba(19,35,58,0.06)",
+          color: active === s ? "#F6F1E7" : "#64748b",
+          fontSize: 11, fontWeight: 700, transition: "all .15s",
+        }}>
+          {se(s)} {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SectionHeader({ icon, label, linkTo, linkLabel = "View All →", badge }: {
+  icon: React.ReactNode; label: string; linkTo: string; linkLabel?: string; badge?: string | number;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {icon}
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#131A24" }}>{label}</span>
+        {badge !== undefined && (
+          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(19,35,58,0.08)", color: "#64748b", borderRadius: 20, padding: "1px 7px" }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      <Link href={linkTo}>
+        <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500, cursor: "pointer" }}>{linkLabel}</span>
+      </Link>
+    </div>
+  );
+}
+
+const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+  <div style={{ background: "#fff", borderRadius: 18, padding: "14px 14px", border: "1px solid rgba(19,35,58,0.07)", ...style }}>
+    {children}
+  </div>
+);
+
+const Pill = ({ label, color, bg }: { label: string; color: string; bg: string }) => (
+  <span style={{ fontSize: 10, fontWeight: 700, color, background: bg, borderRadius: 20, padding: "2px 8px", letterSpacing: 0.3, textTransform: "uppercase" as const }}>
+    {label}
+  </span>
+);
+
+const EmptyState = ({ text }: { text: string }) => (
+  <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>{text}</p>
+);
+
+const Skel = () => (
+  <div style={{ height: 13, background: "rgba(19,35,58,0.06)", borderRadius: 6, marginBottom: 8, animation: "pulse 1.5s ease-in-out infinite" }} />
+);
+
+function ProLock({ section }: { section: string }) {
+  return (
+    <div style={{
+      position: "absolute", inset: 0, backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)",
+      background: "rgba(246,241,231,0.75)", borderRadius: 18,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, zIndex: 10,
+    }}>
+      <Star size={18} style={{ color: "#D4A843" }} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#13233A" }}>Pro Feature</span>
+      <span style={{ fontSize: 11, color: "#64748b", textAlign: "center", maxWidth: 160 }}>{section} requires Pro.</span>
+      <Link href="/pricing">
+        <span style={{ fontSize: 11, background: "#D4A843", color: "#131A24", padding: "4px 12px", borderRadius: 20, fontWeight: 700, cursor: "pointer", marginTop: 4, display: "block" }}>
+          Upgrade →
+        </span>
+      </Link>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+// ─── Open Bets Widget ────────────────────────────────────────────────────────
+function OpenBetsWidget() {
+  const token = localStorage.getItem("ciq_token") ?? "";
+
+  const { data: accountsData } = useQuery<{ accounts: any[] }>({
+    queryKey: ["book-accounts-dash"],
+    queryFn: async () => {
+      const r = await fetch("/api/book/accounts", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return { accounts: [] };
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const accounts = accountsData?.accounts ?? [];
+  const primaryAcct = accounts[0] ?? null;
+
+  const { data: slipsData, isLoading } = useQuery<{ slips: any[] }>({
+    queryKey: ["book-open-slips-dash", primaryAcct?.id],
+    queryFn: async () => {
+      if (!primaryAcct) return { slips: [] };
+      const r = await fetch(`/api/book/slips?accountId=${primaryAcct.id}&status=open`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return { slips: [] };
+      return r.json();
+    },
+    enabled: !!primaryAcct,
+    refetchInterval: 30_000,
+  });
+
+  const openSlips = slipsData?.slips ?? [];
+
+  if (!primaryAcct || (!isLoading && openSlips.length === 0)) return null;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <BookOpen size={14} style={{ color: "#D4A843" }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#131A24" }}>Open Bets</span>
+          {openSlips.length > 0 && (
+            <span style={{ background: "#D4A843", color: "#13233A", fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 10 }}>
+              {openSlips.length}
+            </span>
+          )}
+        </div>
+        <Link href="/book">
+          <span style={{ fontSize: 11, color: "#D4A843", fontWeight: 700, cursor: "pointer" }}>The Book →</span>
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div style={{ fontSize: 12, color: "#64748b" }}>Loading bets...</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {openSlips.slice(0, 4).map((slip: any) => {
+            const pendingLegs = slip.legs.filter((l: any) => !l.result || l.result === "pending").length;
+            const wonLegs = slip.legs.filter((l: any) => l.result === "win").length;
+            const lostLegs = slip.legs.filter((l: any) => l.result === "loss").length;
+            const totalLegs = slip.legs.length;
+            const progressPct = totalLegs > 0 ? Math.round(((wonLegs + lostLegs) / totalLegs) * 100) : 0;
+            const typeLabel = slip.slip_type === "round_robin" ? "RR" : slip.slip_type.charAt(0).toUpperCase() + slip.slip_type.slice(1);
+            return (
+              <div key={slip.id} style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ background: "#13233A", color: "#D4A843", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 8 }}>{typeLabel}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#131A24" }}>
+                      {slip.stake.toLocaleString()} → <span style={{ color: "#D4A843" }}>{slip.potential_payout.toLocaleString()}</span>
+                    </span>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>coins</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: wonLegs > 0 ? "#16a34a" : "#64748b", fontWeight: 700 }}>
+                    {wonLegs}W / {lostLegs}L / {pendingLegs}P
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div style={{ height: 5, background: "#e2e8f0", borderRadius: 99, overflow: "hidden", marginBottom: 5 }}>
+                  <div style={{ height: "100%", width: `${progressPct}%`, background: lostLegs > 0 ? "#A23B32" : "#16a34a", borderRadius: 99, transition: "width .5s ease" }} />
+                </div>
+                {/* Leg summaries */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {slip.legs.slice(0, 3).map((leg: any, i: number) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "75%" }}>
+                        {leg.pick_label}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, flexShrink: 0, color: leg.result === "win" ? "#16a34a" : leg.result === "loss" ? "#A23B32" : "#94a3b8" }}>
+                        {leg.result === "win" ? "✓" : leg.result === "loss" ? "✗" : "·"}
+                      </span>
+                    </div>
+                  ))}
+                  {slip.legs.length > 3 && (
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>+{slip.legs.length - 3} more leg{slip.legs.length - 3 !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {openSlips.length > 4 && (
+            <Link href="/book">
+              <div style={{ textAlign: "center", fontSize: 11, color: "#D4A843", fontWeight: 700, padding: "4px 0", cursor: "pointer" }}>
+                View all {openSlips.length} open bets →
+              </div>
+            </Link>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 export default function Dashboard() {
-  const { toast } = useToast();
-  const [dayFilter, setDayFilter] = useState<DayFilter>("all");
-  const [mainTab, setMainTab] = useState<MainTab>("props");
+  const { isPro, isOwner, isBasic } = useAuth();
+  const canSeePro   = isPro || isOwner;
+  const canSeeBasic = isBasic || isPro || isOwner;
 
-  const { data: bets = [], isLoading, refetch: refetchBets } = useQuery<Bet[]>({
-    queryKey: ["/api/bets"],
-    // Poll every 5s when empty (cold start), every 30s once data is loaded
-    refetchInterval: (data) => (Array.isArray(data) && (data as Bet[]).length === 0 ? 5000 : 30000),
-  });
+  // Global sport selector — MLB default
+  const [activeSport, setActiveSport] = useState<Sport>("MLB");
 
-  const { data: stats, refetch: refetchStats } = useQuery<Stats>({
+  // ── Fetches ──────────────────────────────────────────────────────────────────
+  const { data: stats, isLoading: statsL } = useQuery<Stats>({
     queryKey: ["/api/stats"],
-    refetchInterval: (data) => (bets.length === 0 ? 5000 : 30000),
+    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: btsData, isLoading: btsL } = useQuery<{ picks: BtsPick[] }>({
+    queryKey: ["/api/bts-picks"],
+    queryFn: () => apiRequest("GET", "/api/bts-picks").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+  const { data: btsHistory } = useQuery<any>({
+    queryKey: ["/api/bts-history"],
+    queryFn: () => apiRequest("GET", "/api/bts-history").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+  const { data: topPlays, isLoading: playsL } = useQuery<Bet[]>({
+    queryKey: ["/api/bets/high-confidence"],
+    queryFn: () => apiRequest("GET", "/api/bets/high-confidence").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: allBets, isLoading: betsL } = useQuery<Bet[]>({
+    queryKey: ["/api/bets"],
+    queryFn: () => apiRequest("GET", "/api/bets").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: propsData, isLoading: propsL } = useQuery<any>({
+    queryKey: ["/api/linemate-props"],
+    queryFn: () => apiRequest("GET", "/api/linemate-props").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: lineMoves, isLoading: lineL } = useQuery<LineMove[]>({
+    queryKey: ["/api/line-movement"],
+    queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: mlInsights, isLoading: mlL } = useQuery<MlInsights>({
+    queryKey: ["/api/ml-insights"],
+    queryFn: () => apiRequest("GET", "/api/ml-insights").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+  const { data: markets, isLoading: marketsL } = useQuery<Market[]>({
+    queryKey: ["/api/prediction-markets"],
+    queryFn: () => apiRequest("GET", "/api/prediction-markets").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+  const { data: sharpData } = useQuery<any>({
+    queryKey: ["/api/sharp-money"],
+    queryFn: () => apiRequest("GET", "/api/sharp-money").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+  const { data: liveData } = useQuery<any>({
+    queryKey: ["/api/live-scores"],
+    queryFn: () => apiRequest("GET", "/api/live-scores").then(r => r.json()),
+    refetchInterval: 20000,
   });
 
-  // Auto-trigger a scan once if data is empty after 3 seconds (cold start)
-  const autoScanned = useRef(false);
-  useEffect(() => {
-    if (!isLoading && bets.length === 0 && !autoScanned.current) {
-      const timer = setTimeout(() => {
-        autoScanned.current = true;
-        apiRequest("POST", "/api/scan").then(() => {
-          refetchBets();
-          refetchStats();
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-        }).catch(() => {});
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, bets.length]);
-
-  const scanMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/scan"),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      toast({
-        title: "Scan Complete",
-        description: `Found ${data.scanned} markets, ${data.highConfidence} high-confidence picks`,
-      });
-    },
-    onError: () => {
-      toast({ title: "Scan Error", description: "Failed to scan markets", variant: "destructive" });
-    },
-  });
-
-  // ── Filters state ────────────────────────────────────────────────────────────
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterSport, setFilterSport] = useState("All");
-  const [filterSource, setFilterSource] = useState("All");
-  const [filterMinScore, setFilterMinScore] = useState(0);
-  const [filterSearch, setFilterSearch] = useState("");
-  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
-  const { data: bookErrors = [] } = useBookErrors();
-
-  // Fetch settings to know which optional sports are enabled
-  const { data: settings } = useQuery<any>({
-    queryKey: ["/api/settings"],
-    staleTime: 60_000,
-  });
-  const enabledOptionalSports: string[] = settings?.enabledOptionalSports ?? [];
-  // Optional sports that have a tab-friendly label
-  const OPTIONAL_SPORT_LABELS: Record<string, string> = {
-    MMA: "MMA", Boxing: "Boxing", NCAAB: "NCAAB", NCAAF: "NCAAF", Golf: "Golf",
-  };
-  const SPORTS_LIST = [
-    "All", "NBA", "NFL", "MLB", "NHL",
-    ...enabledOptionalSports.filter(s => OPTIONAL_SPORT_LABELS[s]),
-  ];
-  const SOURCES_LIST = ["All", "kalshi", "polymarket", "actionnetwork", "underdog"];
-
-  // Helper: has this game already started?
-  function gameHasStarted(b: Bet): boolean {
-    if (!b.gameTime) return false;
-    return new Date(b.gameTime).getTime() <= Date.now();
+  // ── Normalize helpers ─────────────────────────────────────────────────────────
+  function normGame(g: any) {
+    const home = Array.isArray(g.teams) ? g.teams.find((t: any) => t.homeAway === "home") : null;
+    const away = Array.isArray(g.teams) ? g.teams.find((t: any) => t.homeAway === "away") : null;
+    return {
+      sport: g.sport ?? "",
+      homeTeam: home?.shortName ?? g.homeTeam ?? "",
+      awayTeam: away?.shortName ?? g.awayTeam ?? "",
+      homeScore: Number(home?.score ?? g.homeScore ?? 0),
+      awayScore: Number(away?.score ?? g.awayScore ?? 0),
+      status: g.status?.state === "in" ? "in_progress" : g.status?.completed ? "final" : "scheduled",
+      period: (() => {
+        const p = g.status?.period ?? null;
+        const sp = (g.sport ?? "").toUpperCase();
+        if (!p) return g.period ?? "";
+        if (sp === "MLB") return `I${p}`;
+        if (sp === "NHL") return `P${p}`;
+        return `Q${p}`; // NBA, NFL
+      })(),
+      gameTime: g.date ?? g.gameTime,
+    };
   }
 
-  function applyDashFilters(list: Bet[]): Bet[] {
-    const q = filterSearch.trim().toLowerCase();
-    return list.filter((b) => {
-      const matchSearch = !q ||
-        b.title.toLowerCase().includes(q) ||
-        (b.playerName ?? "").toLowerCase().includes(q) ||
-        (b.homeTeam ?? "").toLowerCase().includes(q) ||
-        (b.awayTeam ?? "").toLowerCase().includes(q) ||
-        (b.description ?? "").toLowerCase().includes(q);
-      const matchSport  = filterSport  === "All" || b.sport   === filterSport;
-      const matchSource = filterSource === "All" || b.source  === filterSource;
-      const matchScore  = (b.confidenceScore ?? 0) >= filterMinScore;
-      // Hide started games from default view — only show them if user is actively searching
-      const hideStarted = !q && gameHasStarted(b);
-      return matchSearch && matchSport && matchSource && matchScore && !hideStarted;
-    });
-  }
+  // Sport filter helper
+  const matchSport = (s: string) => s?.toUpperCase() === activeSport;
 
-  // Season bets = season_prop (award markets like MVP, Cy Young) + futures (championship winner)
-  // Also include moneyline/spread/total with no gameTime (championship outrights)
-  const SEASON_BET_TYPES = new Set(["moneyline", "spread", "total", "season_prop", "futures"]);
-  const seasonBets = bets.filter((b) => {
-    if (b.betType === "season_prop" || b.betType === "futures") return true; // always season
-    return !b.gameTime && SEASON_BET_TYPES.has(b.betType ?? ""); // no gameTime = futures/outrights
-  }).sort(byConfThenSport);
+  // ── Raw data ──────────────────────────────────────────────────────────────────
+  const allBetsSafe = Array.isArray(allBets) ? allBets : [];
+  const btsPicks    = Array.isArray(btsData?.picks) ? btsData!.picks : [];
 
-  // Daily bets = player props (always) + team bets that have a gameTime
-  const allPlayerProps = bets.filter((b) => b.betType === "player_prop").sort(byConfThenSport);
-  const allTeamBets = bets.filter((b) => b.betType !== "player_prop" && b.betType !== "season_prop" && b.betType !== "futures" && !!b.gameTime).sort(byConfThenSport);
+  // Raw linemate props — normalize fields
+  const allPropsRaw = Array.isArray((propsData as any)?.markets)
+    ? (propsData as any).markets
+    : Array.isArray((propsData as any)?.props) ? (propsData as any).props : [];
+  const allProps: PropItem[] = allPropsRaw.map((p: any) => ({
+    playerName:     p.playerName ?? p.player ?? "",
+    team:           p.team ?? p.teamCode ?? "",
+    sport:          p.sport ?? "",
+    statType:       p.statType ?? p.marketName ?? "",
+    line:           p.line ?? p.consensusLine ?? 0,
+    overOdds:       p.overOdds ?? null,
+    underOdds:      p.underOdds ?? null,
+    recommendation: (p.recommendation ?? p.outcome ?? "OVER") as "OVER" | "UNDER",
+    edgeScore:      p.edgeScore ?? p.bestHitRate ?? null,
+    gameTime:       p.gameTime ?? null,
+    matchup:        p.matchup ?? (p.opponent ? `vs ${p.opponent}` : ""),
+  }));
 
-  // Day filter for props: if prop has gameTime use it; if no gameTime treat as "today" (live/upcoming)
-  const filterPropsByDay = (props: Bet[], day: DayFilter): Bet[] => {
-    if (day === "all") return props;
-    const { start, end } = day === "today"
-      ? { start: new Date().setHours(0,0,0,0), end: new Date().setHours(23,59,59,999) }
-      : { start: (() => { const d=new Date(); d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d.getTime(); })(),
-          end: (() => { const d=new Date(); d.setDate(d.getDate()+1); d.setHours(23,59,59,999); return d.getTime(); })() };
-    return props.filter((b) => {
-      if (!b.gameTime) return day === "today"; // no gameTime = treat as today
-      const t = new Date(b.gameTime).getTime();
-      return t >= start && t <= end;
-    });
-  };
+  // Line movement — normalize real API shape
+  const allLineMoves = (Array.isArray(lineMoves) ? lineMoves : []).map((m: any) => {
+    const spreadMove  = m.spread?.move ?? 0;
+    const totalMove   = m.total?.move  ?? 0;
+    const mlAway      = m.moneyline?.awayCurrent;
+    const mlHome      = m.moneyline?.homeCurrent;
+    const biggestMove = Math.abs(spreadMove) >= Math.abs(totalMove) ? spreadMove : totalMove;
+    const trigger = m.trigger ? m.trigger
+      : Math.abs(spreadMove) > 0 ? `Spread moved ${spreadMove > 0 ? "+" : ""}${spreadMove}`
+      : Math.abs(totalMove) > 0  ? `Total moved ${totalMove > 0 ? "+" : ""}${totalMove}`
+      : mlAway != null ? `ML: Away ${mlAway > 0 ? "+" : ""}${mlAway} / Home ${mlHome}`
+      : "Line movement detected";
+    const direction = m.direction ? m.direction
+      : biggestMove > 0 ? "up" : biggestMove < 0 ? "down" : undefined;
+    return { ...m, trigger, direction } as LineMove;
+  });
 
-  const propBets = applyDashFilters(filterPropsByDay(allPlayerProps, dayFilter));
-  const teamBets = applyDashFilters(filterByDay(allTeamBets, dayFilter)).sort(byConfThenSport);
-  const threshold = stats?.threshold ?? 85;
+  // Sharp signals — normalize
+  const sharpSignalsRaw = Array.isArray(sharpData) ? sharpData : (sharpData as any)?.games ?? [];
+  const allSharpSignals = sharpSignalsRaw.map((g: any) => {
+    const rawPublic = g.publicBetPct ?? g.publicPct;
+    const publicPct = typeof rawPublic === "number" ? rawPublic
+      : typeof rawPublic === "object" && rawPublic !== null
+        ? (rawPublic.away ?? rawPublic.home ?? rawPublic.over ?? rawPublic.under ?? null)
+        : null;
+    const sharpPct = typeof g.sharpScore === "number" ? g.sharpScore
+      : typeof g.sharpPct === "number" ? g.sharpPct : null;
+    return {
+      homeTeam: g.homeTeam, awayTeam: g.awayTeam, sport: g.sport,
+      publicPct, sharpPct,
+      side: g.sharpDirection ?? g.sharpSide ?? g.side ?? null,
+      gameTime: g.startTime ?? g.gameTime,
+    } as SharpSignal;
+  });
 
-  // Counts for tabs
-  const todayCount = filterPropsByDay(allPlayerProps, "today").length + countByDay(allTeamBets, "today");
-  const tomorrowCount = filterPropsByDay(allPlayerProps, "tomorrow").length + countByDay(allTeamBets, "tomorrow");
-  const allDailyCount = allPlayerProps.length + allTeamBets.length;
+  // Markets — normalize volume
+  const allMarkets = (Array.isArray(markets) ? markets : []).map((m: any) => ({
+    ...m,
+    volume: typeof m.volume === "number" ? m.volume : typeof m.vol24h === "number" ? m.vol24h : 0,
+  }));
 
-  const propsTodayCount = filterPropsByDay(allPlayerProps, "today").length;
-  const teamTodayCount = countByDay(allTeamBets, "today");
+  // Live games
+  const liveGamesArr: Game[] = (() => {
+    const raw = liveData as any;
+    if (!raw) return [];
+    if (Array.isArray(raw.games)) return raw.games;
+    if (raw.sports && typeof raw.sports === "object") return Object.values(raw.sports).flat() as Game[];
+    return [];
+  })();
+  const liveGamesNorm = liveGamesArr.map(normGame);
+  const LIVE_SPORT_ORDER: Record<string, number> = { MLB: 0, NFL: 1, NBA: 2, NHL: 2 };
+  const liveGames  = liveGamesNorm
+    .filter(g => g.status === "in_progress")
+    .sort((a, b) => (LIVE_SPORT_ORDER[a.sport?.toUpperCase() ?? ""] ?? 9) - (LIVE_SPORT_ORDER[b.sport?.toUpperCase() ?? ""] ?? 9));
+  const todayGames = liveGamesNorm.filter(g => g.status !== "final");
 
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const fmtDay = (d: Date) =>
-    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  // ── Sport-filtered data ────────────────────────────────────────────────────────
+  const teamBets      = allBetsSafe.filter(b => b.betType !== "player_prop" && b.betType !== "season_prop" && b.betType !== "futures");
+  const playerProps   = allBetsSafe.filter(b => b.betType === "player_prop");
 
-  const DAY_TABS: { key: DayFilter; label: string; sub: string; count: number }[] = [
-    { key: "today",    label: "Today",     sub: fmtDay(today),    count: todayCount    },
-    { key: "tomorrow", label: "Tomorrow",  sub: fmtDay(tomorrow), count: tomorrowCount },
-    { key: "all",      label: "All Daily", sub: "all upcoming",   count: allDailyCount },
-  ];
+  // Apply sport filter to each section
+  const filteredTopPlays    = (Array.isArray(topPlays) ? topPlays : [])
+    .filter(b => matchSport(b.sport))
+    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+    .slice(0, 6);
 
-  const MAIN_TABS: { key: MainTab; label: string; icon: React.ReactNode; count: number; color: string }[] = [
-    { key: "props",  label: "Player Props", icon: <Target size={13} />,   count: allPlayerProps.length, color: "text-green-400" },
-    { key: "team",   label: "Team Bets",    icon: <Users size={13} />,    count: allTeamBets.length, color: "text-blue-400" },
-    { key: "season", label: "Season Bets",  icon: <Trophy size={13} />,   count: seasonBets.length, color: "text-amber-400" },
+  const filteredTeamBets    = teamBets
+    .filter(b => matchSport(b.sport))
+    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+    .slice(0, 5);
+
+  const filteredPlayerProps = playerProps
+    .filter(b => matchSport(b.sport))
+    .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0))
+    .slice(0, 6);
+
+  const filteredPropsHub    = allProps
+    .filter(p => matchSport(p.sport))
+    .slice(0, 6);
+
+  const filteredLineMoves   = allLineMoves
+    .filter(m => matchSport(m.sport))
+    .slice(0, 4);
+
+  const filteredSharp       = allSharpSignals
+    .filter((s: SharpSignal) => matchSport(s.sport))
+    .slice(0, 3);
+
+  const filteredMarkets     = allMarkets
+    .filter((m: any) => !m.sport || matchSport(m.sport) || m.sport === "Other")
+    .slice(0, 4);
+
+  const filteredLiveSport   = liveGames.filter(g => matchSport(g.sport));
+  const filteredTodaySport  = todayGames.filter(g => matchSport(g.sport));
+
+  // BTS is MLB-only — always show regardless of sport tab
+  const topBts = btsPicks.slice(0, 5);
+
+  // Stats
+  const sportsActive = stats ? Object.keys(stats.bySport).filter(k => stats.bySport[k] > 0) : [];
+
+  // ML sport breakdown filtered
+  const topMlSports = mlInsights?.by_sport
+    ? Object.entries(mlInsights.by_sport).sort((a, b) => b[1].win_rate - a[1].win_rate).slice(0, 4)
+    : [];
+  const mlBetTypeBreakdown = mlInsights?.by_bet_type
+    ? Object.entries(mlInsights.by_bet_type).sort((a, b) => b[1].win_rate - a[1].win_rate).slice(0, 3)
+    : [];
+
+  // BTS history
+  const btsHistoryRaw = btsHistory as any;
+  const btsSeasonRec  = btsHistoryRaw?.seasonRecord ?? {};
+  const btsTotalHits  = btsSeasonRec.wins ?? 0;
+  const btsTotalPicks = (btsSeasonRec.wins ?? 0) + (btsSeasonRec.losses ?? 0);
+  const btsWinRate    = Number(btsSeasonRec.winPct ?? 0);   // already 0–100
+  const btsStreak     = btsHistoryRaw?.yesterdayRecord?.wins ?? 0;
+  const btsRecentDays = Array.isArray(btsHistoryRaw?.days) ? btsHistoryRaw.days.slice(-7) : [];
+  const btsRecent     = btsRecentDays.map((d: any) => ({
+    date: d.date,
+    result: d.winPct >= 50 ? "hit" : "miss" as "hit" | "miss" | "push",
+  }));
+
+  // Stat cards (global, no sport filter)
+  const statCards = [
+    { label: "Total Picks", value: statsL ? "—" : String(stats?.total ?? 0),           icon: <Layers size={15} style={{ color: "#3b82f6" }} />,   color: "#3b82f6", bg: "rgba(59,130,246,0.09)"  },
+    { label: "High Conf",   value: statsL ? "—" : String(stats?.highConf ?? 0),         icon: <Zap size={15} style={{ color: "#D4A843" }} />,      color: "#D4A843", bg: "rgba(212,168,67,0.10)" },
+    { label: "Avg Score",   value: statsL ? "—" : `${(stats?.avgScore ?? 0).toFixed(1)}`,icon: <BarChart2 size={15} style={{ color: "#22c55e" }} />, color: "#22c55e", bg: "rgba(34,197,94,0.09)" },
+    { label: "Sports",      value: statsL ? "—" : String(sportsActive.length),          icon: <Activity size={15} style={{ color: "#a855f7" }} />, color: "#a855f7", bg: "rgba(168,85,247,0.09)" },
+    { label: "Props",       value: statsL ? "—" : String(playerProps.length),           icon: <Target size={15} style={{ color: "#ef4444" }} />,   color: "#ef4444", bg: "rgba(239,68,68,0.09)"  },
+    { label: "Team Bets",   value: betsL ? "—" : String(teamBets.length),               icon: <Shield size={15} style={{ color: "#06b6d4" }} />,   color: "#06b6d4", bg: "rgba(6,182,212,0.09)"  },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-foreground">🏆 Dashboard</h1>
-          <p className="text-xs text-foreground/70 mt-0.5 leading-snug">
-            Kalshi · Polymarket · ActionNetwork · Underdog · DraftKings · SportsGameOdds
-            <span className="hidden sm:inline"> · 🏈 NFL · 🏀 NBA · ⚾ MLB · 🏒 NHL</span>
-          </p>
-        </div>
-        <button
-          onClick={() => scanMutation.mutate()}
-          disabled={scanMutation.isPending}
-          data-testid="button-scan"
-          className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold disabled:opacity-60 transition-all"
-          style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", color: "#1a0d00", boxShadow: "0 0 20px rgba(245,158,11,0.35)" }}
-        >
-          <RefreshCw size={14} className={scanMutation.isPending ? "scanning" : ""} />
-          {scanMutation.isPending ? "Scanning..." : "Scan Now"}
-        </button>
-      </div>
+    <div style={{ background: "#F6F1E7", minHeight: "100vh", paddingBottom: 80, maxWidth: 520, margin: "0 auto", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#131A24", overflowX: "hidden" }}>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+        @keyframes dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Total Markets"    value={stats?.total ?? bets.length}                         icon={<Activity size={16} />}   loading={isLoading} emoji="📊" />
-        <StatCard label={`🔥 ≥${threshold}/100`} value={stats?.highConf ?? 0}                          icon={<Target size={16} />}     highlight loading={isLoading} emoji="🎯" />
-        <StatCard label="Avg Confidence"   value={stats?.avgScore ? `${stats.avgScore}/100` : "—"}     icon={<TrendingUp size={16} />} loading={isLoading} emoji="📈" />
-        <StatCard label="Sources Active"   value={Object.keys(stats?.bySource ?? {}).length || "4"}    icon={<Zap size={16} />}        loading={isLoading} emoji="⚡" />
-      </div>
-
-      {/* How to Read */}
-      <HowToRead />
-
-      {/* ── Main Tab Bar: Player Props | Team Bets | Season Bets ── */}
-      <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border">
-        {MAIN_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setMainTab(tab.key)}
-            data-testid={`tab-main-${tab.key}`}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-              mainTab === tab.key
-                ? "bg-card text-foreground shadow-sm border border-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.icon}
-            <span className="hidden sm:inline">{tab.label}</span>
-            <span className="sm:hidden">{tab.label.split(" ")[0]}</span>
-            {tab.count > 0 && (
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                mainTab === tab.key ? `bg-primary/20 ${tab.color}` : "bg-muted text-muted-foreground"
-              }`}>
-                {tab.count}
-              </span>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div style={{ padding: "22px 16px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <p style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500, marginBottom: 1 }}>{fmtDate()}</p>
+            <h1 style={{ fontSize: 23, fontWeight: 900, color: "#131A24", lineHeight: 1.15, margin: "0 0 3px" }}>Clubhouse IQ</h1>
+            <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Your daily edge across all markets</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.22)", borderRadius: 20, padding: "5px 10px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", animation: "dot 1.4s ease-in-out infinite" }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>Live</span>
+            </div>
+            {liveGames.length > 0 && (
+              <span style={{ fontSize: 10, color: "#ef4444", fontWeight: 700 }}>{liveGames.length} live</span>
             )}
-          </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Stats Row ───────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 8, padding: "14px 16px 0", overflowX: "auto" }}>
+        {statCards.map(card => (
+          <div key={card.label} style={{ background: "#fff", border: "1px solid rgba(19,35,58,0.07)", borderRadius: 14, padding: "11px 13px", minWidth: 80, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ width: 26, height: 26, background: card.bg, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>{card.icon}</div>
+            <span style={{ fontSize: 20, fontWeight: 900, color: "#131A24", lineHeight: 1 }}>{card.value}</span>
+            <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>{card.label}</span>
+          </div>
         ))}
       </div>
 
-      {/* ── Filter bar (Props + Team tabs only) ── */}
-      {(mainTab === "props" || mainTab === "team") && (
-        <div className="space-y-3">
-          {/* Search + toggle row */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                value={filterSearch}
-                onChange={(e) => setFilterSearch(e.target.value)}
-                placeholder="Search player, team, keyword..."
-                className="w-full pl-8 pr-3 py-2 rounded-lg text-sm bg-card border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50"
-                data-testid="input-dash-search"
-              />
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex-shrink-0 ${
-                showFilters || filterSport !== "All" || filterSource !== "All" || filterMinScore > 0
-                  ? "bg-primary/10 text-primary border-primary/30"
-                  : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-              }`}
-              data-testid="button-dash-filters"
-            >
-              <SlidersHorizontal size={13} />
-              Filters
-              {(filterSport !== "All" || filterSource !== "All" || filterMinScore > 0) && (
-                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              )}
-            </button>
-            <BookErrorsFilterButton
-              active={showErrorsOnly}
-              count={(bookErrors as any[]).length}
-              onClick={() => { setShowErrorsOnly(!showErrorsOnly); if (!showErrorsOnly) { setShowFilters(false); } }}
-            />
+      {/* ── Live Games (active sport) ────────────────────────────────────────── */}
+      {filteredLiveSport.length > 0 && (
+        <div style={{ padding: "12px 16px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "dot 1s ease-in-out infinite" }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#ef4444" }}>LIVE NOW</span>
+            <Radio size={11} style={{ color: "#ef4444" }} />
           </div>
-
-          {/* Expanded filter panel */}
-          {showFilters && (
-            <div className="bg-card border border-border rounded-xl p-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Sport */}
-                <div>
-                  <label className="text-xs text-foreground/70 font-semibold block mb-2">Sport</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SPORTS_LIST.map((s) => (
-                      <button key={s} onClick={() => setFilterSport(s)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          filterSport === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}>
-                        {s}
-                      </button>
-                    ))}
+          <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+            {filteredLiveSport.map((g, i) => (
+              <Link href="/scores" key={i}>
+                <div style={{ flex: "0 0 auto", background: "#fff", border: "1px solid rgba(239,68,68,0.22)", borderRadius: 14, padding: "8px 12px", cursor: "pointer" }}>
+                  <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, marginBottom: 3 }}>{se(g.sport)} {g.period ? `· ${g.period}` : ""}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#131A24", whiteSpace: "nowrap" }}>
+                    {g.awayTeam} <span style={{ color: "#ef4444" }}>{g.awayScore}</span>
+                    <span style={{ color: "#94a3b8", margin: "0 4px" }}>–</span>
+                    {g.homeTeam} <span style={{ color: "#ef4444" }}>{g.homeScore}</span>
                   </div>
                 </div>
-                {/* Source */}
-                <div>
-                  <label className="text-xs text-foreground/70 font-semibold block mb-2">Source</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SOURCES_LIST.map((s) => (
-                      <button key={s} onClick={() => setFilterSource(s)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          filterSource === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}>
-                        {s === "actionnetwork" ? "ActionNet" : s.charAt(0).toUpperCase() + s.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Min Confidence */}
-                <div>
-                  <label className="text-xs text-foreground/70 font-semibold block mb-2">
-                    Min Confidence: <span className="text-foreground font-mono">{filterMinScore}</span>
-                  </label>
-                  <input type="range" min={0} max={95} step={5}
-                    value={filterMinScore}
-                    onChange={(e) => setFilterMinScore(Number(e.target.value))}
-                    className="w-full accent-primary"
-                    data-testid="input-dash-min-score"
-                  />
-                  <div className="flex justify-between text-[10px] text-foreground/70 mt-1">
-                    <span>0</span><span className="text-primary font-bold">80+ 🔥</span><span>95</span>
-                  </div>
-                </div>
-              </div>
-              {/* Active filter chips + clear */}
-              {(filterSport !== "All" || filterSource !== "All" || filterMinScore > 0) && (
-                <div className="flex items-center gap-2 pt-1 border-t border-border flex-wrap">
-                  <span className="text-xs text-foreground/70">Active:</span>
-                  {filterSport !== "All" && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {filterSport}
-                      <button onClick={() => setFilterSport("All")} className="hover:text-red-400">×</button>
-                    </span>
-                  )}
-                  {filterSource !== "All" && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {filterSource}
-                      <button onClick={() => setFilterSource("All")} className="hover:text-red-400">×</button>
-                    </span>
-                  )}
-                  {filterMinScore > 0 && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      ≥{filterMinScore} conf
-                      <button onClick={() => setFilterMinScore(0)} className="hover:text-red-400">×</button>
-                    </span>
-                  )}
-                  <button
-                    onClick={() => { setFilterSport("All"); setFilterSource("All"); setFilterMinScore(0); setFilterSearch(""); }}
-                    className="text-xs text-muted-foreground hover:text-red-400 ml-auto transition-colors"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══════════ BOOK ERRORS SECTION ═══════════ */}
-      {showErrorsOnly && (mainTab === "props" || mainTab === "team") && (
-        <BookErrorsSection errors={bookErrors as any[]} />
-      )}
-
-      {/* ═══════════ PLAYER PROPS TAB ═══════════ */}
-      {mainTab === "props" && (
-        <div className="space-y-5">
-          <DayFilterBar tabs={DAY_TABS} active={dayFilter} onChange={setDayFilter} />
-
-          {isLoading ? (
-            <SkeletonGrid />
-          ) : propBets.length === 0 ? (
-            <EmptyState
-              title={bets.length === 0 ? "⚡ Scanning markets..." : dayFilter === "all" ? "No player props loaded" : `No player props for ${dayFilter === "today" ? "today" : "tomorrow"}`}
-              subtitle={bets.length === 0 ? "Loading live picks from all sources — usually takes 20–30 seconds" : "Try a different day or hit Scan Now"}
-              actions={
-                <div className="flex gap-2 justify-center flex-wrap">
-                  {dayFilter !== "all" && (
-                    <button onClick={() => setDayFilter("all")} className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors">
-                      Show All Days
-                    </button>
-                  )}
-                  <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/30 hover:bg-green-500/20 transition-colors">
-                    Scan Now
-                  </button>
-                </div>
-              }
-            />
-          ) : (
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  <h2 className="text-base font-bold text-foreground">🎯 Player Props</h2>
-                  <span className="text-xs font-mono bg-green-500/15 text-green-400 px-2 py-0.5 rounded-md border border-green-500/30">
-                    {propBets.length} props
-                  </span>
-                </div>
-                <Link href="/bets?type=player_prop">
-                  <a className="text-xs text-primary hover:underline">View all →</a>
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {propBets.map((bet) => (
-                  <BetCard key={bet.id} bet={bet} />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-
-      {/* ═══════════ TEAM BETS TAB ═══════════ */}
-      {mainTab === "team" && (
-        <div className="space-y-5">
-          <DayFilterBar tabs={DAY_TABS} active={dayFilter} onChange={setDayFilter} />
-
-          {isLoading ? (
-            <SkeletonGrid />
-          ) : teamBets.length === 0 ? (
-            <EmptyState
-              title={bets.length === 0 ? "⚡ Scanning markets..." : `No team bets for ${dayFilter === "today" ? "today" : dayFilter === "tomorrow" ? "tomorrow" : "upcoming days"}`}
-              subtitle={bets.length === 0 ? "Loading live picks — usually takes 20–30 seconds" : "Spreads, totals, and moneylines appear here"}
-              actions={
-                <div className="flex gap-2 justify-center">
-                  {dayFilter !== "all" && (
-                    <button onClick={() => setDayFilter("all")} className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors">
-                      Show All Days
-                    </button>
-                  )}
-                </div>
-              }
-            />
-          ) : (
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                  <h2 className="text-base font-bold text-foreground">🏟️ Team Bets</h2>
-                  <span className="text-xs font-mono bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-md border border-blue-500/30">
-                    {teamBets.length} bets
-                  </span>
-                </div>
-                <Link href="/bets">
-                  <a className="text-xs text-primary hover:underline">View all →</a>
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {teamBets.map((bet) => (
-                  <BetCard key={bet.id} bet={bet} />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-
-      {/* ═══════════ SEASON BETS TAB ═══════════ */}
-      {mainTab === "season" && (
-        <div className="space-y-5">
-          <div className="flex items-center gap-3 px-4 py-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl">
-            <Trophy size={16} className="text-amber-400 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-foreground">Season-Long Futures & Outrights</p>
-              <p className="text-xs text-foreground/70 mt-0.5">
-                Championship winners, division winners, and season-long player props. Resolve at end of season.
-              </p>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <SkeletonGrid />
-          ) : seasonBets.length === 0 ? (
-            <EmptyState
-              title="No season futures loaded yet"
-              subtitle="Click Scan Now to load season-long markets"
-              actions={
-                <button onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending} className="text-xs px-3 py-1.5 bg-yellow-500/10 text-amber-400 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20 transition-colors">
-                  Scan Now
-                </button>
-              }
-            />
-          ) : (
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                <h2 className="text-base font-bold text-foreground">🏆 Season Futures</h2>
-                <span className="text-xs font-mono bg-yellow-500/15 text-amber-400 px-2 py-0.5 rounded-md border border-yellow-500/30">
-                  {seasonBets.length} picks
-                </span>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {seasonBets.map((bet) => (
-                  <BetCard key={bet.id} bet={bet} />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-
-      {/* ═══════════ ASK A QUESTION ═══════════ */}
-      <AskSection />
-
-    </div>
-  );
-}
-
-// ── Shared sub-components ──────────────────────────────────────────────────
-
-function DayFilterBar({
-  tabs,
-  active,
-  onChange,
-}: {
-  tabs: { key: DayFilter; label: string; sub: string; count: number }[];
-  active: DayFilter;
-  onChange: (k: DayFilter) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 border-b border-border pb-1">
-      {tabs.map((tab) => (
-        <button
-          key={tab.key}
-          onClick={() => onChange(tab.key)}
-          data-testid={`tab-day-${tab.key}`}
-          className={`relative flex flex-col items-start px-4 py-2 rounded-t-lg text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            active === tab.key
-              ? "border-primary text-primary bg-primary/5"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent"
-          }`}
-        >
-          <span className="flex items-center gap-1.5">
-            {tab.label}
-            {tab.count > 0 && (
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                active === tab.key ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </span>
-          <span className="text-[10px] text-foreground/70 font-normal">{tab.sub}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({
-  title,
-  subtitle,
-  actions,
-}: {
-  title: string;
-  subtitle: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="text-center py-16 border border-dashed border-border rounded-xl">
-      <AlertCircle size={32} className="mx-auto text-muted-foreground mb-3" />
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="text-xs text-muted-foreground mt-1 mb-3">{subtitle}</p>
-      {actions}
-    </div>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-      {Array(6).fill(0).map((_, i) => (
-        <Skeleton key={i} className="h-44 rounded-xl" />
-      ))}
-    </div>
-  );
-}
-
-// ── How to Read ────────────────────────────────────────────────────────────
-
-const TERMS = [
-  { term: "Confidence Score", badge: "e.g. 84/100", color: "text-primary", def: "A 0–100 rating built from 6 components: market consensus (20 pts), source quality + sharp money (28 pts), stat predictability (22 pts), sport sample size (13 pts), juice/value (12 pts), and recent form vs line (+12/−15 pts). Score 85+ = HIGH CONFIDENCE alert. See Edge Grade below for how mispricing is graded." },
-  { term: "Moneyline", badge: "Bet Type", color: "text-blue-400", def: "A straight-up bet on who wins the game. A -200 favorite means risk $200 to win $100. A +170 underdog means a $100 bet wins $170." },
-  { term: "Spread", badge: "Bet Type", color: "text-blue-400", def: "A handicap given to the underdog. If the Chiefs are -6.5, they must win by 7+ for the bet to win. The underdog +6.5 wins if they lose by 6 or fewer, or win outright." },
-  { term: "Total (Over/Under)", badge: "Bet Type", color: "text-blue-400", def: "A bet on the combined score of both teams. If the total is 47.5, bet Over (48+) or Under (47 or less). Doesn't matter who wins." },
-  { term: "Player Prop", badge: "Bet Type", color: "text-green-400", def: "A bet on an individual player's stats — e.g. 'LeBron James Over 25.5 points.' Only depends on the player's performance, not who wins." },
-  { term: "TAKE OVER / TAKE UNDER", badge: "Recommendation", color: "text-green-400", def: "The system's pick on a player prop. TAKE OVER means the player is projected to exceed the line. TAKE UNDER means they're projected to fall short." },
-  { term: "Season Futures", badge: "Bet Type", color: "text-amber-400", def: "A bet on a season-long outcome — e.g. 'Yankees to win the World Series.' These live in the Season Bets tab and resolve at season's end." },
-  { term: "Implied Probability", badge: "Market Metric", color: "text-amber-400", def: "The win probability implied by the odds. A -200 favorite = ~67% implied. On Kalshi/Polymarket, a $0.72 price = 72% chance." },
-  { term: "Recommended Allocation", badge: "Portfolio Sizing", color: "text-green-400", def: "Suggested % of your bankroll for this bet, using quarter-Kelly sizing. 5% on a $1,000 bankroll = $50 bet." },
-  { term: "Risk Level", badge: "Low / Medium / High", color: "text-orange-400", def: "Low = score ≥75 with >55% implied probability. Medium = score ≥60. High = lower confidence. Always size bets by risk level." },
-  { term: "Kalshi / Polymarket", badge: "Sources", color: "text-purple-400", def: "Regulated prediction markets where real money trades on outcomes. Prices reflect collective market intelligence — generally more accurate than sportsbook lines." },
-  { term: "ActionNetwork", badge: "Source", color: "text-purple-400", def: "Public betting consensus — % of money and tickets on each side. High sharp money % on one side with low ticket % signals professional action." },
-];
-
-function HowToRead() {
-  const [open, setOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
-  return (
-    <>
-      <div className="border border-border rounded-xl overflow-hidden">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          data-testid="button-how-to-read"
-          className="w-full flex items-center justify-between px-5 py-4 bg-card hover:bg-muted/40 transition-colors"
-        >
-          <div className="flex items-center gap-2.5">
-            <BookOpen size={15} className="text-primary" />
-            <span className="text-sm font-semibold text-foreground">How to Read This App</span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">— betting terms &amp; smart money explained</span>
-          </div>
-          {open ? <ChevronUp size={15} className="text-muted-foreground" /> : <ChevronDown size={15} className="text-muted-foreground" />}
-        </button>
-        {open && (
-          <div className="px-5 pb-5 pt-3 bg-card border-t border-border space-y-4">
-            {/* Full Guide CTA */}
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold text-foreground flex items-center gap-2">⚡ Clubhouse IQ Smart Money Guide</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">9 sections — spread signals, totals by sport, moneyline, universal rules, and more</p>
-              </div>
-              <button
-                onClick={() => setGuideOpen(true)}
-                className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold border border-primary/50 text-primary bg-primary/10 hover:bg-primary/20 transition-all whitespace-nowrap"
-              >
-                <BookOpen size={12} /> Open Full Guide
-              </button>
-            </div>
-
-            {/* Betting terms glossary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {TERMS.map((t) => (
-                <div key={t.term} className="bg-muted/30 rounded-lg p-3.5 border border-border/60">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-sm font-semibold text-foreground">{t.term}</span>
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted border border-border ${t.color}`}>{t.badge}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t.def}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* ── Confidence Score Breakdown ───────────────────────────────── */}
-            <div className="rounded-xl border border-border overflow-hidden">
-              <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-                <span className="text-sm font-bold text-foreground">How the Confidence Score is Built</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary">0–100</span>
-              </div>
-              <div className="p-4 space-y-2">
-                <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
-                  Every pick is scored using a <span className="text-foreground font-semibold">6-component model</span>. You need strong marks across all six to reach 85+. Hard gates (coin-flip odds, extreme juice, low-tier source) cap the score at 66.
-                </p>
-                {[
-                  { label: "Market consensus",     pts: "20", color: "#6366f1", w: 72,  detail: "How decisively the market prices one side. 78%+ implied = full points." },
-                  { label: "Source + sharp money", pts: "28", color: "#10b981", w: 100, detail: "DraftKings/FanDuel tier scores highest. Pro money vs public tickets split adds up to +12 pts bonus." },
-                  { label: "Stat predictability",  pts: "22", color: "#f59e0b", w: 79,  detail: "A-class (PTS, REB, AST) = 22 pts. B-class (shots, 3PT) = 14 pts. C-class (steals, goals) = 7 pts." },
-                  { label: "Sport sample size",    pts: "13", color: "#3b82f6", w: 46,  detail: "MLB 162-game season scores highest. NFL 17-game season penalized for variance." },
-                  { label: "Juice & value",         pts: "12", color: "#a78bfa", w: 43,  detail: "Clean lines (−105 to −112) = full. Heavy juice (−280+) = gated. Plus-money props score well." },
-                  { label: "Recent form vs line",   pts: "+12/−15", color: "#f97316", w: 43, detail: "L5 avg vs posted line. Player crushing the number = +12 pts. Form conflicting with pick = up to −15 pts." },
-                ].map(c => (
-                  <div key={c.label} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold w-36 shrink-0" style={{ color: c.color }}>{c.label}</span>
-                      <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${c.w}%`, background: c.color }} />
-                      </div>
-                      <span className="text-[10px] font-mono text-muted-foreground w-12 text-right shrink-0">{c.pts} pts</span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground pl-[9.5rem] leading-snug">{c.detail}</p>
-                  </div>
-                ))}
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  {[
-                    { range: "85+",   label: "HIGH",     color: "#22c55e" },
-                    { range: "70–84", label: "Moderate", color: "#eab308" },
-                    { range: "<70",   label: "Low",       color: "#f97316" },
-                  ].map(t => (
-                    <div key={t.range} className="p-2 rounded-lg border border-border bg-muted/30">
-                      <p className="text-xs font-black font-mono" style={{ color: t.color }}>{t.range}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{t.label}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* ── Edge Grade ──────────────────────────────────────────────── */}
-            <div className="rounded-xl border border-border overflow-hidden">
-              <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-                <span className="text-sm font-bold text-foreground">📊 Edge Grade</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted border border-border text-muted-foreground">A+ / A / B / C</span>
-                <span className="text-[10px] text-muted-foreground ml-auto">Part of confidence</span>
-              </div>
-              <div className="p-4 space-y-3">
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  The Edge Grade shows how much <span className="text-foreground font-semibold">mispricing</span> exists between the model's fair value and what the book is currently offering. A higher confidence score = higher fair value = larger potential edge.
-                </p>
-
-                {/* Formula */}
-                <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/20 text-[10px] text-center">
-                  <div className="flex-1">
-                    <p className="font-bold text-blue-300">Model Fair Value</p>
-                    <p className="text-muted-foreground mt-0.5">(from confidence score)</p>
-                  </div>
-                  <span className="text-muted-foreground font-bold text-base">−</span>
-                  <div className="flex-1">
-                    <p className="font-bold text-red-300">Book Implied Prob</p>
-                    <p className="text-muted-foreground mt-0.5">(from the odds)</p>
-                  </div>
-                  <span className="text-muted-foreground font-bold text-base">=</span>
-                  <div className="flex-1">
-                    <p className="font-bold" style={{ color: "#4ade80" }}>Edge %</p>
-                    <p className="text-muted-foreground mt-0.5">(positive = value)</p>
-                  </div>
-                </div>
-
-                {/* Tier rows */}
-                <div className="space-y-1.5">
-                  {[
-                    { tier: "A+", color: "#4ade80", bg: "rgba(34,197,94,0.08)",   border: "rgba(34,197,94,0.25)",   rule: "Edge ≥15% + Confidence ≥82",  note: "Book significantly behind model. High conviction play." },
-                    { tier: "A",  color: "#facc15", bg: "rgba(250,204,21,0.08)",  border: "rgba(250,204,21,0.25)",  rule: "Edge ≥10% + Confidence ≥75",  note: "Meaningful gap vs market. Strong play." },
-                    { tier: "B",  color: "#93c5fd", bg: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.25)",  rule: "Edge ≥5% + Confidence ≥65",   note: "Moderate edge. Good play, look for a confirming signal." },
-                    { tier: "C",  color: "rgba(19,35,58,0.49)", bg: "rgba(19,35,58,0.04)", border: "rgba(19,35,58,0.17)", rule: "Edge <5% or Confidence <65", note: "No badge shown — edge too small to surface. Use other signals." },
-                  ].map(t => (
-                    <div key={t.tier} className="flex items-start gap-3 p-2.5 rounded-lg border" style={{ background: t.bg, borderColor: t.border }}>
-                      <span className="text-xs font-black shrink-0 w-6 text-center pt-0.5" style={{ color: t.color }}>📊{t.tier}</span>
-                      <div>
-                        <p className="text-[10px] font-bold" style={{ color: t.color }}>{t.rule}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{t.note}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Sharp bonus + L5 model */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="p-2.5 rounded-lg border border-yellow-500/20 bg-yellow-500/5">
-                    <p className="text-[10px] font-bold text-yellow-300 mb-1">Sharp money bonus</p>
-                    <p className="text-[10px] text-muted-foreground leading-snug">If pro money is confirmed on your side, the effective edge is bumped +2% before tier assignment — easier to reach A+ or A.</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg border border-orange-500/20 bg-orange-500/5">
-                    <p className="text-[10px] font-bold text-orange-300 mb-1">📈 L5 stat-vs-line model</p>
-                    <p className="text-[10px] text-muted-foreground leading-snug">For props, the player's last 5 game average is compared to the posted line. A +37% edge (e.g. 4.8 avg vs 3.5 line) with 4/5 hit rate adds up to +12 pts to the confidence score and boosts the edge grade.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Full guide drawer — opened directly from the CTA button */}
-      <CheatSheetDrawer open={guideOpen} onClose={() => setGuideOpen(false)} />
-    </>
-  );
-}
-
-function StatCard({ label, value, icon, highlight = false, loading = false, emoji }: {
-  label: string; value: string | number; icon: React.ReactNode; highlight?: boolean; loading?: boolean; emoji?: string;
-}) {
-  return (
-    <div className={`bg-card rounded-xl border p-4 ${highlight ? "border-primary/30" : "border-border"}`}
-      style={highlight ? { boxShadow: "0 0 16px rgba(245,158,11,0.1)" } : {}}>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-foreground/70">{label}</p>
-        <span className={highlight ? "text-primary" : "text-foreground/60"}>{icon}</span>
-      </div>
-      {loading ? (
-        <Skeleton className="h-8 w-16" />
-      ) : (
-        <p className={`text-2xl font-bold font-mono ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
-      )}
-    </div>
-  );
-}
-
-// ── Ask a Question ──────────────────────────────────────────────────────────
-
-const EXAMPLE_QUESTIONS = [
-  "Build me a 4 player NBA parlay for today's games",
-  "Best NBA player props for tonight?",
-  "Should I bet on LeBron over 25.5 points tonight?",
-  "Any high confidence MLB props today?",
-  "Give me a 3-leg parlay under $50",
-];
-
-// Render answer text: bold **text**, line breaks, and leg separators
-function AnswerText({ text }: { text: string }) {
-  const lines = text.split("\n");
-  return (
-    <div className="space-y-1.5">
-      {lines.map((line, i) => {
-        if (!line.trim()) return <div key={i} className="h-1" />;
-        // Parse **bold** segments
-        const parts = line.split(/(\*\*[^*]+\*\*)/g);
-        const isLegLine = /^\*\*Leg \d+:/i.test(line);
-        const isVerdictLine = /^(🔥|⚠️|❌|✅)\s+(STRONG|MODERATE|HIGH RISK|PARLAY)/.test(line);
-        const isWhyLine = /^\s+Why:/i.test(line) || line.trim().startsWith("Why:");
-        const isConfLine = /Confidence:/.test(line) && /\/100/.test(line);
-        return (
-          <p key={i}
-            className={`text-sm leading-relaxed ${
-              isLegLine ? "font-bold mt-3 first:mt-0" : ""
-            } ${
-              isVerdictLine ? "font-bold text-base" : ""
-            } ${
-              isWhyLine ? "text-xs opacity-70 pl-3" : ""
-            } ${
-              isConfLine ? "text-xs opacity-80 pl-3" : ""
-            }`}
-            style={isLegLine ? { color: "hsl(43 100% 72%)" } : undefined}>
-            {parts.map((part, j) =>
-              part.startsWith("**") && part.endsWith("**")
-                ? <strong key={j} style={{ color: "hsl(43 100% 85%)" }}>{part.slice(2, -2)}</strong>
-                : <span key={j}>{part}</span>
-            )}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-function AskSection() {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<{ q: string; a: string; relatedBets: any[] }[]>([]);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  const handleSubmit = async (q: string) => {
-    const trimmed = q.trim();
-    if (!trimmed || isLoading) return;
-    setQuestion("");
-    setIsLoading(true);
-    setError(null);
-    setAnswer(null);
-    try {
-      const res = await apiRequest("POST", "/api/ask", { question: trimmed });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setHistory((prev) => [...prev, { q: trimmed, a: data.answer, relatedBets: data.relatedBets ?? [] }]);
-      setAnswer(data.answer);
-    } catch (e: any) {
-      setError(e.message ?? "Failed to get analysis");
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(question);
-    }
-  };
-
-  return (
-    <div className="border border-border rounded-xl overflow-hidden" data-testid="ask-section">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 bg-card border-b border-border">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 22%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
-          <MessageCircleQuestion size={15} className="text-primary" />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-            Ask Clubhouse IQ
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">AI</span>
-          </h2>
-          <p className="text-xs text-muted-foreground">Ask about any bet — get analysis using live odds & stats</p>
-        </div>
-      </div>
-
-      <div className="bg-card px-5 py-4 space-y-4">
-        {/* Conversation history */}
-        {history.length > 0 && (
-          <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-            {history.map((item, i) => (
-              <div key={i} className="space-y-2">
-                {/* User question */}
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm text-foreground"
-                    style={{ background: "linear-gradient(135deg, hsl(43 100% 50% / 0.15), hsl(43 100% 50% / 0.08))", border: "1px solid hsl(43 100% 50% / 0.25)" }}>
-                    {item.q}
-                  </div>
-                </div>
-                {/* AI answer */}
-                <div className="flex justify-start gap-2">
-                  <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
-                    style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
-                    <Sparkles size={10} className="text-primary" />
-                  </div>
-                  <div className="flex-1 max-w-[90%] space-y-2">
-                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border text-foreground">
-                      <AnswerText text={item.a} />
-                    </div>
-                    {item.relatedBets?.length > 0 && (
-                      <div className="space-y-2 pl-1">
-                        {/* Label: parlay legs vs similar bets */}
-                        {item.relatedBets[0]?.similarityReason === "parlay leg" ? (
-                          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                            🏆 Parlay legs — tap to view full details
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
-                          </p>
-                        ) : (
-                          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                            <TrendingUp size={11} className="text-primary" />
-                            Similar bets — same player, team, or bet type
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30">{item.relatedBets.length}</span>
-                          </p>
-                        )}
-                        {item.relatedBets.map((bet: any, legIdx: number) => {
-                          const conf = bet.confidenceScore ?? 0;
-                          const confColor = conf >= 85 ? "text-green-400 border-green-500/30 bg-green-500/10" : conf >= 70 ? "text-amber-400 border-yellow-500/30 bg-yellow-500/10" : "text-muted-foreground border-border bg-muted";
-                          const verdict = conf >= 85 ? "✅ Strong" : conf >= 70 ? "⚠️ Moderate" : "❌ Risky";
-                          const isParlay = bet.similarityReason === "parlay leg";
-                          const fmtOdds = (n: number | null) => n == null ? null : (n > 0 ? "+" + n : "" + n);
-                          const matchup = bet.homeTeam && bet.awayTeam ? `${bet.awayTeam} @ ${bet.homeTeam}` : null;
-                          return (
-                            <div key={bet.id} className="p-3 rounded-xl border bg-muted/20 space-y-1.5"
-                              style={{ borderColor: isParlay ? "hsl(43 100% 50% / 0.25)" : undefined }}>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {isParlay && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                                    style={{ background: "hsl(43 100% 50% / 0.15)", color: "hsl(43 100% 65%)", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
-                                    LEG {legIdx + 1}
-                                  </span>
-                                )}
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">{bet.sport}</span>
-                                {bet.betType === "player_prop" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">PROP</span>}
-                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${confColor}`}>{conf}/100</span>
-                                <span className="text-[10px] text-muted-foreground">{verdict}</span>
-                              </div>
-                              <p className="text-xs font-semibold text-foreground leading-tight">{bet.title}</p>
-                              {matchup && <p className="text-[10px] text-muted-foreground">🏀 {matchup}</p>}
-                              {(bet.line != null || bet.overOdds != null) && (
-                                <p className="text-[10px] text-muted-foreground">
-                                  {bet.line != null && <span>Line: <strong>{bet.line}</strong>  </span>}
-                                  {bet.overOdds != null && <span>Over: {fmtOdds(bet.overOdds)}  Under: {fmtOdds(bet.underOdds)}</span>}
-                                </p>
-                              )}
-                              {bet.keyFactors?.[0] && <p className="text-[10px] text-muted-foreground line-clamp-2">{bet.keyFactors[0]}</p>}
-                              {!isParlay && bet.similarityReason && bet.similarityReason !== "direct match" && (
-                                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.08)", color: "rgba(245,158,11,0.7)" }}>↗ {bet.similarityReason}</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              </Link>
             ))}
-            <div ref={bottomRef} />
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Loading state */}
-        {isLoading && (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, hsl(265 35% 18%), hsl(265 35% 24%))", border: "1px solid hsl(43 100% 50% / 0.3)" }}>
-              <Sparkles size={10} className="text-primary animate-pulse" />
-            </div>
-            <div className="flex items-center gap-1.5 px-4 py-3 rounded-2xl rounded-tl-sm bg-muted/40 border border-border">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-            </div>
-          </div>
-        )}
+      {/* ── Main Sections ────────────────────────────────────────────────────── */}
+      <div style={{ padding: "12px 16px 0", display: "flex", flexDirection: "column", gap: 10 }}>
 
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-sm text-destructive">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
-
-        {/* Example questions (show when no history) */}
-        {history.length === 0 && !isLoading && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground font-medium">Try asking:</p>
-            <div className="flex flex-wrap gap-2">
-              {EXAMPLE_QUESTIONS.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => handleSubmit(q)}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                  data-testid={`example-question-${q.slice(0, 10).replace(/\s/g, '-')}`}
-                >
-                  {q}
-                </button>
+        {/* ── Top Plays ──────────────────────────────────────────────────────── */}
+        <Card>
+          <SectionHeader icon={<Flame size={14} style={{ color: "#ef4444" }} />} label="Top Plays Today" linkTo="/conviction" badge={filteredTopPlays.length} />
+          <SportTabs active={activeSport} onChange={setActiveSport} />
+          {playsL ? (<><Skel /><Skel /><Skel /></>) : filteredTopPlays.length === 0 ? (
+            <EmptyState text={`No high-confidence ${activeSport} plays right now`} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {filteredTopPlays.map((bet, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "rgba(19,35,58,0.025)", borderRadius: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 17 }}>{se(bet.sport)}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 165 }}>
+                        {bet.playerName || bet.title}
+                      </p>
+                      <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+                        <Pill label={bet.betType?.replace(/_/g, " ") ?? "bet"} color="#64748b" bg="rgba(19,35,58,0.06)" />
+                        {bet.gameTime && <span style={{ fontSize: 10, color: "#94a3b8" }}>{fmtTime(bet.gameTime)}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: scoreBg(bet.confidenceScore), border: `2px solid ${scoreColor(bet.confidenceScore)}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: scoreColor(bet.confidenceScore) }}>{bet.confidenceScore?.toFixed(0)}</span>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
+          )}
+        </Card>
+
+        {/* ── Team Bets ──────────────────────────────────────────────────────── */}
+        <Card>
+          <SectionHeader icon={<Shield size={14} style={{ color: "#06b6d4" }} />} label="Team Bets" linkTo="/bets" badge={filteredTeamBets.length} />
+          <SportTabs active={activeSport} onChange={setActiveSport} />
+          {betsL ? (<><Skel /><Skel /></>) : filteredTeamBets.length === 0 ? (
+            <EmptyState text={`No ${activeSport} team bets available`} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {filteredTeamBets.map((b, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", background: "rgba(6,182,212,0.04)", borderRadius: 11, border: "1px solid rgba(6,182,212,0.10)" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 185 }}>{b.title}</p>
+                    <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
+                      <Pill label={b.betType?.replace(/_/g, " ") ?? ""} color="#06b6d4" bg="rgba(6,182,212,0.10)" />
+                      {b.gameTime && <span style={{ fontSize: 10, color: "#94a3b8" }}>{fmtTime(b.gameTime)}</span>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: scoreColor(b.confidenceScore), flexShrink: 0, marginLeft: 8 }}>{b.confidenceScore?.toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Player Props ───────────────────────────────────────────────────── */}
+        <Card>
+          <SectionHeader icon={<Target size={14} style={{ color: "#22c55e" }} />} label="Player Props" linkTo="/linemate" badge={filteredPlayerProps.length} />
+          <SportTabs active={activeSport} onChange={setActiveSport} />
+          {betsL ? (<><Skel /><Skel /><Skel /></>) : filteredPlayerProps.length === 0 ? (
+            <EmptyState text={`No ${activeSport} player props right now`} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {filteredPlayerProps.map((b, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", background: "rgba(19,35,58,0.025)", borderRadius: 11 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 16 }}>{se(b.sport)}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150 }}>{b.playerName || b.title}</p>
+                      <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+                        {(() => {
+                          const stat = b.statType || (b as any).teamStats?.statType || "";
+                          const dir  = b.recommendation || (b as any).teamStats?.pickSide || "";
+                          const line = b.line ?? (b as any).teamStats?.statValue ?? null;
+                          if (stat) return <Pill label={`${stat}${dir ? ` ${dir[0]}` : ""}${line != null ? ` ${line}` : ""}`} color="#22c55e" bg="rgba(34,197,94,0.10)" />;
+                          if (line != null) return <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{line}</span>;
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                    {b.overOdds && <span style={{ fontSize: 10, color: "#64748b" }}>{fmtOdds(b.overOdds)}</span>}
+                    <span style={{ fontSize: 12, fontWeight: 900, color: scoreColor(b.confidenceScore) }}>{b.confidenceScore?.toFixed(0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Beat The Streak (MLB only — always shown) ─────────────────────── */}
+        <Card>
+          <SectionHeader icon={<Trophy size={14} style={{ color: "#D4A843" }} />} label="Beat The Streak" linkTo="/bts" linkLabel="View Full →" badge={`${btsPicks.length}/10`} />
+
+          {(btsTotalPicks > 0 || btsStreak > 0) && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {[
+                { label: "Streak",   value: btsStreak > 0 ? `🔥 ${btsStreak}` : `${btsStreak}`, color: btsStreak > 2 ? "#D4A843" : "#131A24" },
+                { label: "Win Rate", value: `${btsWinRate.toFixed(0)}%`,                          color: btsWinRate >= 60 ? "#22c55e" : "#64748b" },
+                { label: "Record",   value: `${btsTotalHits}/${btsTotalPicks}`,                   color: "#131A24" },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, background: "rgba(212,168,67,0.07)", border: "1px solid rgba(212,168,67,0.15)", borderRadius: 10, padding: "7px 8px", textAlign: "center" }}>
+                  <p style={{ fontSize: 14, fontWeight: 900, color: s.color, margin: 0 }}>{s.value}</p>
+                  <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0" }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {btsRecent.length > 0 && (
+            <div style={{ display: "flex", gap: 5, marginBottom: 10, alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500, marginRight: 2 }}>Recent:</span>
+              {btsRecent.slice(-7).map((r: any, i: number) => (
+                <div key={i} style={{ width: 22, height: 22, borderRadius: "50%", background: r.result === "hit" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.12)", border: `1.5px solid ${r.result === "hit" ? "#22c55e" : "#ef4444"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {r.result === "hit" ? <CheckCircle size={11} style={{ color: "#22c55e" }} /> : <XCircle size={11} style={{ color: "#ef4444" }} />}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {btsL ? (<><Skel /><Skel /></>) : topBts.length === 0 ? (
+            <EmptyState text="No picks generated yet today" />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {topBts.map((pick, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "rgba(212,168,67,0.06)", border: "1px solid rgba(212,168,67,0.14)", borderRadius: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 16 }}>⚾</span>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0 }}>{pick.name}</p>
+                      <p style={{ fontSize: 10, color: "#94a3b8", margin: "1px 0 0" }}>{pick.team}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ fontSize: 13, fontWeight: 900, color: pick.hitProbability >= 70 ? "#22c55e" : pick.hitProbability >= 50 ? "#D4A843" : "#94a3b8", margin: 0 }}>
+                        {Math.round(pick.hitProbability)}%
+                      </p>
+                      <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>hit prob</p>
+                    </div>
+                    {pick.result === "hit"    && <CheckCircle size={15} style={{ color: "#22c55e" }} />}
+                    {pick.result === "miss"   && <XCircle size={15} style={{ color: "#ef4444" }} />}
+                    {(!pick.result || pick.result === "pending") && <Clock size={14} style={{ color: "#94a3b8" }} />}
+                  </div>
+                </div>
+              ))}
+              {btsPicks.length > 5 && (
+                <Link href="/bts">
+                  <p style={{ fontSize: 11, color: "#D4A843", fontWeight: 700, textAlign: "center", margin: "4px 0 0", cursor: "pointer" }}>
+                    +{btsPicks.length - 5} more picks →
+                  </p>
+                </Link>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Line Movement ──────────────────────────────────────────────────── */}
+        <Card>
+          <SectionHeader icon={<TrendingUp size={14} style={{ color: "#3b82f6" }} />} label="Line Movement" linkTo="/clv" badge={filteredLineMoves.length} />
+          <SportTabs active={activeSport} onChange={setActiveSport} />
+          {lineL ? (<><Skel /><Skel /></>) : filteredLineMoves.length === 0 ? (
+            <EmptyState text={`No ${activeSport} line moves detected`} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {filteredLineMoves.map((m, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.10)", borderRadius: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>
+                      {m.awayTeam} @ {m.homeTeam}
+                    </p>
+                    <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0" }}>{m.trigger}</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                    {m.direction === "up" ? <ArrowUp size={13} style={{ color: "#22c55e" }} /> : m.direction === "down" ? <ArrowDown size={13} style={{ color: "#ef4444" }} /> : <Minus size={13} style={{ color: "#94a3b8" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Sharp Money ────────────────────────────────────────────────────── */}
+        {(filteredSharp.length > 0 || allSharpSignals.length > 0) && (
+          <Card>
+            <SectionHeader icon={<DollarSign size={14} style={{ color: "#22c55e" }} />} label="Sharp Money" linkTo="/clv" linkLabel="View →" />
+            <SportTabs active={activeSport} onChange={setActiveSport} />
+            {filteredSharp.length === 0 ? (
+              <EmptyState text={`No ${activeSport} sharp signals`} />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {filteredSharp.map((s: SharpSignal, i: number) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.10)", borderRadius: 11 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 175 }}>{s.awayTeam} @ {s.homeTeam}</p>
+                      {s.side && <p style={{ fontSize: 10, color: "#22c55e", fontWeight: 700, margin: "1px 0 0" }}>Sharp: {s.side}</p>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
+                      {s.sharpPct != null && <span style={{ fontSize: 12, fontWeight: 900, color: "#22c55e" }}>{s.sharpPct}%</span>}
+                      {s.publicPct != null && <span style={{ fontSize: 10, color: "#94a3b8" }}>Public {s.publicPct}%</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         )}
 
-        {/* Input area */}
-        <div className="relative flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about a player, team, or specific bet... (Enter to send)"
-            rows={2}
-            className="flex-1 resize-none rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-            data-testid="input-ask-question"
-            disabled={isLoading}
-          />
-          <button
-            onClick={() => handleSubmit(question)}
-            disabled={!question.trim() || isLoading}
-            data-testid="button-ask-submit"
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
-            style={{ background: "linear-gradient(135deg, #b45309, #f59e0b)", boxShadow: question.trim() ? "0 0 16px rgba(245,158,11,0.35)" : "none" }}
-          >
-            <Send size={15} style={{ color: "#1a0d00" }} />
-          </button>
+        {/* ── ML Intel ───────────────────────────────────────────────────────── */}
+        <div style={{ position: "relative" }}>
+          <Card>
+            <SectionHeader icon={<Brain size={14} style={{ color: "#a855f7" }} />} label="ML Intel" linkTo="/ml-insights" linkLabel="View →" />
+            {mlL ? (<><Skel /><Skel /></>) : !mlInsights?.overall ? (
+              <EmptyState text="ML model is still learning" />
+            ) : (
+              <div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  {[
+                    { label: "Win Rate", value: `${(mlInsights.overall.win_rate * 100).toFixed(1)}%`, color: "#a855f7" },
+                    { label: "Graded",   value: String(mlInsights.overall.total_graded),               color: "#131A24" },
+                    { label: "Avg Score",value: (mlInsights.overall.avg_score ?? 0).toFixed(1),        color: "#D4A843" },
+                  ].map(s => (
+                    <div key={s.label} style={{ flex: 1, background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 10, padding: "7px 8px", textAlign: "center" }}>
+                      <p style={{ fontSize: 16, fontWeight: 900, color: s.color, margin: 0 }}>{s.value}</p>
+                      <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0" }}>{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+                {topMlSports.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>By Sport</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {topMlSports.map(([sport, d]) => (
+                        <div key={sport} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: "rgba(19,35,58,0.025)", borderRadius: 9 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 14 }}>{se(sport)}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#131A24" }}>{sport}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: "#64748b" }}>{d.wins}W–{d.losses}L</span>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#a855f7" }}>{(d.win_rate * 100).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {mlBetTypeBreakdown.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, margin: "10px 0 6px", textTransform: "uppercase", letterSpacing: 0.5 }}>By Bet Type</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {mlBetTypeBreakdown.map(([type, d]) => (
+                        <div key={type} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: "rgba(19,35,58,0.025)", borderRadius: 9 }}>
+                          <Pill label={type.replace(/_/g, " ")} color="#64748b" bg="rgba(19,35,58,0.07)" />
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <span style={{ fontSize: 11, color: "#64748b" }}>{d.wins}W–{d.losses}L</span>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#a855f7" }}>{(d.win_rate * 100).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </Card>
+          {!canSeePro && <ProLock section="ML Intel" />}
         </div>
 
-        {history.length > 0 && (
-          <button
-            onClick={() => { setHistory([]); setAnswer(null); setError(null); }}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Clear conversation
-          </button>
+        {/* ── Prediction Markets ─────────────────────────────────────────────── */}
+        <Card>
+          <SectionHeader icon={<Activity size={14} style={{ color: "#3b82f6" }} />} label="Prediction Markets" linkTo="/markets" badge={filteredMarkets.length} />
+          {marketsL ? (<><Skel /><Skel /></>) : filteredMarkets.length === 0 ? (
+            <EmptyState text="No active markets" />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {filteredMarkets.map((m: any, i: number) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "rgba(19,35,58,0.025)", borderRadius: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 175 }}>{m.question || m.title}</p>
+                    <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0" }}>Vol: {fmtVol(m.volume)} · {m.sport || m.category || "Other"}</p>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 2 }}>
+                    <span style={{ fontSize: 14, fontWeight: 900, color: "#22c55e" }}>{Math.round(m.yesPrice * 100)}¢</span>
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>YES</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* ── Sport Breakdown ────────────────────────────────────────────────── */}
+        {!statsL && sportsActive.length > 0 && (
+          <Card>
+            <SectionHeader icon={<Eye size={14} style={{ color: "#64748b" }} />} label="Sport Breakdown" linkTo="/bets" linkLabel="All Picks →" />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {sportsActive.map(sport => {
+                const count    = stats!.bySport[sport] ?? 0;
+                const maxCount = Math.max(...sportsActive.map(s => stats!.bySport[s] ?? 0));
+                const pct      = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                const isActive = sport.toUpperCase() === activeSport;
+                return (
+                  <div key={sport} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>{se(sport)}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#131A24" : "#64748b", width: 40 }}>{sport}</span>
+                    <div style={{ flex: 1, height: 6, background: "rgba(19,35,58,0.07)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: isActive ? "#D4A843" : "#13233A", borderRadius: 99, transition: "width .4s ease" }} />
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", width: 24, textAlign: "right" }}>{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
         )}
+
+        {/* ── Today's Schedule ───────────────────────────────────────────────── */}
+        {filteredTodaySport.length > 0 && (
+          <Card>
+            <SectionHeader icon={<Calendar size={14} style={{ color: "#64748b" }} />} label={`${activeSport} Schedule`} linkTo="/scores" linkLabel="Scores →" />
+            <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+              {filteredTodaySport.slice(0, 8).map((g, i) => (
+                <div key={i} style={{ flex: "0 0 auto", background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)", borderRadius: 12, padding: "8px 11px", minWidth: 110 }}>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>
+                    {g.status === "in_progress" ? <span style={{ color: "#ef4444", fontWeight: 700 }}>LIVE</span> : fmtTime(g.gameTime)}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{g.awayTeam}</div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", margin: "1px 0" }}>vs</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{g.homeTeam}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* ── Open Bets Widget (owner only) ──────────────────────────────────── */}
+        {isOwner && <OpenBetsWidget />}
+
+        {/* ── Quick Nav Grid ─────────────────────────────────────────────────── */}
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Quick Nav</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[
+              { href: "/linemate",    icon: <Target size={17} style={{ color: "#22c55e" }} />,     label: "Props Hub",       desc: "Player props & edges",    border: "rgba(34,197,94,0.18)",  bg: "rgba(34,197,94,0.10)" },
+              { href: "/bts",         icon: <Trophy size={17} style={{ color: "#D4A843" }} />,     label: "Beat the Streak", desc: "Daily BTS picks",         border: "rgba(212,168,67,0.22)", bg: "rgba(212,168,67,0.12)" },
+              { href: "/conviction",  icon: <Flame size={17} style={{ color: "#ef4444" }} />,      label: "Top Plays",       desc: "High-conviction picks",   border: "rgba(239,68,68,0.18)",  bg: "rgba(239,68,68,0.10)" },
+              { href: "/clv",         icon: <TrendingUp size={17} style={{ color: "#3b82f6" }} />, label: "Line Movement",   desc: "CLV & sharp action",      border: "rgba(59,130,246,0.18)", bg: "rgba(59,130,246,0.10)" },
+              { href: "/markets",     icon: <Activity size={17} style={{ color: "#06b6d4" }} />,   label: "Markets",         desc: "Prediction markets",      border: "rgba(6,182,212,0.18)",  bg: "rgba(6,182,212,0.10)" },
+              { href: "/ml-insights", icon: <Brain size={17} style={{ color: "#a855f7" }} />,      label: "ML Intel",        desc: "Model accuracy & trends", border: "rgba(168,85,247,0.18)", bg: "rgba(168,85,247,0.10)" },
+            ].map(nav => (
+              <Link href={nav.href} key={nav.href}>
+                <div style={{ background: "#fff", border: `1px solid ${nav.border}`, borderRadius: 18, padding: "15px 13px", display: "flex", flexDirection: "column", gap: 8, cursor: "pointer", position: "relative", overflow: "hidden" }}>
+                  <div style={{ width: 34, height: 34, background: nav.bg, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>{nav.icon}</div>
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: "#131A24", margin: 0 }}>{nav.label}</p>
+                    <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0" }}>{nav.desc}</p>
+                  </div>
+                  <ChevronRight size={13} style={{ color: "#94a3b8", position: "absolute", top: 15, right: 13 }} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -1,7 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, Info } from "lucide-react";
+import ShareCard from "@/components/ShareCard";
+import { useAuth } from "@/context/AuthContext";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -11,6 +14,41 @@ function fmtAvg(v: number | null | undefined) {
 function fmtPct(v: number | null | undefined) {
   if (!v && v !== 0) return "—";
   return (v * 100).toFixed(0) + "%";
+}
+
+// ─── Grade badge ─────────────────────────────────────────────────────
+function GradeBadge({ result, hits, ab }: { result?: string; hits?: number | null; ab?: number | null }) {
+  if (!result || result === "pending") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "1px solid rgba(148,163,184,0.25)" }}
+      >
+        <HelpCircle size={8} /> PENDING
+      </span>
+    );
+  }
+  if (result === "win") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(34,197,94,0.15)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.35)" }}
+      >
+        <CheckCircle size={8} /> HIT {hits != null && ab != null ? String(hits) + "-for-" + String(ab) : ""}
+      </span>
+    );
+  }
+  if (result === "loss") {
+    return (
+      <span
+        className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+        style={{ background: "rgba(248,113,113,0.12)", color: "#f87171", border: "1px solid rgba(248,113,113,0.30)" }}
+      >
+        <XCircle size={8} /> 0-for-{ab ?? "?"}
+      </span>
+    );
+  }
+  return null;
 }
 
 // ─── Score ring ─────────────────────────────────────────────────────────────
@@ -76,14 +114,15 @@ function Chip({ label, value, highlight }: { label: string; value: string; highl
 // ─── Pick card ───────────────────────────────────────────────────────────────
 function PickCard({ pick, rank }: { pick: any; rank: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const isBest = rank === 1;
 
   return (
     <div
       className="rounded-2xl border overflow-hidden transition-all"
       style={{
-        background: isBest ? "rgba(250,204,21,0.06)" : "#fff",
-        borderColor: isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
+        background: pick.result === "win" ? "rgba(34,197,94,0.04)" : pick.result === "loss" ? "rgba(248,113,113,0.04)" : isBest ? "rgba(250,204,21,0.06)" : "#fff",
+        borderColor: pick.result === "win" ? "rgba(34,197,94,0.30)" : pick.result === "loss" ? "rgba(248,113,113,0.22)" : isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
         boxShadow: isBest ? "0 0 20px rgba(250,204,21,0.15)" : "0 1px 4px rgba(19,35,58,0.06)",
       }}
     >
@@ -119,12 +158,31 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
                 <Clock size={9} /> Projected
               </span>
             ) : null}
+            {/* Lock badge */}
+            {pick.locked ? (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.25)" }}>
+                🔒 Locked
+              </span>
+            ) : pick.minsToGame != null && pick.minsToGame <= 90 && pick.minsToGame > 30 ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(251,146,60,0.10)", color: "#f97316", border: "1px solid rgba(251,146,60,0.25)" }}>
+                <Clock size={9} /> Locks in {pick.minsToGame}m
+              </span>
+            ) : null}
+            {/* Grade result badge */}
+            <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
           </div>
-          {/* Scratch warning */}
-          {pick.isScratched && (
+          {/* Scratch warning — only shows if pick itself is scratched (not yet swapped) */}
+          {pick.isScratched && !pick.swapReason && (
             <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#f87171" }}>
               <AlertTriangle size={10} />
-              ⚠️ Original pick not in confirmed lineup — see replacement below
+              ⚠️ Not in confirmed lineup — could not find a confirmed replacement
+            </div>
+          )}
+          {/* Swap-in indicator — shows when a scratched player was auto-replaced */}
+          {pick.swapReason === "scratched_from_lineup" && (
+            <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#22c55e" }}>
+              <CheckCircle size={10} />
+              ✅ Auto-swapped in — {pick.swappedFrom} was scratched from lineup
             </div>
           )}
           {/* Override badge — player failed normal gates but extreme metrics qualified */}
@@ -151,10 +209,8 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
       <div className="px-4 pb-2 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
         <span>vs <span className="font-semibold text-foreground">{pick.opponentPitcher?.name ?? "TBD"}</span></span>
         <span className="opacity-40">·</span>
-        <span>{pick.game.matchup?.split(" @ ")[1] ?? pick.game.venue}</span>
-        <span className="opacity-40">·</span>
-        <span>{pick.game.gameTime}</span>
-        {pick.game.total && (
+        {pick.game && <><span>{pick.game.matchup?.split(" @ ")[1] ?? pick.game.venue}</span><span className="opacity-40">·</span><span>{pick.game.gameTime}</span></> }
+        {pick.game?.total && (
           <>
             <span className="opacity-40">·</span>
             <span
@@ -165,7 +221,7 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
             </span>
           </>
         )}
-        {pick.game.weather?.tempF > 0 && (
+        {pick.game?.weather?.tempF > 0 && (
           <>
             <span className="opacity-40">·</span>
             <span>{pick.game.weather.tempF}°F {pick.game.weather.wind}</span>
@@ -289,15 +345,27 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
         </div>
       )}
 
-      {/* Expand toggle */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full px-4 py-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground border-t"
-        style={{ borderColor: "rgba(19,35,58,0.08)", background: "rgba(19,35,58,0.02)" }}
-      >
-        {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-        {expanded ? "Less detail" : "Full breakdown"}
-      </button>
+      {/* Action row: expand + share */}
+      <div className="flex border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex-1 px-4 py-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground"
+          style={{ background: "rgba(19,35,58,0.02)" }}
+        >
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {expanded ? "Less" : "Full breakdown"}
+        </button>
+        <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
+        <button
+          onClick={() => setShowShare(true)}
+          className="flex items-center justify-center gap-1.5 px-4 py-2 text-[11px] font-semibold"
+          style={{ background: "rgba(19,35,58,0.02)", color: "#b8930a" }}
+        >
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><circle cx={18} cy={5} r={3}/><circle cx={6} cy={12} r={3}/><circle cx={18} cy={19} r={3}/><line x1={8.59} y1={13.51} x2={15.42} y2={17.49}/><line x1={15.41} y1={6.51} x2={8.59} y2={10.49}/></svg>
+          Share
+        </button>
+      </div>
+      {showShare && <ShareCard type="bts" data={pick} onClose={() => setShowShare(false)} />}
 
       {expanded && (
         <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
@@ -502,7 +570,7 @@ const BTS_GLOSSARY = [
     term: "11:45 AM CT",
     label: "Daily Pick Deadline",
     emoji: "⏰",
-    def: "Picks are finalized by 11:45 AM Central Time each day. After this, no substitutions are made — even if a projected player is scratched late. Always confirm lineups on MLB.com before locking in.",
+    def: "Picks are finalized by 11:45 AM Central Time each day. After this, picks can still be added up to 30 min before a game starts but cannot be removed. Exception: if a picked player is officially missing from the confirmed lineup before first pitch, they are automatically swapped with the best available confirmed starter from the same team.",
   },
   {
     term: "Hit Prob %",
@@ -600,26 +668,66 @@ function HowToReadBTS() {
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [reanalyzeMsg, setReanalyzeMsg] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { isOwner } = useAuth();
 
-  const today = new Date().toISOString().slice(0, 10);
-  // Before 11:45 AM CT refresh every 15 min to catch lineup updates;
-  // after deadline stop auto-refreshing (picks are locked)
-  const nowCT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-  const isPastDeadline = nowCT.getHours() > 11 || (nowCT.getHours() === 11 && nowCT.getMinutes() >= 45);
+  const reanalyzeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bts/reanalyze").then(r => r.json()),
+    onSuccess: (result: any) => {
+      setReanalyzeMsg(result.message ?? "Reanalysis complete.");
+      // Invalidate + refetch so fresh picks load immediately
+      queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
+      refetch();
+      setTimeout(() => setReanalyzeMsg(null), 7000);
+    },
+    onError: () => {
+      setReanalyzeMsg("Reanalyze failed — check server logs.");
+      setTimeout(() => setReanalyzeMsg(null), 5000);
+    },
+  });
+
+  // Compute today's date in Central Time so late-night hours (after midnight UTC
+  // but before midnight CT) don't roll over to tomorrow's date.
+  const ctToday = new Date().toLocaleString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+  // toLocaleString returns "MM/DD/YYYY" — reformat to YYYY-MM-DD
+  const [ctMonth, ctDay, ctYear] = ctToday.split("/");
+  const today = `${ctYear}-${ctMonth}-${ctDay}`;
 
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
-    queryFn: () => apiRequest("GET", `/api/bts-picks?date=${today}`).then(r => r.json()),
-    staleTime: 15 * 60_000,
-    refetchInterval: isPastDeadline ? false : 15 * 60_000, // every 15 min until deadline
+    queryFn: () => apiRequest("GET", `/api/bts-picks`).then(r => r.json()),
+    staleTime: 0,
+    refetchInterval: 15 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Historical picks — loaded once, refreshed every 5 min
+  const { data: historyData } = useQuery({
+    queryKey: ["/api/bts-history"],
+    queryFn: () => apiRequest("GET", `/api/bts-history`).then(r => r.json()),
+    refetchOnMount: true,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const slate: any[] = data?.slate ?? [];
   const picks: any[] = data?.picks ?? [];
   const bestPick = data?.bestPick;
   const doubleDowns: any[] = data?.doubleDowns ?? [];
+  const todayRecord = data?.todayRecord ?? { wins: 0, losses: 0, pending: 0, winPct: null };
+  const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
   const visiblePicks = showAllPicks ? picks : picks.slice(0, 5);
+
+  // History data — use history endpoint as source of truth for records
+  const historyDays: any[]       = historyData?.days ?? [];
+  const histSeasonRecord: any    = historyData?.seasonRecord ?? data?.seasonRecord ?? seasonRecord;
+  const histYesterdayRecord: any = historyData?.yesterdayRecord ?? null;
+  // Merge today's current picks into history if not yet graded
+  const hasNoPicks = !isLoading && picks.length === 0;
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-28 max-w-2xl mx-auto w-full">
@@ -634,15 +742,56 @@ export default function BTS() {
             Top MLB hitters most likely to get a hit today
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border"
-          style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.12)" }}
-        >
-          <RefreshCw size={12} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Reanalyze — owner only */}
+          {isOwner && (
+            <button
+              onClick={() => {
+                if (!window.confirm(
+                  "Remove all pre-game pending picks and re-run analysis?\n\nPicks where the game is in-progress or already finished will be kept."
+                )) return;
+                reanalyzeMutation.mutate();
+              }}
+              disabled={reanalyzeMutation.isPending}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
+              style={{
+                background: reanalyzeMutation.isPending ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.08)",
+                borderColor: "rgba(239,68,68,0.25)",
+                color: "#dc2626",
+                opacity: reanalyzeMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              <RotateCcw size={12} className={reanalyzeMutation.isPending ? "animate-spin" : ""} />
+              {reanalyzeMutation.isPending ? "Running…" : "Reanalyze"}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/bts-picks", today] });
+              refetch();
+            }}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border active:scale-95 transition-transform"
+            style={{ background: "rgba(19,35,58,0.04)", borderColor: "rgba(19,35,58,0.12)" }}
+          >
+            <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+            {isLoading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
+
+      {/* Reanalyze result banner */}
+      {reanalyzeMsg && (
+        <div
+          className="rounded-xl px-3 py-2.5 flex items-center gap-2"
+          style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.22)" }}
+        >
+          <RotateCcw size={13} style={{ color: "#dc2626", flexShrink: 0 }} />
+          <p className="text-xs font-semibold" style={{ color: "#dc2626" }}>{reanalyzeMsg}</p>
+          <button className="ml-auto" onClick={() => setReanalyzeMsg(null)}><X size={12} style={{ color: "#dc2626" }} /></button>
+        </div>
+      )}
+      {/* Spacer to prevent double </div> */}
+      <span style={{ display: "none" }} />
 
       {/* Updated at */}
       {dataUpdatedAt > 0 && (
@@ -655,22 +804,26 @@ export default function BTS() {
       {/* Deadline / lineup status banner */}
       {!isLoading && data && (
         data.pastDeadline ? (
-          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
-            <CheckCircle size={14} style={{ color: "#22c55e", flexShrink: 0 }} />
+          <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+            <CheckCircle size={14} style={{ color: "#22c55e", flexShrink: 0, marginTop: 2 }} />
             <div>
-              <p className="text-xs font-bold" style={{ color: "#16a34a" }}>Picks locked in — past 11:45 AM CT</p>
-              <p className="text-[10px] text-muted-foreground">{data.confirmedCount} confirmed · {data.projectedCount} projected{data.scratchedCount > 0 ? ` · ⚠️ ${data.scratchedCount} scratched` : ""}</p>
+              <p className="text-xs font-bold" style={{ color: "#16a34a" }}>Past 11:45 AM CT — picks are locked in</p>
+              <p className="text-[10px] text-muted-foreground">
+                {data.confirmedCount} confirmed · {data.projectedCount} projected{data.scratchedCount > 0 ? ` · ⚠️ ${data.scratchedCount} scratched` : ""}
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: "#16a34a" }}>Later games can still have picks added until 30 min before first pitch — all picks stay on the card until day is complete.</p>
             </div>
           </div>
         ) : (
-          <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.25)" }}>
-            <Clock size={14} style={{ color: "#b8930a", flexShrink: 0 }} />
+          <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.25)" }}>
+            <Clock size={14} style={{ color: "#b8930a", flexShrink: 0, marginTop: 2 }} />
             <div>
               <p className="text-xs font-bold" style={{ color: "#b8930a" }}>Picks update until 11:45 AM CT</p>
               <p className="text-[10px] text-muted-foreground">
-                {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected from recent batting orders` : ""}
-                {" · Projected picks may change as lineups post"}
+                {data.confirmedCount > 0 ? `${data.confirmedCount} confirmed` : "No confirmed lineups yet"}{data.projectedCount > 0 ? ` · ${data.projectedCount} projected` : ""}
+                {" · Picks refresh as lineups post"}
               </p>
+              <p className="text-[10px] mt-0.5" style={{ color: "#b8930a" }}>After 11:45 AM CT picks lock in. Later games can still add picks up to 30 min before first pitch. Scratched players are auto-swapped with the best confirmed starter from the same team before game time.</p>
             </div>
           </div>
         )
@@ -694,13 +847,12 @@ export default function BTS() {
         </div>
       )}
 
-      {/* KPI strip */}
-      {!isLoading && picks.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+      {/* KPI strip — always visible when data loaded */}
+      {!isLoading && data && (
+        <div className="grid grid-cols-2 gap-2">
           {[
             { icon: <Trophy size={14} style={{ color: "#facc15" }} />, label: "Best Pick", value: bestPick ? `${bestPick.hitProbability}%` : "—" },
-            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Qualifiers", value: picks.length.toString() },
-            { icon: <TrendingUp size={14} style={{ color: "#60a5fa" }} />, label: "Avg Prob", value: picks.length ? `${Math.round(picks.reduce((s,p) => s + p.hitProbability, 0) / picks.length)}%` : "—" },
+            { icon: <Target size={14} style={{ color: "#22c55e" }} />, label: "Picks Today", value: `${picks.length} / 10` },
           ].map(k => (
             <div
               key={k.label}
@@ -715,6 +867,254 @@ export default function BTS() {
         </div>
       )}
 
+      {/* Record strip — always visible; shows yesterday + season even when no picks yet */}
+      {(data || historyData) && (
+        <button
+          onClick={() => setShowHistory(true)}
+          className="w-full rounded-2xl p-3 text-left active:scale-[0.99] transition-transform"
+          style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}
+        >
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* Today record — or yesterday if no picks today yet */}
+            <div className="flex items-center gap-2">
+              <BarChart2 size={14} style={{ color: "#60a5fa" }} />
+              <div>
+                {hasNoPicks && histYesterdayRecord ? (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Yesterday</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-sm font-black" style={{ color: "#22c55e" }}>{histYesterdayRecord.wins}W</span>
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <span className="text-sm font-black" style={{ color: "#f87171" }}>{histYesterdayRecord.losses}L</span>
+                      {histYesterdayRecord.winPct != null && (
+                        <span
+                          className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                          style={{
+                            background: histYesterdayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : histYesterdayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                            color: histYesterdayRecord.winPct >= 60 ? "#16a34a" : histYesterdayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                          }}
+                        >
+                          {histYesterdayRecord.winPct}%
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Today</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-sm font-black" style={{ color: "#22c55e" }}>{todayRecord.wins}W</span>
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <span className="text-sm font-black" style={{ color: "#f87171" }}>{todayRecord.losses}L</span>
+                      {todayRecord.pending > 0 && (
+                        <span className="text-xs text-muted-foreground">· {todayRecord.pending} pending</span>
+                      )}
+                      {todayRecord.winPct != null && (
+                        <span
+                          className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                          style={{
+                            background: todayRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : todayRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                            color: todayRecord.winPct >= 60 ? "#16a34a" : todayRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                          }}
+                        >
+                          {todayRecord.winPct}%
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-8 hidden sm:block" style={{ background: "rgba(19,35,58,0.12)" }} />
+
+            {/* Season record — uses history endpoint as source of truth */}
+            <div className="flex items-center gap-2">
+              <TrendingUp size={14} style={{ color: "#22c55e" }} />
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Season Record</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-sm font-black" style={{ color: "#22c55e" }}>{histSeasonRecord.wins}W</span>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <span className="text-sm font-black" style={{ color: "#f87171" }}>{histSeasonRecord.losses}L</span>
+                  {histSeasonRecord.winPct != null ? (
+                    <span
+                      className="text-[10px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                      style={{
+                        background: histSeasonRecord.winPct >= 60 ? "rgba(34,197,94,0.12)" : histSeasonRecord.winPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                        color: histSeasonRecord.winPct >= 60 ? "#16a34a" : histSeasonRecord.winPct >= 40 ? "#b8930a" : "#f87171",
+                      }}
+                    >
+                      {histSeasonRecord.winPct}% win
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground ml-1">no graded picks yet</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tap hint */}
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
+              <ChevronUp size={12} />
+              <span>View picks</span>
+            </div>
+          </div>
+        </button>
+      )}
+
+      {/* ── History drawer ── */}
+      {showHistory && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ touchAction: "none" }}
+          onClick={() => setShowHistory(false)}
+        >
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.45)" }} />
+          <div
+            className="relative w-full max-w-lg rounded-t-3xl flex flex-col"
+            style={{
+              background: "#F6F1E7",
+              border: "1px solid rgba(19,35,58,0.12)",
+              maxHeight: "min(88dvh, 88vh)",
+              height: "min(88dvh, 88vh)",
+              overflow: "hidden",
+              touchAction: "auto",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag pill */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full" style={{ width: 36, height: 4, background: "rgba(19,35,58,0.18)" }} />
+
+            {/* Sticky header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-6 pb-3 border-b" style={{ borderColor: "rgba(19,35,58,0.10)" }}>
+              <div>
+                <p className="text-base font-black text-foreground">Pick History</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {historyDays.length} days · {histSeasonRecord.wins}W–{histSeasonRecord.losses}L season
+                  {histSeasonRecord.winPct != null && ` · ${histSeasonRecord.winPct}% win rate`}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Season badge */}
+                {histSeasonRecord.winPct != null && (
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Season</p>
+                    <p
+                      className="text-sm font-black"
+                      style={{ color: histSeasonRecord.winPct >= 60 ? "#16a34a" : histSeasonRecord.winPct >= 40 ? "#b8930a" : "#f87171" }}
+                    >
+                      {histSeasonRecord.winPct}%
+                    </p>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="p-1.5 rounded-xl"
+                  style={{ color: "#94a3b8", background: "rgba(19,35,58,0.06)" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable pick list — grouped by date, newest first */}
+            <div
+              className="flex-1 px-4 py-3"
+              style={{
+                overflowY: "scroll",
+                WebkitOverflowScrolling: "touch" as any,
+                overscrollBehavior: "contain",
+                touchAction: "pan-y",
+                minHeight: 0,
+              }}
+            >
+              {historyDays.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-8">No historical picks recorded yet.</p>
+              )}
+              {historyDays.map((day: any) => {
+                const dayWins    = day.wins    as number;
+                const dayLosses  = day.losses  as number;
+                const dayPending = day.pending as number;
+                const dayWinPct  = day.winPct  as number | null;
+                const dayPicks   = day.picks   as any[];
+                return (
+                  <div key={day.date} className="mb-5">
+                    {/* Day header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                        {new Date(day.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold" style={{ color: "#22c55e" }}>{dayWins}W</span>
+                        <span className="text-[10px] text-muted-foreground">/</span>
+                        <span className="text-[10px] font-bold" style={{ color: "#f87171" }}>{dayLosses}L</span>
+                        {dayPending > 0 && <span className="text-[10px] text-muted-foreground">· {dayPending} pend</span>}
+                        {dayWinPct != null && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full ml-1"
+                            style={{
+                              background: dayWinPct >= 60 ? "rgba(34,197,94,0.12)" : dayWinPct >= 40 ? "rgba(250,204,21,0.12)" : "rgba(248,113,113,0.10)",
+                              color: dayWinPct >= 60 ? "#16a34a" : dayWinPct >= 40 ? "#b8930a" : "#f87171",
+                            }}>
+                            {dayWinPct}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Picks for this day */}
+                    <div className="space-y-2">
+                      {dayPicks.map((pick: any, i: number) => {
+                        const isWin     = pick.result === "win";
+                        const isLoss    = pick.result === "loss";
+                        const isPending = !pick.result || pick.result === "pending";
+                        return (
+                          <div
+                            key={pick.playerId ?? i}
+                            className="rounded-2xl p-3 flex items-start gap-3"
+                            style={{
+                              background: isWin ? "rgba(34,197,94,0.06)" : isLoss ? "rgba(248,113,113,0.05)" : "rgba(19,35,58,0.04)",
+                              border: `1px solid ${isWin ? "rgba(34,197,94,0.28)" : isLoss ? "rgba(248,113,113,0.22)" : "rgba(19,35,58,0.10)"}`,
+                            }}
+                          >
+                            <div
+                              className="rounded-full w-7 h-7 flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
+                              style={{ background: "rgba(19,35,58,0.07)", color: "var(--muted-foreground)" }}
+                            >
+                              #{i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-black text-sm text-foreground">{pick.name}</p>
+                                <GradeBadge result={pick.result} hits={pick.hits} ab={pick.ab} />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                {pick.team} · {pick.hitProbability}% prob
+                                {pick.hits != null && pick.ab != null && (
+                                  <span className="ml-1 font-bold" style={{ color: isWin ? "#22c55e" : "#f87171" }}>
+                                    · {pick.hits}-for-{pick.ab}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex-shrink-0 mt-0.5">
+                              {isWin  && <CheckCircle size={20} style={{ color: "#22c55e" }} />}
+                              {isLoss && <XCircle    size={20} style={{ color: "#f87171" }} />}
+                              {isPending && <HelpCircle size={20} style={{ color: "#94a3b8" }} />}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Safe area spacer */}
+              <div style={{ height: "max(env(safe-area-inset-bottom, 0px), 24px)" }} />
+            </div>
+          </div>
+        </div>
+      )}
       {/* How to Read Glossary */}
       <HowToReadBTS />
 
@@ -739,31 +1139,48 @@ export default function BTS() {
       )}
 
       {/* Top Picks */}
-      {!isLoading && picks.length > 0 && (
+      {!isLoading && (picks.length > 0 || data) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Flame size={15} style={{ color: "#f87171" }} />
             <p className="text-sm font-black text-foreground">Ranked BTS Picks</p>
             <span
               className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+              style={{ background: picks.length > 0 ? "rgba(34,197,94,0.15)" : "rgba(19,35,58,0.08)", color: picks.length > 0 ? "#22c55e" : "#8A9BB0" }}
             >
-              {picks.length} players
+              {picks.length} / 10
             </span>
           </div>
 
           <div className="space-y-3">
+            {/* Real picks — capped at 5 initially, 10 when expanded */}
             {visiblePicks.map((pick, i) => (
               <PickCard key={pick.playerId} pick={pick} rank={i + 1} />
             ))}
+
+            {/* Empty slots for remaining spots up to the visible limit */}
+            {Array.from({ length: Math.max(0, (showAllPicks ? 10 : Math.min(5, picks.length + (10 - picks.length))) - visiblePicks.length) }).map((_, i) => (
+              <div key={`empty-${i}`} className="rounded-2xl p-4 flex items-center gap-3"
+                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.12)" }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(19,35,58,0.06)" }}>
+                  <span className="text-[10px] font-black" style={{ color: "rgba(19,35,58,0.2)" }}>—</span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: "rgba(19,35,58,0.25)" }}>No player met requirements</p>
+                  <p className="text-[10px]" style={{ color: "rgba(19,35,58,0.18)" }}>Slot unfilled — criteria not met by any available player</p>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {picks.length > 5 && (
+          {/* Show all / collapse toggle — only if there are more than 5 picks OR empty slots beyond 5 */}
+          {(picks.length > 5 || (picks.length < 10)) && (
             <button
               onClick={() => setShowAllPicks(s => !s)}
               className="w-full mt-2 text-[11px] font-bold text-muted-foreground py-2"
             >
-              {showAllPicks ? "Show top 5 only" : `Show all ${picks.length} picks`}
+              {showAllPicks ? "Show top 5 only" : `Show all slots (${picks.length} picks + ${10 - picks.length} empty)`}
             </button>
           )}
         </div>
@@ -786,7 +1203,7 @@ export default function BTS() {
             {doubleDowns.map((p, i) => (
               <div key={i} className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-foreground">{p.name}</span>
-                <span className="text-muted-foreground">{p.team} · {p.game.matchup?.split(" @ ")[1]}</span>
+                <span className="text-muted-foreground">{p.team}{p.game ? ` · ${p.game.matchup?.split(" @ ")[1]}` : ""}</span>
                 <span className="font-black" style={{ color: "#60a5fa" }}>{p.hitProbability}%</span>
               </div>
             ))}
@@ -798,10 +1215,19 @@ export default function BTS() {
       {!isLoading && !data?.error && picks.length === 0 && (
         <div className="rounded-2xl p-8 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}>
           <Trophy size={32} className="mx-auto mb-3" style={{ color: "#facc15", opacity: 0.5 }} />
-          <p className="font-bold text-foreground">No qualifying picks yet</p>
+          <p className="font-bold text-foreground">No players met requirements today</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-            Lineups usually post 2–3 hours before first pitch. Picks may also be limited if game totals are low today.
+            All available hitters were filtered out by the eligibility criteria — probability floor, platoon matchup, game total, or stat analysis. Lineups may not be confirmed yet (post 2–3 hrs before first pitch).
           </p>
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-xl p-3 flex items-center gap-3 mx-auto max-w-xs"
+                style={{ background: "rgba(19,35,58,0.02)", border: "1px dashed rgba(19,35,58,0.10)" }}>
+                <div className="w-6 h-6 rounded-full flex-shrink-0" style={{ background: "rgba(19,35,58,0.06)" }} />
+                <p className="text-[10px] font-bold text-left" style={{ color: "rgba(19,35,58,0.2)" }}>No player met requirements — slot empty</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

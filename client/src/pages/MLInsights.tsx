@@ -10,7 +10,7 @@ import { queryClient } from "@/lib/queryClient";
 import {
   Brain, TrendingUp, TrendingDown, Target, CheckCircle2, XCircle,
   RefreshCw, BarChart2, Zap, AlertTriangle, Info, Activity,
-  Award, ChevronDown, ChevronUp, Clock,
+  Award, ChevronDown, ChevronUp, Clock, List, ExternalLink, Filter,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -188,6 +188,9 @@ function EmptyState({ onGradeRun, gradeIsPending, gradeIsSuccess, gradeIsError, 
         <div className="rounded-xl p-3 flex items-center gap-2 w-full max-w-sm" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
           <AlertTriangle size={14} style={{ color: RED }} />
           <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+            {(gradeMutation.error as Error)?.message && (
+              <span className="text-xs font-mono break-all" style={{ color: RED, opacity: 0.85 }}>{(gradeMutation.error as Error).message}</span>
+            )}
         </div>
       )}
       {runIsSuccess && (
@@ -211,6 +214,215 @@ function EmptyState({ onGradeRun, gradeIsPending, gradeIsSuccess, gradeIsError, 
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
+// ─── Graded Pick Result badge ─────────────────────────────────────────────────
+function ResultBadge({ result }: { result: string }) {
+  const cfg =
+    result === "won"  ? { label: "WON",  bg: `${GREEN}20`, color: GREEN,  icon: <CheckCircle2 size={10} /> } :
+    result === "lost" ? { label: "LOST", bg: `${RED}18`,   color: RED,    icon: <XCircle size={10} /> } :
+                        { label: "PUSH", bg: `${AMBER}18`, color: AMBER,  icon: null };
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 3,
+      fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 99,
+      background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}44`,
+      flexShrink: 0,
+    }}>
+      {cfg.icon} {cfg.label}
+    </span>
+  );
+}
+
+// ─── Source badge ─────────────────────────────────────────────────────────────
+function SourceBadge({ source }: { source: string }) {
+  const colors: Record<string, string> = {
+    ActionNetwork: "#6366f1",
+    Linemate:      "#0ea5e9",
+    Pinnacle:      "#d97706",
+    Kalshi:        "#8b5cf6",
+    Internal:      "#3D4B58",
+  };
+  const color = colors[source] ?? "#3D4B58";
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+      background: `${color}18`, color, border: `1px solid ${color}33`,
+      flexShrink: 0,
+    }}>
+      {source}
+    </span>
+  );
+}
+
+// ─── Graded Picks Log ─────────────────────────────────────────────────────────
+function GradedPicksLog() {
+  const [open, setOpen]       = useState(false);
+  const [filter, setFilter]   = useState<"all" | "won" | "lost">("all");
+  const [sport,  setSport]    = useState<string>("ALL");
+
+  const { data: picks = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/ml/graded-picks"],
+    enabled: open,                    // only fetch when panel is open
+    refetchInterval: open ? 60_000 : false,
+  });
+
+  const sports = ["ALL", ...Array.from(new Set(picks.map((p: any) => p.sport).filter(Boolean)))];
+
+  const filtered = picks.filter((p: any) => {
+    if (filter !== "all" && p.result !== filter) return false;
+    if (sport !== "ALL" && p.sport !== sport) return false;
+    return true;
+  });
+
+  function fmtDate(dateStr: string | null): string {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function fmtScore(home: number | null, away: number | null, homeTeam: string | null, awayTeam: string | null): string {
+    if (home == null || away == null) return "";
+    return `${awayTeam ?? "Away"} ${away} – ${home} ${homeTeam ?? "Home"}`;
+  }
+
+  const wonCount  = picks.filter((p: any) => p.result === "won").length;
+  const lostCount = picks.filter((p: any) => p.result === "lost").length;
+  const total     = wonCount + lostCount;
+
+  return (
+    <section>
+      {/* Toggle button */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center justify-between w-full rounded-xl px-4 py-3"
+        style={{ background: NAV, color: "#F6F1E7", border: "none", cursor: "pointer" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <List size={15} />
+          <span style={{ fontSize: 13, fontWeight: 800 }}>Graded Pick History</span>
+          {total > 0 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
+              background: "rgba(246,241,231,0.2)", color: "#F6F1E7",
+            }}>
+              {total} picks
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {total > 0 && (
+            <span style={{ fontSize: 11, color: "rgba(246,241,231,0.7)" }}>
+              <span style={{ color: GREEN, fontWeight: 700 }}>{wonCount}W</span>
+              {" / "}
+              <span style={{ color: RED, fontWeight: 700 }}>{lostCount}L</span>
+            </span>
+          )}
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+
+          {/* Filters */}
+          <div style={{ background: "#fff", padding: "10px 14px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <Filter size={12} style={{ color: MUTED }} />
+            {/* Result filter */}
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["all", "won", "lost"] as const).map(f => (
+                <button key={f} onClick={() => setFilter(f)} style={{
+                  fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
+                  background: filter === f ? NAV : "transparent",
+                  color: filter === f ? "#F6F1E7" : MUTED,
+                  border: `1px solid ${filter === f ? NAV : BORDER}`,
+                }}>
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+            {/* Sport filter */}
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {sports.map(s => (
+                <button key={s} onClick={() => setSport(s)} style={{
+                  fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
+                  background: sport === s ? "#F6F1E7" : "transparent",
+                  color: sport === s ? NAV : MUTED,
+                  border: `1px solid ${sport === s ? BORDER : BORDER}`,
+                }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <span style={{ marginLeft: "auto", fontSize: 10, color: MUTED }}>{filtered.length} shown</span>
+          </div>
+
+          {/* Loading */}
+          {isLoading && (
+            <div style={{ padding: 24, textAlign: "center" }}>
+              <RefreshCw size={16} className="animate-spin" style={{ color: MUTED, margin: "0 auto" }} />
+            </div>
+          )}
+
+          {/* Empty */}
+          {!isLoading && filtered.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center" }}>
+              <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>No graded picks match this filter.</p>
+            </div>
+          )}
+
+          {/* Pick rows */}
+          {!isLoading && filtered.map((pick: any, i: number) => {
+            const isPlayer = pick.betType === "player_prop";
+            const subtitle = isPlayer
+              ? [pick.playerName, pick.statCategory, pick.line != null ? `O/U ${pick.line}` : null, pick.pickSide?.toUpperCase()].filter(Boolean).join(" · ")
+              : [pick.sport, pick.betType?.replace("_", " "), pick.line != null ? `${pick.line}` : null].filter(Boolean).join(" · ");
+
+            const score = pick.homeScore != null ? fmtScore(pick.homeScore, pick.awayScore, pick.homeTeam, pick.awayTeam) : null;
+            const dateStr = fmtDate(pick.gradedAt ?? pick.gameTime);
+
+            return (
+              <div key={pick.id ?? i} style={{
+                padding: "11px 14px",
+                borderBottom: i < filtered.length - 1 ? `1px solid ${BORDER}` : "none",
+                background: i % 2 === 0 ? "#fff" : "#FDFAF5",
+              }}>
+                {/* Row 1: title + result badge */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: 12, fontWeight: 700, color: FG, margin: 0,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {pick.title ?? subtitle}
+                    </p>
+                  </div>
+                  <ResultBadge result={pick.result} />
+                </div>
+                {/* Row 2: meta info */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: MUTED }}>{dateStr}</span>
+                  {pick.sport && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: NAV }}>{pick.sport}</span>
+                  )}
+                  {pick.confidenceScore != null && (
+                    <span style={{ fontSize: 10, color: MUTED }}>
+                      Score: <span style={{ fontWeight: 700, color: FG }}>{pick.confidenceScore}</span>
+                    </span>
+                  )}
+                  {score && (
+                    <span style={{ fontSize: 10, color: MUTED }}>{score}</span>
+                  )}
+                  <SourceBadge source={pick.source ?? "Internal"} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function MLInsights() {
   const [runOpen, setRunOpen] = useState(false);
 
@@ -219,10 +431,16 @@ export default function MLInsights() {
     refetchInterval: 60_000,
   });
 
+  // Helper: parse error body — server sends {error: "..."}  or plain text
+  const parseErrBody = async (r: Response): Promise<string> => {
+    const txt = await r.text();
+    try { const j = JSON.parse(txt); return j.error ?? j.message ?? txt; } catch { return txt; }
+  };
+
   const runMutation = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/ml/run", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await parseErrBody(r));
       return r.json();
     },
     onSuccess: () => {
@@ -234,7 +452,7 @@ export default function MLInsights() {
   const gradeMutation = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/ml/grade", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await parseErrBody(r));
       return r.json();
     },
     onSuccess: () => {
@@ -391,9 +609,14 @@ export default function MLInsights() {
           </div>
         )}
         {gradeMutation.isError && (
-          <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
-            <AlertTriangle size={14} style={{ color: RED }} />
-            <span className="text-sm" style={{ color: RED }}>Grade run failed — check server logs.</span>
+          <div className="rounded-xl p-4 flex flex-col gap-1" style={{ background: `${RED}11`, border: `1px solid ${RED}33` }}>
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} style={{ color: RED }} />
+              <span className="text-sm font-semibold" style={{ color: RED }}>Grade run failed</span>
+            </div>
+            <span className="text-xs font-mono break-all" style={{ color: RED, opacity: 0.85 }}>
+              {(gradeMutation.error as Error)?.message ?? "Unknown error"}
+            </span>
           </div>
         )}
         {runMutation.isSuccess && (
@@ -554,6 +777,9 @@ export default function MLInsights() {
                 </div>
               </section>
             )}
+
+            {/* ── Graded Pick History ── */}
+            <GradedPicksLog />
 
             {/* ── How it works explainer ── */}
             <section>

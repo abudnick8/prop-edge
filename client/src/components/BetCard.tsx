@@ -3,6 +3,7 @@ import { CheatSheetQuickTip } from "@/components/CheatSheet";
 import { Clock, TrendingUp, AlertTriangle, Shield, User, Zap, ArrowUp, ArrowDown } from "lucide-react";
 import BetDetailDrawer from "@/components/BetDetailDrawer";
 import { useState, useEffect, useRef } from "react";
+import ShareCard, { SharePickType } from "@/components/ShareCard";
 
 import { useLocation } from "wouter";
 import { addWsListener } from "@/hooks/useWebSocket";
@@ -476,6 +477,7 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBet, setDrawerBet] = useState<typeof bet | null>(null);
+  const [showShare, setShowShare] = useState(false);
   const countdown = useGameCountdown(bet.gameTime as string | null | undefined);
 
   // ── Live price movement state ─────────────────────────────────────────────
@@ -912,6 +914,29 @@ export default function BetCard({ bet, compact = false }: BetCardProps) {
           )}
       </button>
 
+
+      {/* Share button row */}
+      <div
+        className="flex justify-end px-3 pb-2"
+        style={{ borderTop: "1px solid rgba(19,35,58,0.06)", paddingTop: 6 }}
+      >
+        <button
+          onClick={e => { e.stopPropagation(); setShowShare(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold"
+          style={{ background: "rgba(19,35,58,0.06)", color: "#b8930a", border: "1px solid rgba(184,147,10,0.25)" }}
+        >
+          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><circle cx={18} cy={5} r={3}/><circle cx={6} cy={12} r={3}/><circle cx={18} cy={19} r={3}/><line x1={8.59} y1={13.51} x2={15.42} y2={17.49}/><line x1={15.41} y1={6.51} x2={8.59} y2={10.49}/></svg>
+          Share Pick
+        </button>
+      </div>
+
+      {showShare && (
+        <ShareCard
+          type={bet.betType === "player_prop" ? "prop" : "team"}
+          data={bet}
+          onClose={() => setShowShare(false)}
+        />
+      )}
 
       {/* Contextual quick tip — shown at bottom of every card */}
       <CheatSheetQuickTip betType={bet.betType} sport={bet.sport ?? ""} />

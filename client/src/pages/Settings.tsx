@@ -3,7 +3,10 @@ import { Settings as SettingsType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone } from "lucide-react";
+import { Settings as SettingsIcon, Key, Bell, Zap, RefreshCw, Trophy, Calendar, Swords, Mail, Smartphone, Crown, ExternalLink, ArrowUpRight, User, LogOut, Star } from "lucide-react";
+import PreferencesDrawer from "@/components/PreferencesDrawer";
+import { useAuth } from "@/context/AuthContext";
+import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +26,8 @@ const OPTIONAL_SPORTS = [
 
 export default function Settings() {
   const { toast } = useToast();
+  const { user, isPro, isBasic, logout } = useAuth();
+  const [prefOpen, setPrefOpen] = useState(false);
   const { data: settings, isLoading } = useQuery<SettingsType>({
     queryKey: ["/api/settings"],
   });
@@ -76,6 +81,104 @@ export default function Settings() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Configure your prediction bot</p>
+      </div>
+
+      {/* Preferences Drawer */}
+      <PreferencesDrawer open={prefOpen} onClose={() => setPrefOpen(false)} />
+
+      {/* ── Favorites / Personalization ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Star size={15} className="text-primary" style={{ color: "#D4A843" }} />
+          <p className="font-bold text-sm text-foreground">My Favorites</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Personalize your dashboard — pin your favorite sports, teams, and players to see their picks at the top.
+        </p>
+        <button
+          onClick={() => setPrefOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
+          style={{ background: "#13233A", color: "#F6F1E7", border: "none", cursor: "pointer" }}
+        >
+          <Star size={14} style={{ fill: "#D4A843", color: "#D4A843" }} />
+          Edit Favorites
+        </button>
+      </div>
+
+      {/* ── Account ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <User size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Account</p>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Signed in as</p>
+            <p className="text-sm font-semibold text-foreground truncate">{user?.email ?? "—"}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition-all active:scale-95"
+            style={{ borderColor: "rgba(239,68,68,0.25)", color: "#ef4444", background: "rgba(239,68,68,0.05)" }}
+          >
+            <LogOut size={13} /> Log out
+          </button>
+        </div>
+      </div>
+
+      {/* ── Billing / Plan ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Crown size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Your Plan</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <span
+              className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{
+                background: user?.tier === "pro" ? "rgba(162,59,50,0.1)" : user?.tier === "basic" ? "rgba(37,99,235,0.1)" : "rgba(61,75,88,0.1)",
+                color: user?.tier === "pro" ? "#A23B32" : user?.tier === "basic" ? "#2563eb" : "#3D4B58",
+              }}
+            >
+              {user?.tier === "pro" ? "Pro — $15/mo" : user?.tier === "basic" ? "Basic — $5/mo" : "Free"}
+            </span>
+            {!isPro && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {isBasic ? "Upgrade to Pro for BTS, ML Intel, Top Plays, and more." : "Upgrade to Basic or Pro to unlock picks."}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 items-end">
+            {!isPro && (
+              <Link href="/pricing">
+                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95"
+                  style={{ background: "#A23B32", color: "#fff" }}>
+                  <ArrowUpRight size={12} /> Upgrade
+                </button>
+              </Link>
+            )}
+
+          </div>
+        </div>
+      </div>
+
+      {/* ── Support ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Mail size={15} className="text-primary" />
+          <p className="font-bold text-sm text-foreground">Support</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Questions, issues, or feedback? Reach our support team directly.</p>
+        <a
+          href="mailto:clubhouseiqbets@gmail.com"
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all active:scale-95"
+          style={{ borderColor: "rgba(19,35,58,0.15)", background: "rgba(19,35,58,0.03)", color: "#131A24" }}
+        >
+          <Mail size={13} style={{ color: "#A23B32", flexShrink: 0 }} />
+          <span className="text-sm font-semibold">clubhouseiqbets@gmail.com</span>
+          <ExternalLink size={11} className="ml-auto" style={{ color: "rgba(19,35,58,0.35)" }} />
+        </a>
       </div>
 
       {/* Alert Threshold */}

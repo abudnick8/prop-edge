@@ -7,7 +7,9 @@ import {
   FlaskConical, AlertTriangle, Newspaper, CloudRain, Zap, X, AlertCircle,
   Bell, BellOff, Target, Wind, Thermometer, Eye, ArrowRight,
   Brain, Star, BarChart2, CheckCircle, XCircle, Minus as MinusIcon,
+  Share2,
 } from "lucide-react";
+import { shareGameCard } from "@/lib/shareGameCard";
 import { Badge } from "@/components/ui/badge";
 import { BookErrorCard, BookErrorsFilterButton, BookErrorsSection, useBookErrors, type BookError } from "@/components/BookErrors";
 import { CheatSheetButton, CheatSheetInline } from "@/components/CheatSheet";
@@ -1083,9 +1085,426 @@ function CIQPickPanel({
   );
 }
 
+// ── Share Card (canvas-based, see lib/shareGameCard.ts) ─────────────────────
+// Legacy node kept as type anchor — actual rendering done in shareGameCard.ts
+function _ShareCardNodeUnused({ game, ciqGrade, ciqPickTeam, rec }: {
+  game: GameLine;
+  ciqGrade: string | null;
+  ciqPickTeam: string | undefined;
+  rec: ReturnType<typeof buildBetRec>;
+}) {
+  const mlAwayMove = (game.moneyline.awayOpen != null && game.moneyline.awayCurrent != null)
+    ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
+  const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
+    ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+  const spreadMove = game.spread.move;
+  const totalMove  = game.total.move;
+  const hasSteam   = Math.abs(spreadMove ?? 0) >= 3 || Math.abs(totalMove ?? 0) >= 3;
+  const ciqColor   = ciqGrade ? (GRADE_COLOR[ciqGrade] ?? "#a78bfa") : "#a78bfa";
+
+  const row = (label: string, val: string, sub?: string, color?: string) => (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+      <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" }}>{label}</span>
+      <div style={{ textAlign:"right" }}>
+        <span style={{ fontSize:13, fontWeight:700, color: color ?? "#F6F1E7", fontFamily:"monospace" }}>{val}</span>
+        {sub && <span style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginLeft:6 }}>{sub}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      width: 380,
+      background: "linear-gradient(145deg, #0f1923 0%, #13233A 60%, #0d1a2a 100%)",
+      borderRadius: 20,
+      padding: "20px 22px 16px",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
+      color: "#F6F1E7",
+      border: hasSteam ? "1.5px solid rgba(248,113,113,0.5)" : "1.5px solid rgba(255,255,255,0.10)",
+    }}>
+
+      {/* Brand header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:"#A23B32", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>⚾</div>
+          <span style={{ fontWeight:900, fontSize:14, letterSpacing:"0.01em", color:"#F6F1E7" }}>Clubhouse IQ</span>
+        </div>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)", fontWeight:600 }}>Line Movement</span>
+      </div>
+
+      {/* Matchup */}
+      <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+          <span style={{ fontSize:18 }}>{SPORT_EMOJI[game.sport] ?? "🏟"}</span>
+          <div>
+            <div style={{ fontSize:15, fontWeight:900, color:"#F6F1E7", lineHeight:1.2 }}>
+              {game.awayTeam} <span style={{ color:"rgba(255,255,255,0.4)", fontWeight:400 }}>@</span> {game.homeTeam}
+            </div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.45)", marginTop:2 }}>{fmtTime(game.gameTime)}</div>
+          </div>
+        </div>
+        {/* Status badges */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}>
+          {hasSteam && (
+            <span style={{ fontSize:10, fontWeight:800, background:"rgba(248,113,113,0.2)", color:"#fca5a5", border:"1px solid rgba(248,113,113,0.4)", borderRadius:6, padding:"3px 8px" }}>🔥 STEAM MOVE</span>
+          )}
+          {!hasSteam && (Math.abs(spreadMove ?? 0) >= 1.5 || Math.abs(totalMove ?? 0) >= 1.5) && (
+            <span style={{ fontSize:10, fontWeight:800, background:"rgba(245,158,11,0.2)", color:"#fbbf24", border:"1px solid rgba(245,158,11,0.4)", borderRadius:6, padding:"3px 8px" }}>⚡ MOVED</span>
+          )}
+          {ciqGrade && (
+            <span style={{ fontSize:10, fontWeight:900, background:`${ciqColor}25`, color:ciqColor, border:`1px solid ${ciqColor}60`, borderRadius:6, padding:"3px 8px" }}>
+              🧠 CIQ {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Lines grid */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Lines</div>
+        {/* Spread */}
+        {row(
+          game.sport === "MLB" ? `Run Line — ${game.awayTeam.split(" ").pop()}` : "Spread",
+          game.spread.current != null ? fmtLine(game.spread.current) : "—",
+          game.spread.open != null && game.spread.current !== game.spread.open
+            ? `was ${fmtLine(game.spread.open)} (${spreadMove != null && spreadMove !== 0 ? (spreadMove > 0 ? "+" : "") + spreadMove : "no move"})`
+            : game.spread.open != null ? `opened ${fmtLine(game.spread.open)}` : undefined,
+          spreadMove != null && Math.abs(spreadMove) >= 3 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* Total */}
+        {row(
+          "Total (O/U)",
+          game.total.current != null ? `O/U ${game.total.current}` : "—",
+          game.total.open != null && game.total.current !== game.total.open
+            ? `was ${game.total.open} (${totalMove != null && totalMove !== 0 ? (totalMove > 0 ? "+" : "") + totalMove : "no move"})`
+            : game.total.open != null ? `opened ${game.total.open}` : undefined,
+          totalMove != null && Math.abs(totalMove) >= 3 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* ML Away */}
+        {row(
+          `${game.awayTeam.split(" ").pop()} ML`,
+          fmtOdds(game.moneyline.awayCurrent),
+          game.moneyline.awayOpen != null ? `opened ${fmtOdds(game.moneyline.awayOpen)}${mlAwayMove != null && mlAwayMove !== 0 ? " (" + (mlAwayMove > 0 ? "+" : "") + mlAwayMove + ")" : ""}` : undefined,
+          mlAwayMove != null && Math.abs(mlAwayMove) >= 50 ? "#fca5a5" : "#F6F1E7"
+        )}
+        {/* ML Home */}
+        {row(
+          `${game.homeTeam.split(" ").pop()} ML`,
+          fmtOdds(game.moneyline.homeCurrent),
+          game.moneyline.homeOpen != null ? `opened ${fmtOdds(game.moneyline.homeOpen)}${mlHomeMove != null && mlHomeMove !== 0 ? " (" + (mlHomeMove > 0 ? "+" : "") + mlHomeMove + ")" : ""}` : undefined,
+          mlHomeMove != null && Math.abs(mlHomeMove) >= 50 ? "#fca5a5" : "#F6F1E7"
+        )}
+      </div>
+
+      {/* Public money — if available */}
+      {(game.spread.awayMoney != null || game.total.overMoney != null || game.moneyline.awayMoney != null) && (
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Public Money %</div>
+          {game.spread.awayMoney != null && row(`${game.sport === "MLB" ? "Run Line" : "Spread"} — ${game.awayTeam.split(" ").pop()}`, `${game.spread.awayMoney}% $`, game.spread.awayPublic != null ? `${game.spread.awayPublic}% bets` : undefined)}
+          {game.total.overMoney != null && row("Total — Over", `${game.total.overMoney}% $`, game.total.overPublic != null ? `${game.total.overPublic}% bets` : undefined)}
+          {game.moneyline.awayMoney != null && row(`ML — ${game.awayTeam.split(" ").pop()}`, `${game.moneyline.awayMoney}% $`, game.moneyline.awayPublic != null ? `${game.moneyline.awayPublic}% bets` : undefined)}
+        </div>
+      )}
+
+      {/* Bet rec */}
+      {rec && (
+        <div style={{ background:`${rec.color}18`, border:`1px solid ${rec.color}40`, borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:900, color:rec.color, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>{rec.signal}</div>
+          <div style={{ fontSize:13, fontWeight:800, color:"#F6F1E7", marginBottom:4 }}>{rec.play}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)", lineHeight:1.5 }}>{rec.why}</div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", borderTop:"1px solid rgba(255,255,255,0.08)", paddingTop:10, marginTop:4 }}>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", fontWeight:600 }}>clubhouse-iq.up.railway.app</span>
+        <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>{new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── SharpPublicChart ────────────────────────────────────────────────────────
+// Horizontal grouped bar chart: Bets% vs Money% for two sides
+interface SharpSide {
+  label: string;
+  bets: number | null | undefined;
+  money: number | null | undefined;
+}
+function SharpPublicChart({ sides, betType }: { sides: SharpSide[]; betType: string }) {
+  const hasSomeData = sides.some(s => s.bets != null || s.money != null);
+  if (!hasSomeData) return <p style={{ fontSize: 10, color: "#94a3b8", padding: "6px 0" }}>No public % data available for this game.</p>;
+
+  const BAR_H = 14;
+  const GAP = 6;
+  const ROW_H = BAR_H * 2 + GAP + 20; // label + 2 bars
+  const W = 260;
+  const PAD_L = 52;
+  const PAD_R = 36;
+  const barW = W - PAD_L - PAD_R;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(99,102,241,0.65)" }} />
+          <span style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>Bets %</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(74,222,128,0.75)" }} />
+          <span style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>Money %</span>
+        </div>
+      </div>
+      {sides.map((side, si) => {
+        const bets = side.bets ?? 0;
+        const money = side.money ?? 0;
+        const divergence = side.bets != null && side.money != null ? Math.abs(money - bets) : null;
+        const isSharp = divergence != null && divergence >= 15;
+        return (
+          <div key={si} style={{ marginBottom: si < sides.length - 1 ? 10 : 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#131A24" }}>{side.label}</span>
+              {isSharp && (
+                <span style={{ fontSize: 9, fontWeight: 800, color: "#22c55e", background: "rgba(34,197,94,0.12)", padding: "1px 6px", borderRadius: 6 }}>
+                  ⚡ {divergence}pt sharp gap
+                </span>
+              )}
+            </div>
+            {/* Bets bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 9, color: "#94a3b8", width: 44, textAlign: "right", fontWeight: 600 }}>Bets</span>
+              <div style={{ flex: 1, height: BAR_H, background: "rgba(19,35,58,0.06)", borderRadius: 6, overflow: "hidden" }}>
+                {side.bets != null && (
+                  <div style={{
+                    width: `${bets}%`, height: "100%",
+                    background: "rgba(99,102,241,0.65)",
+                    borderRadius: 6,
+                    transition: "width 0.4s ease",
+                  }} />
+                )}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#6366f1", width: 30, textAlign: "right", fontFamily: "monospace" }}>
+                {side.bets != null ? `${side.bets}%` : "—"}
+              </span>
+            </div>
+            {/* Money bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, color: "#94a3b8", width: 44, textAlign: "right", fontWeight: 600 }}>Money</span>
+              <div style={{ flex: 1, height: BAR_H, background: "rgba(19,35,58,0.06)", borderRadius: 6, overflow: "hidden" }}>
+                {side.money != null && (
+                  <div style={{
+                    width: `${money}%`, height: "100%",
+                    background: side.money >= 65 ? "rgba(74,222,128,0.75)" : "rgba(245,158,11,0.55)",
+                    borderRadius: 6,
+                    transition: "width 0.4s ease",
+                  }} />
+                )}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, width: 30, textAlign: "right", fontFamily: "monospace",
+                color: side.money != null ? (side.money >= 65 ? "#22c55e" : side.money >= 55 ? "#f59e0b" : "#3D4B58") : "#94a3b8"
+              }}>
+                {side.money != null ? `${side.money}%` : "—"}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      <p style={{ fontSize: 9, color: "#94a3b8", marginTop: 8, fontStyle: "italic" }}>
+        Sharp gap ≥15pt = money flowing opposite to public bets
+      </p>
+    </div>
+  );
+}
+
+// ── SharpChartDrawer ─────────────────────────────────────────────────────────
+function SharpChartDrawer({ label, sides }: { label: string; sides: SharpSide[] }) {
+  const [show, setShow] = useState(false);
+  const hasSomeData = sides.some(s => s.bets != null || s.money != null);
+  if (!hasSomeData) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => setShow(s => !s)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          fontSize: 10, fontWeight: 700,
+          color: show ? "#13233A" : "#3D4B58",
+          background: show ? "rgba(99,102,241,0.12)" : "rgba(99,102,241,0.07)",
+          border: "1px solid rgba(99,102,241,0.20)",
+          borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+      >
+        <Users size={10} />
+        {show ? "Hide Sharp/Public" : "Sharp vs Public"}
+        {show ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {show && (
+        <div style={{
+          marginTop: 6, padding: "10px 10px 8px",
+          background: "#F6F1E7", borderRadius: 12,
+          border: "1px solid rgba(99,102,241,0.15)",
+        }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", marginBottom: 6 }}>{label} — Bets vs Money</p>
+          <SharpPublicChart sides={sides} betType={label} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── OddsMovementChart ─────────────────────────────────────────────────────────
+// Renders a step-line SVG chart: open → midpoint → current
+function OddsMovementChart({
+  open, current, label, fmtValue,
+}: {
+  open: number | null;
+  current: number | null;
+  label: string;
+  fmtValue?: (v: number) => string;
+}) {
+  if (open == null || current == null) return null;
+  const fmt = fmtValue ?? ((v: number) => (v > 0 ? `+${v}` : String(v)));
+
+  // Build 3-point step path: open → mid-open → mid-current → current
+  const W = 280, H = 110, PAD_L = 46, PAD_R = 10, PAD_T = 14, PAD_B = 28;
+  const gW = W - PAD_L - PAD_R;
+  const gH = H - PAD_T - PAD_B;
+
+  // Values — create a smooth 5-point step curve
+  const pts = [
+    { t: 0,    v: open },
+    { t: 0.25, v: open },
+    { t: 0.5,  v: (open + current) / 2 },
+    { t: 0.75, v: current },
+    { t: 1,    v: current },
+  ];
+
+  const best = Math.max(open, current);
+  const worst = Math.min(open, current);
+  const range = best - worst || 1;
+  const margin = range * 0.45;
+  const vMin = worst - margin;
+  const vMax = best + margin;
+  const vRange = vMax - vMin;
+
+  const toX = (t: number) => PAD_L + t * gW;
+  const toY = (v: number) => PAD_T + gH - ((v - vMin) / vRange) * gH;
+
+  // Build SVG path as step-line
+  const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.v).toFixed(1)}`).join(" ");
+
+  // Y-axis ticks
+  const ticks = [worst, (worst + best) / 2, best];
+  const moved = current !== open;
+  const lineColor = !moved ? "#94a3b8" : current > open ? "#22c55e" : "#ef4444";
+
+  return (
+    <div style={{ marginTop: 10, marginBottom: 2 }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible", display: "block" }}>
+        {/* Y-axis grid lines */}
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line
+              x1={PAD_L} y1={toY(v)} x2={W - PAD_R} y2={toY(v)}
+              stroke="rgba(19,35,58,0.08)" strokeWidth="1" strokeDasharray="3 3"
+            />
+            <text
+              x={PAD_L - 5} y={toY(v) + 3.5}
+              textAnchor="end" fontSize="9" fill="#64748b" fontFamily="monospace" fontWeight="600"
+            >
+              {fmt(Math.round(v))}
+            </text>
+          </g>
+        ))}
+        {/* Gradient fill under line */}
+        <defs>
+          <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d={`${pathD} L ${toX(1).toFixed(1)} ${toY(vMin).toFixed(1)} L ${toX(0).toFixed(1)} ${toY(vMin).toFixed(1)} Z`}
+          fill={`url(#grad-${label})`}
+        />
+        {/* Step-line */}
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Open dot */}
+        <circle cx={toX(0)} cy={toY(open)} r={3.5} fill="#F6F1E7" stroke={lineColor} strokeWidth="2" />
+        {/* Current dot */}
+        <circle cx={toX(1)} cy={toY(current)} r={4} fill={lineColor} />
+        {/* X-axis labels */}
+        <text x={toX(0)} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">Open</text>
+        <text x={toX(1)} y={H - 5} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">Now</text>
+      </svg>
+      {/* Summary row */}
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", background: "rgba(19,35,58,0.04)", borderRadius: 8, marginTop: 4 }}>
+        {[
+          { label: "Open",    val: fmt(open) },
+          { label: "Current", val: fmt(current), highlight: true },
+          { label: "Best",    val: fmt(best) },
+          { label: "Worst",   val: fmt(worst) },
+        ].map(({ label: l, val, highlight }) => (
+          <div key={l} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>{l}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: highlight ? lineColor : "#131A24", fontFamily: "monospace" }}>{val}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── ChartDrawer ─────────────────────────────────────────────────────────────
+function ChartDrawer({
+  label, open, current, fmtValue,
+}: {
+  label: string;
+  open: number | null;
+  current: number | null;
+  fmtValue?: (v: number) => string;
+}) {
+  const [show, setShow] = useState(false);
+  if (open == null && current == null) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => setShow(s => !s)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          fontSize: 10, fontWeight: 700, color: show ? "#13233A" : "#3D4B58",
+          background: show ? "rgba(19,35,58,0.10)" : "rgba(19,35,58,0.05)",
+          border: "1px solid rgba(19,35,58,0.12)",
+          borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+      >
+        <BarChart2 size={10} />
+        {show ? "Hide Chart" : "View Chart"}
+        {show ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+      </button>
+      {show && (
+        <div style={{
+          marginTop: 6, padding: "10px 10px 6px",
+          background: "#F6F1E7", borderRadius: 12,
+          border: "1px solid rgba(19,35,58,0.10)",
+        }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", marginBottom: 2 }}>{label} Movement</p>
+          <OddsMovementChart open={open} current={current} label={label} fmtValue={fmtValue} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── GameCard ───────────────────────────────────────────────────────────────────
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const rec = buildBetRec(game);
 
@@ -1200,7 +1619,7 @@ function GameCard({ game }: { game: GameLine }) {
               </div>
             </div>
           </div>
-          {/* Spread/total + chevron — right side */}
+          {/* Spread/total + share + chevron — right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <div className="text-right">
               {game.spread.current != null && (
@@ -1224,6 +1643,56 @@ function GameCard({ game }: { game: GameLine }) {
                 </p>
               )}
             </div>
+            {/* Share button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sharing) return;
+                setSharing(true);
+                const mlAwayMove = (game.moneyline.awayOpen != null && game.moneyline.awayCurrent != null)
+                  ? game.moneyline.awayCurrent - game.moneyline.awayOpen : null;
+                const mlHomeMove = (game.moneyline.homeOpen != null && game.moneyline.homeCurrent != null)
+                  ? game.moneyline.homeCurrent - game.moneyline.homeOpen : null;
+                shareGameCard({
+                  sport: game.sport,
+                  awayTeam: game.awayTeam,
+                  homeTeam: game.homeTeam,
+                  gameTime: game.gameTime,
+                  spread: game.spread.current != null ? fmtLine(game.spread.current) : null,
+                  spreadMove: game.spread.move != null ? fmtLine(game.spread.move) : null,
+                  total: game.total.current != null ? String(game.total.current) : null,
+                  totalMove: game.total.move != null ? fmtLine(game.total.move) : null,
+                  mlAway: fmtOdds(game.moneyline.awayCurrent),
+                  mlHome: fmtOdds(game.moneyline.homeCurrent),
+                  mlAwayMove: mlAwayMove != null ? fmtOdds(mlAwayMove) : null,
+                  mlHomeMove: mlHomeMove != null ? fmtOdds(mlHomeMove) : null,
+                  spreadAwayMoney: game.spread.awayMoney,
+                  spreadAwayPublic: game.spread.awayPublic,
+                  totalOverMoney: game.total.overMoney,
+                  totalOverPublic: game.total.overPublic,
+                  mlAwayMoney: game.moneyline.awayMoney,
+                  mlAwayPublic: game.moneyline.awayPublic,
+                  hasSteam: Math.abs(game.spread.move ?? 0) >= 3 || Math.abs(game.total.move ?? 0) >= 3,
+                  hasMoved: Math.abs(game.spread.move ?? 0) >= 1.5 || Math.abs(game.total.move ?? 0) >= 1.5,
+                  ciqGrade: ciqGrade,
+                  ciqPickTeam: ciqPickTeam ?? undefined,
+                  recSignal: rec?.signal ?? null,
+                  recPlay: rec?.play ?? null,
+                  recWhy: rec?.why ?? null,
+                  recColor: rec?.color ?? null,
+                }).catch(e => { if (e?.name !== "AbortError") console.error("[Share]", e); })
+                  .finally(() => setSharing(false));
+              }}
+              disabled={sharing}
+              title="Share this game"
+              className="flex items-center justify-center w-7 h-7 rounded-lg transition-all active:scale-90 disabled:opacity-40 flex-shrink-0"
+              style={{ background: "rgba(19,35,58,0.08)", border: "1px solid rgba(19,35,58,0.12)" }}
+            >
+              {sharing
+                ? <RefreshCw size={11} className="animate-spin" style={{ color: "#3D4B58" }} />
+                : <Share2 size={11} style={{ color: "#3D4B58" }} />
+              }
+            </button>
             {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
           </div>
         </div>
@@ -1304,26 +1773,78 @@ function GameCard({ game }: { game: GameLine }) {
           {/* ★ Clubhouse IQ Pick — AI analysis from Edge Crew v3 grade engine */}
           <CIQPickPanel game={game} ciqData={ciqData} isLoading={ciqLoading} isFetching={ciqFetching} refetch={ciqRefetch} />
 
+          {/* MLB public % unavailable notice */}
+          {game.sport === "MLB" && game.spread.awayPublic == null && game.moneyline.awayPublic == null && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+              <span className="text-amber-400 mt-0.5">⚾</span>
+              <div>
+                <span className="font-bold text-amber-400">Public % not available for MLB</span>
+                <span className="text-foreground/60 ml-1">— ActionNetwork doesn't publish betting splits for baseball. Sharp signals below are derived from line movement direction and moneyline shift.</span>
+                {game.numBets != null && <span className="block text-foreground/50 mt-0.5">{game.numBets.toLocaleString()} total bets tracked on this game.</span>}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-            {/* Spread */}
+            {/* Spread / Run Line */}
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Spread ({game.awayTeam})</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {game.sport === "MLB" ? `Run Line (${game.awayTeam})` : `Spread (${game.awayTeam})`}
+              </p>
               <MovementBar open={game.spread.open} current={game.spread.current} move={game.spread.move} label="Line" />
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label={`${game.awayTeam} (away)`} publicPct={game.spread.awayPublic} moneyPct={game.spread.awayMoney} />
-                <PublicBar label={`${game.homeTeam} (home)`} publicPct={game.spread.homePublic} moneyPct={game.spread.homeMoney} />
-              </div>
+              {game.spread.awayPublic != null || game.spread.homePublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label={`${game.awayTeam} (away)`} publicPct={game.spread.awayPublic} moneyPct={game.spread.awayMoney} />
+                  <PublicBar label={`${game.homeTeam} (home)`} publicPct={game.spread.homePublic} moneyPct={game.spread.homeMoney} />
+                </div>
+              ) : game.spread.move != null && game.spread.move !== 0 ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  {game.sport === "MLB" ? "Run line vig shifted" : "Line moved"} {game.spread.move > 0 ? "+" : ""}{game.spread.move} — implied sharp action
+                </p>
+              ) : null}
+              <ChartDrawer
+                label={game.sport === "MLB" ? "Run Line" : "Spread"}
+                open={game.spread.open}
+                current={game.spread.current}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
+              <SharpChartDrawer
+                label={game.sport === "MLB" ? "Run Line" : "Spread"}
+                sides={[
+                  { label: `${game.awayTeam.split(" ").pop()} (away)`, bets: game.spread.awayPublic, money: game.spread.awayMoney },
+                  { label: `${game.homeTeam.split(" ").pop()} (home)`, bets: game.spread.homePublic, money: game.spread.homeMoney },
+                ]}
+              />
             </div>
 
             {/* Total */}
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total (O/U)</p>
               <MovementBar open={game.total.open} current={game.total.current} move={game.total.move} label="Line" />
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label="Over" publicPct={game.total.overPublic} moneyPct={game.total.overMoney} />
-                <PublicBar label="Under" publicPct={game.total.underPublic} moneyPct={game.total.underMoney} />
-              </div>
+              {game.total.overPublic != null || game.total.underPublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label="Over" publicPct={game.total.overPublic} moneyPct={game.total.overMoney} />
+                  <PublicBar label="Under" publicPct={game.total.underPublic} moneyPct={game.total.underMoney} />
+                </div>
+              ) : game.total.move != null && game.total.move !== 0 ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  Total moved {game.total.move > 0 ? "+" : ""}{game.total.move} — sharp action on the {game.total.move > 0 ? "Over" : "Under"}
+                </p>
+              ) : null}
+              <ChartDrawer
+                label="Total (O/U)"
+                open={game.total.open}
+                current={game.total.current}
+                fmtValue={(v) => String(v)}
+              />
+              <SharpChartDrawer
+                label="Total"
+                sides={[
+                  { label: "Over",  bets: game.total.overPublic,  money: game.total.overMoney  },
+                  { label: "Under", bets: game.total.underPublic, money: game.total.underMoney },
+                ]}
+              />
             </div>
 
             {/* Moneyline */}
@@ -1355,10 +1876,37 @@ function GameCard({ game }: { game: GameLine }) {
                   )}
                 </div>
               </div>
-              <div className="space-y-1.5 mt-2">
-                <PublicBar label={game.awayTeam.split(" ").pop()!} publicPct={game.moneyline.awayPublic} moneyPct={game.moneyline.awayMoney} />
-                <PublicBar label={game.homeTeam.split(" ").pop()!} publicPct={game.moneyline.homePublic} moneyPct={game.moneyline.homeMoney} />
-              </div>
+              {game.moneyline.awayPublic != null || game.moneyline.homePublic != null ? (
+                <div className="space-y-1.5 mt-2">
+                  <PublicBar label={game.awayTeam.split(" ").pop()!} publicPct={game.moneyline.awayPublic} moneyPct={game.moneyline.awayMoney} />
+                  <PublicBar label={game.homeTeam.split(" ").pop()!} publicPct={game.moneyline.homePublic} moneyPct={game.moneyline.homeMoney} />
+                </div>
+              ) : (mlAwayMove != null && mlAwayMove !== 0) || (mlHomeMove != null && mlHomeMove !== 0) ? (
+                <p className="text-[10px] text-foreground/50 mt-1">
+                  ML shifted — {mlAwayMove != null && mlAwayMove !== 0 ? `${game.awayTeam.split(" ").pop()} ${mlAwayMove > 0 ? "+" : ""}${mlAwayMove}` : `${game.homeTeam.split(" ").pop()} ${mlHomeMove! > 0 ? "+" : ""}${mlHomeMove}`}
+                </p>
+              ) : null}
+              {/* Away ML chart */}
+              <ChartDrawer
+                label={`${game.awayTeam.split(" ").pop()} ML`}
+                open={game.moneyline.awayOpen}
+                current={game.moneyline.awayCurrent}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
+              {/* Home ML chart */}
+              <ChartDrawer
+                label={`${game.homeTeam.split(" ").pop()} ML`}
+                open={game.moneyline.homeOpen}
+                current={game.moneyline.homeCurrent}
+                fmtValue={(v) => v > 0 ? `+${v}` : String(v)}
+              />
+              <SharpChartDrawer
+                label="Moneyline"
+                sides={[
+                  { label: game.awayTeam.split(" ").pop()!, bets: game.moneyline.awayPublic, money: game.moneyline.awayMoney },
+                  { label: game.homeTeam.split(" ").pop()!, bets: game.moneyline.homePublic, money: game.moneyline.homeMoney },
+                ]}
+              />
             </div>
           </div>
 

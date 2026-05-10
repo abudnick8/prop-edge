@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { Server } from "http";
 import { storage } from "./storage";
 import { runScan, fetchLivePrices, computeSharpMoneyScore, tagUrgency } from "./scanner";
@@ -12,83 +12,586 @@ import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
 import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
+import { db } from "./db";
+import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
+import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
+import { sendPINResetEmail, sendWelcomeEmail, sendNewSignupNotification, SUPPORT_EMAIL } from "./email";
+import crypto from "crypto";
+// No payment integration — accounts are free to create, tier managed by owner
 
-// ── ML Engine helpers ────────────────────────────────────────────────────────
+// ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
 const ML_DATA_DIR      = path.join(__dirname, "ml_data");
 const ML_WEIGHTS_FILE  = path.join(ML_DATA_DIR, "ml_weights.json");
 const ML_INSIGHTS_FILE = path.join(ML_DATA_DIR, "ml_insights.json");
-const ML_ENGINE_PY     = path.join(__dirname, "ml_engine.py");
+const ML_OUTCOME_LOG   = path.join(ML_DATA_DIR, "bet_outcome_log.json");
+const ML_GRADED_IDS    = path.join(ML_DATA_DIR, "graded_ids.json");
+const ML_SNAPSHOT_FILE = path.join(ML_DATA_DIR, "pick_snapshots.json");
+const BTS_PICKS_FILE   = path.join(ML_DATA_DIR, "bts_picks.json");
 
-loadMLWeights(); // boot-time load; refreshed automatically after runMLEngine()
+if (!fs.existsSync(ML_DATA_DIR)) fs.mkdirSync(ML_DATA_DIR, { recursive: true });
+loadMLWeights(); // boot-time load; refreshed after runMLEngine()
 
-// Log a graded outcome to ml_data/bet_outcome_log.json via Python
+// ── ML helpers ────────────────────────────────────────────────────────────────
+function mlLoadJSON(filePath: string, def: any = []): any {
+  try { return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, "utf8")) : def; }
+  catch { return def; }
+}
+
+// Writes to local disk AND upserts into Postgres ml_data_store.
+// Postgres is the authoritative backup — survives Railway redeploys
+// without needing GITHUB_TOKEN.
+function mlSaveJSON(filePath: string, data: any): void {
+  const json = JSON.stringify(data, null, 2);
+  // 1. Local disk (fast, used during same process lifetime)
+  try { fs.writeFileSync(filePath, json); } catch { /* non-fatal */ }
+  // 2. Postgres (persistent across redeploys)
+  const filename = path.basename(filePath);
+  db.query(
+    `INSERT INTO ml_data_store (filename, content, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (filename) DO UPDATE
+       SET content = EXCLUDED.content, updated_at = NOW()`,
+    [filename, json]
+  ).catch((e: any) => console.warn(`[ML] DB save failed for ${filename}:`, e.message));
+}
+
+// Pull all ML files from Postgres into local disk on startup.
+// Falls back silently if DB not available or row missing.
+async function mlPullFromDB(): Promise<void> {
+  const files = [
+    "bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json",
+    "ml_insights.json", "graded_ids.json", "bts_picks.json",
+    "bts_ml_weights.json", "bts_ml_learning_log.json",
+  ];
+  let pulled = 0;
+  for (const filename of files) {
+    try {
+      const row = await db.queryOne(
+        `SELECT content, updated_at FROM ml_data_store WHERE filename = $1`,
+        [filename]
+      );
+      if (!row) continue;
+      const filepath = path.join(ML_DATA_DIR, filename);
+      // Only overwrite local file if DB version is newer or local doesn't exist
+      let localMtime = 0;
+      try { localMtime = fs.statSync(filepath).mtimeMs; } catch { /* doesn't exist */ }
+      const dbTime = new Date(row.updated_at).getTime();
+      if (dbTime >= localMtime || !fs.existsSync(filepath)) {
+        fs.mkdirSync(ML_DATA_DIR, { recursive: true });
+        fs.writeFileSync(filepath, row.content, "utf-8");
+        pulled++;
+        console.log(`[ML-DB] ✓ Restored ${filename} from Postgres (${Math.round(row.content.length/1024)}KB)`);
+      }
+    } catch (e: any) {
+      console.warn(`[ML-DB] Could not pull ${filename}:`, e.message);
+    }
+  }
+  if (pulled > 0) console.log(`[ML-DB] Restored ${pulled} ML files from Postgres`);
+  else console.log(`[ML-DB] No newer ML files in Postgres — using existing disk files`);
+}
+
+// Log a graded outcome (pure TS, no Python)
 function logMLOutcome(record: Record<string, any>): void {
   try {
-    const proc = spawn("python3", [ML_ENGINE_PY, "append", JSON.stringify(record)], {
-      detached: true, stdio: "ignore",
-    });
-    proc.unref();
-  } catch { /* non-blocking, ignore */ }
+    const outcomes: any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+    const idx = outcomes.findIndex((r: any) => r.betId === record.betId);
+    if (idx >= 0) { outcomes[idx] = { ...outcomes[idx], ...record }; }
+    else { outcomes.push(record); }
+    mlSaveJSON(ML_OUTCOME_LOG, outcomes);
+  } catch (e: any) { console.warn("[ML] logMLOutcome error:", e.message); }
 }
 
-// Run full ML engine (nightly or on demand)
-function runMLEngine(): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [ML_ENGINE_PY], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    proc.on("close", (code: number) => {
-      loadMLWeights(); // refresh weights in memory
-      if (code === 0) {
-        try {
-          const lines = out.trim().split("\n");
-          const jsonLine = lines.findLast((l: string) => l.startsWith("{"));
-          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
-        } catch { resolve({ status: "ok", output: out }); }
-      } else {
-        reject(new Error(`ML engine exited ${code}: ${out}`));
+// ── Auto Grader (ported from auto_grader.py) ──────────────────────────────────
+const SPORT_ESPN_MAP: Record<string, [string, string]> = {
+  NBA: ["basketball", "nba"],
+  MLB: ["baseball",   "mlb"],
+  NHL: ["hockey",     "nhl"],
+  NFL: ["football",   "nfl"],
+};
+const STAT_MAP: Record<string, Record<string, [string, string]>> = {
+  NBA: {
+    PTS:["PTS","int"],POINTS:["PTS","int"],REB:["REB","int"],REBOUNDS:["REB","int"],
+    AST:["AST","int"],ASSISTS:["AST","int"],STL:["STL","int"],BLK:["BLK","int"],
+    BLOCKS:["BLK","int"],TO:["TO","int"],TURNOVERS:["TO","int"],
+    "3PM":["3PT","fraction_left"],THREE_POINTERS_MADE:["3PT","fraction_left"],
+    "PTS+REB+AST":["PTS+REB+AST","combo"],PRA:["PTS+REB+AST","combo"],
+    "PTS+REB":["PTS+REB","combo"],"PTS+AST":["PTS+AST","combo"],"REB+AST":["REB+AST","combo"],
+  },
+  MLB: {
+    H:["H","int"],HITS:["H","int"],HR:["HR","int"],HOME_RUNS:["HR","int"],
+    RBI:["RBI","int"],RUNS_BATTED_IN:["RBI","int"],RBIS:["RBI","int"],
+    R:["R","int"],RUNS:["R","int"],RUNS_SCORED:["R","int"],
+    BB:["BB","int"],WALKS:["BB","int"],K:["K","int"],SO:["K","int"],
+    STRIKEOUTS_BATTER:["K","int"],"1B":["H","int"],SINGLES:["H","int"],
+    "2B":["2B","int"],DOUBLES:["2B","int"],"3B":["3B","int"],TRIPLES:["3B","int"],
+    SB:["SB","int"],STOLEN_BASES:["SB","int"],STOLEN_BASE:["SB","int"],
+    TB:["TB","int"],TOTAL_BASES:["TB","int"],
+    IP:["IP","float"],PITCHER_OUTS:["OUT","int"],OUTS:["OUT","int"],
+    ER:["ER","int"],EARNED_RUNS:["ER","int"],STRIKEOUTS:["K","int"],
+    PITCHING_K:["K","int"],PITCHER_K:["K","int"],PITCHER_STRIKEOUTS:["K","int"],
+    HITS_ALLOWED:["H","int"],PITCHER_HITS:["H","int"],
+    WALKS_ALLOWED:["BB","int"],PITCHER_BB:["BB","int"],ERA:["ERA","float"],
+  },
+  NHL: {
+    G:["G","int"],GOALS:["G","int"],A:["A","int"],ASSISTS:["A","int"],
+    PTS:["G+A","combo"],POINTS:["G+A","combo"],SOG:["SOG","int"],
+    SHOTS:["SOG","int"],SHOTS_ON_GOAL:["SOG","int"],"+/-":["+/-","int"],
+  },
+  NFL: {
+    PASS_YDS:["YDS","int"],PASSING_YARDS:["YDS","int"],
+    RUSH_YDS:["YDS","int"],RUSHING_YARDS:["YDS","int"],
+    REC:["REC","int"],RECEPTIONS:["REC","int"],
+    REC_YDS:["YDS","int"],RECEIVING_YARDS:["YDS","int"],
+    TD:["TD","combo"],TOUCHDOWNS:["TD","combo"],
+    INT:["INT","int"],COMPLETIONS:["C/ATT","fraction_left"],
+    SACKS:["SACKS","float"],TACKLES:["TOT","int"],
+  },
+};
+const NFL_GROUPS: Record<string, string> = {
+  PASS_YDS:"passing",PASSING_YARDS:"passing",
+  RUSH_YDS:"rushing",RUSHING_YARDS:"rushing",
+  REC_YDS:"receiving",RECEIVING_YARDS:"receiving",REC:"receiving",RECEPTIONS:"receiving",
+};
+
+function mlLastWord(s: string): string { const p = s.trim().toLowerCase().split(/\s+/); return p[p.length-1]||"";
+}
+function mlTeamsMatch(a: string, b: string): boolean {
+  a = a.toLowerCase().trim(); b = b.toLowerCase().trim();
+  if (a === b) return true;
+  const al = mlLastWord(a), bl = mlLastWord(b);
+  if (al === bl && al.length > 3) return true;
+  if (a.length > 4 && b.includes(a)) return true;
+  if (b.length > 4 && a.includes(b)) return true;
+  return false;
+}
+function mlPlayerMatch(a: string, b: string): boolean {
+  a = a.toLowerCase().trim(); b = b.toLowerCase().trim();
+  if (a === b) return true;
+  const al = a.split(/\s+/).pop()!, bl = b.split(/\s+/).pop()!;
+  if (al === bl && al.length > 3) return true;
+  if (a.length > 4 && b.includes(a)) return true;
+  if (b.length > 4 && a.includes(b)) return true;
+  const ap = a.split(/\s+/), bp = b.split(/\s+/);
+  if (ap.length >= 2 && bp.length >= 2 && ap[ap.length-1] === bp[bp.length-1] && ap[0][0] === bp[0][0]) return true;
+  return false;
+}
+function mlParseStatValue(raw: string|null|undefined, mode: string): number|null {
+  if (raw == null || raw === "--" || raw === "") return null;
+  const s = String(raw).trim();
+  try {
+    if (mode === "fraction_left") {
+      for (const sep of ["/", "-"]) { if (s.includes(sep)) return parseFloat(s.split(sep)[0]); }
+      return parseFloat(s);
+    }
+    return parseFloat(s);
+  } catch { return null; }
+}
+function mlDetectNFLGroup(labels: string[], keys: string[]): string|null {
+  const ls = labels.join(" ").toLowerCase(), ks = keys.join(" ").toLowerCase();
+  if (ks.includes("passing") || (ls.includes("c/att") && ls.includes("yds") && ls.includes("int"))) return "passing";
+  if (ks.includes("rushing") || (ls.includes("car") && ls.includes("yds") && ls.includes("avg"))) return "rushing";
+  if (ks.includes("receiving") || (ls.includes("rec") && ls.includes("yds") && ls.includes("tgts"))) return "receiving";
+  if (ks.includes("tackle") || (ls.includes("tot") && ls.includes("solo"))) return "defense";
+  return null;
+}
+function mlExtractCombo(comboKey: string, labels: string[], stats: string[]): number|null {
+  const parts = comboKey.split("+").map(p => p.trim().toUpperCase());
+  let total = 0, found = false;
+  for (const part of parts) {
+    const idx = labels.indexOf(part);
+    if (idx >= 0 && idx < stats.length) { const v = mlParseStatValue(stats[idx], "int"); if (v != null) { total += v; found = true; } }
+  }
+  return found ? total : null;
+}
+function mlExtractPlayerStat(summary: any, sport: string, playerName: string, statCategory: string): number|null {
+  const catKey = statCategory.toUpperCase().replace(/[\s-]/g, "_");
+  const sportMap = STAT_MAP[sport] || {};
+  let entry = sportMap[catKey];
+  if (!entry) {
+    for (const [k, v] of Object.entries(sportMap)) { if (k.includes(catKey) || catKey.includes(k)) { entry = v; break; } }
+  }
+  if (!entry) return null;
+  const [espnKey, mode] = entry;
+  const isCombo = mode === "combo";
+  const teamsData = summary?.boxscore?.players || [];
+  for (const teamData of teamsData) {
+    for (const group of (teamData.statistics || [])) {
+      const labels = (group.labels || []).map((l: string) => l.toUpperCase());
+      const keys   = group.keys || [];
+      const groupType = mlDetectNFLGroup(labels, keys);
+      for (const ae of (group.athletes || [])) {
+        const name = ae?.athlete?.displayName || "";
+        if (!mlPlayerMatch(name, playerName)) continue;
+        const stats = ae.stats || [];
+        if (!stats.length) continue;
+        if (isCombo) { const v = mlExtractCombo(espnKey, labels, stats); if (v != null) return v; continue; }
+        if (sport === "NFL") { const req = NFL_GROUPS[catKey]; if (req && groupType && req !== groupType) continue; }
+        const idx = labels.indexOf(espnKey.toUpperCase());
+        if (idx >= 0 && idx < stats.length) { const v = mlParseStatValue(stats[idx], mode); if (v != null) return v; }
       }
-    });
-  });
+    }
+  }
+  return null;
+}
+async function mlFetchESPN(url: string): Promise<any> {
+  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) throw new Error(`ESPN ${r.status}`);
+  return r.json();
+}
+async function mlFetchScoreboard(sport: string, dateStr: string): Promise<any[]> {
+  const [sn, lg] = SPORT_ESPN_MAP[sport] || [];
+  if (!sn) return [];
+  try {
+    const d = await mlFetchESPN(`https://site.api.espn.com/apis/site/v2/sports/${sn}/${lg}/scoreboard?dates=${dateStr}`);
+    return d.events || [];
+  } catch { return []; }
+}
+async function mlFetchCompletedGames(sport: string, dateStr: string): Promise<any[]> {
+  const events = await mlFetchScoreboard(sport, dateStr);
+  const results: any[] = [];
+  for (const ev of events) {
+    const comp = (ev.competitions||[{}])[0];
+    if (!comp.status?.type?.completed) continue;
+    const home = comp.competitors?.find((c: any) => c.homeAway === "home");
+    const away = comp.competitors?.find((c: any) => c.homeAway === "away");
+    if (!home || !away) continue;
+    const hs = parseInt(home.score||"0",10), as_ = parseInt(away.score||"0",10);
+    if (isNaN(hs)||isNaN(as_)) continue;
+    results.push({ gameId: ev.id, espnId: ev.id, home: home.team?.displayName||"", away: away.team?.displayName||"", homeScore: hs, awayScore: as_, date: dateStr });
+  }
+  return results;
+}
+async function mlFetchGameSummary(sport: string, espnId: string): Promise<any|null> {
+  const [sn, lg] = SPORT_ESPN_MAP[sport] || [];
+  if (!sn) return null;
+  try { return await mlFetchESPN(`https://site.api.espn.com/apis/site/v2/sports/${sn}/${lg}/summary?event=${espnId}`); }
+  catch { return null; }
+}
+function mlFindGame(scores: any[], home: string, away: string): any|null {
+  for (const g of scores) {
+    const hm = mlTeamsMatch(g.home, home)||mlTeamsMatch(g.home, away);
+    const am = mlTeamsMatch(g.away, away)||mlTeamsMatch(g.away, home);
+    if (hm && am) return g;
+  }
+  for (const g of scores) {
+    if (mlTeamsMatch(g.home, home)||mlTeamsMatch(g.away, home)||mlTeamsMatch(g.home, away)||mlTeamsMatch(g.away, away)) return g;
+  }
+  return null;
+}
+function mlGradeTeamBet(snap: any, game: any): string|null {
+  const betType = (snap.betType||snap.bet_type||"").toLowerCase();
+  const line    = snap.line != null ? parseFloat(snap.line) : null;
+  const titleUp = (snap.title||"").toUpperCase();
+  const rawSide = (snap.pickSide||snap.pick_side||"").toLowerCase();
+  let pickSide  = rawSide;
+  if (betType === "total") {
+    if (/\bUNDER\b/.test(titleUp)) pickSide = "under";
+    else if (/\bOVER\b/.test(titleUp)) pickSide = "over";
+  }
+  const { homeScore: hs, awayScore: as_ } = game;
+  const total = hs + as_;
+  if (["moneyline","ml"].includes(betType)) {
+    if (hs === as_) return "push";
+    const homeWon = hs > as_;
+    if (pickSide === "home" || mlTeamsMatch(pickSide, snap.homeTeam||"")) return homeWon ? "won" : "lost";
+    if (pickSide === "away" || mlTeamsMatch(pickSide, snap.awayTeam||"")) return homeWon ? "lost" : "won";
+    return null;
+  }
+  if (betType === "spread" && line != null) {
+    const margin = as_ - hs;
+    const cov = margin + line;
+    if (Math.abs(cov) < 0.01) return "push";
+    const awayCovered = cov > 0;
+    if (pickSide === "away" || mlTeamsMatch(pickSide, snap.awayTeam||"")) return awayCovered ? "won" : "lost";
+    if (pickSide === "home" || mlTeamsMatch(pickSide, snap.homeTeam||"")) return awayCovered ? "lost" : "won";
+    return awayCovered ? "won" : "lost";
+  }
+  if (betType === "total" && line != null) {
+    if (Math.abs(total - line) < 0.01) return "push";
+    const wentOver = total > line;
+    if (pickSide === "over") return wentOver ? "won" : "lost";
+    if (pickSide === "under") return wentOver ? "lost" : "won";
+    return null;
+  }
+  return null;
+}
+function mlGradePlayerProp(snap: any, summary: any): string|null {
+  const playerName   = snap.playerName || snap.player_name || "";
+  const statCategory = snap.statCategory || snap.stat_category || "";
+  const sport        = (snap.sport||"").toUpperCase();
+  const line         = snap.line != null ? parseFloat(snap.line) : null;
+  if (!playerName || !statCategory || line == null || isNaN(line)) return null;
+  const titleUp = (snap.title||"").toUpperCase();
+  let pickSide = (snap.pickSide||"").toLowerCase();
+  if (!pickSide) { if (/\bUNDER\b/.test(titleUp)) pickSide = "under"; else pickSide = "over"; }
+  const actual = mlExtractPlayerStat(summary, sport, playerName, statCategory);
+  if (actual == null) return null;
+  if (Math.abs(actual - line) < 0.01) return "push";
+  const wentOver = actual > line;
+  if (pickSide === "over")  return wentOver ? "won" : "lost";
+  if (pickSide === "under") return wentOver ? "lost" : "won";
+  return null;
 }
 
-// Run any Python script in the server/ dir and return its JSON output
-function runPythonScript(scriptName: string, args: string[] = []): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, scriptName);
-    const proc = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { process.stderr.write(d); });
-    proc.on("close", (code: number) => {
-      if (code === 0) {
-        try {
-          const lines = out.trim().split("\n");
-          const jsonLine = lines.findLast((l: string) => l.trimStart().startsWith("{"));
-          resolve(jsonLine ? JSON.parse(jsonLine) : { status: "ok", output: out });
-        } catch { resolve({ status: "ok", output: out }); }
-      } else {
-        reject(new Error(`${scriptName} exited ${code}: ${out.slice(-500)}`));
+async function runAutoGrader(): Promise<Record<string,any>> {
+  const now        = new Date();
+  const snapshots: any[] = mlLoadJSON(ML_SNAPSHOT_FILE, []);
+  const outcomes:  any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+  const gradedIds: string[] = mlLoadJSON(ML_GRADED_IDS, []);
+  const gradedSet  = new Set(gradedIds);
+  const existingIds = new Set(outcomes.map((r: any) => r.betId));
+
+  const cutoffPast   = new Date(now.getTime() - 2 * 3600 * 1000);
+  const cutoffFuture = new Date(now.getTime() + 24 * 3600 * 1000);
+
+  const pending: any[] = [];
+  for (const snap of snapshots) {
+    const bid = snap.betId || snap.id;
+    if (existingIds.has(bid) || gradedSet.has(bid)) continue;
+    const gtStr = snap.gameTime || snap.game_time;
+    if (!gtStr && (snap.betType||"").toLowerCase() !== "player_prop") continue;
+    const gt = gtStr ? new Date(String(gtStr).replace("Z","").replace("+00:00","")) : new Date(now.getTime() - 86400000);
+    if (gt > cutoffFuture) continue;
+    pending.push(snap);
+  }
+
+  console.log(`[Grader] ${pending.length} picks to grade out of ${snapshots.length} snapshots`);
+
+  let graded = 0, skippedNoGame = 0, skippedNoSummary = 0, skippedNoStat = 0, errors = 0;
+
+  // Group by sport
+  const bySport: Record<string, any[]> = {};
+  for (const snap of pending) {
+    const s = (snap.sport||"").toUpperCase().replace(/BASKETBALL.*|BASKETBALL/,"NBA").replace(/BASEBALL.*|BASEBALL/,"MLB").replace(/HOCKEY.*|HOCKEY/,"NHL").replace(/FOOTBALL.*|FOOTBALL/,"NFL");
+    const sport = ["NBA","MLB","NHL","NFL"].find(x => s.includes(x));
+    if (!sport) { skippedNoGame++; continue; }
+    if (!bySport[sport]) bySport[sport] = [];
+    bySport[sport].push(snap);
+  }
+
+  for (const [sport, snaps] of Object.entries(bySport)) {
+    // Collect dates to fetch
+    const datesNeeded = new Set<string>();
+    for (let d = -3; d <= 1; d++) {
+      const dt = new Date(now.getTime() + d * 86400000);
+      datesNeeded.add(dt.toISOString().slice(0,10).replace(/-/g,""));
+    }
+    for (const snap of snaps) {
+      const gtStr = snap.gameTime || snap.game_time;
+      if (!gtStr) continue;
+      const dt = new Date(String(gtStr).replace("Z",""));
+      for (let d = -2; d <= 1; d++) {
+        const shifted = new Date(dt.getTime() + d * 86400000);
+        datesNeeded.add(shifted.toISOString().slice(0,10).replace(/-/g,""));
       }
-    });
-  });
+    }
+
+    const allScores: any[] = [];
+    const seenIds = new Set<string>();
+    for (const dateStr of [...datesNeeded].sort()) {
+      const games = await mlFetchCompletedGames(sport, dateStr);
+      for (const g of games) { if (!seenIds.has(g.gameId)) { seenIds.add(g.gameId); allScores.push(g); } }
+    }
+    console.log(`[Grader] ${sport}: ${allScores.length} completed games, ${snaps.length} picks to grade`);
+
+    const summaryCache: Record<string, any> = {};
+
+    for (const snap of snaps) {
+      try {
+        const betType = (snap.betType||"").toLowerCase();
+        const home    = snap.homeTeam || "";
+        const away    = snap.awayTeam || "";
+        const bid     = snap.betId || snap.id;
+        const gameTime = snap.gameTime || snap.game_time;
+
+        const game = mlFindGame(allScores, home, away);
+        if (!game) { skippedNoGame++; continue; }
+
+        let result: string|null = null;
+        if (["spread","total","moneyline","ml"].includes(betType)) {
+          result = mlGradeTeamBet(snap, game);
+        } else if (["player_prop","prop"].includes(betType)) {
+          const espnId = game.espnId || game.gameId;
+          if (!espnId) { skippedNoGame++; continue; }
+          if (!summaryCache[espnId]) {
+            await new Promise(r => setTimeout(r, 300)); // polite rate limit
+            summaryCache[espnId] = await mlFetchGameSummary(sport, espnId);
+          }
+          const summary = summaryCache[espnId];
+          if (!summary) { skippedNoSummary++; continue; }
+          result = mlGradePlayerProp(snap, summary);
+          if (result == null) { skippedNoStat++; continue; }
+        } else { continue; }
+
+        if (result == null) { errors++; continue; }
+
+        const record: any = {
+          betId: bid, sport, betType: snap.betType, title: snap.title||"",
+          pickSide: snap.pickSide, line: snap.line,
+          playerName: snap.playerName, statCategory: snap.statCategory,
+          homeTeam: home, awayTeam: away,
+          homeScore: game.homeScore, awayScore: game.awayScore,
+          confidenceScore: snap.confidenceScore, formEdgePct: snap.formEdgePct,
+          hitRate: snap.hitRate, edgeScore: snap.edgeScore, edgeGrade: snap.edgeGrade,
+          gameTime, gradedAt: new Date().toISOString(), result,
+          espnGameId: game.espnId || game.gameId,
+        };
+        outcomes.push(record);
+        gradedSet.add(bid);
+        graded++;
+        console.log(`[Grader] ✓ ${away} @ ${home} → ${result.toUpperCase()}`);
+      } catch (e: any) { errors++; console.warn("[Grader] snap error:", e.message); }
+    }
+  }
+
+  mlSaveJSON(ML_OUTCOME_LOG, outcomes);
+  mlSaveJSON(ML_GRADED_IDS, [...gradedSet]);
+  console.log(`[Grader] Done — graded=${graded} skippedNoGame=${skippedNoGame} errors=${errors}`);
+  return { graded, skippedNoGame, skippedNoSummary, skippedNoStat, errors, totalOutcomes: outcomes.length };
+}
+
+// ── ML Engine (ported from ml_engine.py) ──────────────────────────────────────
+function mlRecencyWeight(gradedAt: string|null|undefined): number {
+  if (!gradedAt) return 1.0;
+  try {
+    const daysAgo = (Date.now() - new Date(gradedAt).getTime()) / 86400000;
+    return daysAgo <= 30 ? 2.0 : daysAgo <= 90 ? 1.5 : 1.0;
+  } catch { return 1.0; }
+}
+function mlExtractFeatures(bet: any): Record<string,any> {
+  const sport    = (bet.sport||"unknown").toUpperCase();
+  const betType  = (bet.betType||bet.bet_type||"unknown").toLowerCase();
+  let conf       = parseFloat(bet.confidenceScore||bet.confidence_score||"50") || 50;
+  const formEdge = parseFloat(bet.formEdgePct||bet.form_edge_pct||"0") || 0;
+  const hitRate  = parseFloat(bet.hitRate||bet.hit_rate||"0.5") || 0.5;
+  const pickSide = (bet.pickSide||bet.pick_side||"").toUpperCase();
+  const statCat  = (bet.statCategory||bet.stat_category||"").toUpperCase().replace(/\s+/g,"_");
+  if (bet.edgeScore != null) {
+    const edgeConf = Math.max(40, Math.min(95, 55 + (parseFloat(bet.edgeScore)-5)*8));
+    conf = Math.round((conf*0.4 + edgeConf*0.6)*10)/10;
+  }
+  const confTier = conf >= 85 ? "elite" : conf >= 70 ? "high" : conf >= 55 ? "medium" : "low";
+  const edgeTier = formEdge >= 20 ? "strong_over" : formEdge >= 10 ? "moderate_over" : formEdge <= -20 ? "strong_under" : formEdge <= -10 ? "moderate_under" : "flat";
+  const formTier = hitRate >= 0.8 ? "hot" : hitRate >= 0.6 ? "above_avg" : hitRate >= 0.4 ? "neutral" : "cold";
+  return { sport, betType: betType, confTier, edgeTier, formTier, pickSide, conf, formEdge, hitRate, statCat };
+}
+function runMLEngine(): Record<string,any> {
+  const outcomes: any[] = mlLoadJSON(ML_OUTCOME_LOG, []);
+  const graded = outcomes.filter((b: any) => ["won","lost","push"].includes(b.result));
+  const now = new Date().toISOString();
+  if (graded.length < 5) {
+    const r = { status:"insufficient_data", message:`Need at least 5 graded outcomes. Currently have ${graded.length}.`, sample_size: graded.length, last_run: now };
+    mlSaveJSON(ML_INSIGHTS_FILE, r); return r;
+  }
+  // Pattern accuracy
+  const buckets: Record<string, {wins:number,losses:number,pushes:number,total:number}> = {};
+  const bump = (key: string, result: string, w: number) => {
+    if (!buckets[key]) buckets[key] = {wins:0,losses:0,pushes:0,total:0};
+    buckets[key].total += w;
+    if (result==="won") buckets[key].wins += w;
+    else if (result==="lost") buckets[key].losses += w;
+    else buckets[key].pushes += w;
+  };
+  for (const bet of graded) {
+    const w = mlRecencyWeight(bet.gradedAt||bet.graded_at);
+    const f = mlExtractFeatures(bet);
+    const r = bet.result;
+    const dims = [
+      `sport:${f.sport}`, `bet_type:${f.betType}`, `sport:${f.sport}|bet_type:${f.betType}`,
+      `conf_tier:${f.confTier}`, `edge_tier:${f.edgeTier}`, `form_tier:${f.formTier}`,
+      `pick_side:${f.pickSide}`, `sport:${f.sport}|conf_tier:${f.confTier}`,
+      `sport:${f.sport}|edge_tier:${f.edgeTier}`, `bet_type:${f.betType}|conf_tier:${f.confTier}`,
+      `bet_type:${f.betType}|form_tier:${f.formTier}`, `sport:${f.sport}|pick_side:${f.pickSide}`,
+      ...(f.statCat ? [
+        `stat_category:${f.statCat}`, `sport:${f.sport}|stat_category:${f.statCat}`,
+        `stat_category:${f.statCat}|conf_tier:${f.confTier}`,
+        `stat_category:${f.statCat}|pick_side:${f.pickSide}`,
+      ] : []),
+    ];
+    for (const dim of dims) bump(dim, r, w);
+  }
+  const patterns: Record<string,any> = {};
+  for (const [key, b] of Object.entries(buckets)) {
+    if (b.total < 3) continue;
+    const wr = b.wins / Math.max(b.total - b.pushes, 1);
+    const adj = Math.max(-25, Math.min(25, (wr - 0.5) * 50));
+    patterns[key] = { wins: Math.round(b.wins*10)/10, losses: Math.round(b.losses*10)/10, total: Math.round(b.total*10)/10, win_rate: Math.round(wr*1000)/1000, weight_adj: Math.round(adj*100)/100 };
+  }
+  // Stats
+  const bySport: Record<string,any> = {}, byType: Record<string,any> = {}, byConf: Record<string,any> = {}, weekly: Record<string,any> = {};
+  let tw=0, tl=0, tp=0;
+  for (const b of graded) {
+    const r = b.result, sport = (b.sport||"other").toUpperCase(), btype = (b.betType||"other").toLowerCase();
+    const conf = parseFloat(b.confidenceScore||"50")||50;
+    const ct = conf>=85?"elite":conf>=70?"high":conf>=55?"medium":"low";
+    if (r==="won") tw++; else if (r==="lost") tl++; else tp++;
+    for (const [key, map] of [[sport,bySport],[btype,byType],[ct,byConf]] as [string,Record<string,any>][]) {
+      if (!map[key]) map[key]={won:0,lost:0,push:0};
+      if (r==="won") map[key].won++; else if (r==="lost") map[key].lost++; else map[key].push++;
+    }
+    const ga = b.gradedAt||b.graded_at;
+    if (ga) { try { const wk = new Date(ga).toISOString().slice(0,10); if (!weekly[wk]) weekly[wk]={won:0,lost:0}; if (r==="won") weekly[wk].won++; else if (r==="lost") weekly[wk].lost++; } catch {} }
+  }
+  const td = tw+tl; const wr_overall = tw/Math.max(td,1);
+  const roi = Math.round(((tw*90.91)-(tl*100))/Math.max(td*100,1)*1000)/10;
+  const toWR = (m: Record<string,any>) => Object.fromEntries(Object.entries(m).map(([k,v]: any) => [k, {...v, win_rate: Math.round(v.won/Math.max(v.won+v.lost,1)*1000)/1000}]));
+  const stats = { total: graded.length, won: tw, lost: tl, push: tp, win_rate: Math.round(wr_overall*1000)/1000, roi_est: roi, by_sport: toWR(bySport), by_type: toWR(byType), by_conf_tier: toWR(byConf), by_week: Object.entries(weekly).sort(([a],[b_])=>a<b_?-1:1).slice(-12).map(([wk,v]: any) => ({ week: wk, won: v.won, lost: v.lost, win_rate: Math.round(v.won/Math.max(v.won+v.lost,1)*1000)/1000 })) };
+  // Insights
+  const insights: any[] = [];
+  const ranked = Object.entries(patterns).filter(([,v]: any) => v.total>=5).sort(([,a]: any,[,b_]: any) => b_.win_rate-a.win_rate);
+  for (const [key, s] of ranked.slice(0,5) as any[]) {
+    const pct = Math.round(s.win_rate*1000)/10;
+    insights.push({ type:"strength", pattern:key, title:`${pct}% win rate — ${key.replace(/\|/g," + ").replace(/_/g," ").replace(/:/g,": ")}`, detail:`${Math.round(s.wins)}W-${Math.round(s.losses)}L (${pct}%)`, adj:s.weight_adj, icon:"✅" });
+  }
+  for (const [key, s] of ranked.slice(-5).reverse() as any[]) {
+    const pct = Math.round(s.win_rate*1000)/10;
+    if (pct < 45) insights.push({ type:"weakness", pattern:key, title:`${pct}% win rate — ${key.replace(/\|/g," + ").replace(/_/g," ").replace(/:/g,": ")}`, detail:`${Math.round(s.wins)}W-${Math.round(s.losses)}L (${pct}%)`, adj:s.weight_adj, icon:"⚠️" });
+  }
+  // Weights
+  const getAdj = (k: string) => patterns[k]?.weight_adj || 0;
+  const sports2 = ["NBA","NFL","MLB","NHL"];
+  const btypes2 = ["player_prop","spread","total","moneyline"];
+  const ctiers2 = ["elite","high","medium","low"];
+  const etiers2 = ["strong_over","moderate_over","flat","moderate_under","strong_under"];
+  const ftiers2 = ["hot","above_avg","neutral","cold"];
+  const combo: Record<string,number> = {};
+  for (const sp of sports2) for (const ct of ctiers2) { const k=`sport:${sp}|conf_tier:${ct}`,v=getAdj(k); if (Math.abs(v)>=2) combo[k]=v; }
+  for (const bt of btypes2) for (const ct of ctiers2) { const k=`bet_type:${bt}|conf_tier:${ct}`,v=getAdj(k); if (Math.abs(v)>=2) combo[k]=v; }
+  const weights = {
+    sport_weights:   Object.fromEntries(sports2.map(s => [s, getAdj(`sport:${s}`)])),
+    bettype_weights: Object.fromEntries(btypes2.map(t => [t, getAdj(`bet_type:${t}`)])),
+    conf_tier_cal:   Object.fromEntries(ctiers2.map(c => [c, getAdj(`conf_tier:${c}`)])),
+    edge_tier_weights: Object.fromEntries(etiers2.map(e => [e, getAdj(`edge_tier:${e}`)])),
+    form_tier_weights: Object.fromEntries(ftiers2.map(f => [f, getAdj(`form_tier:${f}`)])),
+    pick_side_weights: { OVER: getAdj("pick_side:OVER"), UNDER: getAdj("pick_side:UNDER") },
+    combo_weights: combo,
+    overall_win_rate: stats.win_rate,
+    sample_size: stats.total,
+    last_run: now, version: "2.0",
+  };
+  mlSaveJSON(ML_WEIGHTS_FILE, weights);
+  const payload = { status:"ok", last_run: now, sample_size: stats.total, accuracy: stats, patterns, insights, weights };
+  mlSaveJSON(ML_INSIGHTS_FILE, payload);
+  loadMLWeights();
+  console.log(`[ML Engine] Done — ${stats.total} graded | ${stats.won}W-${stats.lost}L | ${Math.round(stats.win_rate*1000)/10}% win rate`);
+  return payload;
 }
 
 // Sync ml_data/ to GitHub so outcomes survive Railway redeploys
 // Uses the GitHub API to upsert files — no git CLI needed on Railway
 async function syncMLDataToGitHub(): Promise<void> {
-  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
-  if (!token) {
+  if (!token || token === "SCRUBBED_GITHUB_TOKEN") {
     console.error("[MLSync] CRITICAL: GITHUB_TOKEN env var not set on Railway — ML data will be lost on redeploy!");
-    console.error("[MLSync] Set GITHUB_TOKEN in Railway dashboard > Variables > Add variable");
+    console.error("[MLSync] Fix: Railway dashboard > your service > Variables > Add GITHUB_TOKEN");
     return;
   }
   console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
-  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
 
   for (const filename of files) {
     const filepath = path.join(DATA_DIR, filename);
@@ -142,10 +645,10 @@ async function syncMLDataToGitHub(): Promise<void> {
 // Lightweight snapshot-only sync — runs after every scanner pick log
 // Keeps pick_snapshots.json backed up on GitHub so restarts don't lose picks
 async function syncSnapshotsToGitHub(): Promise<void> {
-  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = "main";
-  if (!token) return;
+  if (!token || token === "SCRUBBED_GITHUB_TOKEN") { console.warn("[MLSync] snapshots: no valid token, skipping"); return; }
 
   const DATA_DIR = path.join(__dirname, "ml_data");
   const filename = "pick_snapshots.json";
@@ -180,33 +683,66 @@ async function syncSnapshotsToGitHub(): Promise<void> {
 }
 
 // Pull ml_data/ from GitHub on startup so Railway has latest outcomes after redeploy
+// getMLPullPromise() returns a module-level promise that resolves when startup data is loaded.
+let _mlPullPromise: Promise<void> = Promise.resolve(); // set after pullMLDataFromGitHub is defined
+function getMLPullPromise(): Promise<void> { return _mlPullPromise; }
+
 async function pullMLDataFromGitHub(): Promise<void> {
-  const token  = (process.env.GITHUB_TOKEN || ("github_pat_11B5TD37Q0ub0HIQG1sOTk_DHm5fs" + "DFH4KOx8XBz0x4BuyKjFljWTP16OZTyF3mBYpMFSM7WMEo4h0ILbk"));
+  const token  = process.env.GITHUB_TOKEN;
   const repo   = process.env.GITHUB_REPO || "abudnick8/prop-edge";
   const branch = process.env.GITHUB_BRANCH || "main";
-  if (!token) return;
+  if (!token || token === "SCRUBBED_GITHUB_TOKEN") { console.warn("[MLSync] pull: no valid token, skipping"); return; }
 
   const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json"];
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
+  const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
     try {
-      const apiUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
-      const resp    = await fetch(apiUrl, {
-        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" },
-      });
-      if (!resp.ok) continue;
-      const json    = await resp.json() as any;
-      const decoded = Buffer.from(json.content, "base64").toString("utf8");
+      // Step 1: Get file metadata (SHA + size) via Contents API
+      const metaUrl  = `https://api.github.com/repos/${repo}/contents/server/ml_data/${filename}?ref=${branch}`;
+      const metaResp = await fetch(metaUrl, { headers: ghHeaders });
+      if (!metaResp.ok) { console.log(`[MLSync] ${filename} not found on GitHub — skipping`); continue; }
+      const meta     = await metaResp.json() as any;
+      const blobSha  = meta.sha;
+      const fileSize = meta.size ?? 0;
+
+      let decoded: string;
+
+      if (fileSize <= 900_000 && meta.encoding === "base64" && meta.content) {
+        // Small file — content already inlined in the contents response
+        decoded = Buffer.from((meta.content as string).replace(/\n/g, ""), "base64").toString("utf8");
+      } else {
+        // Large file (>1MB) — fetch the raw blob directly via Git Blobs API
+        console.log(`[MLSync] ${filename} is ${Math.round(fileSize/1024)}KB — fetching via blob API`);
+        const blobUrl  = `https://api.github.com/repos/${repo}/git/blobs/${blobSha}`;
+        const blobResp = await fetch(blobUrl, { headers: ghHeaders });
+        if (!blobResp.ok) { console.warn(`[MLSync] Blob fetch failed for ${filename}: ${blobResp.status}`); continue; }
+        const blob     = await blobResp.json() as any;
+        decoded        = Buffer.from((blob.content as string).replace(/\n/g, ""), "base64").toString("utf8");
+      }
+
+      // Validate JSON before writing
+      try { JSON.parse(decoded); }
+      catch { console.warn(`[MLSync] ${filename} from GitHub is corrupt JSON — skipping`); continue; }
+
       fs.writeFileSync(path.join(DATA_DIR, filename), decoded);
-      console.log(`[MLSync] Pulled ${filename} from GitHub`);
+      console.log(`[MLSync] ✓ Pulled ${filename} from GitHub (${Math.round(decoded.length/1024)}KB)`);
     } catch (e: any) {
       console.warn(`[MLSync] Could not pull ${filename}:`, e.message);
     }
   }
 }
+
+// Start the pull immediately at module load — before any request can be served.
+// DB pull runs first (no token needed), then GitHub fills any remaining gaps.
+_mlPullPromise = mlPullFromDB()
+  .then(() => pullMLDataFromGitHub())
+  .catch((e: any) => {
+    console.warn("[MLSync] Module-level startup pull failed:", e?.message);
+  });
 
 // ── Kronos Python microservice manager ───────────────────────────────────────
 const KRONOS_PORT = 5050;
@@ -880,18 +1416,714 @@ let livePollInterval: NodeJS.Timeout | null = null;
 let lastLivePoll: { ts: number; changed: number } = { ts: 0, changed: 0 };
 
 export async function registerRoutes(httpServer: Server, app: Express) {
+  // ── Build version endpoint — used by PWA to detect stale cache and force reload ──
+  const BUILD_HASH = process.env.BUILD_HASH ?? Date.now().toString(36);
+  app.get("/api/version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ version: BUILD_HASH });
+  });
+
+  // ── Webhook stub (no payment processor) ─────────────────────────────────
+  app.post("/api/webhook", async (_req: Request, res: Response) => {
+    res.status(200).json({ received: true });
+  });
+
+  // ── Auth routes ──────────────────────────────────────────────────────────────────────────
+
+  // POST /api/auth/signup
+  app.post("/api/auth/signup", async (req: Request, res: Response) => {
+    try {
+      const { email, pin, tier = "basic" } = req.body ?? {};
+
+      if (!isValidEmail(email))
+        return res.status(400).json({ error: "Invalid email address" });
+      if (!isValidPIN(pin))
+        return res.status(400).json({ error: "PIN must be exactly 4 alphanumeric characters" });
+      if (tier !== "free" && tier !== "basic" && tier !== "pro")
+        return res.status(400).json({ error: "Invalid tier" });
+
+      const pinHash = await hashPIN(pin);
+
+      // Owner bypass — always upsert, reset lockout, auto-activate as owner + pro
+      const OWNER_EMAIL = "adam.budnick8@gmail.com";
+      if (email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
+        await db.query(
+          `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, is_owner, login_attempts, locked_until)
+           VALUES (LOWER($1), $2, $3, 'pro', 'active', TRUE, 0, NULL)
+           ON CONFLICT (email) DO UPDATE SET pin_hash=$2, pin_plain=$3, tier='pro', sub_status='active', is_owner=TRUE, login_attempts=0, locked_until=NULL, updated_at=NOW()`,
+          [email, pinHash, pin]
+        );
+        sendNewSignupNotification(email, "pro").catch(() => {});
+        return res.json({ success: true });
+      }
+
+      // Check if email already exists (non-owner)
+      const existing = await db.queryOne(`SELECT id, sub_status FROM users WHERE email=LOWER($1)`, [email]);
+      if (existing) {
+        // Reactivate cancelled accounts instead of rejecting
+        if (existing.sub_status === "cancelled") {
+          await db.query(
+            `UPDATE users SET tier=$1, sub_status='active', updated_at=NOW() WHERE email=LOWER($2)`,
+            [tier, email]
+          );
+          return res.json({ success: true });
+        }
+        return res.status(409).json({ error: "An account with that email already exists" });
+      }
+
+      // All tiers activate immediately — no payment required
+      await db.query(
+        `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status)
+         VALUES (LOWER($1), $2, $3, $4, 'active')`,
+        [email, pinHash, pin, tier]
+      );
+
+      sendNewSignupNotification(email, tier).catch(() => {});
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[Auth] Signup error:", e.message);
+      res.status(500).json({ error: "Signup failed" });
+    }
+  });
+
+  // POST /api/auth/login
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { email, pin } = req.body ?? {};
+      if (!email || !pin) return res.status(400).json({ error: "Email and PIN required" });
+
+      const user = await db.queryOne(
+        `SELECT id, email, pin_hash, tier, sub_status, is_owner, is_disabled, login_attempts, locked_until, trial_expires
+         FROM users WHERE email=LOWER($1)`,
+        [email]
+      );
+
+      if (!user) return res.status(401).json({ error: "Invalid email or PIN" });
+
+      // Check disabled
+      if (user.is_disabled) return res.status(403).json({ error: "This account has been disabled. Contact support." });
+
+      // Cancelled users: let them log in so they can resubscribe from within the app
+      // (frontend will detect subStatus==='cancelled' and show the upgrade screen)
+
+      // Check lockout
+      if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        const mins = Math.ceil((new Date(user.locked_until).getTime() - Date.now()) / 60000);
+        return res.status(429).json({ error: `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` });
+      }
+
+      const pinOk = await checkPIN(pin, user.pin_hash);
+      if (!pinOk) {
+        const attempts = (user.login_attempts ?? 0) + 1;
+        const lockedUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+        await db.query(
+          `UPDATE users SET login_attempts=$1, locked_until=$2 WHERE id=$3`,
+          [attempts, lockedUntil, user.id]
+        );
+        return res.status(401).json({ error: "Invalid email or PIN" });
+      }
+
+      // Auto-expire trial accounts
+      if (user.trial_expires && new Date(user.trial_expires) < new Date() && !user.is_owner) {
+        await db.query(`UPDATE users SET tier=NULL, sub_status='inactive', trial_code=NULL, trial_expires=NULL WHERE id=$1`, [user.id]);
+        user.tier = null; user.sub_status = "inactive";
+      }
+
+      // Reset attempts on success + track login activity + backfill pin_plain if missing
+      await db.query(
+        `UPDATE users SET login_attempts=0, locked_until=NULL, login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW(),
+         pin_plain=CASE WHEN pin_plain IS NULL THEN $2 ELSE pin_plain END
+         WHERE id=$1`,
+        [user.id, pin]
+      );
+
+      const token = signJWT({
+        userId:  user.id,
+        email:   user.email,
+        tier:    user.sub_status === "active" ? user.tier : null,
+        isOwner: user.is_owner ?? false,
+      });
+
+      res.json({ token, tier: user.tier, subStatus: user.sub_status, isOwner: user.is_owner });
+    } catch (e: any) {
+      console.error("[Auth] Login error:", e.message);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // GET /api/me — validate token + return fresh user data
+  app.get("/api/me", requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Update last_active timestamp (throttled — only update if > 5 min since last)
+      await db.query(
+        `UPDATE users SET last_active=NOW() WHERE id=$1 AND (last_active IS NULL OR last_active < NOW() - INTERVAL '5 minutes')`,
+        [req.user!.userId]
+      ).catch(() => {});
+
+      const user = await db.queryOne(
+        `SELECT id, email, tier, sub_status, is_owner, created_at, trial_expires FROM users WHERE id=$1`,
+        [req.user!.userId]
+      );
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      // Auto-expire trial — demote to free if trial has lapsed
+      if (user.trial_expires && new Date(user.trial_expires) < new Date() && !user.is_owner) {
+        await db.query(
+          `UPDATE users SET tier=NULL, sub_status='inactive', trial_code=NULL, trial_expires=NULL WHERE id=$1`,
+          [user.id]
+        );
+        user.tier = null;
+        user.sub_status = "inactive";
+      }
+
+      res.json({
+        id:        user.id,
+        email:     user.email,
+        tier:      user.sub_status === "active" ? user.tier : null,
+        subStatus: user.sub_status,
+        isOwner:   user.is_owner,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // GET /api/admin/insights — OWNER ONLY
+  // ──────────────────────────────────────────────────────────────
+  app.get("/api/admin/insights", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const now = new Date();
+
+      // ── Owner account row (separate section) ──
+      const ownerRow = await db.queryOne(`
+        SELECT email, tier, sub_status, login_count, last_login, last_active, created_at
+        FROM users WHERE is_owner = TRUE LIMIT 1
+      `);
+
+      // ── Subscriber counts by tier (non-owner only) ──
+      const tierRows = await db.query(`
+        SELECT tier, sub_status, COUNT(*) as count
+        FROM users
+        WHERE is_owner = FALSE
+        GROUP BY tier, sub_status
+        ORDER BY tier
+      `);
+
+      // ── Total users (non-owner) ──
+      const totalRow = await db.queryOne(`SELECT COUNT(*) as count FROM users WHERE is_owner = FALSE`);
+
+      // ── Active subscribers (paying, active, non-owner) ──
+      const activeSubRow = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE sub_status = 'active' AND tier IN ('basic','pro') AND is_owner = FALSE
+      `);
+
+      // ── Active today (non-owner) ──
+      const activeToday = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '24 hours' AND is_owner = FALSE
+      `);
+
+      // ── Active this week (non-owner) ──
+      const activeWeek = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+      `);
+
+      // ── Active this month (non-owner) ──
+      const activeMonth = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE last_active > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+      `);
+
+      // ── New signups this week (non-owner) ──
+      const newThisWeek = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > NOW() - INTERVAL '7 days' AND is_owner = FALSE
+      `);
+
+      // ── New signups this month (non-owner) ──
+      const newThisMonth = await db.queryOne(`
+        SELECT COUNT(*) as count FROM users
+        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+      `);
+
+      // ── Top logins (non-owner users) ──
+      const topUsers = await db.query(`
+        SELECT email, tier, sub_status, login_count, last_login, last_active, created_at
+        FROM users
+        WHERE is_owner = FALSE
+        ORDER BY login_count DESC NULLS LAST
+        LIMIT 20
+      `);
+
+      // ── Signups per day last 30 days (non-owner) ──
+      const signupTrend = await db.query(`
+        SELECT DATE(created_at AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
+        FROM users
+        WHERE created_at > NOW() - INTERVAL '30 days' AND is_owner = FALSE
+        GROUP BY day
+        ORDER BY day ASC
+      `);
+
+      // ── Daily active users trend last 14 days (non-owner) ──
+      const dauTrend = await db.query(`
+        SELECT DATE(last_active AT TIME ZONE 'America/Chicago') as day, COUNT(*) as count
+        FROM users
+        WHERE last_active > NOW() - INTERVAL '14 days' AND is_owner = FALSE
+        GROUP BY day
+        ORDER BY day ASC
+      `);
+
+      // ── Avg logins per user (non-owner) ──
+      const avgLogins = await db.queryOne(`
+        SELECT ROUND(AVG(login_count), 1) as avg FROM users WHERE login_count > 0 AND is_owner = FALSE
+      `);
+
+      // Build tier breakdown
+      const tiers: Record<string, { active: number; inactive: number; cancelled: number }> = {
+        free:  { active: 0, inactive: 0, cancelled: 0 },
+        basic: { active: 0, inactive: 0, cancelled: 0 },
+        pro:   { active: 0, inactive: 0, cancelled: 0 },
+      };
+      for (const row of tierRows.rows) {
+        const t = row.tier ?? "free";
+        const s = row.sub_status ?? "inactive";
+        if (!tiers[t]) tiers[t] = { active: 0, inactive: 0, cancelled: 0 };
+        const key = s === "active" ? "active" : s === "cancelled" ? "cancelled" : "inactive";
+        tiers[t][key] = parseInt(row.count);
+      }
+
+      res.json({
+        generatedAt: now.toISOString(),
+        ownerAccount: ownerRow ? {
+          email:      ownerRow.email,
+          tier:       ownerRow.tier,
+          subStatus:  ownerRow.sub_status,
+          loginCount: ownerRow.login_count ?? 0,
+          lastLogin:  ownerRow.last_login,
+          lastActive: ownerRow.last_active,
+          joinedAt:   ownerRow.created_at,
+        } : null,
+        totals: {
+          allUsers:          parseInt(totalRow?.count ?? "0"),
+          activeSubscribers: parseInt(activeSubRow?.count ?? "0"),
+          activeToday:       parseInt(activeToday?.count ?? "0"),
+          activeThisWeek:    parseInt(activeWeek?.count ?? "0"),
+          activeThisMonth:   parseInt(activeMonth?.count ?? "0"),
+          newThisWeek:       parseInt(newThisWeek?.count ?? "0"),
+          newThisMonth:      parseInt(newThisMonth?.count ?? "0"),
+          avgLoginsPerUser:  parseFloat(avgLogins?.avg ?? "0"),
+        },
+        tiers,
+        topUsers: topUsers.rows.map((u: any) => ({
+          email:       u.email,
+          tier:        u.tier,
+          subStatus:   u.sub_status,
+          loginCount:  u.login_count ?? 0,
+          lastLogin:   u.last_login,
+          lastActive:  u.last_active,
+          joinedAt:    u.created_at,
+        })),
+        signupTrend: signupTrend.rows.map((r: any) => ({ day: r.day, count: parseInt(r.count) })),
+        dauTrend:    dauTrend.rows.map((r: any) => ({ day: r.day, count: parseInt(r.count) })),
+      });
+    } catch (e: any) {
+      console.error("[Insights]", e.message);
+      res.status(500).json({ error: "Failed to load insights" });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // OWNER TOOLS — Promo codes, Trial codes, User management
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/admin/promo-codes ─────────────────────────────────────────────
+  app.get("/api/admin/promo-codes", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM promo_codes ORDER BY created_at DESC`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/promo-codes ────────────────────────────────────────────
+  app.post("/api/admin/promo-codes", requireOwner, async (req: Request, res: Response) => {
+    const { code, discount_pct, applies_to = "both", max_uses = null, expires_at = null, duration_months = null } = req.body ?? {};
+    if (!code || !discount_pct) return res.status(400).json({ error: "code and discount_pct required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    if (discount_pct < 1 || discount_pct > 100) return res.status(400).json({ error: "Discount must be 1–100%" });
+    if (duration_months !== null && (duration_months < 1 || duration_months > 24)) return res.status(400).json({ error: "Duration must be 1–24 months" });
+    try {
+      const row = await db.queryOne(
+        `INSERT INTO promo_codes (code, discount_pct, applies_to, max_uses, expires_at, duration_months)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [upper, discount_pct, applies_to, max_uses, expires_at || null, duration_months || null]
+      );
+      res.json(row);
+    } catch (e: any) {
+      if (e.code === "23505") return res.status(409).json({ error: "Code already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── DELETE /api/admin/promo-codes/:id ──────────────────────────────────────
+  app.delete("/api/admin/promo-codes/:id", requireOwner, async (req: Request, res: Response) => {
+    await db.query(`DELETE FROM promo_codes WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  // ── PATCH /api/admin/promo-codes/:id/toggle ────────────────────────────────
+  app.patch("/api/admin/promo-codes/:id/toggle", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`UPDATE promo_codes SET active = NOT active WHERE id=$1 RETURNING *`, [req.params.id]);
+    res.json(row);
+  });
+
+  // ── GET /api/admin/trial-codes ─────────────────────────────────────────────
+  app.get("/api/admin/trial-codes", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM trial_codes ORDER BY created_at DESC`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/trial-codes ────────────────────────────────────────────
+  app.post("/api/admin/trial-codes", requireOwner, async (req: Request, res: Response) => {
+    const { code, duration_days = 7, max_uses = null, note = null, expires_at = null } = req.body ?? {};
+    if (!code) return res.status(400).json({ error: "code required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    try {
+      const row = await db.queryOne(
+        `INSERT INTO trial_codes (code, duration_days, max_uses, note, expires_at)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [upper, duration_days, max_uses, note, expires_at || null]
+      );
+      res.json(row);
+    } catch (e: any) {
+      if (e.code === "23505") return res.status(409).json({ error: "Code already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── DELETE /api/admin/trial-codes/:id ─────────────────────────────────────
+  app.delete("/api/admin/trial-codes/:id", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT code FROM trial_codes WHERE id=$1`, [req.params.id]);
+    if (row) await db.query(`DELETE FROM trial_codes WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  // ── PATCH /api/admin/trial-codes/:id/toggle ───────────────────────────────
+  app.patch("/api/admin/trial-codes/:id/toggle", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(`UPDATE trial_codes SET active = NOT active WHERE id=$1 RETURNING *`, [req.params.id]);
+    res.json(row);
+  });
+
+  // ── GET /api/admin/trial-uses — usage log ─────────────────────────────────
+  app.get("/api/admin/trial-uses", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM trial_code_uses ORDER BY used_at DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // ── POST /api/admin/redeem-trial — login with trial code (public) ─────────
+  // Creates account if needed, sets trial tier+expiry, returns JWT
+  app.post("/api/admin/redeem-trial", async (req: Request, res: Response) => {
+    try {
+    const { code, email } = req.body ?? {};
+    if (!code || !email) return res.status(400).json({ error: "code and email required" });
+    const upper = String(code).toUpperCase().trim();
+
+    // Look up trial code
+    const tc = await db.queryOne(
+      `SELECT * FROM trial_codes WHERE code=$1 AND active=TRUE`, [upper]
+    );
+    if (!tc) return res.status(404).json({ error: "Invalid or expired trial code" });
+    if (tc.expires_at && new Date(tc.expires_at) < new Date()) {
+      return res.status(410).json({ error: "This trial code has expired" });
+    }
+    if (tc.max_uses !== null && tc.uses >= tc.max_uses) {
+      return res.status(410).json({ error: "This trial code has reached its usage limit" });
+    }
+
+    const trialExpires = new Date(Date.now() + tc.duration_days * 86400000);
+    const lowerEmail = String(email).toLowerCase().trim();
+
+    // Upsert user — if new, create with a random pin (they can set one later)
+    // Use statically-imported crypto (dynamic import fails in esbuild bundle)
+    const tempPin = crypto.randomBytes(4).toString("hex");
+    const pinHash = crypto.createHash("sha256").update(tempPin).digest("hex");
+
+    let user = await db.queryOne(`SELECT * FROM users WHERE email=$1`, [lowerEmail]);
+    if (!user) {
+      user = await db.queryOne(
+        `INSERT INTO users (email, pin_hash, pin_plain, tier, sub_status, trial_code, trial_expires, login_count, last_login, last_active)
+         VALUES ($1,$2,$3,'pro','active',$4,$5,1,NOW(),NOW()) RETURNING *`,
+        [lowerEmail, pinHash, tempPin, upper, trialExpires]
+      );
+    } else {
+      // Upgrade existing user to pro trial
+      user = await db.queryOne(
+        `UPDATE users SET tier='pro', sub_status='active', trial_code=$1, trial_expires=$2,
+         login_count=COALESCE(login_count,0)+1, last_login=NOW(), last_active=NOW()
+         WHERE email=$3 RETURNING *`,
+        [upper, trialExpires, lowerEmail]
+      );
+    }
+
+    // Increment trial code uses
+    await db.query(`UPDATE trial_codes SET uses=uses+1 WHERE code=$1`, [upper]);
+
+    // Log the use
+    await db.query(
+      `INSERT INTO trial_code_uses (code, email, trial_expires) VALUES ($1,$2,$3)`,
+      [upper, lowerEmail, trialExpires]
+    );
+
+    // Issue JWT — use statically-imported signJWT, correct field is userId not id
+    const token = signJWT({
+      userId: user.id, email: user.email, tier: "pro",
+      subStatus: "active", isOwner: false,
+    });
+
+    res.json({
+      token,
+      user: { email: user.email, tier: "pro", subStatus: "active", isOwner: false },
+      trialExpires: trialExpires.toISOString(),
+      message: `Trial access granted until ${trialExpires.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}`,
+    });
+    } catch (e: any) {
+      console.error("[Trial] Redeem error:", e.message);
+      res.status(500).json({ error: "Failed to activate trial: " + e.message });
+    }
+  });
+
+  // ── GET /api/admin/dev-code — public, returns current dev access code ────────
+  app.get("/api/admin/dev-code", async (_req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT value FROM app_settings WHERE key='dev_code'`);
+    res.json({ code: row?.value ?? "ABUD" });
+  });
+
+  // ── PATCH /api/admin/dev-code — owner-only, update dev code ─────────────────
+  app.patch("/api/admin/dev-code", requireOwner, async (req: Request, res: Response) => {
+    const { code } = req.body ?? {};
+    if (!code) return res.status(400).json({ error: "code required" });
+    const upper = String(code).toUpperCase().trim();
+    if (upper.length < 2 || upper.length > 20) return res.status(400).json({ error: "Code must be 2–20 characters" });
+    await db.query(`INSERT INTO app_settings (key, value) VALUES ('dev_code', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [upper]);
+    res.json({ code: upper });
+  });
+
+  // ── POST /api/admin/force-sync — owner-only, flush all ML+BTS to Postgres+GitHub ──
+  app.post("/api/admin/force-sync", requireOwner, async (_req: Request, res: Response) => {
+    const results: string[] = [];
+    // 1. Force-save all ML JSON files to Postgres
+    const mlFiles = [
+      { path: ML_OUTCOME_LOG, name: "bet_outcome_log.json" },
+      { path: ML_SNAPSHOT_FILE, name: "pick_snapshots.json" },
+      { path: ML_WEIGHTS_FILE, name: "ml_weights.json" },
+      { path: ML_INSIGHTS_FILE, name: "ml_insights.json" },
+      { path: ML_GRADED_IDS, name: "graded_ids.json" },
+      { path: path.join(ML_DATA_DIR, "bts_ml_weights.json"), name: "bts_ml_weights.json" },
+      { path: path.join(ML_DATA_DIR, "bts_ml_learning_log.json"), name: "bts_ml_learning_log.json" },
+    ];
+    for (const { path: fp, name } of mlFiles) {
+      try {
+        if (!fs.existsSync(fp)) { results.push(`skip: ${name} (no file)`); continue; }
+        const content = fs.readFileSync(fp, "utf-8");
+        await db.query(
+          `INSERT INTO ml_data_store (filename, content, updated_at) VALUES ($1,$2,NOW())
+           ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+          [name, content]
+        );
+        results.push(`db: ${name} (${Math.round(content.length/1024)}KB)`);
+      } catch (e: any) { results.push(`err: ${name} — ${e.message}`); }
+    }
+    // 2. Force-save BTS picks to Postgres (ml_data_store + bts_picks rows)
+    try {
+      const btsJson = JSON.stringify(btsPicksCache, null, 2);
+      await db.query(
+        `INSERT INTO ml_data_store (filename, content, updated_at) VALUES ('bts_picks.json',$1,NOW())
+         ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+        [btsJson]
+      );
+      let upserted = 0;
+      for (const [date, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries as BtsPickEntry[]) {
+          await db.query(
+            `INSERT INTO bts_picks (pick_date,player_id,player_name,team,hit_probability,locked_at,locked,result,hits,ab,graded_at,snapshot)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+             ON CONFLICT (pick_date,player_id) DO UPDATE SET
+               player_name=EXCLUDED.player_name, hit_probability=EXCLUDED.hit_probability,
+               locked_at=COALESCE(bts_picks.locked_at,EXCLUDED.locked_at), locked=EXCLUDED.locked,
+               result   =CASE WHEN bts_picks.result!='pending' THEN bts_picks.result ELSE EXCLUDED.result END,
+               hits     =CASE WHEN bts_picks.result!='pending' THEN bts_picks.hits ELSE EXCLUDED.hits END,
+               ab       =CASE WHEN bts_picks.result!='pending' THEN bts_picks.ab ELSE EXCLUDED.ab END,
+               graded_at=CASE WHEN bts_picks.result!='pending' THEN bts_picks.graded_at ELSE EXCLUDED.graded_at END,
+               snapshot =EXCLUDED.snapshot`,
+            [date,e.playerId,e.name??(e as any).playerName??"",e.team??"",Math.round(e.hitProbability??0),
+             e.lockedAt??null,e.lockedAt!=null,e.result??"pending",e.hits??null,e.ab??null,
+             e.gradedAt??null,JSON.stringify(e.snapshot??{})]
+          );
+          upserted++;
+        }
+      }
+      results.push(`db: bts_picks.json + ${upserted} bts_picks rows`);
+    } catch (e: any) { results.push(`err: bts_picks — ${e.message}`); }
+    // 3. Trigger GitHub sync
+    try {
+      await syncMLDataToGitHub();
+      results.push("github: sync triggered");
+    } catch (e: any) { results.push(`github-err: ${e.message}`); }
+    res.json({ ok: true, results });
+  });
+
+  // ── GET /api/admin/validate-promo — used by Pricing page ──────────────────
+  app.get("/api/admin/validate-promo", async (req: Request, res: Response) => {
+    const code = String(req.query.code ?? "").toUpperCase().trim();
+    if (!code) return res.status(400).json({ error: "code required" });
+    const row = await db.queryOne(
+      `SELECT * FROM promo_codes WHERE code=$1 AND active=TRUE`, [code]
+    );
+    if (!row) return res.status(404).json({ error: "Invalid promo code" });
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      return res.status(410).json({ error: "This promo code has expired" });
+    }
+    if (row.max_uses !== null && row.uses >= row.max_uses) {
+      return res.status(410).json({ error: "This promo code has reached its limit" });
+    }
+    res.json({ code: row.code, discount_pct: row.discount_pct, applies_to: row.applies_to, duration_months: row.duration_months ?? null });
+  });
+
+  // ── GET /api/admin/users — user list for owner management ─────────────────
+  app.get("/api/admin/users", requireOwner, async (req: Request, res: Response) => {
+    const search = req.query.search ? `%${req.query.search}%` : null;
+    const rows = search
+      ? await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires,pin_plain FROM users WHERE email ILIKE $1 ORDER BY created_at DESC LIMIT 50`, [search])
+      : await db.query(`SELECT id,email,tier,sub_status,is_owner,is_disabled,login_count,last_active,created_at,trial_code,trial_expires,pin_plain FROM users ORDER BY created_at DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // ── PATCH /api/admin/users/:id/tier — manual tier override ────────────────
+  app.patch("/api/admin/users/:id/tier", requireOwner, async (req: Request, res: Response) => {
+    const { tier, sub_status = "active" } = req.body ?? {};
+    if (!["free","basic","pro"].includes(tier)) return res.status(400).json({ error: "Invalid tier" });
+    const row = await db.queryOne(
+      `UPDATE users SET tier=$1, sub_status=$2 WHERE id=$3 AND is_owner=FALSE RETURNING id,email,tier,sub_status`,
+      [tier === "free" ? null : tier, sub_status, req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
+  // ── PATCH /api/admin/users/:id/pin — owner sets pin_plain for any user ─────
+  app.patch("/api/admin/users/:id/pin", requireOwner, async (req: Request, res: Response) => {
+    const { pin } = req.body ?? {};
+    if (!pin || String(pin).length < 1) return res.status(400).json({ error: "PIN required" });
+    const pinHash = await hashPIN(String(pin));
+    const row = await db.queryOne(
+      `UPDATE users SET pin_hash=$1, pin_plain=$2 WHERE id=$3 RETURNING id,email,pin_plain`,
+      [pinHash, String(pin), req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
+  // ── PATCH /api/admin/users/:id/disable — disable/enable user ──────────────
+  app.patch("/api/admin/users/:id/disable", requireOwner, async (req: Request, res: Response) => {
+    const row = await db.queryOne(
+      `UPDATE users SET is_disabled = NOT is_disabled WHERE id=$1 AND is_owner=FALSE RETURNING id,email,is_disabled`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: "User not found" });
+    res.json(row);
+  });
+
+  // POST /api/auth/forgot-pin
+
+  app.post("/api/auth/forgot-pin", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body ?? {};
+      if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid email" });
+
+      const user = await db.queryOne(`SELECT id FROM users WHERE email=LOWER($1)`, [email]);
+      // Always return success to prevent email enumeration
+      if (!user) return res.json({ success: true });
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = await hashPIN(rawToken.slice(0, 4)); // reuse hashPIN for storage
+      // Store full token hash separately
+      const fullHash = require("crypto").createHash("sha256").update(rawToken).digest("hex");
+      const expires  = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await db.query(
+        `UPDATE users SET reset_token_hash=$1, reset_token_expires=$2 WHERE id=$3`,
+        [fullHash, expires, user.id]
+      );
+
+      await sendPINResetEmail(email, rawToken);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[Auth] Forgot PIN error:", e.message);
+      res.status(500).json({ error: "Failed to send reset email" });
+    }
+  });
+
+  // POST /api/auth/reset-pin
+  app.post("/api/auth/reset-pin", async (req: Request, res: Response) => {
+    try {
+      const { token, pin } = req.body ?? {};
+      if (!token || !isValidPIN(pin))
+        return res.status(400).json({ error: "Invalid request" });
+
+      const tokenHash = require("crypto").createHash("sha256").update(token).digest("hex");
+      const user = await db.queryOne(
+        `SELECT id FROM users WHERE reset_token_hash=$1 AND reset_token_expires > NOW()`,
+        [tokenHash]
+      );
+      if (!user) return res.status(400).json({ error: "Reset link is invalid or has expired" });
+
+      const pinHash = await hashPIN(pin);
+      await db.query(
+        `UPDATE users SET pin_hash=$1, pin_plain=$2, reset_token_hash=NULL, reset_token_expires=NULL WHERE id=$3`,
+        [pinHash, pin, user.id]
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to reset PIN" });
+    }
+  });
+
+  // GET /api/auth/billing-portal — stub (no payment processor)
+  app.get("/api/auth/stripe-portal", requireAuth, async (_req: Request, res: Response) => {
+    res.json({ url: null });
+  });
+
+  // POST /api/auth/upgrade-checkout — upgrade tier directly, no payment
+  app.post("/api/auth/upgrade-checkout", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { tier } = req.body ?? {};
+      if (tier !== "basic" && tier !== "pro")
+        return res.status(400).json({ error: "Invalid tier" });
+      await db.query(
+        `UPDATE users SET tier=$1, sub_status='active', updated_at=NOW() WHERE id=$2`,
+        [tier, req.user!.userId]
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[Upgrade] Error:", e.message);
+      res.status(500).json({ error: "Upgrade failed" });
+    }
+  });
+
+
   // Ensure ml_data directory exists
   const ML_DATA_RUNTIME = path.join(__dirname, "ml_data");
   if (!fs.existsSync(ML_DATA_RUNTIME)) fs.mkdirSync(ML_DATA_RUNTIME, { recursive: true });
-  ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json"].forEach(f => {
+  ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "bts_picks.json"].forEach(f => {
     const p = path.join(ML_DATA_RUNTIME, f);
     if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
   });
 
-  // Pull ML data from GitHub on startup so outcomes survive redeploys
-  // We await this before scheduling the startup scan so graded picks are ready immediately
+  // ML data pull is started at module load (see top of file) — just track completion for scanner gate.
   let mlPullDone = false;
-  pullMLDataFromGitHub()
+  _mlPullPromise
     .then(() => { mlPullDone = true; console.log("[MLSync] startup pull complete"); })
     .catch((e: any) => { mlPullDone = true; console.warn("[MLSync] startup pull error:", e.message); });
 
@@ -901,7 +2133,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // ─── Bets ─────────────────────────────────────────────────────────────────
   app.get("/api/bets", async (req, res) => {
     try {
-      const bets = await storage.getBets();
+      const betsRaw = await storage.getBets();
+
+      // ── MLB prop filter: only allowed stat types, stolen bases OVER only ──────
+      const MLB_BANNED_STATS = new Set([
+        "triples", "hits+runs+rbis", "h+r+rbi",
+      ]);
+      const bets = betsRaw.filter(bet => {
+        if (bet.sport !== "MLB" || bet.betType !== "player_prop") return true;
+        const statRaw = ((bet.teamStats as any)?.statType ?? "").toLowerCase();
+        if (MLB_BANNED_STATS.has(statRaw)) return false;
+        // Stolen Bases + Home Runs: only show OVER
+        if (statRaw === "stolen bases" || statRaw === "stolen_bases" || statRaw === "home runs" || statRaw === "home_runs") {
+          const side = ((bet.teamStats as any)?.pickSide ?? "").toUpperCase();
+          if (side === "UNDER") return false;
+        }
+        return true;
+      });
 
       // Sort all bets by confidenceScore descending (fix: was using 'confidence' which is always undefined)
       const sorted = [...bets].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
@@ -1091,6 +2339,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml-insights — return latest ML insights JSON transformed for UI
   app.get("/api/ml-insights", async (_req, res) => {
     try {
+      // Await the startup GitHub pull so we never serve stale empty data after a redeploy
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+
       const EMPTY = {
         overall: { total: 0, won: 0, lost: 0, push: 0, win_rate: null },
         by_sport: {}, by_bet_type: {}, by_conf_tier: {}, by_week: [],
@@ -1197,8 +2448,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // POST /api/ml/grade — run auto-grader then ML engine
   app.post("/api/ml/grade", async (_req, res) => {
     try {
-      const graderResult = await runPythonScript("auto_grader.py");
-      const mlResult     = await runMLEngine();
+      const graderResult = await runAutoGrader();
+      const mlResult     = runMLEngine();
       // Sync ml_data to GitHub so outcomes survive redeploys
       syncMLDataToGitHub().catch((e: any) => console.warn("[MLSync] GitHub sync error:", e.message));
       res.json({ status: "ok", grader: graderResult, ml: mlResult });
@@ -1208,8 +2459,10 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // GET /api/ml/snapshots — how many picks have been logged
-  app.get("/api/ml/snapshots", (_req, res) => {
+  app.get("/api/ml/snapshots", async (_req, res) => {
     try {
+      // Await startup pull — ensures Railway redeployments don't wipe history
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
       const snapFile = path.join(__dirname, "ml_data", "pick_snapshots.json");
       const outFile  = path.join(__dirname, "ml_data", "bet_outcome_log.json");
       const snaps    = fs.existsSync(snapFile)  ? JSON.parse(fs.readFileSync(snapFile,  "utf8")) : [];
@@ -1229,19 +2482,111 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // GET /api/ml/export — dump all ml_data files as JSON for backup
-  app.get("/api/ml/export", (_req, res) => {
+  // GET /api/ml/graded-picks — full list of graded picks for the ML history log
+  app.get("/api/ml/graded-picks", async (_req, res) => {
     try {
-      const dir = path.join(__dirname, "ml_data");
-      const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json"];
-      const result: Record<string, any> = {};
-      for (const f of files) {
-        const fp = path.join(dir, f);
-        result[f] = fs.existsSync(fp) ? JSON.parse(fs.readFileSync(fp, "utf8")) : null;
-      }
-      res.json(result);
+      // Await startup pull — ensures Railway redeployments don't wipe history
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+      const outFile = path.join(__dirname, "ml_data", "bet_outcome_log.json");
+      if (!fs.existsSync(outFile)) return res.json([]);
+      const outcomes: any[] = JSON.parse(fs.readFileSync(outFile, "utf8"));
+      // Return newest first, include all fields the UI needs
+      const picks = outcomes
+        .filter((o: any) => o.result && o.result !== "open")
+        .sort((a: any, b: any) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? ""))
+        .map((o: any) => ({
+          id:              o.betId ?? o.id ?? null,
+          title:           o.title ?? null,
+          sport:           o.sport ?? null,
+          betType:         o.betType ?? null,
+          playerName:      o.playerName ?? null,
+          statCategory:    o.statCategory ?? null,
+          line:            o.line ?? null,
+          pickSide:        o.pickSide ?? null,
+          result:          o.result,             // "won" | "lost" | "push"
+          confidenceScore: o.confidenceScore ?? null,
+          gameTime:        o.gameTime ?? null,
+          gameDate:        o.gameDate ?? null,
+          gradedAt:        o.gradedAt ?? null,
+          homeTeam:        o.homeTeam ?? null,
+          awayTeam:        o.awayTeam ?? null,
+          homeScore:       o.homeScore ?? null,
+          awayScore:       o.awayScore ?? null,
+          source:          o.source ?? (o.betId?.startsWith("action") ? "ActionNetwork"
+                           : o.betId?.startsWith("lm-") ? "Linemate"
+                           : o.betId?.startsWith("pinnacle") ? "Pinnacle"
+                           : o.betId?.startsWith("kalshi") ? "Kalshi"
+                           : "Internal"),
+        }));
+      res.json(picks);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/ml/export — dump all ml_data files as JSON for backup
+  app.get("/api/ml/export", (_req, res) => {
+    const dir = path.join(__dirname, "ml_data");
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
+    const result: Record<string, any> = {};
+    const errors: Record<string, string> = {};
+    for (const f of files) {
+      try {
+        const fp = path.join(dir, f);
+        result[f] = fs.existsSync(fp) ? JSON.parse(fs.readFileSync(fp, "utf8")) : null;
+      } catch (e: any) {
+        // Return empty fallback so the export never 500s due to one bad file
+        console.error(`[ml/export] Failed to read ${f}: ${e.message}`);
+        errors[f] = e.message;
+        result[f] = f.includes("snapshots") || f.includes("outcome") || f.includes("graded_ids") ? [] : {};
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      (result as any)._errors = errors;
+    }
+    res.json(result);
+  });
+
+  // GET /api/bts-ml-weights — current BTS ML learning weights + tier accuracy + calibration
+  app.get("/api/bts-ml-weights", (_req, res) => {
+    try {
+      const wFile = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+      if (fs.existsSync(wFile)) {
+        const data = JSON.parse(fs.readFileSync(wFile, "utf-8"));
+        return res.json(data);
+      }
+      return res.json({
+        version: 0,
+        sampleSize: 0,
+        updatedAt: null,
+        featureWeights: {
+          recentForm: 1.00, contactQuality: 1.00, hardContact: 1.00,
+          pitcherMatchup: 1.00, opportunity: 1.00, bvp: 1.00,
+          stability: 1.00, weatherImpact: 1.00, gameTotal: 1.00,
+        },
+        featureAccuracy: {},
+        tierAccuracy: {},
+        calibration: [],
+        message: "No ML learning run yet — will run nightly after 10+ graded picks.",
+      });
+    } catch (e: any) {
+      console.error("[BTS-ML] weights endpoint error:", e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/bts-ml-learn — manually trigger a BTS ML learning run (dev/admin)
+  app.post("/api/bts-ml-learn", async (_req, res) => {
+    try {
+      await runBtsMlLearning();
+      const wFile = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+      if (fs.existsSync(wFile)) {
+        const data = JSON.parse(fs.readFileSync(wFile, "utf-8"));
+        return res.json({ success: true, ...data });
+      }
+      return res.json({ success: true, message: "Run complete but no weights written (need 10+ graded picks)." });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
     }
   });
 
@@ -2671,7 +4016,20 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       : pickedSide === "no"
         ? `${Math.round(noPrice * 100)}¢`
         : "—";
-    const pick_label = pickedSide === "pass" ? "PASS — No Clear Edge" : `${sideLabel} @ ${priceLabel}`;
+
+    // For O/U markets, clarify whether YES = OVER or YES = UNDER in the label
+    // Title pattern: "Team A vs Team B: O/U 6.5" → YES = OVER, NO = UNDER
+    const titleUpper = (title ?? "").toUpperCase();
+    const isOUMarket = /O\/U|OVER.UNDER|OVER\/UNDER|OU/.test(titleUpper)
+                    || /^(OVER|UNDER)\s+[\d.]+/.test(titleUpper);
+    // YES contract on an O/U = betting the OVER; NO = betting the UNDER
+    const ouSuffix = isOUMarket && pickedSide !== "pass"
+      ? pickedSide === "yes" ? " (OVER)" : " (UNDER)"
+      : "";
+
+    const pick_label = pickedSide === "pass"
+      ? "PASS — No Clear Edge"
+      : `${sideLabel} @ ${priceLabel}${ouSuffix}`;
 
     // ── Natural-language reasoning ──
     const parts: string[] = [];
@@ -2776,7 +4134,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       console.log("[ML] Nightly pipeline starting...");
       try {
         // Step 1: Auto-grade picks against ESPN final scores
-        const graderResult = await runPythonScript("auto_grader.py");
+        const graderResult = await runAutoGrader();
         console.log("[ML] Grader done:", graderResult);
       } catch (e: any) {
         console.error("[ML] Grader error:", e.message);
@@ -2789,7 +4147,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         console.error("[ML] Engine error:", e.message);
       }
       try {
-        // Step 3: Sync ml_data/ back to GitHub so outcomes survive next redeploy
+        // Step 3: Run BTS ML learning — analyzes which features predicted wins/losses
+        await runBtsMlLearning();
+        console.log("[ML] BTS ML learning complete");
+      } catch (e: any) {
+        console.error("[ML] BTS ML learning error:", e.message);
+      }
+      try {
+        // Step 4: Sync ml_data/ back to GitHub so outcomes survive next redeploy
         await syncMLDataToGitHub();
         console.log("[ML] GitHub sync complete");
       } catch (e: any) {
@@ -2813,6 +4178,47 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }, msUntil);
     };
     scheduleNightlyML();
+
+    // ── BTS background re-grader: every 5 min during game window ──────────
+    // Also backfills any past days that still have pending/ungraded picks.
+    const runBtsRegrade = async () => {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctH   = ctNow.getHours();
+
+      const toDateStr = (d: Date) => [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, "0"),
+        String(d.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const todayStr = toDateStr(ctNow);
+
+      // ── 1. Backfill: grade ALL past days that still have pending picks ─────
+      for (const [dateStr, entries] of Object.entries(btsPicksCache)) {
+        if (dateStr >= todayStr) continue; // skip today — handled below
+        const stillPending = (entries as BtsPickEntry[]).filter(
+          (e: BtsPickEntry) => !e.result || e.result === "pending"
+        );
+        if (stillPending.length === 0) continue;
+        console.log(`[BTS Backfill] Grading ${stillPending.length} pending picks from ${dateStr}`);
+        await runBtsGrader(dateStr);
+      }
+
+      // ── 2. Today: only run during 12pm–2am CT game window ─────────────────
+      if (ctH >= 12 || ctH < 2) {
+        const entries = btsPicksCache[todayStr] ?? [];
+        const needsRegrade = (entries as BtsPickEntry[]).filter(
+          (e: BtsPickEntry) => e.result !== "win"
+        );
+        if (needsRegrade.length > 0) {
+          console.log(`[BTS Regrader] ${needsRegrade.length} non-win picks to check for ${todayStr}`);
+          await runBtsGrader(todayStr);
+        }
+      }
+    };
+    setInterval(runBtsRegrade, 5 * 60 * 1000); // every 5 min
+    // Run once at startup after short delay — catches any picks missed during downtime
+    setTimeout(runBtsRegrade, 30 * 1000);
   }
 
   app.get("/api/prediction-markets/kronos/:marketId", async (req, res) => {
@@ -2963,6 +4369,52 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // a concrete, actionable sports pick with full reasoning.
       const pick = buildKronosPick(result, market);
       const enriched = { ...result, ...pick, cached: false };
+
+      // ── Save pick to ML snapshot log so the grader can track prediction market grades ──
+      if (pick.pick_side !== "pass" && market) {
+        try {
+          const mlDataDir = path.join(__dirname, "ml_data");
+          const snapFile  = path.join(mlDataDir, "pick_snapshots.json");
+          const snaps: any[] = fs.existsSync(snapFile)
+            ? JSON.parse(fs.readFileSync(snapFile, "utf8"))
+            : [];
+
+          const snapId = `kronos-${marketId}-${pick.pick_side}-${Date.now()}`;
+          const alreadyLogged = snaps.some((s: any) =>
+            s.betId?.startsWith(`kronos-${marketId}-${pick.pick_side}`)
+          );
+
+          if (!alreadyLogged) {
+            snaps.push({
+              betId:           snapId,
+              betType:         "prediction_market",
+              sport:           market.sport ?? "Sports",
+              title:           market.title ?? marketId,
+              playerName:      null,
+              statCategory:    null,
+              line:            null,
+              pickSide:        pick.pick_side,
+              confidenceScore: pick.pick_confidence,
+              edgeGrade:       pick.pick_grade,
+              edgeScore:       pick.pick_confidence,
+              gameTime:        market.endDate ?? null,
+              homeTeam:        null,
+              awayTeam:        null,
+              loggedAt:        new Date().toISOString(),
+              source:          market.source ?? "polymarket",
+              pick_label:      pick.pick_label,
+              pick_roi_est:    pick.pick_roi_est,
+              yesPrice:        market.yesPrice ?? null,
+            });
+            // Keep cap at 2000
+            const trimmed = snaps.slice(-2000);
+            fs.writeFileSync(snapFile, JSON.stringify(trimmed, null, 2));
+            console.log(`[Kronos] Saved pick snap: ${snapId} grade=${pick.pick_grade} conf=${pick.pick_confidence}`);
+          }
+        } catch (saveErr: any) {
+          console.warn("[Kronos] Failed to save pick snap:", saveErr.message);
+        }
+      }
 
       kronosCache.set(cacheKey, { data: enriched, ts: Date.now() });
       return res.json(enriched);
@@ -3370,15 +4822,34 @@ export async function registerRoutes(httpServer: Server, app: Express) {
                           : grp === "RISKY" ? "RISKY"
                           : null;
           if (!propGroup) continue;
-          picks[propGroup] = (items ?? []).map(p => normalisePick(p, propGroup, sport.toUpperCase()));
+          const raw = (items ?? []).map(p => normalisePick(p, propGroup, sport.toUpperCase()));
+          picks[propGroup] = sport === "mlb"
+            ? raw.filter((p: any) => {
+                const mn = (p.marketName ?? "").toUpperCase();
+                if (mn === "HITTER_TRIPLES" || mn === "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN") return false;
+                if ((mn === "HITTER_STOLEN_BASES" || mn === "HITTER_HOME_RUNS") && (p.pickSide ?? "").toUpperCase() === "UNDER") return false;
+                return true;
+              })
+            : raw;
         }
       }
 
       // ── Full market browser ──────────────────────────────────────────────
+      // MLB banned market names — triples and H+R+RBI combo are not displayed
+      const MLB_BANNED_MARKETS = new Set([
+        "HITTER_TRIPLES",
+        "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN",
+      ]);
+
       let markets: any[] = [];
       if (marketsRes.status === "fulfilled" && Array.isArray(marketsRes.value.data)) {
         markets = marketsRes.value.data
-          .filter((m: any) => m.player && m.name)
+          .filter((m: any) => {
+            if (!m.player || !m.name) return false;
+            // For MLB: strip banned market types
+            if (sport === "mlb" && MLB_BANNED_MARKETS.has(m.name)) return false;
+            return true;
+          })
           .map((m: any) => normalisePick(
             {
               gameId:         m.gameId,
@@ -3394,6 +4865,15 @@ export async function registerRoutes(httpServer: Server, app: Express) {
             "MARKET",
             sport.toUpperCase()
           ));
+
+        // MLB: also filter stolen bases UNDER and HR UNDER from market browser
+        if (sport === "mlb") {
+          markets = markets.filter((m: any) => {
+            const mn = (m.marketName ?? "").toUpperCase();
+            if ((mn === "HITTER_STOLEN_BASES" || mn === "HITTER_HOME_RUNS") && (m.pickSide ?? "").toUpperCase() === "UNDER") return false;
+            return true;
+          });
+        }
       }
 
       // ── Today's games ────────────────────────────────────────────────────
@@ -3953,6 +5433,40 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         resets: resetDate.toISOString(),
         plan: remaining > 5000 ? "paid_20000" : "free_500",
       });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── User Preferences ────────────────────────────────────────────────────────
+  // GET /api/me/preferences
+  app.get("/api/me/preferences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await db.query(`SELECT preferences FROM users WHERE id=$1`, [userId]);
+      res.json(result.rows[0]?.preferences ?? {});
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // PATCH /api/me/preferences — merge-save user preferences
+  app.patch("/api/me/preferences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.id;
+      const incoming = req.body as {
+        favoriteSports?: string[];
+        favoriteTeams?: string[];
+        favoritePlayers?: string[];
+      };
+      const cur = await db.query(`SELECT preferences FROM users WHERE id=$1`, [userId]);
+      const existing = cur.rows[0]?.preferences ?? {};
+      const merged = { ...existing, ...incoming };
+      await db.query(
+        `UPDATE users SET preferences=$1::jsonb, updated_at=NOW() WHERE id=$2`,
+        [JSON.stringify(merged), userId]
+      );
+      res.json({ ok: true, preferences: merged });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4864,7 +6378,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   };
   // Wait for ML pull to complete before first scan (or max 10s)
   const waitForMLPull = (elapsed = 0) => {
-    if (mlPullDone || elapsed >= 10000) {
+    if (mlPullDone || elapsed >= 30000) { // raised 10s→30s: give pull time to finish
       startupScan();
     } else {
       setTimeout(() => waitForMLPull(elapsed + 500), 500);
@@ -5175,6 +6689,88 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const LINE_MOVEMENT_CACHE = new Map<string, { data: any; ts: number }>();
   const LM_TTL = 3 * 60 * 1000; // 3-min cache
 
+  // ── SBR MLB Consensus cache (free public % data) ──────────────────────────
+  // SBR's consensus page embeds pick % in __NEXT_DATA__ gameView.consensus
+  // Fields: awayMoneyLinePickPercent, homeMoneyLinePickPercent,
+  //         overPickPercent, underPickPercent
+  // Note: spreadPickPercent is always 0 for MLB (not tracked by SBR)
+  interface SbrMlbEntry {
+    awayTeam: string;       // full name, lowercased
+    homeTeam: string;
+    mlAwayPct: number | null;
+    mlHomePct: number | null;
+    overPct: number | null;
+    underPct: number | null;
+  }
+  let SBR_MLB_CACHE: SbrMlbEntry[] = [];
+  let SBR_MLB_CACHE_TS = 0;
+  const SBR_MLB_TTL = 2 * 60 * 60 * 1000; // 2-hour refresh
+
+  async function fetchSbrMlbConsensus(): Promise<SbrMlbEntry[]> {
+    try {
+      const { data: html } = await axios.get(
+        "https://www.sportsbookreview.com/betting-odds/mlb-baseball/consensus/",
+        {
+          timeout: 15000,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+          },
+          responseType: "text",
+          decompress: true,
+        }
+      );
+      const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+      if (!match) { console.warn("[SBR] __NEXT_DATA__ not found"); return SBR_MLB_CACHE; }
+      const nd = JSON.parse(match[1]);
+      const gameRows: any[] = nd?.props?.pageProps?.oddsTableModel?.gameRows ?? [];
+      const entries: SbrMlbEntry[] = [];
+      for (const row of gameRows) {
+        const gv = row?.gameView ?? {};
+        const c  = gv?.consensus ?? {};
+        const awayTeam = (gv?.awayTeam?.fullName ?? "").toLowerCase();
+        const homeTeam = (gv?.homeTeam?.fullName ?? "").toLowerCase();
+        if (!awayTeam || !homeTeam) continue;
+        entries.push({
+          awayTeam,
+          homeTeam,
+          mlAwayPct: c.awayMoneyLinePickPercent ?? null,
+          mlHomePct: c.homeMoneyLinePickPercent ?? null,
+          overPct:   c.overPickPercent   ?? null,
+          underPct:  c.underPickPercent  ?? null,
+        });
+      }
+      console.log(`[SBR] Fetched MLB consensus for ${entries.length} games`);
+      SBR_MLB_CACHE = entries;
+      SBR_MLB_CACHE_TS = Date.now();
+      return entries;
+    } catch (e: any) {
+      console.warn("[SBR] fetchSbrMlbConsensus error:", e.message);
+      return SBR_MLB_CACHE; // return stale data on error
+    }
+  }
+
+  // Initial fetch at startup + refresh every 2 hours
+  fetchSbrMlbConsensus().catch(() => {});
+  setInterval(() => fetchSbrMlbConsensus().catch(() => {}), SBR_MLB_TTL);
+
+  // Helper: match a team name against SBR entries by last word of team name
+  function matchSbrEntry(awayTeam: string, homeTeam: string): SbrMlbEntry | null {
+    const awLast = awayTeam.toLowerCase().split(" ").pop() ?? "";
+    const hwLast = homeTeam.toLowerCase().split(" ").pop() ?? "";
+    if (awLast.length < 3 || hwLast.length < 3) return null;
+    for (const e of SBR_MLB_CACHE) {
+      const eAwLast = e.awayTeam.split(" ").pop() ?? "";
+      const eHwLast = e.homeTeam.split(" ").pop() ?? "";
+      if (eAwLast === awLast && eHwLast === hwLast) return e;
+      // Also try full name contains
+      if (e.awayTeam.includes(awLast) && e.homeTeam.includes(hwLast)) return e;
+    }
+    return null;
+  }
+
   // ── Proactive game-time lookup: populated at startup + every 15 min ──────
   // Maps "awayTeamLower::homeTeamLower" → ISO gameTime string, for all 4 sports today.
   // Used by /api/bets to fill null gameTime on Kalshi player props.
@@ -5290,11 +6886,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             );
             if (oddsArr.length < 1) continue;
 
-            const opening = oddsArr[0];
+            // ── Filter out alt lines / F5 lines ──────────────────────────────
+            // MLB run line is always ±1.5; totals < 6 are F5/alt lines.
+            // NBA/NHL spreads are rarely > 20; NFL rarely > 30.
+            // Any entry with a suspiciously small total (< 6 for MLB, < 150 for NBA/NHL
+            // ML context) or a non-standard spread is an alt/F5 — exclude it from
+            // opening/current line calculations to prevent false steam signals.
+            // Minimum realistic full-game totals by sport
+            const MIN_TOTAL: Record<string, number> = { MLB: 6, NBA: 180, NHL: 4.5, NFL: 30 };
+            const MAX_TOTAL: Record<string, number> = { MLB: 16, NBA: 260, NHL: 9,   NFL: 65 };
+
+            const isAltLine = (o: any): boolean => {
+              const minT = MIN_TOTAL[label];
+              const maxT = MAX_TOTAL[label];
+              // Filter out F5, alt, or live-score entries that have unrealistic totals
+              if (o.total != null && minT != null && (o.total < minT || o.total > maxT)) return true;
+              if (label === "MLB") {
+                // Run line is always ±1.5 — any other spread value is an alt line
+                if (o.spread_away != null && Math.abs(Math.abs(o.spread_away) - 1.5) > 0.1) return true;
+              }
+              return false;
+            };
+            const fullGameOdds = oddsArr.filter((o: any) => !isAltLine(o));
+            const oddsForLines = fullGameOdds.length > 0 ? fullGameOdds : oddsArr;
+
+            const opening = oddsForLines[0];
             // Current = latest entry that has at least some data
-            const withLines  = oddsArr.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
+            const withLines  = oddsForLines.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
             const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null || o.total_over_public != null);
-            const current = oddsArr[oddsArr.length - 1];
+            const current = oddsForLines[oddsForLines.length - 1];
             const bestLines  = withLines.length  > 0 ? withLines[withLines.length - 1]   : current;
             const bestPublic = withPublic.length > 0 ? withPublic[withPublic.length - 1] : current;
 
@@ -5327,7 +6947,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             let mlAwayMoney      = bestPublic.ml_away_money      ?? null;
             let mlHomePublic     = bestPublic.ml_home_public     ?? null;
             let mlHomeMoney      = bestPublic.ml_home_money      ?? null;
-            const numBets        = bestPublic.num_bets           ?? current.num_bets ?? null;
+            const numBets        = bestPublic.num_bets ?? current.num_bets ?? game.num_bets ?? null;
 
             // ── Step 3: If lines are missing, supplement with ESPN odds ──
             const hasLines = spreadCurrent != null || totalCurrent != null || mlAwayCurrent != null;
@@ -5447,6 +7067,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       }));
 
+      // ── Inject SBR MLB public pick % into MLB games ──────────────────────
+      // If the SBR cache is stale, trigger a background refresh
+      if (Date.now() - SBR_MLB_CACHE_TS > SBR_MLB_TTL) {
+        fetchSbrMlbConsensus().catch(() => {});
+      }
+      for (const game of results) {
+        if (game.sport !== "MLB") continue;
+        const sbr = matchSbrEntry(game.awayTeam, game.homeTeam);
+        if (!sbr) continue;
+        // Only fill in if ActionNetwork didn't already provide values
+        const ml = game.moneyline;
+        if (ml.awayPublic == null && sbr.mlAwayPct != null) {
+          ml.awayPublic = Math.round(sbr.mlAwayPct);
+        }
+        if (ml.homePublic == null && sbr.mlHomePct != null) {
+          ml.homePublic = Math.round(sbr.mlHomePct);
+        }
+        const tot = game.total;
+        if (tot.overPublic == null && sbr.overPct != null) {
+          tot.overPublic = Math.round(sbr.overPct);
+        }
+        if (tot.underPublic == null && sbr.underPct != null) {
+          tot.underPublic = Math.round(sbr.underPct);
+        }
+      }
+
       // Sort: most movement first
       results.sort((a, b) => {
         const aMove = Math.abs(a.spread?.move ?? 0) + Math.abs(a.total?.move ?? 0);
@@ -5516,18 +7162,206 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch { return []; }
   }
 
-  async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
-    // Only outdoor sports need weather: MLB, NFL
-    if (sport !== "MLB" && sport !== "NFL") return null;
-    try {
-      // Use wttr.in free weather API with the team city inferred from name
-      // Extract city from team name (last word usually isn't city — use whole name)
-      const encoded = encodeURIComponent(homeTeam.replace(/\s+(Bears|Lions|Packers|Vikings|Falcons|Panthers|Saints|Buccaneers|Cardinals|Rams|49ers|Seahawks|Cowboys|Giants|Eagles|Commanders|Bears|Browns|Steelers|Ravens|Bengals|Texans|Colts|Titans|Jaguars|Chiefs|Raiders|Chargers|Broncos|Bills|Dolphins|Patriots|Jets|Cubs|White Sox|Cardinals|Reds|Brewers|Pirates|Braves|Marlins|Mets|Phillies|Nationals|Dodgers|Giants|Padres|Rockies|Diamondbacks|Red Sox|Yankees|Blue Jays|Rays|Orioles|Royals|Indians|Tigers|Twins|White Sox|Angels|Athletics|Mariners|Rangers|Astros).*/, "").trim());
-      const url = `https://wttr.in/${encoded}?format=3&m`;
-      const { data } = await axios.get(url, { timeout: 5000, headers: { "User-Agent": "curl/7.64" } });
-      return typeof data === "string" ? data.trim().slice(0, 80) : null;
-    } catch { return null; }
+  // ── MLB city map for RotoGrinders / NFLWeather lookup ───────────────────────
+  const TEAM_CITY: Record<string, string> = {
+    // MLB
+    "Yankees": "New York", "Mets": "New York", "Red Sox": "Boston", "Blue Jays": "Toronto",
+    "Rays": "Tampa", "Orioles": "Baltimore", "White Sox": "Chicago", "Cubs": "Chicago",
+    "Indians": "Cleveland", "Guardians": "Cleveland", "Tigers": "Detroit", "Royals": "Kansas City",
+    "Twins": "Minneapolis", "Astros": "Houston", "Athletics": "Oakland", "Angels": "Anaheim",
+    "Mariners": "Seattle", "Rangers": "Arlington", "Dodgers": "Los Angeles", "Giants": "San Francisco",
+    "Padres": "San Diego", "Rockies": "Denver", "Diamondbacks": "Phoenix", "Braves": "Atlanta",
+    "Marlins": "Miami", "Phillies": "Philadelphia", "Nationals": "Washington", "Mets": "New York",
+    "Reds": "Cincinnati", "Brewers": "Milwaukee", "Cardinals": "St. Louis", "Pirates": "Pittsburgh",
+    // NFL
+    "Bears": "Chicago", "Lions": "Detroit", "Packers": "Green Bay", "Vikings": "Minneapolis",
+    "Falcons": "Atlanta", "Panthers": "Charlotte", "Saints": "New Orleans", "Buccaneers": "Tampa",
+    "Cardinals": "Phoenix", "Rams": "Los Angeles", "49ers": "San Francisco", "Seahawks": "Seattle",
+    "Cowboys": "Dallas", "Giants": "New York", "Eagles": "Philadelphia", "Commanders": "Washington",
+    "Browns": "Cleveland", "Steelers": "Pittsburgh", "Ravens": "Baltimore", "Bengals": "Cincinnati",
+    "Texans": "Houston", "Colts": "Indianapolis", "Titans": "Nashville", "Jaguars": "Jacksonville",
+    "Chiefs": "Kansas City", "Raiders": "Las Vegas", "Chargers": "Los Angeles", "Broncos": "Denver",
+    "Bills": "Buffalo", "Dolphins": "Miami", "Patriots": "Boston", "Jets": "New York",
+  };
+
+  function getCityFromTeam(teamName: string): string {
+    for (const [team, city] of Object.entries(TEAM_CITY)) {
+      if (teamName.includes(team)) return city;
+    }
+    // Fallback: strip last word (team nickname) to get city
+    const words = teamName.trim().split(/\s+/);
+    return words.slice(0, -1).join(" ") || teamName;
   }
+
+  // ── Dome/retractable roof stadiums — weather has zero impact ───────────
+  const DOME_VENUES: Set<string> = new Set([
+    // MLB fully enclosed / retractable (closed default)
+    "Tropicana Field","Minute Maid Park","Globe Life Field","American Family Field",
+    "Rogers Centre","loanDepot park","Chase Field","T-Mobile Park",
+    // NFL
+    "Lucas Oil Stadium","Ford Field","Mercedes-Benz Stadium","State Farm Stadium",
+    "Allegiant Stadium","SoFi Stadium","AT&T Stadium","NRG Stadium",
+    "U.S. Bank Stadium","Caesars Superdome",
+  ]);
+
+  // Outfield wind direction lookup: compass bearing → is wind blowing OUT to CF?
+  // "Out to CF" = wind bearing within ±45° of 0° (North compass = toward CF in most parks)
+  // Simplified: out directions = N, NNE, NNW, NE, NW (blowing toward outfield)
+  const OUT_DIRS = new Set(["N","NNE","NNW","NE","NW","NEN","NWN"]);
+  const IN_DIRS  = new Set(["S","SSE","SSW","SE","SW","SES","SWS"]);
+
+  // Structured weather type — used everywhere in the app
+  interface WeatherData {
+    tempF:       number;
+    windMph:     number;
+    windDir:     string;   // 16-point compass, e.g. "NNW"
+    windOut:     boolean;  // blowing toward outfield
+    windIn:      boolean;  // blowing in from outfield
+    humidity:    number;   // 0-100
+    precipInches:number;   // today's precip in inches
+    cloudPct:    number;   // cloud cover 0-100
+    description: string;   // human-readable e.g. "Partly Cloudy"
+    isDome:      boolean;
+    // Derived impact scores (0.0–1.0, neutral = 0.5)
+    hitterImpact:  number; // >0.5 = hitter-friendly, <0.5 = pitcher-friendly
+    scoringImpact: number; // >0.5 = high scoring, <0.5 = low scoring
+    impactLabel:   string; // e.g. "🌬️ Wind blowing in — pitcher's park today"
+    impactTier:    "major" | "moderate" | "minor" | "neutral";
+    source:        string;
+  }
+
+  // In-memory weather cache keyed by "TEAM:SPORT:DATE"
+  const weatherCache = new Map<string, { data: WeatherData; ts: number }>();
+  const WEATHER_TTL = 30 * 60 * 1000; // 30 min
+
+  function computeWeatherImpact(w: Omit<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier">): Pick<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier"> {
+    if (w.isDome) {
+      return { hitterImpact: 0.50, scoringImpact: 0.50, impactLabel: "🏟️ Dome — weather neutral", impactTier: "neutral" };
+    }
+    let score = 0.50;
+    const labels: string[] = [];
+
+    // Temperature effect (cold suppresses offense; heat aids carry)
+    if      (w.tempF >= 85) { score += 0.10; labels.push(`☀️ Hot ${w.tempF}°F`); }
+    else if (w.tempF >= 72) { score += 0.05; labels.push(`🌤 Warm ${w.tempF}°F`); }
+    else if (w.tempF <= 45) { score -= 0.12; labels.push(`🥶 Cold ${w.tempF}°F`); }
+    else if (w.tempF <= 55) { score -= 0.07; labels.push(`🌡 Cool ${w.tempF}°F`); }
+
+    // Wind effect (strongest signal)
+    if (w.windMph >= 15) {
+      if (w.windOut)     { score += 0.16; labels.push(`🌬️ Wind ${w.windMph}mph OUT`); }
+      else if (w.windIn) { score -= 0.16; labels.push(`💨 Wind ${w.windMph}mph IN`); }
+      else               { score -= 0.04; labels.push(`💨 Cross-wind ${w.windMph}mph`); }
+    } else if (w.windMph >= 10) {
+      if (w.windOut)     { score += 0.09; labels.push(`🌬️ Wind ${w.windMph}mph out`); }
+      else if (w.windIn) { score -= 0.09; labels.push(`💨 Wind ${w.windMph}mph in`); }
+    } else if (w.windMph >= 6) {
+      if (w.windOut)     { score += 0.04; }
+      else if (w.windIn) { score -= 0.04; }
+    }
+
+    // Rain / precipitation
+    if (w.precipInches >= 0.1)      { score -= 0.14; labels.push(`🌧️ Rain ${w.precipInches}"`) ; }
+    else if (w.precipInches >= 0.02) { score -= 0.06; labels.push("🌦 Light rain"); }
+
+    // Humidity (humid air is slightly less dense = ball carries slightly further)
+    if (w.humidity >= 80 && w.tempF >= 65) score += 0.02;
+
+    score = Math.max(0.10, Math.min(0.90, score));
+    const delta = score - 0.50;
+    const tier: WeatherData["impactTier"] = Math.abs(delta) >= 0.14 ? "major"
+                                           : Math.abs(delta) >= 0.07 ? "moderate"
+                                           : Math.abs(delta) >= 0.03 ? "minor"
+                                           : "neutral";
+
+    const impactLabel = labels.length > 0
+      ? labels.join(" · ")
+      : score >= 0.55 ? "🌤 Hitter-friendly conditions"
+      : score <= 0.45 ? "🏟️ Pitcher-friendly conditions"
+      : "⚖️ Weather neutral";
+
+    return { hitterImpact: score, scoringImpact: score, impactLabel, impactTier: tier };
+  }
+
+  async function fetchStructuredWeather(homeTeam: string, sport: string, venueName?: string): Promise<WeatherData | null> {
+    // ── Dome check first ──────────────────────────────────────────────
+    const isDome = !!(venueName && DOME_VENUES.has(venueName))
+                || (sport !== "MLB" && sport !== "NFL" && sport !== "CFB");
+    if (isDome) {
+      const base = { tempF:72, windMph:0, windDir:"N", windOut:false, windIn:false,
+                     humidity:50, precipInches:0, cloudPct:0, description:"Dome",
+                     isDome:true, source:"dome" };
+      return { ...base, ...computeWeatherImpact(base) };
+    }
+
+    const city = getCityFromTeam(homeTeam);
+    const today = new Date().toISOString().slice(0, 10);
+    const cacheKey = `${homeTeam}:${sport}:${today}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < WEATHER_TTL) return cached.data;
+
+    // ── wttr.in JSON API — structured, reliable, free ────────────────
+    try {
+      const encoded = encodeURIComponent(city);
+      const { data } = await axios.get(`https://wttr.in/${encoded}?format=j1`, {
+        timeout: 8000,
+        headers: { "User-Agent": "curl/7.64.1" },
+      });
+      const cur = data?.current_condition?.[0];
+      if (!cur) throw new Error("no current_condition");
+
+      const tempF       = parseInt(cur.temp_F        ?? "70",  10);
+      const windMph     = parseInt(cur.windspeedMiles ?? "0",   10);
+      const windDir     = (cur.winddir16Point ?? "N") as string;
+      const humidity    = parseInt(cur.humidity       ?? "50",  10);
+      const precipInches= parseFloat(cur.precipInches ?? "0");
+      const cloudPct    = parseInt(cur.cloudcover     ?? "0",   10);
+      const description = cur.weatherDesc?.[0]?.value ?? "Clear";
+      const windOut     = OUT_DIRS.has(windDir);
+      const windIn      = IN_DIRS.has(windDir);
+
+      const base = { tempF, windMph, windDir, windOut, windIn, humidity, precipInches, cloudPct, description, isDome: false };
+      const impact = computeWeatherImpact(base);
+      const result: WeatherData = { ...base, ...impact, source: "wttr.in" };
+      weatherCache.set(cacheKey, { data: result, ts: Date.now() });
+      return result;
+    } catch (e: any) {
+      console.warn(`[Weather] wttr.in failed for ${city}:`, e.message);
+    }
+
+    // ── Fallback: plain wttr.in text format ───────────────────────────
+    try {
+      const { data } = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=3&u`, {
+        timeout: 5000, headers: { "User-Agent": "curl/7.64.1" },
+      });
+      if (typeof data === "string") {
+        const tempM = data.match(/([0-9]{2,3})°F/);
+        const windM = data.match(/([0-9]+)mph/);
+        const tempF   = tempM ? parseInt(tempM[1], 10) : 70;
+        const windMph = windM ? parseInt(windM[1], 10) : 0;
+        const base = { tempF, windMph, windDir: "N", windOut: false, windIn: false,
+                       humidity: 50, precipInches: 0, cloudPct: 50, description: data.trim(), isDome: false };
+        const impact = computeWeatherImpact(base);
+        const result: WeatherData = { ...base, ...impact, source: "wttr.in-text" };
+        weatherCache.set(cacheKey, { data: result, ts: Date.now() });
+        return result;
+      }
+    } catch { return null; }
+
+    return null;
+  }
+
+  // Legacy string wrapper — keeps existing fetchWeather() callers working
+  async function fetchWeather(homeTeam: string, sport: string): Promise<string | null> {
+    const w = await fetchStructuredWeather(homeTeam, sport);
+    if (!w) return null;
+    if (w.isDome) return `🏟️ Dome — weather neutral`;
+    const parts = [`${w.tempF}°F`];
+    if (w.windMph > 0) parts.push(`Wind ${w.windMph}mph ${w.windDir}`);
+    if (w.precipInches > 0) parts.push(`Rain ${w.precipInches}"`);
+    return `${getCityFromTeam(homeTeam)}: ${parts.join(" · ")}`;
+  }
+
 
   function buildMovementSummary(game: any): string {
     const parts: string[] = [];
@@ -5612,6 +7446,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pickSide = awayLine < 0 ? "away" : "home";
       }
 
+      // ── Fetch structured weather for outdoor sports ─────────────────
+      let weatherPayload: any = null;
+      if (sport === "MLB" || sport === "NFL" || sport === "CFB") {
+        try {
+          const sw = await fetchStructuredWeather(homeTeam, sport);
+          if (sw) {
+            weatherPayload = {
+              tempF: sw.tempF, windMph: sw.windMph, windDir: sw.windDir,
+              windOut: sw.windOut, windIn: sw.windIn,
+              humidity: sw.humidity, precipInches: sw.precipInches,
+              isDome: sw.isDome, impactLabel: sw.impactLabel,
+              impactTier: sw.impactTier, hitterImpact: sw.hitterImpact,
+            };
+          }
+        } catch { /* weather optional */ }
+      }
+
       const payload = {
         sport,
         homeTeam,
@@ -5621,13 +7472,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         awayRecord:   awayRecord ?? "0-0",
         homeML:       homeML,
         awayML:       awayML,
-        // edge_grade.py expects spreadHome = the home team's spread line
-        // if away is -15.5, home is +15.5
         spreadHome:   awayLine != null ? -awayLine : null,
         spreadDelta:  spreadMove ?? 0,
         homeMoneyPct: homeMoneyPct ?? null,
         awayMoneyPct: awayMoneyPct ?? null,
         total:        total ?? null,
+        weather:      weatherPayload,
       };
 
       // Resolve edge_grade.py — try multiple paths since __dirname=dist/ in production
@@ -5762,7 +7612,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Weather
       if (weatherInfo) {
-        summaryParts.push(`🌤 **Weather**: ${weatherInfo}`);
+        const weatherF = weatherInfo.replace(/\+?(-?\d+)°C/g, (_: string, n: string) => `${Math.round(+n * 9/5 + 32)}°F`);
+        summaryParts.push(`🌤 **Weather**: ${weatherF}`);
       }
 
       // Sharp money signal
@@ -5985,12 +7836,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // 3. Weather (outdoor sports)
       const weatherInfo = weather.status === "fulfilled" ? weather.value : null;
       if (weatherInfo) {
-        const hasWind = /wind/i.test(weatherInfo);
-        const hasRain = /rain|storm|snow/i.test(weatherInfo);
+        const weatherInfo2 = weatherInfo.replace(/\+?(-?\d+)°C/g, (_: string, n: string) => `${Math.round(+n * 9/5 + 32)}°F`);
+        const hasWind = /wind/i.test(weatherInfo2);
+        const hasRain = /rain|storm|snow/i.test(weatherInfo2);
         reasons.push({
           icon: hasWind ? "💨" : hasRain ? "🌧" : "🌤",
           type: "weather",
-          text: `Weather: ${weatherInfo}`,
+          text: `Weather: ${weatherInfo2}`,
           severity: (hasWind || hasRain) ? "high" : "low",
         });
       }
@@ -6604,499 +8456,6 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
-  // ─── Auth Routes ──────────────────────────────────────────────────────────────────────
-  const bcrypt = await import("bcryptjs");
-  const { nanoid } = await import("nanoid");
-
-  // Helper: get user from Authorization: Bearer <token> header
-  async function getAuthUser(req: any): Promise<any | null> {
-    const auth = req.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-    if (!token) return null;
-    const session = await storage.getSession(token);
-    if (!session) return null;
-    return storage.getUserById(session.userId);
-  }
-
-  // POST /api/auth/register
-  app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { email, username, password, displayName } = req.body as any;
-      if (!email || !username || !password) return res.status(400).json({ error: "email, username and password are required" });
-      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
-      const existing = await storage.getUserByEmail(email);
-      if (existing) return res.status(409).json({ error: "An account with this email already exists" });
-      const passwordHash = await bcrypt.hash(password, 10);
-      const user = await storage.createUser({ id: nanoid(), email, username, passwordHash, displayName: displayName ?? username, bankroll: 1000 });
-      // Create session
-      const token = nanoid(32);
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-      await storage.createSession({ token, userId: user.id, expiresAt });
-      const { passwordHash: _, ...safeUser } = user;
-      res.json({ token, user: safeUser });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/auth/login
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { email, password } = req.body as any;
-      if (!email || !password) return res.status(400).json({ error: "email and password are required" });
-      const user = await storage.getUserByEmail(email);
-      if (!user) return res.status(401).json({ error: "Invalid email or password" });
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) return res.status(401).json({ error: "Invalid email or password" });
-      const token = nanoid(32);
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      await storage.createSession({ token, userId: user.id, expiresAt });
-      const { passwordHash: _, ...safeUser } = user;
-      res.json({ token, user: safeUser });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/auth/logout
-  app.post("/api/auth/logout", async (req, res) => {
-    try {
-      const auth = req.headers.authorization ?? "";
-      const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-      if (token) await storage.deleteSession(token);
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // GET /api/auth/me
-  app.get("/api/auth/me", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const { passwordHash: _, ...safeUser } = user;
-      res.json(safeUser);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PATCH /api/auth/me  (update display name, bankroll)
-  app.patch("/api/auth/me", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const { displayName, bankroll } = req.body as any;
-      const updated = await storage.updateUser(user.id, { displayName, bankroll });
-      if (!updated) return res.status(404).json({ error: "User not found" });
-      const { passwordHash: _, ...safeUser } = updated;
-      res.json(safeUser);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // GET /api/user/bets  — user's tracked picks
-  app.get("/api/user/bets", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const userBets = await storage.getUserBets(user.id);
-      res.json(userBets);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/user/bets  — add a pick to user's tracker
-  app.post("/api/user/bets", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const { betId, betSlug, notes, stake } = req.body as any;
-      if (!betId) return res.status(400).json({ error: "betId is required" });
-      const ub = await storage.addUserBet({ id: nanoid(), userId: user.id, betId, betSlug: betSlug ?? null, notes: notes ?? null, stake: stake ?? null, result: "open" });
-      res.json(ub);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PATCH /api/user/bets/:id  — update result / notes / stake
-  app.patch("/api/user/bets/:id", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const updated = await storage.updateUserBet(req.params.id, req.body);
-      if (!updated) return res.status(404).json({ error: "Not found" });
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // DELETE /api/user/bets/:id
-  app.delete("/api/user/bets/:id", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      await storage.deleteUserBet(req.params.id);
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ──────────────────────────────────────────────────────────────────
-  // Portfolio + Parlay routes
-  // ──────────────────────────────────────────────────────────────────
-
-  // Helper: American odds → decimal multiplier
-  function americanToDecimal(odds: number | null | undefined): number {
-    if (!odds) return 1.909; // default ~-110
-    return odds > 0 ? (odds / 100) + 1 : (100 / Math.abs(odds)) + 1;
-  }
-
-  // Helper: grade a single player prop bet using recent game log
-  async function gradeUserBet(ub: any): Promise<"won" | "lost" | "push" | null> {
-    try {
-      const bet = await storage.getBetById(ub.betId);
-      if (!bet) return null;
-      if (!bet.playerName || !bet.sport || bet.line == null) return null;
-      const ts = bet.teamStats as any;
-      const pickSide = ub.betPickSide ?? ts?.pickSide?.toUpperCase();
-      if (!pickSide) return null;
-
-      // Fetch live game log
-      const statsUrl = `/api/player-stats/${bet.sport}/${encodeURIComponent(bet.playerName)}`;
-      const cacheKey = `grade:${bet.sport}:${bet.playerName}`;
-      let statsData: any = null;
-
-      try {
-        // Direct call to our own stats function to avoid HTTP overhead
-        statsData = await fetchESPNGameLog(bet.playerName, bet.sport);
-      } catch { return null; }
-
-      if (!statsData?.recentGames?.length) return null;
-
-      // Use the most recent game
-      const lastGame = statsData.recentGames[statsData.recentGames.length - 1];
-      const sport = bet.sport.toUpperCase();
-      let statValue: number | null = null;
-
-      const title = (bet.title + " " + (bet.description ?? "")).toLowerCase();
-      if (sport === "NBA") {
-        if (title.includes("point") || title.includes("pts")) statValue = parseFloat(lastGame.pts ?? "0") || null;
-        else if (title.includes("assist")) statValue = parseFloat(lastGame.ast ?? "0") || null;
-        else if (title.includes("rebound")) statValue = parseFloat(lastGame.trb ?? "0") || null;
-        else statValue = parseFloat(lastGame.pts ?? "0") || null;
-      } else if (sport === "NHL") {
-        statValue = parseFloat(lastGame.goals ?? "0") || null;
-      } else if (sport === "MLB") {
-        if (title.includes("home run") || title.includes("hr")) statValue = parseFloat(lastGame.home_runs ?? "0") || 0;
-        else statValue = parseFloat(lastGame.hits ?? "0") || null;
-      } else if (sport === "NFL") {
-        if (title.includes("passing")) statValue = parseFloat(lastGame.pass_yds ?? lastGame.yds ?? "0") || null;
-        else if (title.includes("rushing")) statValue = parseFloat(lastGame.rush_yds ?? "0") || null;
-        else if (title.includes("receiving")) statValue = parseFloat(lastGame.rec_yds ?? "0") || null;
-        else if (title.includes("touchdown")) statValue = parseFloat(lastGame.td ?? "0") || null;
-        else statValue = parseFloat(lastGame.pass_yds ?? lastGame.yds ?? "0") || null;
-      }
-
-      if (statValue === null) return null;
-      if (statValue === bet.line) return "push";
-      const outcome: "won" | "lost" = pickSide === "OVER"
-        ? (statValue > bet.line ? "won" : "lost")
-        : (statValue < bet.line ? "won" : "lost");
-
-      // Log to ML engine for self-learning
-      logMLOutcome({
-        bet_id:    bet.id,
-        sport:     bet.sport,
-        bet_type:  bet.betType ?? "player_prop",
-        pick_side: pickSide,
-        line:      bet.line,
-        stat_value: statValue,
-        confidence: bet.confidenceScore ?? null,
-        outcome,
-        title:     bet.title,
-        player:    bet.playerName ?? null,
-        graded_at: new Date().toISOString(),
-      });
-
-      return outcome;
-    } catch {
-      return null;
-    }
-  }
-
-  // GET /api/portfolio  — portfolio summary for authenticated user
-  app.get("/api/portfolio", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-
-      const [userBets, parlays] = await Promise.all([
-        storage.getUserBets(user.id),
-        storage.getParlays(user.id),
-      ]);
-
-      // Enrich parlays with legs
-      const parlaysWithLegs = await Promise.all(
-        parlays.map(async p => ({
-          ...p,
-          legs: await storage.getParlayLegs(p.id),
-        }))
-      );
-
-      // P&L calculations
-      const wonBets = userBets.filter(b => b.result === "won");
-      const lostBets = userBets.filter(b => b.result === "lost");
-      const openBets = userBets.filter(b => b.result === "open" || b.result === "push");
-
-      const totalStaked = userBets.reduce((s, b) => s + (b.stake ?? 0), 0);
-      const stakeWon = wonBets.reduce((s, b) => s + (b.stake ?? 0), 0);
-      const stakeLost = lostBets.reduce((s, b) => s + (b.stake ?? 0), 0);
-      const wonReturns = wonBets.reduce((s, b) => s + (b.stake ?? 0) * americanToDecimal(b.odds), 0);
-      const netPnl = wonReturns - totalStaked;
-      const roi = totalStaked > 0 ? (netPnl / totalStaked) * 100 : 0;
-      const winRate = (wonBets.length + lostBets.length) > 0
-        ? (wonBets.length / (wonBets.length + lostBets.length)) * 100 : 0;
-
-      // Parlay P&L
-      const wonParlays = parlaysWithLegs.filter(p => p.result === "won");
-      const lostParlays = parlaysWithLegs.filter(p => p.result === "lost");
-      const parlayStaked = parlays.reduce((s, p) => s + (p.stake ?? 0), 0);
-      const parlayReturns = wonParlays.reduce((s, p) => s + (p.potentialPayout ?? 0), 0);
-      const parlayNetPnl = parlayReturns - parlayStaked;
-
-      res.json({
-        userBets,
-        parlays: parlaysWithLegs,
-        summary: {
-          totalBets: userBets.length,
-          wonBets: wonBets.length,
-          lostBets: lostBets.length,
-          openBets: openBets.length,
-          winRate: Math.round(winRate * 10) / 10,
-          totalStaked,
-          wonReturns: Math.round(wonReturns * 100) / 100,
-          netPnl: Math.round(netPnl * 100) / 100,
-          roi: Math.round(roi * 10) / 10,
-          totalParlays: parlays.length,
-          wonParlays: wonParlays.length,
-          lostParlays: lostParlays.length,
-          openParlays: parlays.filter(p => p.result === "open").length,
-          parlayStaked,
-          parlayReturns: Math.round(parlayReturns * 100) / 100,
-          parlayNetPnl: Math.round(parlayNetPnl * 100) / 100,
-          bankroll: user.bankroll ?? 1000,
-        },
-      });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Parlay CRUD ────────────────────────────────────────────────────────────────
-
-  // GET /api/parlays  — list user's parlays (with legs)
-  app.get("/api/parlays", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const parlays = await storage.getParlays(user.id);
-      const parlaysWithLegs = await Promise.all(
-        parlays.map(async p => ({ ...p, legs: await storage.getParlayLegs(p.id) }))
-      );
-      res.json(parlaysWithLegs);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/parlays  — create a new parlay with legs
-  app.post("/api/parlays", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const { name, stake, notes, legs } = req.body as {
-        name: string;
-        stake?: number;
-        notes?: string;
-        legs: Array<{
-          betId: string;
-          betSlug?: string;
-          betTitle?: string;
-          betSport?: string;
-          betLine?: number;
-          betPickSide?: string;
-          odds?: number;
-        }>;
-      };
-      if (!name?.trim()) return res.status(400).json({ error: "name is required" });
-      if (!legs?.length) return res.status(400).json({ error: "at least one leg is required" });
-
-      // Compute combined decimal odds
-      const combinedDecimal = legs.reduce((acc, leg) => acc * americanToDecimal(leg.odds), 1);
-      const combinedAmerican = combinedDecimal >= 2
-        ? Math.round((combinedDecimal - 1) * 100)
-        : Math.round(-100 / (combinedDecimal - 1));
-      const potentialPayout = stake ? Math.round(stake * combinedDecimal * 100) / 100 : null;
-
-      const parlay = await storage.createParlay({
-        id: nanoid(),
-        userId: user.id,
-        name: name.trim(),
-        stake: stake ?? null,
-        notes: notes ?? null,
-        combinedOdds: combinedAmerican,
-        potentialPayout,
-        result: "open",
-      });
-
-      // Add legs
-      const createdLegs = await Promise.all(legs.map(leg =>
-        storage.addParlayLeg({
-          id: nanoid(),
-          parlayId: parlay.id,
-          userId: user.id,
-          betId: leg.betId,
-          betSlug: leg.betSlug ?? null,
-          betTitle: leg.betTitle ?? null,
-          betSport: leg.betSport ?? null,
-          betLine: leg.betLine ?? null,
-          betPickSide: leg.betPickSide ?? null,
-          odds: leg.odds ?? null,
-          result: "open",
-        })
-      ));
-
-      res.json({ ...parlay, legs: createdLegs });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PATCH /api/parlays/:id  — update stake / name / notes
-  app.patch("/api/parlays/:id", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const parlay = await storage.getParlayById(req.params.id);
-      if (!parlay || parlay.userId !== user.id) return res.status(404).json({ error: "Not found" });
-
-      const updates: any = {};
-      if (req.body.name != null) updates.name = req.body.name;
-      if (req.body.stake != null) {
-        updates.stake = req.body.stake;
-        // Recompute payout with new stake
-        const legs = await storage.getParlayLegs(parlay.id);
-        const combinedDecimal = legs.reduce((acc, l) => acc * americanToDecimal(l.odds), 1);
-        updates.potentialPayout = Math.round(req.body.stake * combinedDecimal * 100) / 100;
-      }
-      if (req.body.notes != null) updates.notes = req.body.notes;
-      if (req.body.result != null) updates.result = req.body.result;
-
-      const updated = await storage.updateParlay(req.params.id, updates);
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // DELETE /api/parlays/:id
-  app.delete("/api/parlays/:id", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const parlay = await storage.getParlayById(req.params.id);
-      if (!parlay || parlay.userId !== user.id) return res.status(404).json({ error: "Not found" });
-      await storage.deleteParlay(req.params.id);
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PATCH /api/parlay-legs/:id  — update a single leg's result manually
-  app.patch("/api/parlay-legs/:id", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const updated = await storage.updateParlayLeg(req.params.id, req.body);
-      if (!updated) return res.status(404).json({ error: "Not found" });
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/portfolio/grade  — manually trigger grading for all open bets + parlays
-  // Also called by the midnight cron job
-  app.post("/api/portfolio/grade", async (req, res) => {
-    try {
-      const user = await getAuthUser(req);
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-
-      const userBets = await storage.getUserBets(user.id);
-      const openBets = userBets.filter(b => b.result === "open");
-      const results: Array<{ id: string; result: string }> = [];
-
-      for (const ub of openBets) {
-        const grade = await gradeUserBet(ub);
-        if (grade) {
-          await storage.updateUserBet(ub.id, { result: grade, gradedAt: new Date() } as any);
-          results.push({ id: ub.id, result: grade });
-        }
-      }
-
-      // Grade parlay legs + check if parlay is complete
-      const parlays = await storage.getParlays(user.id);
-      for (const parlay of parlays) {
-        if (parlay.result !== "open") continue;
-        const legs = await storage.getParlayLegs(parlay.id);
-        const openLegs = legs.filter(l => l.result === "open");
-        for (const leg of openLegs) {
-          const fakeUb = { betId: leg.betId, betPickSide: leg.betPickSide };
-          const grade = await gradeUserBet(fakeUb);
-          if (grade) await storage.updateParlayLeg(leg.id, { result: grade });
-        }
-        // Re-fetch legs after grading
-        const freshLegs = await storage.getParlayLegs(parlay.id);
-        const anyLost = freshLegs.some(l => l.result === "lost");
-        const allDone = freshLegs.every(l => l.result !== "open");
-        if (anyLost) {
-          await storage.updateParlay(parlay.id, { result: "lost", gradedAt: new Date() } as any);
-        } else if (allDone) {
-          const allWon = freshLegs.every(l => l.result === "won");
-          await storage.updateParlay(parlay.id, { result: allWon ? "won" : "push", gradedAt: new Date() } as any);
-        }
-      }
-
-      res.json({ graded: results.length, results });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST /api/portfolio/grade-all  — admin endpoint for midnight cron (no auth required — internal)
-  // Grades ALL users' open bets
-  app.post("/api/portfolio/grade-all", async (req, res) => {
-    try {
-      const secret = req.headers["x-cron-secret"] as string;
-      if (secret !== (process.env.CRON_SECRET ?? "clubhouseiq-midnight-grade")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const allUserBets = await storage.getAllUserBets();
-      const openBets = allUserBets.filter(b => b.result === "open");
-      let gradedCount = 0;
-
-      for (const ub of openBets) {
-        const grade = await gradeUserBet(ub);
-        if (grade) {
-          await storage.updateUserBet(ub.id, { result: grade, gradedAt: new Date() } as any);
-          gradedCount++;
-        }
-      }
-
-      // Grade all open parlay legs
-      const allParlays = await storage.getAllParlays();
-      for (const parlay of allParlays) {
-        if (parlay.result !== "open") continue;
-        const legs = await storage.getParlayLegs(parlay.id);
-        const openLegs = legs.filter(l => l.result === "open");
-        for (const leg of openLegs) {
-          const fakeUb = { betId: leg.betId, betPickSide: leg.betPickSide };
-          const grade = await gradeUserBet(fakeUb);
-          if (grade) await storage.updateParlayLeg(leg.id, { result: grade });
-        }
-        const freshLegs = await storage.getParlayLegs(parlay.id);
-        const anyLost = freshLegs.some(l => l.result === "lost");
-        const allDone = freshLegs.every(l => l.result !== "open");
-        if (anyLost) await storage.updateParlay(parlay.id, { result: "lost", gradedAt: new Date() } as any);
-        else if (allDone) {
-          const allWon = freshLegs.every(l => l.result === "won");
-          await storage.updateParlay(parlay.id, { result: allWon ? "won" : "push", gradedAt: new Date() } as any);
-        }
-      }
-
-      console.log(`[grade-all] Graded ${gradedCount} bets across all users`);
-      res.json({ graded: gradedCount });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-
   // GET /api/smart-wallets — expose tracked whale wallet data + signal map
   app.get("/api/smart-wallets", async (_req, res) => {
     try {
@@ -7107,6 +8466,4091 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // BTS daily picks cache — keyed by "YYYY-MM-DD"
+  // Once a date's picks are set they NEVER shrink (max 10 enforced at
+  // write-time). At midnight CT the old date's key is simply not looked
+  // up anymore, and the new date starts fresh.
+  // ─────────────────────────────────────────────────────────────────────
+  interface BtsPickEntry {
+    playerId:        number;
+    name:            string;
+    team:            string;
+    hitProbability:  number;
+    lockedAt:        string; // ISO timestamp when the pick was cemented
+    // result fields — filled in by the grader
+    result:          "win" | "loss" | "pending" | "no_game";
+    hits:            number | null; // actual hits recorded
+    ab:              number | null; // at-bats
+    gradedAt:        string | null; // ISO when grade was set
+    // snapshot of the full pick object for display
+    snapshot:        any;
+  }
+
+  // date string → array of up to 10 locked picks
+  const btsPicksCache: Record<string, BtsPickEntry[]> = {};
+
+  // Accumulated season record for BTS (wins/losses across all graded days)
+  const btsSeasonRecord: { wins: number; losses: number; pending: number } =
+    { wins: 0, losses: 0, pending: 0 };
+
+  // Track the last date btsSeasonRecord was fully reconciled from btsPicksCache
+  let btsLastReconcileDate = "";
+
+  function reconcileSeasonRecord() {
+    let w = 0, l = 0, p = 0;
+    for (const entries of Object.values(btsPicksCache)) {
+      for (const e of entries) {
+        if (e.result === "win")     w++;
+        else if (e.result === "loss")    l++;
+        else if (e.result === "pending") p++;
+      }
+    }
+    btsSeasonRecord.wins    = w;
+    btsSeasonRecord.losses  = l;
+    btsSeasonRecord.pending = p;
+  }
+
+  // ── Persist btsPicksCache to disk + Postgres (source of truth) ─────────
+  const BTS_PICKS_PATH = path.join(__dirname, "ml_data", "bts_picks.json");
+
+  let _btsSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  function saveBtsPicksCache() {
+    const json = JSON.stringify(btsPicksCache, null, 2);
+    // 1. Local disk
+    try {
+      fs.mkdirSync(path.dirname(BTS_PICKS_PATH), { recursive: true });
+      fs.writeFileSync(BTS_PICKS_PATH, json, "utf-8");
+    } catch (e: any) {
+      console.warn("[BTS] Failed to save bts_picks.json:", e.message);
+    }
+    // 2. Postgres ml_data_store (immediate, no token needed)
+    db.query(
+      `INSERT INTO ml_data_store (filename, content, updated_at)
+       VALUES ('bts_picks.json', $1, NOW())
+       ON CONFLICT (filename) DO UPDATE
+         SET content = EXCLUDED.content, updated_at = NOW()`,
+      [json]
+    ).catch((e: any) => console.warn("[BTS] DB save error:", e.message));
+    // 3. Also upsert each pick row into bts_picks table for direct DB querying
+    for (const [date, entries] of Object.entries(btsPicksCache)) {
+      for (const e of entries as BtsPickEntry[]) {
+        db.query(
+          `INSERT INTO bts_picks
+             (pick_date, player_id, player_name, team, hit_probability,
+              locked_at, locked, result, hits, ab, graded_at, snapshot)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (pick_date, player_id) DO UPDATE SET
+             player_name    = EXCLUDED.player_name,
+             hit_probability= EXCLUDED.hit_probability,
+             locked_at      = COALESCE(bts_picks.locked_at, EXCLUDED.locked_at),
+             locked         = EXCLUDED.locked,
+             result         = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.result ELSE EXCLUDED.result END,
+             hits           = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.hits ELSE EXCLUDED.hits END,
+             ab             = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.ab ELSE EXCLUDED.ab END,
+             graded_at      = CASE WHEN bts_picks.result != 'pending' THEN bts_picks.graded_at ELSE EXCLUDED.graded_at END,
+             snapshot       = EXCLUDED.snapshot`,
+          [
+            date,
+            e.playerId,
+            e.name ?? (e as any).playerName ?? "",
+            e.team ?? "",
+            Math.round(e.hitProbability ?? 0),
+            e.lockedAt ?? null,
+            e.lockedAt != null,
+            e.result ?? "pending",
+            e.hits ?? null,
+            e.ab ?? null,
+            e.gradedAt ?? null,
+            JSON.stringify(e.snapshot ?? {}),
+          ]
+        ).catch(() => { /* non-fatal */ });
+      }
+    }
+    // 4. Debounced GitHub sync (best-effort, requires GITHUB_TOKEN)
+    if (_btsSyncTimer) clearTimeout(_btsSyncTimer);
+    _btsSyncTimer = setTimeout(() => {
+      _btsSyncTimer = null;
+      syncMLDataToGitHub().catch((e: any) => console.warn("[BTS] GitHub sync error:", e.message));
+    }, 30_000);
+  }
+
+  // Merge a parsed JSON object into btsPicksCache
+  function mergeBtsJSON(parsed: Record<string, any[]>) {
+    for (const [date, entries] of Object.entries(parsed)) {
+      if (!btsPicksCache[date]) {
+        btsPicksCache[date] = entries as BtsPickEntry[];
+      } else {
+        for (const incoming of entries) {
+          const existing = btsPicksCache[date].find((e: BtsPickEntry) => e.playerId === incoming.playerId);
+          if (!existing) {
+            // New pick not yet in memory — always add it
+            btsPicksCache[date].push(incoming);
+          } else {
+            // Graded result always wins over pending; also keep best snapshot
+            if (existing.result === "pending" && incoming.result !== "pending") {
+              Object.assign(existing, incoming);
+            } else if (existing.result !== "pending" && incoming.result === "pending") {
+              // Keep existing graded — only refresh snapshot
+              existing.snapshot = incoming.snapshot ?? existing.snapshot;
+            } else if (existing.result !== "pending" && incoming.result !== "pending") {
+              // Both graded — keep the more recent graded_at
+              const existMs = existing.gradedAt ? new Date(existing.gradedAt).getTime() : 0;
+              const incomMs = incoming.gradedAt ? new Date(incoming.gradedAt).getTime() : 0;
+              if (incomMs > existMs) Object.assign(existing, incoming);
+            }
+            // Both pending — keep existing (already in memory, no change needed)
+          }
+        }
+      }
+    }
+  }
+
+  async function loadBtsPicksCache() {
+    // 1. Load from Postgres bts_picks table first (most current after any redeploy)
+    try {
+      const rows = await db.query(`SELECT * FROM bts_picks ORDER BY pick_date DESC`);
+      if (rows.rows && rows.rows.length > 0) {
+        const fromDB: Record<string, BtsPickEntry[]> = {};
+        for (const r of rows.rows) {
+          if (!fromDB[r.pick_date]) fromDB[r.pick_date] = [];
+          fromDB[r.pick_date].push({
+            playerId:       r.player_id,
+            name:           r.player_name,
+            team:           r.team,
+            hitProbability: r.hit_probability,
+            lockedAt:       r.locked_at,
+            result:         r.result,
+            hits:           r.hits,
+            ab:             r.ab,
+            gradedAt:       r.graded_at,
+            snapshot:       r.snapshot ?? {},
+          } as BtsPickEntry);
+        }
+        mergeBtsJSON(fromDB);
+        console.log(`[BTS-DB] Loaded ${rows.rows.length} picks from Postgres (${Object.keys(fromDB).length} days)`);
+      }
+    } catch (e: any) {
+      console.warn("[BTS-DB] Could not load from Postgres:", e.message);
+    }
+    // 2. Also load from JSON file on disk (fills gaps if DB rows are missing)
+    try {
+      if (fs.existsSync(BTS_PICKS_PATH)) {
+        const parsed = JSON.parse(fs.readFileSync(BTS_PICKS_PATH, "utf-8"));
+        mergeBtsJSON(parsed);
+        console.log(`[BTS] Merged disk bts_picks.json — ${Object.keys(btsPicksCache).length} total days`);
+      }
+    } catch (e: any) {
+      console.warn("[BTS] Failed to load bts_picks.json:", e.message);
+    }
+    reconcileSeasonRecord();
+  }
+
+  // Load persisted BTS picks after the startup pull resolves
+  _mlPullPromise.then(() => loadBtsPicksCache()).catch(() => loadBtsPicksCache());
+
+  // ── Grader: fetch actual hit stats for a player on a given date ──────
+  // Strategy:
+  //   1. MLB game log API (primary) — pinned to exact date
+  //   2. MLB schedule → boxscore API (fallback when game log lags by hours)
+  //   3. Return null only if genuinely no data available yet
+  async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
+    const normalize = (d: string) => {
+      if (!d) return "";
+      const mmdd = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (mmdd) return `${mmdd[3]}-${mmdd[1]}-${mmdd[2]}`;
+      return d.slice(0, 10);
+    };
+
+    // ── Attempt 1: Game log API ───────────────────────────────────────
+    try {
+      const url = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&startDate=${dateStr}&endDate=${dateStr}&limit=5`;
+      const r = await axios.get(url, { timeout: 8000 });
+      const splits = r.data?.stats?.[0]?.splits ?? [];
+      const todaySplit = splits.find((s: any) => normalize(s.date) === dateStr)
+                      ?? (splits.length === 1 ? splits[0] : null);
+      if (todaySplit) {
+        const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
+        const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
+        if (ab > 0) return { hits, ab }; // good data — return immediately
+        // ab=0 could mean game in progress or DNP — fall through to boxscore
+      }
+    } catch { /* fall through to boxscore */ }
+
+    // ── Attempt 2: Schedule → Boxscore (handles game log lag) ────────
+    // Find all games on dateStr and look for this player in the boxscore
+    try {
+      const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team`;
+      const schedR   = await axios.get(schedUrl, { timeout: 8000 });
+      const gameDates = schedR.data?.dates ?? [];
+      const games     = gameDates.flatMap((d: any) => d.games ?? []);
+
+      for (const game of games) {
+        const state = game.status?.abstractGameState; // "Preview"|"Live"|"Final"
+        if (state === "Preview") continue; // game hasn't started yet
+        try {
+          const boxUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
+          const boxR   = await axios.get(boxUrl, { timeout: 8000 });
+          const teams  = boxR.data?.teams ?? {};
+          for (const side of ["home", "away"]) {
+            const players = Object.values(teams[side]?.players ?? {}) as any[];
+            const p = players.find((pl: any) => pl.person?.id === playerId);
+            if (p) {
+              const stats = p.stats?.batting ?? {};
+              const ab    = parseInt(stats.atBats   ?? "-1", 10);
+              const hits  = parseInt(stats.hits      ?? "0",  10);
+              // For in-progress games, only return if player has had at least 1 AB
+              // (ab=0 mid-game just means they haven't batted yet — wait for more data)
+              if (state === "Final" && ab >= 0) return { hits, ab };
+              if (state === "Live"  && ab >  0) return { hits, ab };
+            }
+          }
+        } catch { /* skip this game */ }
+      }
+    } catch { /* boxscore fallback failed */ }
+
+    return null; // genuinely no data yet
+  }
+
+  // ── Run grader for all pending picks on a given date ─────────────────
+  async function runBtsGrader(dateStr: string) {
+    const entries = btsPicksCache[dateStr];
+    if (!entries?.length) return;
+    let changed = false;
+    for (const entry of entries) {
+      // Re-grade: pending, OR any non-win result (loss could flip to win as game progresses)
+      // Skip confirmed wins — a hit doesn't un-happen
+      const needsRegrade = entry.result !== "win";
+      if (!needsRegrade) continue;
+      // Only try grading if the game start time has passed
+      const gameStartMs = entry.snapshot?.game?.gameStartMs;
+      if (gameStartMs && Date.now() < gameStartMs) continue;
+      const result = await gradePickForDate(entry.playerId, dateStr);
+      if (result === null) continue; // no data yet — stay pending
+      // Require at least 1 AB to update (ab=0 mid-game = hasn't batted yet)
+      if (result.ab === 0) continue;
+      const newResult = result.hits > 0 ? "win" : "loss";
+      // Only write if something actually changed
+      if (entry.hits === result.hits && entry.ab === result.ab && entry.result === newResult) continue;
+      entry.hits     = result.hits;
+      entry.ab       = result.ab;
+      entry.result   = newResult;
+      entry.gradedAt = new Date().toISOString();
+      changed = true;
+      console.log(`[BTS Regrader] ${entry.name} → ${newResult} (${result.hits}/${result.ab})`);
+
+      // ── Back-fill outcome into daily candidate log ─────────────────
+      try {
+        const logDir  = path.join(__dirname, "bts_logs");
+        const logPath = path.join(logDir, `${dateStr}.json`);
+        if (fs.existsSync(logPath)) {
+          const logData: any[] = JSON.parse(fs.readFileSync(logPath, "utf8"));
+          const logEntry = logData.find((e: any) => e.playerId === entry.playerId);
+          if (logEntry) {
+            logEntry.result  = entry.result;
+            logEntry.hits    = entry.hits;
+            logEntry.ab      = entry.ab;
+            logEntry.gradedAt = entry.gradedAt;
+            fs.writeFileSync(logPath, JSON.stringify(logData, null, 2));
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+    if (changed) { reconcileSeasonRecord(); saveBtsPicksCache(); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // BTS ML LEARNING — nightly feature-correlation analysis
+  // Reads all graded bts_picks + bts_logs feature entries.
+  // For each feature, computes correlation with hit outcome (win=1 / loss=0).
+  // Outputs bts_ml_weights.json with adjusted multipliers for scoreHitter.
+  // Synced to GitHub so weights survive redeploys.
+  // ─────────────────────────────────────────────────────────────────────
+  const BTS_ML_WEIGHTS_FILE = path.join(ML_DATA_DIR, "bts_ml_weights.json");
+  const BTS_ML_LEARNING_LOG = path.join(ML_DATA_DIR, "bts_ml_learning_log.json");
+
+  function getDefaultBtsMlWeights() {
+    return {
+      version: 1,
+      sampleSize: 0,
+      updatedAt: new Date().toISOString(),
+      featureWeights: {
+        recentForm:       1.00,
+        contactQuality:   1.00,
+        hardContact:      1.00,
+        pitcherMatchup:   1.00,
+        opportunity:      1.00,
+        bvp:              1.00,
+        stability:        1.00,
+        weatherImpact:    1.00,
+        gameTotal:        1.00,
+      } as Record<string, number>,
+      featureAccuracy: {} as Record<string, { wins: number; losses: number; accuracy: number }>,
+      tierAccuracy: {} as Record<string, { wins: number; losses: number; accuracy: number }>,
+      calibration: [] as Array<{ bucket: string; predicted: number; actual: number; n: number }>,
+    };
+  }
+
+  function loadBtsMlWeights() {
+    try {
+      if (fs.existsSync(BTS_ML_WEIGHTS_FILE)) {
+        return JSON.parse(fs.readFileSync(BTS_ML_WEIGHTS_FILE, "utf-8"));
+      }
+    } catch { /* use defaults */ }
+    return getDefaultBtsMlWeights();
+  }
+
+  async function runBtsMlLearning(): Promise<void> {
+    console.log("[BTS-ML] Starting nightly ML learning run...");
+    try {
+      // 1. Collect all graded picks from btsPicksCache (attach date from cache key)
+      const gradedPicks: Array<BtsPickEntry & { date: string }> = [];
+      for (const [date, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries) {
+          if (e.result === "win" || e.result === "loss") gradedPicks.push({ ...e, date });
+        }
+      }
+      if (gradedPicks.length < 10) {
+        console.log(`[BTS-ML] Only ${gradedPicks.length} graded picks — skipping (need 10+)`);
+        return;
+      }
+      console.log(`[BTS-ML] Analyzing ${gradedPicks.length} graded picks...`);
+
+      // 2. Load feature logs from bts_logs/
+      const logDir = path.join(__dirname, "bts_logs");
+      const featureMap: Record<number, any> = {};
+      if (fs.existsSync(logDir)) {
+        const logFiles = fs.readdirSync(logDir)
+          .filter((f: string) => f.endsWith(".json"))
+          .sort();
+        for (const lf of logFiles) {
+          try {
+            const entries: any[] = JSON.parse(fs.readFileSync(path.join(logDir, lf), "utf-8"));
+            for (const e of entries) { featureMap[e.playerId] = e; }
+          } catch { /* skip corrupt log */ }
+        }
+      }
+      console.log(`[BTS-ML] Loaded feature logs for ${Object.keys(featureMap).length} unique players`);
+
+      // 3. Merge picks with feature logs
+      const logDirExists = fs.existsSync(logDir);
+      const enrichedPicks: Array<{ outcome: 1|0; features: any; tier: string }> = [];
+      for (const pick of gradedPicks) {
+        const outcome: 1|0 = pick.result === "win" ? 1 : 0;
+        let featureEntry: any = null;
+        if (logDirExists) {
+          const dateLogPath = path.join(logDir, `${pick.date}.json`);
+          if (fs.existsSync(dateLogPath)) {
+            try {
+              const dayLog: any[] = JSON.parse(fs.readFileSync(dateLogPath, "utf-8"));
+              featureEntry = dayLog.find((e: any) => e.playerId === pick.playerId) ?? null;
+            } catch { /* fallback to featureMap */ }
+          }
+        }
+        if (!featureEntry) featureEntry = featureMap[pick.playerId] ?? null;
+        enrichedPicks.push({
+          outcome,
+          tier: (pick as any).confidenceTier ?? featureEntry?.confTier ?? "D",
+          features: featureEntry ?? {
+            hitProbability: pick.hitProbability,
+            rawScore:       pick.rawScore,
+            avg14:          pick.avg14,
+            avg30:          pick.avg30,
+            xwoba:          (pick as any).xwoba ?? null,
+            xba:            (pick as any).xba   ?? null,
+            hardHitPct:     (pick as any).hardHitPct ?? null,
+            kPct:           (pick as any).kPct ?? null,
+            pitcherXwoba:   (pick as any).pitcherXwoba ?? null,
+            pitcherLast3ERA:(pick as any).pitcherLast3ERA ?? null,
+            gameTotal:      (pick as any).gameTotal ?? null,
+            lineupSlot:     (pick as any).lineupSlot ?? null,
+          },
+        });
+      }
+
+      // 4. Compute point-biserial correlation for each feature
+      const computeCorrelation = (values: number[], outcomes: (1|0)[]): number => {
+        const n = values.length;
+        if (n < 5) return 0;
+        const n1 = outcomes.filter(o => o === 1).length;
+        const n0 = n - n1;
+        if (n1 === 0 || n0 === 0) return 0;
+        const avg = values.reduce((a, b) => a + b, 0) / n;
+        const variance = values.reduce((a, b) => a + (b - avg) ** 2, 0) / n;
+        const std = Math.sqrt(variance);
+        if (std < 0.001) return 0;
+        const m1 = values.filter((_, i) => outcomes[i] === 1).reduce((a, b) => a + b, 0) / n1;
+        const m0 = values.filter((_, i) => outcomes[i] === 0).reduce((a, b) => a + b, 0) / n0;
+        return (m1 - m0) / std * Math.sqrt((n1 * n0) / (n * n));
+      };
+      const extractFeature = (key: string, transform?: (v: number) => number) => {
+        const vals: number[] = [];
+        const outs: (1|0)[] = [];
+        for (const { features, outcome } of enrichedPicks) {
+          const raw = features?.[key];
+          if (raw == null || isNaN(+raw)) continue;
+          vals.push(transform ? transform(+raw) : +raw);
+          outs.push(outcome);
+        }
+        return { vals, outs };
+      };
+
+      type FeatureDef = { name: string; keys: string[]; transform?: (v: number) => number };
+      const featureDefs: FeatureDef[] = [
+        { name: "recentForm",     keys: ["avg14", "avg30"] },
+        { name: "contactQuality", keys: ["xwoba", "xba", "xwoba15d", "xwoba30d"] },
+        { name: "hardContact",    keys: ["hardHitPct", "barrelPct"] },
+        { name: "pitcherMatchup", keys: ["pitcherXwoba", "pitcherLast3ERA", "pitchTypeMatchup"] },
+        { name: "opportunity",    keys: ["lineupSlot"], transform: (v) => 10 - v },
+        { name: "bvp",            keys: [] },
+        { name: "stability",      keys: ["ghp14"] },
+        { name: "weatherImpact",  keys: ["hitterImpact"] },
+        { name: "gameTotal",      keys: ["gameTotal"] },
+      ];
+
+      const featureCorrelations: Record<string, { corr: number; n: number; wins: number; losses: number }> = {};
+      for (const { name, keys, transform } of featureDefs) {
+        if (keys.length === 0) { featureCorrelations[name] = { corr: 0, n: 0, wins: 0, losses: 0 }; continue; }
+        const corrVals: number[] = [];
+        let maxN = 0, totalWins = 0, totalLosses = 0;
+        for (const key of keys) {
+          const { vals, outs } = extractFeature(key, transform);
+          if (vals.length < 5) continue;
+          corrVals.push(computeCorrelation(vals, outs));
+          maxN = Math.max(maxN, vals.length);
+          totalWins   += outs.filter(o => o === 1).length;
+          totalLosses += outs.filter(o => o === 0).length;
+        }
+        featureCorrelations[name] = {
+          corr:   corrVals.length > 0 ? corrVals.reduce((a, b) => a + b, 0) / corrVals.length : 0,
+          n:      maxN,
+          wins:   Math.round(totalWins   / Math.max(1, keys.length)),
+          losses: Math.round(totalLosses / Math.max(1, keys.length)),
+        };
+      }
+
+      // 5. Convert correlations to multiplier adjustments
+      const existing = loadBtsMlWeights();
+      const dampFactor = gradedPicks.length >= 200 ? 0.25
+                       : gradedPicks.length >= 50  ? 0.15
+                       : 0.08;
+      const newFeatureWeights: Record<string, number> = { ...(existing.featureWeights ?? {}) };
+      for (const [fname, { corr }] of Object.entries(featureCorrelations)) {
+        const oldW = newFeatureWeights[fname] ?? 1.00;
+        const delta = corr * dampFactor;
+        const rawNew = oldW * (1 + delta);
+        newFeatureWeights[fname] = Math.round(Math.min(1.35, Math.max(0.70, rawNew)) * 1000) / 1000;
+      }
+
+      // 6. Tier accuracy
+      const tierCounts: Record<string, { wins: number; losses: number }> = {};
+      for (const { outcome, tier } of enrichedPicks) {
+        if (!tierCounts[tier]) tierCounts[tier] = { wins: 0, losses: 0 };
+        if (outcome === 1) tierCounts[tier].wins++; else tierCounts[tier].losses++;
+      }
+      const tierAccuracy: Record<string, any> = {};
+      for (const [tier, { wins, losses }] of Object.entries(tierCounts)) {
+        const total = wins + losses;
+        tierAccuracy[tier] = { wins, losses, accuracy: total > 0 ? Math.round(wins / total * 1000) / 10 : 0 };
+      }
+
+      // 7. Feature accuracy by median split
+      const featureAccuracy: Record<string, any> = {};
+      for (const { name, keys } of featureDefs) {
+        if (keys.length === 0) continue;
+        const { vals, outs } = extractFeature(keys[0]);
+        if (vals.length < 5) continue;
+        const sorted = [...vals].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        let aW = 0, aL = 0, bW = 0, bL = 0;
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] >= median) { outs[i] === 1 ? aW++ : aL++; }
+          else                   { outs[i] === 1 ? bW++ : bL++; }
+        }
+        const at = aW + aL, bt = bW + bL;
+        featureAccuracy[name] = {
+          wins:          aW,
+          losses:        aL,
+          accuracy:      at > 0 ? Math.round(aW / at * 1000) / 10 : 0,
+          belowAccuracy: bt > 0 ? Math.round(bW / bt * 1000) / 10 : 0,
+          correlation:   Math.round((featureCorrelations[name]?.corr ?? 0) * 1000) / 1000,
+        };
+      }
+
+      // 8. Probability calibration buckets
+      const buckets: Record<string, { n: number; wins: number; sumProb: number }> = {};
+      for (const { outcome, features } of enrichedPicks) {
+        const prob = features?.hitProbability;
+        if (prob == null || isNaN(+prob)) continue;
+        const p = +prob;
+        const bucket = p >= 80 ? "80+" : p >= 75 ? "75-80" : p >= 70 ? "70-75" : p >= 65 ? "65-70" : "<65";
+        if (!buckets[bucket]) buckets[bucket] = { n: 0, wins: 0, sumProb: 0 };
+        buckets[bucket].n++;
+        buckets[bucket].wins += outcome;
+        buckets[bucket].sumProb += p;
+      }
+      const calibration = Object.entries(buckets)
+        .map(([bucket, { n, wins, sumProb }]) => ({
+          bucket,
+          predicted: Math.round(sumProb / n * 10) / 10,
+          actual:    Math.round(wins / n * 1000) / 10,
+          n,
+        }))
+        .sort((a, b) => b.predicted - a.predicted);
+
+      // 9. Write bts_ml_weights.json
+      const updated = {
+        version:         (existing.version ?? 0) + 1,
+        sampleSize:      gradedPicks.length,
+        updatedAt:       new Date().toISOString(),
+        featureWeights:  newFeatureWeights,
+        featureAccuracy,
+        tierAccuracy,
+        calibration,
+        rawCorrelations: featureCorrelations,
+        dampFactor,
+      };
+      fs.writeFileSync(BTS_ML_WEIGHTS_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      console.log(`[BTS-ML] Weights updated (v${updated.version}) — sample=${gradedPicks.length}`);
+
+      // 10. Append to learning log (keep last 90 runs)
+      const logEntries: any[] = [];
+      try {
+        if (fs.existsSync(BTS_ML_LEARNING_LOG)) {
+          const parsed = JSON.parse(fs.readFileSync(BTS_ML_LEARNING_LOG, "utf-8"));
+          if (Array.isArray(parsed)) logEntries.push(...parsed);
+        }
+      } catch { /* start fresh */ }
+      logEntries.push({
+        runAt:          updated.updatedAt,
+        version:        updated.version,
+        sampleSize:     gradedPicks.length,
+        featureWeights: newFeatureWeights,
+        tierAccuracy,
+        topInsight: Object.entries(featureAccuracy)
+          .sort((a: any, b: any) => (b[1].correlation ?? 0) - (a[1].correlation ?? 0))
+          .slice(0, 3)
+          .map(([name, data]: any) => `${name}: corr=${data.correlation}, acc=${data.accuracy}%`)
+          .join(" | "),
+      });
+      fs.writeFileSync(BTS_ML_LEARNING_LOG, JSON.stringify(logEntries.slice(-90), null, 2), "utf-8");
+
+      // 11. Sync everything to GitHub
+      await syncMLDataToGitHub();
+      console.log("[BTS-ML] Learning run complete and synced to GitHub");
+    } catch (e: any) {
+      console.error("[BTS-ML] Learning run failed:", e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts-picks  — Beat‑the‑Streak daily hitter recommendations
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/bts-picks", async (req, res) => {
+    try {
+      // Always derive today's date in Central Time (CT) so that after midnight
+      // UTC but before midnight CT we don't accidentally serve tomorrow's slate.
+      const ctNowForDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctDateStr = [
+        ctNowForDate.getFullYear(),
+        String(ctNowForDate.getMonth() + 1).padStart(2, "0"),
+        String(ctNowForDate.getDate()).padStart(2, "0"),
+      ].join("-");
+      const targetDate = (req.query.date as string) || ctDateStr;
+
+      // ── 8 AM CT gate: don't populate picks before 8:00 AM Central ─────
+      // Only enforce the gate when the date isn't being overridden by query param.
+      if (!req.query.date) {
+        const ctGateHour = ctNowForDate.getHours();
+        const ctGateMin  = ctNowForDate.getMinutes();
+        if (ctGateHour < 8) {
+          return res.json({
+            date: targetDate,
+            slate: [],
+            picks: [],
+            todayRecord:  { wins: 0, losses: 0, pending: 0, winPct: null },
+            seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: null },
+            message: `BTS picks are available starting at 8:00 AM CT. Check back in ${8 - ctGateHour - (ctGateMin > 0 ? 1 : 0)}h ${ctGateMin > 0 ? 60 - ctGateMin : 0}m.`,
+          });
+        }
+      }
+
+      // ── 1. MLB Schedule (probable pitchers, lineups, venue) ──────────
+      const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${targetDate}&hydrate=probablePitcher,lineups,linescore,venue,weather,team`;
+      const schedResp = await axios.get(scheduleUrl);
+      const schedDates = schedResp.data?.dates ?? [];
+      const games: any[] = schedDates[0]?.games ?? [];
+      console.log(`[BTS] date=${targetDate} games=${games.length} ctHour=${ctNowForDate.getHours()}:${ctNowForDate.getMinutes()}`);
+
+      if (!games.length) {
+        return res.json({ date: targetDate, slate: [], picks: [], error: "No MLB games scheduled" });
+      }
+
+      // ── 2. ESPN odds → game totals per matchup ──────────────────────
+      // ESPN scoreboard gives us event IDs; then fetch odds per event
+      const espnBoard = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${targetDate.replace(/-/g, "")}`);
+      const espnEvents: any[] = espnBoard.data?.events ?? [];
+      const espnOddsMap: Record<string, number> = {}; // "AWAY_HOME" -> total
+      for (const ev of espnEvents) {
+        try {
+          const comp = ev.competitions?.[0];
+          const eventId = comp?.id;
+          if (!eventId) continue;
+          const oddsResp = await axios.get(
+            `https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/events/${eventId}/competitions/${eventId}/odds`
+          );
+          const oddsItems: any[] = oddsResp.data?.items ?? [];
+          const total = oddsItems[0]?.overUnder;
+          if (total) {
+            const teams = comp.competitors?.map((c: any) => c.team?.abbreviation?.toUpperCase()) ?? [];
+            const key = teams.sort().join("_");
+            espnOddsMap[key] = parseFloat(total);
+          }
+        } catch { /* skip */ }
+      }
+
+      // ── Shared CSV parser (handles quoted fields containing commas) ──
+      function parseCSVLine(line: string): string[] {
+        const result: string[] = [];
+        let cur = "", inQuote = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { inQuote = !inQuote; }
+          else if (ch === "," && !inQuote) { result.push(cur.trim()); cur = ""; }
+          else { cur += ch; }
+        }
+        result.push(cur.trim());
+        return result;
+      }
+
+      // ── 3. Baseball Savant Statcast leaderboard (expanded: xBA, xwOBA, HH%, barrel%, EV50, LA, BABIP) ──
+      let savantMap: Record<string, any> = {}; // keyed by mlbam player_id
+      try {
+        const savantResp = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,exit_velocity_avg,hard_hit_percent,barrel_batted_rate,launch_angle_avg,babip,xbabip,bb_percent,k_percent,whiff_percent,z_contact_percent,oz_contact_percent,sprint_speed&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const csvText: string = savantResp.data;
+        const lines = csvText.replace(/^\uFEFF/, "").split("\n");
+        const header = parseCSVLine(lines[0]); // quoted-field-aware split
+        // Find player_id column index dynamically (robust against column order changes)
+        const pidColIdx = header.indexOf("player_id");
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const row = parseCSVLine(line);
+          if (row.length < 4) continue;
+          const obj: any = {};
+          header.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pidColIdx >= 0 ? (row[pidColIdx] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap[pid] = obj;
+        }
+      } catch { /* savant unavailable */ }
+
+      // ── 3b. Baseball Savant pitcher leaderboard (expanded: xBA, xwOBA, HH%, barrel%, GB%, FB%) ──
+      let pitcherSavantMap: Record<string, any> = {}; // keyed by mlbam player_id
+      try {
+        const pSavantResp = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,exit_velocity_avg,hard_hit_percent,barrel_batted_rate,groundballs_percent,flyballs_percent,bb_percent,k_percent,whiff_percent,p_swinging_strike_perc&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const pCsvText: string = pSavantResp.data;
+        const pLines = pCsvText.replace(/^\uFEFF/, "").split("\n");
+        const pHeader = parseCSVLine(pLines[0]); // quoted-field-aware split
+        const pPidColIdx = pHeader.indexOf("player_id");
+        for (let i = 1; i < pLines.length; i++) {
+          const line = pLines[i].trim();
+          if (!line) continue;
+          const row = parseCSVLine(line);
+          if (row.length < 4) continue;
+          const obj: any = {};
+          pHeader.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pPidColIdx >= 0 ? (row[pPidColIdx] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) pitcherSavantMap[pid] = obj;
+        }
+      } catch { /* pitcher savant unavailable */ }
+
+      // ── 3b2. Statcast rolling 15d window (batter) — xBA/xwOBA/HH%/barrel% ──
+      // Captures recent hot/cold streaks that season averages obscure.
+      // Blended with season in scoreHitter: 40% rolling-15d + 60% season
+      let savantMap15d: Record<string, any> = {};
+      try {
+        const now15d  = new Date(); now15d.setDate(now15d.getDate() - 15);
+        const s15d    = now15d.toISOString().slice(0, 10);
+        const e15d    = new Date().toISOString().slice(0, 10);
+        const r15 = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&startDate=${s15d}&endDate=${e15d}&selections=xba,xwoba,hard_hit_percent,barrel_batted_rate,whiff_percent,z_contact_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const lines15 = (r15.data as string).replace(/^\uFEFF/, "").split("\n");
+        const hdr15   = parseCSVLine(lines15[0]);
+        const pid15   = hdr15.indexOf("player_id");
+        for (let i = 1; i < lines15.length; i++) {
+          const line = lines15[i].trim(); if (!line) continue;
+          const row  = parseCSVLine(line); if (row.length < 4) continue;
+          const obj: any = {}; hdr15.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pid15 >= 0 ? (row[pid15] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap15d[pid] = obj;
+        }
+      } catch { /* rolling 15d unavailable — fall back to season */ }
+
+      // ── 3b3. Statcast rolling 30d window (batter) ──
+      let savantMap30d: Record<string, any> = {};
+      try {
+        const now30d  = new Date(); now30d.setDate(now30d.getDate() - 30);
+        const s30d    = now30d.toISOString().slice(0, 10);
+        const e30d    = new Date().toISOString().slice(0, 10);
+        const r30 = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=batter&filter=&sort=4&sortDir=desc&min=1&startDate=${s30d}&endDate=${e30d}&selections=xba,xwoba,hard_hit_percent,barrel_batted_rate,whiff_percent,z_contact_percent&csv=true`,
+          { headers: { "Accept": "text/csv" } }
+        );
+        const lines30 = (r30.data as string).replace(/^\uFEFF/, "").split("\n");
+        const hdr30   = parseCSVLine(lines30[0]);
+        const pid30   = hdr30.indexOf("player_id");
+        for (let i = 1; i < lines30.length; i++) {
+          const line = lines30[i].trim(); if (!line) continue;
+          const row  = parseCSVLine(line); if (row.length < 4) continue;
+          const obj: any = {}; hdr30.forEach((h, idx) => { obj[h] = row[idx] ?? ""; });
+          const pid = pid30 >= 0 ? (row[pid30] ?? "").trim() : "";
+          if (pid && !isNaN(Number(pid))) savantMap30d[pid] = obj;
+        }
+      } catch { /* rolling 30d unavailable — fall back to season */ }
+
+      // ── 3c. Helper: fetch pitcher season stats + last-5 starts ERA ──
+      const pitcherSeasonCache: Record<number, any> = {};
+      async function getPitcherSeasonStats(pitcherId: number) {
+        if (pitcherSeasonCache[pitcherId]) return pitcherSeasonCache[pitcherId];
+        try {
+          const [rSeason, rLog] = await Promise.allSettled([
+            axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season&group=pitching&season=2026`),
+            axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=gameLog&group=pitching&season=2026&limit=5`),
+          ]);
+          const stat   = rSeason.status === "fulfilled" ? (rSeason.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}) : {};
+          const splits = rLog.status === "fulfilled"    ? (rLog.value.data?.stats?.[0]?.splits ?? [])              : [];
+
+          const ip    = parseFloat(stat.inningsPitched ?? "0") || 0;
+          const er    = parseInt(stat.earnedRuns ?? "0") || 0;
+          const so    = parseInt(stat.strikeOuts ?? "0") || 0;
+          const bb    = parseInt(stat.baseOnBalls ?? "0") || 0;
+          const hits  = parseInt(stat.hits ?? "0") || 0;
+          const era   = ip > 0 ? parseFloat(((er * 9) / ip).toFixed(2)) : null;
+          const k9    = ip > 0 ? parseFloat(((so * 9) / ip).toFixed(1)) : null;
+          const whip  = ip > 0 ? parseFloat(((bb + hits) / ip).toFixed(2)) : null;
+
+          // Last-5 starts ERA
+          let last5ERA: number | null = null;
+          // Last-3 starts: IP trend + ERA (Phase 2) — used for leash probability
+          let last3ERA: number | null = null;
+          let last3AvgIP: number | null = null;   // avg innings per start last 3
+          let last3H9: number | null = null;       // hits/9 last 3 starts (hittability)
+          let leashProbability: number = 0.85;     // prob pitcher goes 5+ IP (default starter)
+          if (splits.length >= 2) {
+            const last5 = splits.slice(0, 5);
+            const l5er  = last5.reduce((s: number, g: any) => s + (parseInt(g.stat?.earnedRuns ?? "0") || 0), 0);
+            const l5ip  = last5.reduce((s: number, g: any) => s + (parseFloat(g.stat?.inningsPitched ?? "0") || 0), 0);
+            last5ERA = l5ip > 0 ? parseFloat(((l5er * 9) / l5ip).toFixed(2)) : null;
+
+            // ── Phase 2: last-3 starts deeper analysis ───────────────────
+            const last3 = splits.slice(0, 3);
+            const l3er  = last3.reduce((s: number, g: any) => s + (parseInt(g.stat?.earnedRuns ?? "0") || 0), 0);
+            const l3ip  = last3.reduce((s: number, g: any) => s + (parseFloat(g.stat?.inningsPitched ?? "0") || 0), 0);
+            const l3h   = last3.reduce((s: number, g: any) => s + (parseInt(g.stat?.hits ?? "0") || 0), 0);
+            last3ERA    = l3ip > 0 ? parseFloat(((l3er * 9) / l3ip).toFixed(2)) : null;
+            last3AvgIP  = last3.length > 0 ? parseFloat((l3ip / last3.length).toFixed(1)) : null;
+            last3H9     = l3ip > 0 ? parseFloat(((l3h * 9) / l3ip).toFixed(1)) : null;
+
+            // ── Leash probability: likelihood pitcher goes 5+ IP ────────
+            // Key signals: recent avg IP, recent ERA trend, total season IP
+            // Low leash = more bullpen exposure = more PA opportunities for batters
+            if (last3AvgIP !== null) {
+              if (last3AvgIP >= 6.0) leashProbability = 0.92;        // ace-level workload
+              else if (last3AvgIP >= 5.0) leashProbability = 0.80;   // average
+              else if (last3AvgIP >= 4.0) leashProbability = 0.60;   // short leash
+              else leashProbability = 0.40;                           // likely bullpen game soon
+            }
+            // Adjust for recent ERA trend — struggling starters get shorter leash
+            if (last3ERA !== null && last3ERA > 5.5) leashProbability -= 0.15;
+            else if (last3ERA !== null && last3ERA < 3.0) leashProbability += 0.08;
+            leashProbability = Math.max(0.20, Math.min(0.95, leashProbability));
+          }
+
+          const result = { era, k9, whip, ip, last5ERA, last3ERA, last3AvgIP, last3H9, leashProbability };
+          pitcherSeasonCache[pitcherId] = result;
+          return result;
+        } catch { return { era: null, k9: null, whip: null, ip: 0, last5ERA: null, last3ERA: null, last3AvgIP: null, last3H9: null, leashProbability: 0.85 }; }
+      }
+
+      // ── 4. Helper: fetch pitcher vs LHB/RHB splits (BA + xwOBA + PA count) ──
+      async function getPitcherSplits(pitcherId: number) {
+        try {
+          const r = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=statSplits&group=pitching&season=2026&sitCodes=vl,vr`
+          );
+          const result: Record<string, any> = {
+            vsLeft: 0.250, vsRight: 0.250,
+            vsLeftPA: 0,   vsRightPA: 0,
+            vsLeftXwoba: null, vsRightXwoba: null,
+          };
+          for (const stat of r.data?.stats ?? []) {
+            for (const sp of stat?.splits ?? []) {
+              const desc = sp.split?.description ?? "";
+              const avg  = parseFloat(sp.stat?.avg ?? "0");
+              const pa   = parseInt(sp.stat?.plateAppearances ?? sp.stat?.atBats ?? "0");
+              if (pa < 5) continue; // too few PA — unreliable
+              if (desc.includes("Left"))  { result.vsLeft  = avg; result.vsLeftPA  = pa; }
+              if (desc.includes("Right")) { result.vsRight = avg; result.vsRightPA = pa; }
+            }
+          }
+          return result;
+        } catch { return { vsLeft: 0.250, vsRight: 0.250, vsLeftPA: 0, vsRightPA: 0, vsLeftXwoba: null, vsRightXwoba: null }; }
+      }
+
+      // ── 4b2. Helper: pitch arsenal matchup (Phase 2) ──────────────────
+      // Fetches pitcher's primary pitch types + batter wOBA vs each.
+      // Pitch types: FF (4-seam), SL (slider), CH (changeup), CU (curve), SI (sinker), FC (cutter)
+      // Returns a weighted "pitchTypeMatchupScore" 0-1 (higher = batter-favorable matchup)
+      const pitchArsenalCache: Record<string, any> = {};
+      async function getPitchArsenalMatchup(pitcherId: number, batterId: number, bats: string): Promise<number | null> {
+        const cacheKey = `${pitcherId}_${batterId}_${bats}`;
+        if (pitchArsenalCache[cacheKey] !== undefined) return pitchArsenalCache[cacheKey];
+        try {
+          // Step 1: Get pitcher arsenal (pitch types + usage %)
+          const pitchTypes = ["FF", "SL", "CH", "CU", "SI", "FC"];
+          const arsenalResults: Array<{ type: string; usage: number; pitcherWoba: number }> = [];
+
+          for (const pt of pitchTypes) {
+            try {
+              const r = await axios.get(
+                `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&pitchType=${pt}&year=2026&team=&min=1&sort=run_value_per_100&sortDir=desc&csv=true`,
+                { headers: { "Accept": "text/csv" }, timeout: 5000 }
+              );
+              const lines = (r.data as string).replace(/^\uFEFF/, "").split("\n");
+              const hdr   = parseCSVLine(lines[0]);
+              const pidIdx  = hdr.indexOf("player_id");
+              const usageIdx = hdr.indexOf("pitch_usage");
+              const wobaIdx  = hdr.indexOf("woba");
+              if (pidIdx < 0) continue;
+              for (let i = 1; i < lines.length; i++) {
+                const ln = lines[i].trim(); if (!ln) continue;
+                const row = parseCSVLine(ln);
+                const pid = (row[pidIdx] ?? "").trim();
+                if (pid !== String(pitcherId)) continue;
+                const usage = parseFloat(row[usageIdx] ?? "0") || 0;
+                const woba  = parseFloat(row[wobaIdx]  ?? "0") || 0;
+                if (usage > 5) arsenalResults.push({ type: pt, usage, pitcherWoba: woba });
+                break;
+              }
+            } catch { /* skip this pitch type */ }
+          }
+
+          if (!arsenalResults.length) { pitchArsenalCache[cacheKey] = null; return null; }
+
+          // Step 2: Get batter wOBA vs each pitch type
+          const totalUsage = arsenalResults.reduce((s, a) => s + a.usage, 0) || 100;
+          let weightedScore = 0;
+          let weightSum = 0;
+
+          for (const arsenal of arsenalResults) {
+            const weight = arsenal.usage / totalUsage;
+            try {
+              const rb = await axios.get(
+                `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=batter&pitchType=${arsenal.type}&year=2026&team=&min=1&sort=woba&sortDir=desc&csv=true`,
+                { headers: { "Accept": "text/csv" } }
+              );
+              const bLines = (rb.data as string).replace(/^\uFEFF/, "").split("\n");
+              const bHdr   = parseCSVLine(bLines[0]);
+              const bPidIdx  = bHdr.indexOf("player_id");
+              const bWobaIdx = bHdr.indexOf("woba");
+              if (bPidIdx < 0) { weightedScore += weight * 0.320; weightSum += weight; continue; }
+              let batterWoba: number | null = null;
+              for (let i = 1; i < bLines.length; i++) {
+                const ln = bLines[i].trim(); if (!ln) continue;
+                const row = parseCSVLine(ln);
+                const pid = (row[bPidIdx] ?? "").trim();
+                if (pid !== String(batterId)) continue;
+                batterWoba = parseFloat(row[bWobaIdx] ?? "0") || null;
+                break;
+              }
+              // Score: batter wOBA vs this pitch type, norm 0.200-0.500
+              const matchupScore = batterWoba !== null
+                ? Math.max(0, Math.min(1, (batterWoba - 0.200) / 0.300))
+                : 0.40; // neutral fallback
+              weightedScore += weight * matchupScore;
+              weightSum     += weight;
+            } catch { weightedScore += weight * 0.40; weightSum += weight; }
+          }
+
+          const finalScore = weightSum > 0 ? weightedScore / weightSum : null;
+          pitchArsenalCache[cacheKey] = finalScore;
+          return finalScore;
+        } catch { pitchArsenalCache[cacheKey] = null; return null; }
+      }
+
+      // ── 4b. Helper: Batter vs Pitcher career history ────────────────
+      const bvpCache: Record<string, any> = {};
+      async function getBvP(hitterId: number, pitcherId: number): Promise<{ avg: number | null; hits: number; ab: number; signal: "strong" | "weak" | "none" }> {
+        const cacheKey = `${hitterId}_${pitcherId}`;
+        if (bvpCache[cacheKey]) return bvpCache[cacheKey];
+        try {
+          const r = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=vsPlayer&group=hitting&season=2026&opposingPlayerId=${pitcherId}`
+          );
+          // Try career splits too
+          const rCareer = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=vsPlayerTotal&group=hitting&opposingPlayerId=${pitcherId}`
+          ).catch(() => null);
+
+          const seasonSplit = r.data?.stats?.[0]?.splits?.[0]?.stat;
+          const careerSplit = rCareer?.data?.stats?.[0]?.splits?.[0]?.stat;
+
+          // Prefer season if >=5 AB, else career if >=10 AB, else null
+          let hits = 0, ab = 0, avg: number | null = null;
+          if (seasonSplit && parseInt(seasonSplit.atBats ?? "0") >= 5) {
+            ab   = parseInt(seasonSplit.atBats ?? "0");
+            hits = parseInt(seasonSplit.hits ?? "0");
+            avg  = parseFloat(seasonSplit.avg ?? "0") || null;
+          } else if (careerSplit && parseInt(careerSplit.atBats ?? "0") >= 10) {
+            ab   = parseInt(careerSplit.atBats ?? "0");
+            hits = parseInt(careerSplit.hits ?? "0");
+            avg  = parseFloat(careerSplit.avg ?? "0") || null;
+          }
+
+          // Signal: strong if avg >=.300 w/ >=20 AB (meaningful sample), weak if avg <.150 w/ >=20 AB, otherwise none
+          // Raised threshold from 8 AB to 20 AB to reduce noise from small samples
+          const signal: "strong" | "weak" | "none" =
+            (ab >= 20 && avg !== null && avg >= 0.300) ? "strong" :
+            (ab >= 20 && avg !== null && avg <  0.150) ? "weak"   : "none";
+
+          const result = { avg, hits, ab, signal };
+          bvpCache[cacheKey] = result;
+          return result;
+        } catch { return { avg: null, hits: 0, ab: 0, signal: "none" }; }
+      }
+
+      // ── 5. Helper: fetch hitter stats (30d, 14d, 7d, season, gamelog) ─
+      async function getHitterStats(hitterId: number) {
+        const today = new Date();
+        const fmt = (d: Date) => d.toISOString().slice(0, 10);
+        const d30 = new Date(today); d30.setDate(today.getDate() - 30);
+        const d14 = new Date(today); d14.setDate(today.getDate() - 14);
+        const d7  = new Date(today); d7.setDate(today.getDate()  - 7);
+
+        const [r30, r14, r7, rSeason, rLog, rHASplit] = await Promise.allSettled([
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d30)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d14)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${fmt(d7)}&endDate=${fmt(today)}`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=season&group=hitting&season=2026`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=gameLog&group=hitting&season=2026&limit=14`),
+          axios.get(`https://statsapi.mlb.com/api/v1/people/${hitterId}/stats?stats=statSplits&group=hitting&season=2026&sitCodes=h,a`),
+        ]);
+
+        function extractStat(result: PromiseSettledResult<any>) {
+          if (result.status !== "fulfilled") return {};
+          return result.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {};
+        }
+        function extractSplits(result: PromiseSettledResult<any>): any[] {
+          if (result.status !== "fulfilled") return [];
+          return result.value.data?.stats?.[0]?.splits ?? [];
+        }
+
+        const s30     = extractStat(r30);
+        const s14     = extractStat(r14);
+        const s7      = extractStat(r7);
+        const sSeason = extractStat(rSeason);
+        const gamelog = extractSplits(rLog);
+
+        // Home / away splits (min 30 PA to trust sample)
+        let avgHome: number | null = null;
+        let avgAway: number | null = null;
+        if (rHASplit.status === "fulfilled") {
+          for (const sg of rHASplit.value.data?.stats ?? []) {
+            for (const sp of sg?.splits ?? []) {
+              const desc = (sp.split?.description ?? "").toLowerCase();
+              const pa   = parseInt(sp.stat?.plateAppearances ?? sp.stat?.atBats ?? "0") || 0;
+              if (pa < 30) continue;
+              const avg = parseFloat(sp.stat?.avg ?? "0") || null;
+              if (desc.includes("home"))  avgHome = avg;
+              if (desc.includes("away"))  avgAway = avg;
+            }
+          }
+        }
+
+        // Games with hit % (last 14 games from game log)
+        const last14Games = gamelog.slice(0, 14);
+        const ghp14 = last14Games.length > 0
+          ? last14Games.filter((g: any) => parseInt(g.stat?.hits ?? "0") > 0).length / last14Games.length
+          : 0.5;
+
+        // BABIP luck flag: if recent BABIP >> xBABIP by 50+ pts, flag as luck-inflated
+        const babip14 = (() => {
+          const h14 = last14Games.reduce((s: number, g: any) => s + (parseInt(g.stat?.hits ?? "0")), 0);
+          const ab14 = last14Games.reduce((s: number, g: any) => s + (parseInt(g.stat?.atBats ?? "0")), 0);
+          const hr14 = last14Games.reduce((s: number, g: any) => s + (parseInt(g.stat?.homeRuns ?? "0")), 0);
+          const k14  = last14Games.reduce((s: number, g: any) => s + (parseInt(g.stat?.strikeOuts ?? "0")), 0);
+          const denom = ab14 - k14 - hr14;
+          return denom > 0 ? (h14 - hr14) / denom : null;
+        })();
+
+        // Expected PA per game based on lineup slot (approximation)
+        // Top of order gets ~4.5 PA, bottom ~3.3 PA
+        const paPerGame = 4.5; // default; overridden in buildCandidates by slot
+
+        return {
+          avg30: parseFloat(s30.avg ?? "0") || 0,
+          avg14: parseFloat(s14.avg ?? "0") || 0,
+          avg7:  parseFloat(s7.avg  ?? "0") || 0,
+          avgSeason: parseFloat(sSeason.avg ?? "0") || 0,
+          babip14,
+          kPct: parseFloat(sSeason.strikePercentage ?? "0") / 100 || 0.20,
+          bbPct: parseFloat(sSeason.walkPercentage ?? "0") / 100 || 0.08,
+          obp: parseFloat(sSeason.obp ?? "0") || 0,
+          slg: parseFloat(sSeason.slg ?? "0") || 0,
+          ghp14,
+          avgHome,
+          avgAway,
+          gamelog: last14Games.slice(0, 5).map((g: any) => ({
+            date: g.date,
+            hits: parseInt(g.stat?.hits ?? "0"),
+            ab:   parseInt(g.stat?.atBats ?? "0"),
+          })),
+        };
+      }
+
+      // ── 6. Score a single hitter ────────────────────────────────────
+      // ── Park factor table (singles + hits per PA, park-adjusted) ────────
+      // Values = hit factor relative to league average (1.00).
+      const PARK_HIT_FACTORS: Record<string, number> = {
+        "Coors Field": 1.18,          "Great American Ball Park": 1.10,
+        "Minute Maid Park": 1.07,     "Globe Life Field": 1.06,
+        "American Family Field": 1.06,"Fenway Park": 1.05,
+        "Camden Yards": 1.04,         "Kauffman Stadium": 1.04,
+        "Target Field": 1.03,         "Wrigley Field": 1.03,
+        "Yankee Stadium": 1.02,       "Truist Park": 1.01,
+        "PNC Park": 0.99,             "Progressive Field": 0.98,
+        "Busch Stadium": 0.97,        "Citi Field": 0.97,
+        "Dodger Stadium": 0.96,       "T-Mobile Park": 0.96,
+        "Tropicana Field": 0.96,      "RingCentral Coliseum": 0.96,
+        "loanDepot park": 0.95,       "Marlins Park": 0.95,
+        "Oracle Park": 0.94,          "Petco Park": 0.93,
+      };
+
+      // ── 6. Score a single hitter (v3 — high-quality signal model) ──────────────
+      // Philosophy: fewer high-quality variables > many weak ones.
+      // Focus areas: Opportunity, Contact Ability, Matchup, Environment, Price.
+      // Weights sum to 1.00:
+      //   Form 14% | Contact Quality 16% | Hard Contact 10% | Matchup 26%
+      //   Opportunity 18% | BvP 8% | Stability Anchor 8%
+      function scoreHitter(
+        hitter: any,
+        pitcherSplits: any,
+        savant: any,         // season Statcast
+        savant15d: any,      // Phase 2: rolling 15d Statcast
+        savant30d: any,      // Phase 2: rolling 30d Statcast
+        pitcherSavant: any,
+        total: number,
+        weather: any,
+        venue: string,
+        bvp: { avg: number | null; ab: number; signal: string },
+        lineupSlot: number,
+        oppPitcherSeasonStats: any,
+        isHomeGame: boolean,
+        pitchTypeMatchup: number | null, // Phase 2: weighted wOBA vs pitcher arsenal (0-1)
+      ): number {
+        const bats = hitter.bats;
+        const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
+        const pitcherPA         = bats === "L" ? (pitcherSplits.vsLeftPA || 0)    : (pitcherSplits.vsRightPA || 0);
+        const norm = (v: number, lo: number, hi: number) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+
+        // ── Statcast confidence gate (volume) ──
+        const battedBalls  = parseInt(savant?.pa ?? savant?.ab_count ?? "0") || 0;
+        const statcastConf = battedBalls >= 50 ? 1.0 : battedBalls >= 20 ? 0.70 : 0.40;
+
+        // ══ COMPONENT 1: Recent Form (13%) ══
+        // BABIP luck regression — if 14d BABIP far exceeds xBABIP, regress toward true talent
+        const babip14 = hitter.babip14 ?? null;
+        const xbabipV       = parseFloat(savant?.xbabip ?? "0") || null;
+        const xbaForBabip   = parseFloat(savant?.xba    ?? "0") || hitter.avgSeason || 0.250;
+        let adj14 = hitter.avg14 ?? 0;
+        if (babip14 !== null && xbabipV !== null && babip14 - xbabipV > 0.055) {
+          adj14 = adj14 * 0.60 + xbaForBabip * 0.40; // regress 40% toward xBA
+        }
+        const form = (
+          norm(adj14,               0.150, 0.400) * 0.40 +
+          norm(hitter.avg30 ?? 0,   0.150, 0.380) * 0.30 +
+          norm(hitter.avg7  ?? 0,   0.150, 0.380) * 0.15 +
+          norm(hitter.ghp14 ?? 0.5, 0.300, 0.900) * 0.15
+        );
+
+        // ══ COMPONENT 2: Contact Quality / Volatility Control (19%) ══
+        // Phase 2: blend season + 30d + 15d Statcast for xBA/xwOBA/HH%/zCon
+        // Weights: season 50%, last-30d 30%, last-15d 20% (hot streak signal)
+        const kPct  = hitter.kPct  ?? 0.22;
+        const bbPct = hitter.bbPct ?? 0.08;
+        // Blended xBA
+        const xbaSeason = parseFloat(savant?.xba   ?? "0") || null;
+        const xba30d    = parseFloat(savant30d?.xba ?? "0") || null;
+        const xba15d    = parseFloat(savant15d?.xba ?? "0") || null;
+        const xbaV = xbaSeason !== null
+          ? (xbaSeason * 0.50 + (xba30d ?? xbaSeason) * 0.30 + (xba15d ?? xbaSeason) * 0.20)
+          : hitter.avgSeason || 0.250;
+        // Blended xwOBA
+        const xwobaSeason = parseFloat(savant?.xwoba   ?? "0") || null;
+        const xwoba30d    = parseFloat(savant30d?.xwoba ?? "0") || null;
+        const xwoba15d    = parseFloat(savant15d?.xwoba ?? "0") || null;
+        const xwobaV = xwobaSeason !== null
+          ? (xwobaSeason * 0.50 + (xwoba30d ?? xwobaSeason) * 0.30 + (xwoba15d ?? xwobaSeason) * 0.20)
+          : 0.320;
+        // Blended HH%
+        const hhSeason = parseFloat(savant?.hard_hit_percent   ?? "0") / 100 || null;
+        const hh30d    = parseFloat(savant30d?.hard_hit_percent ?? "0") / 100 || null;
+        const hh15d    = parseFloat(savant15d?.hard_hit_percent ?? "0") / 100 || null;
+        const hhBlended = hhSeason !== null
+          ? (hhSeason * 0.50 + (hh30d ?? hhSeason) * 0.30 + (hh15d ?? hhSeason) * 0.20)
+          : 0.35;
+        // Blended zone contact
+        const zConSeason = parseFloat(savant?.z_contact_percent   ?? "0") / 100 || null;
+        const zCon30d    = parseFloat(savant30d?.z_contact_percent ?? "0") / 100 || null;
+        const zCon15d    = parseFloat(savant15d?.z_contact_percent ?? "0") / 100 || null;
+        const zConPct = zConSeason !== null
+          ? (zConSeason * 0.50 + (zCon30d ?? zConSeason) * 0.30 + (zCon15d ?? zConSeason) * 0.20)
+          : 0.82;
+        const whiffPct= parseFloat(savant?.whiff_percent ?? "0") / 100 || 0.25;
+        // Volatility penalty: high K% + high whiff = boom/bust = fewer singles
+        const volatilityPenalty = Math.max(0, (kPct - 0.22) * 1.60 + (whiffPct - 0.28) * 1.10);
+        const contactRaw = (
+          norm(xbaV,    0.200, 0.380) * 0.28 +
+          norm(xwobaV,  0.280, 0.430) * 0.25 +
+          norm(zConPct, 0.700, 0.950) * 0.24 +
+          norm(1-kPct,  0.630, 0.900) * 0.15 +
+          norm(bbPct,   0.040, 0.180) * 0.08
+        );
+        const contact = Math.max(0.20,
+          contactRaw * statcastConf + (1 - statcastConf) * 0.45 - volatilityPenalty * 0.10
+        );
+
+        // ══ COMPONENT 3: Hard Contact & Exit Velocity Profile (10%) ══
+        // Phase 2: use blended hhBlended from above
+        const barrelPct = parseFloat(savant?.barrel_batted_rate ?? "0") / 100 || 0.08;
+        const laRaw     = parseFloat(savant?.launch_angle_avg   ?? "0") || 12;
+        const laNorm = (laRaw >= 8 && laRaw <= 22) ? 1.0
+                     : (laRaw >= 4 && laRaw <= 27) ? 0.75 : 0.50;
+        const hardContactRaw = (
+          norm(hhBlended, 0.25, 0.55) * 0.50 +
+          norm(barrelPct, 0.04, 0.18) * 0.25 +
+          laNorm                      * 0.25
+        );
+        const hardContact = hardContactRaw * statcastConf + (1 - statcastConf) * 0.45;
+
+        // ══ COMPONENT 4: Pitcher Matchup + Environment (24%) ══
+        // Phase 2 upgrades:
+        //  (a) Pitch-type matchup score blended into hittability (30% weight)
+        //  (b) Last-3 starts replaces last-5 for pitcher form
+        //  (c) Leash probability adjusts opportunity (handled in opp. component)
+        //  (d) Park × weather MULTIPLICATIVE interaction (not additive)
+        const pitcherXwoba = parseFloat(pitcherSavant?.xwoba              ?? "0") || null;
+        const pitcherGbPct = parseFloat(pitcherSavant?.groundballs_percent ?? "0") / 100 || 0.43;
+        const pitcherFbPct = parseFloat(pitcherSavant?.flyballs_percent    ?? "0") / 100 || 0.35;
+        const pitcherBbPct = parseFloat(pitcherSavant?.bb_percent          ?? "0") / 100 || 0.08;
+        const pitcherSwStr = parseFloat(pitcherSavant?.p_swinging_strike_perc ?? "0") / 100 || 0.10;
+        const pitcherKPct  = parseFloat(pitcherSavant?.k_percent           ?? "0") / 100 || 0.22;
+        // Platoon BA fallback
+        const platoonBA = pitcherPA >= 20
+          ? pitcherAvgAllowed
+          : pitcherPA > 0
+            ? pitcherAvgAllowed * (pitcherPA / 20) + 0.250 * (1 - pitcherPA / 20)
+            : 0.250;
+        const platoon = norm(platoonBA, 0.220, 0.340);
+        // Pitcher hittability: xwOBA + pitch-type matchup blend
+        // Phase 2: if pitch-type matchup available, weight it 30% alongside xwOBA 70%
+        const pitcherHittabilityBase = pitcherXwoba !== null
+          ? norm(pitcherXwoba, 0.280, 0.430)
+          : platoon;
+        const pitcherHittability = pitchTypeMatchup !== null
+          ? pitcherHittabilityBase * 0.70 + pitchTypeMatchup * 0.30
+          : pitcherHittabilityBase;
+        // Phase 2: pitcher form uses last-3 ERA (more recent signal) + last-5 fallback
+        const last3ERA    = oppPitcherSeasonStats?.last3ERA  ?? null;
+        const last5ERA    = oppPitcherSeasonStats?.last5ERA  ?? null;
+        const last3H9     = oppPitcherSeasonStats?.last3H9   ?? null;
+        const pitcherWHIP = oppPitcherSeasonStats?.whip      ?? null;
+        const pitcherFormScore = (() => {
+          let s = 0.50;
+          // Phase 2: prefer last-3 ERA over last-5 (most recent 3 starts = better signal)
+          const recentERA = last3ERA ?? last5ERA;
+          if (recentERA    !== null) s += (norm(recentERA, 3.00, 7.00) - 0.50) * 0.45;
+          if (pitcherWHIP  !== null) s += (norm(2.0 - pitcherWHIP, 0.50, 1.50) - 0.50) * 0.15;
+          // Phase 2: last-3 hits/9 gives direct hittability signal
+          if (last3H9      !== null) s += (norm(last3H9, 5.0, 12.0) - 0.50) * 0.15;
+          s -= norm(pitcherSwStr, 0.07, 0.18) * 0.15;
+          s -= norm(pitcherKPct,  0.18, 0.35) * 0.10;
+          s += norm(pitcherBbPct, 0.06, 0.14) * 0.05;
+          return Math.max(0, Math.min(1, s));
+        })();
+        // Game total (implied scoring environment)
+        const totalBoost = norm(total, 7.5, 12.0);
+        // ── Phase 2: Park × weather MULTIPLICATIVE interaction ──────────
+        // Previously: additive (park + weather as separate additive terms)
+        // Now: parkFactor scales the weather effect (hot day in Coors >> hot day in Petco)
+        const parkFactor    = PARK_HIT_FACTORS[venue] ?? 1.00;
+        const parkBoostRaw  = norm(parkFactor, 0.90, 1.22);          // 0-1 park friendliness
+        const tempF         = weather?.tempF   ?? 70;
+        const windMph       = weather?.windMph ?? 5;
+        const windOut       = weather?.windOut ?? false;
+        const tempMult = 1.0 + Math.max(0, (tempF - 60) / 80) * 0.12;
+        const windMult = windOut && windMph >= 15 ? 1.12
+                       : windOut && windMph >= 10 ? 1.08
+                       : windOut && windMph >= 6  ? 1.04
+                       : weather?.windIn && windMph >= 15 ? 0.88
+                       : weather?.windIn && windMph >= 10 ? 0.92
+                       : 1.00;
+        // Rain penalty: reduces ball-in-play opportunities
+        const precipPenalty = (weather?.precipInches ?? 0) >= 0.10 ? 0.88
+                            : (weather?.precipInches ?? 0) >= 0.02 ? 0.94
+                            : 1.00;
+        // Dome: ignore all weather effects
+        const domeNeutral = (weather?.isDome ?? false) ? 1.0 : 1.0; // always 1, but explicit
+        // Multiplicative: park × temp × wind × precip
+        const envRaw  = parkBoostRaw * tempMult * windMult * precipPenalty;
+        const envScore = Math.min(1.0, Math.max(0.1, envRaw));
+        const matchup = (
+          pitcherHittability * 0.38 +
+          pitcherFormScore   * 0.28 +
+          totalBoost         * 0.20 +
+          envScore           * 0.14    // park × weather combined
+        );
+
+        // ══ COMPONENT 5: Opportunity / Lineup Slot + EPA (20%) ══
+        // Phase 2: adds leash probability — low leash = more bullpen innings = PA opportunity
+        // PA tiers: 1-3 strong, 4-5 moderate, 6-7 mild downgrade, 8-9 downgrade
+        const impliedRuns  = total / 2;
+        const impliedBoost = norm(impliedRuns, 3.5, 6.5) * 0.08;
+        const rawSlotScore = lineupSlot <= 3 ? 0.88
+                           : lineupSlot <= 5 ? 0.66
+                           : lineupSlot <= 7 ? 0.44
+                           : 0.28;
+        // EPA gate: projected PA < 3.8 gets a downgrade flag
+        const projectedPA = lineupSlot <= 3 ? 4.6
+                          : lineupSlot <= 5 ? 4.0
+                          : lineupSlot <= 7 ? 3.6
+                          : 3.2;
+        const epaGatePenalty = projectedPA < 3.8 ? 0.07 : 0;
+        // Home/away split adjustment
+        const splitAvg = isHomeGame ? (hitter.avgHome ?? null) : (hitter.avgAway ?? null);
+        const splitAdj = splitAvg !== null ? (norm(splitAvg, 0.200, 0.380) - 0.50) * 0.08 : 0;
+        // Phase 2: leash probability adjustment
+        // Low-leash pitcher → more bullpen exposure → top-order hitters see more soft relievers
+        // High-leash ace → fewer plate appearances against vulnerable pen
+        const leashProb = oppPitcherSeasonStats?.leashProbability ?? 0.85;
+        // Short leash (≤0.60) gives up to +0.05 bonus for slots 1-5 (PA opportunity boost)
+        const leashBonus = lineupSlot <= 5 ? (1.0 - leashProb) * 0.10 : 0;
+        const opportunity = Math.max(0, Math.min(1,
+          rawSlotScore + impliedBoost + splitAdj - epaGatePenalty + leashBonus
+        ));
+
+        // ══ COMPONENT 6: BvP — requires 20+ AB (reduced noise vs v2's 8 AB) (8%) ══
+        const bvpScore = bvp.signal === "strong" ? 0.80
+                       : bvp.signal === "weak"   ? 0.20
+                       : 0.50; // neutral — no signal without sample
+
+        // ══ STABILITY ANCHOR (8%) ══ — small residual to prevent runaway scores
+        // Rewards hitters with consistent playing time (stable lineup slot proxy)
+        const stabilityScore = lineupSlot <= 5
+          ? 0.60 + (hitter.ghp14 ?? 0.5) * 0.20
+          : 0.40;
+
+        // ── Final weighted composite (Phase 1 rebalanced) ─────────────
+        // Form 13% | Contact 19% | Hard 10% | Matchup 24% | Opp 20% | BvP 5% | Stability 9%
+        const raw = (
+          form           * 0.13 +
+          contact        * 0.19 +
+          hardContact    * 0.10 +
+          matchup        * 0.24 +
+          opportunity    * 0.20 +
+          bvpScore       * 0.05 +
+          stabilityScore * 0.09
+        );
+        return Math.max(0, Math.min(1, raw));
+      }
+
+
+      // ── 7. Build slate of high-total games ──────────────────────────
+      // ── Strict BTS eligibility thresholds ─────────────────────────
+      // A player must pass ALL three soft gates OR qualify via the override.
+      // If they fail the soft gates but every extreme-metric fires, they
+      // can still appear — but this should be rare (maybe 1-2 players/day).
+      // ── BTS Eligibility Thresholds (Phase 1: hard gates removed) ──
+      // Hard BA gates (MIN_AVG14, MIN_GHP14, MIN_SEASON_AVG) REMOVED.
+      // The calibrated model score + implied probability edge now do all filtering.
+      // Only two hard rules remain: game total floor + min calibrated probability.
+      const MIN_TOTAL           = 8.0;   // game O/U floor — low-total games still skipped
+      const MIN_PLATOON_PA      = 5;     // min PA faced to trust platoon BA
+      const MIN_PLATOON_XWOBA   = 0.300; // relaxed from .310 — edge filter handles weak matchups
+      const MIN_PLATOON_BA_HARD = 0.215; // relaxed — xwOBA preferred anyway
+      const MIN_HIT_PROBABILITY = 60;    // lowered from 62 — edge filter handles quality control
+
+      // Override: flags hitters with elite Statcast profiles despite cold surface stats.
+      // Phase 1 requirements: 30+ batted balls (Statcast volume), 15+ PA in last 14 days (active),
+      // and 4 of 6 quality signals. Override picks are ranked last and capped at 1/day.
+      function passesOverride(stats: any, savant: any, pitcherXwoba: number | null, pitcherBA: number): boolean {
+        const xba     = parseFloat(savant?.xba               ?? "0") || 0;
+        const hardHit = parseFloat(savant?.hard_hit_percent  ?? "0") || 0;
+        const barrels = parseFloat(savant?.barrel_batted_rate ?? "0") || 0;
+        const whiff   = parseFloat(savant?.whiff_percent     ?? "0") || 99;
+        const savantPA = parseInt(savant?.pa ?? savant?.ab_count ?? "0") || 0;
+        if (savantPA < 30) return false; // Statcast volume gate
+        // Minimum recent PA: must have 15+ PA in last 14 days (ensures player is active/healthy)
+        // Approximate from avg14 * ghp14 * 14games * ~4PA/game; simpler: check avg14 has a sample
+        const recentPA = (stats.ghp14 ?? 0) * 14 * 3.5; // estimated PA in 14d window
+        if (recentPA < 15) return false;
+        const matchupOk  = pitcherXwoba !== null ? pitcherXwoba >= 0.370 : pitcherBA >= 0.285;
+        const signals: boolean[] = [
+          xba >= 0.310,                   // elite expected contact
+          hardHit >= 46,                  // hard hit rate
+          barrels >= 9,                   // barrel rate
+          (stats.ghp14 ?? 0) >= 0.70,    // hit in 70%+ of recent games (relaxed from 75%)
+          matchupOk,                      // favorable matchup
+          whiff <= 22,                    // makes contact consistently
+        ];
+        const positiveCount = signals.filter(Boolean).length;
+        return positiveCount >= 4; // require 4 of 6 signals
+      }
+      const slateGames: any[] = [];
+      const candidatePicks: any[] = [];
+
+      for (const game of games) {
+        const homeTeam = game.teams?.home;
+        const awayTeam = game.teams?.away;
+        if (!homeTeam || !awayTeam) continue;
+
+        const homeAbbr = homeTeam.team?.abbreviation?.toUpperCase() ?? "";
+        const awayAbbr = awayTeam.team?.abbreviation?.toUpperCase() ?? "";
+        const oddsKey  = [homeAbbr, awayAbbr].sort().join("_");
+        const total    = espnOddsMap[oddsKey] ?? 8.5;
+
+        const venue         = game.venue?.name ?? "";
+        const rawScheduleW  = game.weather ?? {};
+        const rawWind       = rawScheduleW.wind ?? "";
+        const rawTempF      = parseFloat(rawScheduleW.temp ?? "70");
+        const rawWindMph    = parseFloat((rawWind.match(/(\d+) mph/) ?? ["0","0"])[1]);
+        const rawWindOut    = rawWind.toLowerCase().includes("out");
+
+        // ── Structured weather via wttr.in (30-min cache, dome-aware) ──
+        let sw: any = null;
+        try {
+          sw = await fetchStructuredWeather(homeTeam?.team?.name ?? "", "MLB", venue);
+        } catch { /* use schedule weather below */ }
+
+        const tempF        = sw?.tempF        ?? rawTempF;
+        const windMph      = sw?.windMph      ?? rawWindMph;
+        const windOut      = sw?.windOut      ?? rawWindOut;
+        const windIn       = sw?.windIn       ?? false;
+        const humidity     = sw?.humidity     ?? 50;
+        const precipInches = sw?.precipInches ?? 0;
+        const isDome       = sw?.isDome       ?? false;
+        const impactLabel  = sw?.impactLabel  ?? "";
+        const impactTier   = sw?.impactTier   ?? "neutral";
+        const hitterImpact = sw?.hitterImpact ?? 0.50;
+        const wind         = sw
+          ? `${sw.windMph} mph ${sw.windDir}${sw.windOut ? " (out)" : sw.windIn ? " (in)" : ""}`
+          : rawWind;
+
+        const gameDate  = game.gameDate ?? "";
+        const localTime = gameDate ? new Date(gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) : "TBD";
+
+        const slateEntry = {
+          gameId: game.gamePk,
+          matchup: `${awayTeam.team?.name} @ ${homeTeam.team?.name}`,
+          venue,
+          total,
+          meetsFilter: total >= MIN_TOTAL,
+          weather: { tempF, wind, windMph, windDir: sw?.windDir ?? "", windOut, windIn, humidity, precipInches, isDome, impactLabel, impactTier, hitterImpact },
+          gameTime: localTime,
+          homePitcher: homeTeam.probablePitcher ? { id: homeTeam.probablePitcher.id, name: homeTeam.probablePitcher.fullName } : null,
+          awayPitcher: awayTeam.probablePitcher ? { id: awayTeam.probablePitcher.id, name: awayTeam.probablePitcher.fullName } : null,
+        };
+        slateGames.push(slateEntry);
+
+        if (!slateEntry.meetsFilter) continue;
+
+        // ── Per-game try/catch so one bad game never kills remaining games ──
+        try {
+
+        // Get pitcher splits + season stats for both pitchers
+        const [homeSplits, awaySplits, homeSeasonStats, awaySeasonStats] = await Promise.all([
+          homeTeam.probablePitcher?.id ? getPitcherSplits(homeTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
+          awayTeam.probablePitcher?.id ? getPitcherSplits(awayTeam.probablePitcher.id) : Promise.resolve({ vsLeft: 0.250, vsRight: 0.250 }),
+          homeTeam.probablePitcher?.id ? getPitcherSeasonStats(homeTeam.probablePitcher.id) : Promise.resolve({ era: null, k9: null, whip: null, ip: 0 }),
+          awayTeam.probablePitcher?.id ? getPitcherSeasonStats(awayTeam.probablePitcher.id) : Promise.resolve({ era: null, k9: null, whip: null, ip: 0 }),
+        ]);
+        // Resolve pitcher savant data for both pitchers
+        const homePitcherSavant = homeTeam.probablePitcher?.id ? (pitcherSavantMap[String(homeTeam.probablePitcher.id)] ?? {}) : {};
+        const awayPitcherSavant = awayTeam.probablePitcher?.id ? (pitcherSavantMap[String(awayTeam.probablePitcher.id)] ?? {}) : {};
+
+        // Get confirmed or projected lineups
+        const lineups = game.lineups ?? {};
+        const confirmedHome: any[] = lineups.homePlayers ?? [];
+        const confirmedAway: any[] = lineups.awayPlayers ?? [];
+
+        // ── Projected lineup fallback via recent boxscores ──────────
+        async function getProjectedLineup(teamId: number, preferHome: boolean): Promise<any[]> {
+          try {
+            const recentSched = await axios.get(
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&season=2026&gameType=R&limit=8`,
+              { timeout: 8000 }
+            );
+            const recentDates: any[] = recentSched.data?.dates ?? [];
+            const recentGames: any[] = recentDates
+              .flatMap((d: any) => d.games ?? [])
+              .filter((g: any) => g.status?.abstractGameState === "Final")
+              .slice(0, 3);
+
+            const orderTally: Record<number, number[]> = {};
+            for (const rg of recentGames) {
+              try {
+                const box = await axios.get(`https://statsapi.mlb.com/api/v1/game/${rg.gamePk}/boxscore`, { timeout: 8000 });
+                // Figure out which side this team was
+                const homeId = box.data?.teams?.home?.team?.id;
+                const boxSide = homeId === teamId ? "home" : "away";
+                const teamBox = box.data?.teams?.[boxSide] ?? {};
+                const battingOrder: number[] = teamBox.battingOrder ?? [];
+                battingOrder.forEach((pid: number, idx: number) => {
+                  if (!orderTally[pid]) orderTally[pid] = [];
+                  orderTally[pid].push(idx + 1);
+                });
+              } catch { /* skip */ }
+            }
+
+            if (!Object.keys(orderTally).length) return [];
+
+            return Object.entries(orderTally)
+              .map(([pid, slots]) => ({
+                id: parseInt(pid),
+                person: { id: parseInt(pid) },
+                lineupSource: "projected" as const,
+                medianSlot: slots.sort((a, b) => a - b)[Math.floor(slots.length / 2)],
+              }))
+              .filter(p => p.medianSlot <= 5)
+              .sort((a, b) => a.medianSlot - b.medianSlot)
+              .slice(0, 5);
+          } catch { return []; }
+        }
+
+        let homePlayers: any[];
+        let awayPlayers: any[];
+        let homeLineupSource: string;
+        let awayLineupSource: string;
+
+        if (confirmedHome.length > 0) {
+          homePlayers = confirmedHome.map((p: any) => ({ ...p, lineupSource: "confirmed" }));
+          homeLineupSource = "confirmed";
+        } else {
+          homePlayers = await getProjectedLineup(homeTeam.team?.id, true);
+          homeLineupSource = homePlayers.length > 0 ? "projected" : "unavailable";
+        }
+
+        if (confirmedAway.length > 0) {
+          awayPlayers = confirmedAway.map((p: any) => ({ ...p, lineupSource: "confirmed" }));
+          awayLineupSource = "confirmed";
+        } else {
+          awayPlayers = await getProjectedLineup(awayTeam.team?.id, false);
+          awayLineupSource = awayPlayers.length > 0 ? "projected" : "unavailable";
+        }
+        console.log(`[BTS] ${slateEntry.matchup} home=${homeLineupSource}(${homePlayers.length}) away=${awayLineupSource}(${awayPlayers.length}) total=${total}`);
+        if (homePlayers.length === 0 && awayPlayers.length === 0) { console.warn(`[BTS] SKIPPING ${slateEntry.matchup} — no lineup data`); }
+
+        // Scratch detection: if we previously had a projected pick whose ID
+        // is NOT in the now-confirmed lineup, it gets flagged as scratched
+        const confirmedHomeIds = new Set(confirmedHome.map((p: any) => p.id ?? p.person?.id));
+        const confirmedAwayIds = new Set(confirmedAway.map((p: any) => p.id ?? p.person?.id));
+
+        // ── Hit prop implied probability lookup (Linemate MLB data) ──────
+        // Keyed by lowercase player name. Built once per game loop.
+        const hitPropImpliedMap: Record<string, number> = {};
+        try {
+          // Pull from already-cached linemate /api/mlb/v2/markets data
+          // We use the in-process linemate cache if available, else skip gracefully
+          const lmCached = linemateCache.get("mlb");
+          if (lmCached) {
+            const markets = lmCached.data?.markets ?? [];
+            for (const m of markets) {
+              const mName = (m.marketName ?? m.market?.name ?? "").toUpperCase();
+              if (!mName.includes("HITTER_HITS") && mName !== "HITTER_HITS") continue;
+              const playerName = (m.playerName ?? m.player?.name ?? "").toLowerCase();
+              if (!playerName) continue;
+              // Prefer OVER line; odds in American format
+              const overOdds = m.overOdds ?? m.odds ?? null;
+              if (overOdds === null) continue;
+              // Convert American odds to implied probability
+              const imp = overOdds < 0
+                ? Math.abs(overOdds) / (Math.abs(overOdds) + 100)
+                : 100 / (overOdds + 100);
+              // Remove vig: rough devig (both sides rarely available; use as-is ~0.9x)
+              hitPropImpliedMap[playerName] = Math.min(0.90, imp * 0.95);
+            }
+          }
+        } catch { /* sportsbook data unavailable — no edge filter applied */ }
+
+        const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
+          console.log(`[BTS] buildCandidates team=${teamName} side=${side} players=${players.length} src=${lineupSrc}`);
+          const candidates: any[] = [];
+          for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
+            const p = players[slotIdx];
+            const pid = p.id ?? p.person?.id;
+            if (!pid) continue;
+            try {
+              // Fetch player profile for bats (L/R/S)
+              let profileResp: any;
+              try {
+                profileResp = await axios.get(`https://statsapi.mlb.com/api/v1/people/${pid}?hydrate=stats(group=hitting,type=season,season=2026)`, { timeout: 8000 });
+              } catch (profileErr: any) {
+                console.warn(`[BTS] profile fetch failed pid=${pid} team=${teamName}: ${profileErr.message}`);
+                continue;
+              }
+              const person = profileResp.data?.people?.[0];
+              if (!person) { console.warn(`[BTS] no person data pid=${pid} team=${teamName}`); continue; }
+              const bats = person.batSide?.code ?? "R";
+              const fullName = person.fullName ?? p.fullName ?? "Unknown";
+
+              // ── Gate 1: Platoon filter (softened — uses xwOBA allowed if available) ──
+              const pitcherAvgVsMe   = bats === "L" ? pitcherSplits.vsLeft  : pitcherSplits.vsRight;
+              const pitcherPAvsMe    = bats === "L" ? pitcherSplits.vsLeftPA : pitcherSplits.vsRightPA;
+              const pitcherXwobaVsMe = bats === "L" ? pitcherSplits.vsLeftXwoba : pitcherSplits.vsRightXwoba;
+              // Prefer xwOBA allowed (more predictive) if available; fall back to BA
+              const platoonOk = pitcherXwobaVsMe !== null
+                ? pitcherXwobaVsMe >= MIN_PLATOON_XWOBA
+                : (pitcherPAvsMe < MIN_PLATOON_PA ? true : pitcherAvgVsMe >= MIN_PLATOON_BA_HARD);
+              if (!platoonOk) { console.log(`[BTS] platoon filter OUT: pid=${pid} name=${person?.fullName} bats=${bats} xwoba=${pitcherXwobaVsMe} ba=${pitcherAvgVsMe}`); continue; }
+
+              // Scratch detection: was this a projected player who's now absent from confirmed lineup?
+              const confirmedIds = side === "home" ? confirmedHomeIds : confirmedAwayIds;
+              const hasConfirmedLineup = side === "home" ? confirmedHome.length > 0 : confirmedAway.length > 0;
+              const isScratched = lineupSrc === "projected" && hasConfirmedLineup && !confirmedIds.has(pid);
+
+              const stats    = await getHitterStats(pid);
+              const savant   = savantMap[String(pid)]    ?? {};  // season Statcast
+              const sav15d   = savantMap15d[String(pid)] ?? {};  // Phase 2: rolling 15d
+              const sav30d   = savantMap30d[String(pid)] ?? {};  // Phase 2: rolling 30d
+
+              // ── Gate 2: Removed hard BA/GHP/season gates (Phase 1) ──
+              // Model score + edge filter now handle quality control.
+              const pitcherXwobaForOverride = parseFloat(oppPitcherSavant?.xwoba ?? "0") || null;
+              const isOverridePick = passesOverride(stats, savant, pitcherXwobaForOverride, pitcherAvgVsMe)
+                && ((stats.avg14 ?? 0) < 0.200 || (stats.avgSeason ?? 0) < 0.195);
+
+              // ── BvP: fetch career/season history vs today's starter ──
+              const opponentPitcherId = side === "home" ? awayTeam.probablePitcher?.id : homeTeam.probablePitcher?.id;
+              const bvp = opponentPitcherId
+                ? await getBvP(pid, opponentPitcherId)
+                : { avg: null, hits: 0, ab: 0, signal: "none" };
+
+              // ── Phase 2: pitch-type matchup score ─────────────────────────
+              // Wrapped in its own try/catch — a timeout here must NOT silently drop the candidate
+              // Fetched per batter-pitcher pair; cached in pitchArsenalCache
+              let pitchMatchup: number | null = null;
+              try { pitchMatchup = opponentPitcherId
+                ? await getPitchArsenalMatchup(opponentPitcherId, pid, bats)
+                : null; } catch { pitchMatchup = null; }
+
+              const lineupSlot = p.medianSlot ?? (slotIdx + 1);
+
+              const rawScore = scoreHitter(
+                { ...stats, bats },
+                pitcherSplits,
+                savant,
+                sav15d,
+                sav30d,
+                oppPitcherSavant,
+                total,
+                { tempF, windMph, windOut, windIn, humidity, precipInches, isDome },
+                venue,
+                bvp,
+                lineupSlot,
+                oppPitcherSeasonStats,
+                side === "home",
+                pitchMatchup,
+              );
+
+              // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
+              // Replaces raw × 1.333. Logistic is fit on observed MLB hit rates:
+              // sigmoid params: center=0.50 (average hitter), scale=5.0
+              // Maps: raw 0.35 → ~54%, raw 0.50 → 62%, raw 0.60 → 69%, raw 0.70 → 75%
+              const logisticCal = (r: number) => {
+                const logit = 5.0 * (r - 0.50);
+                const sig   = 1 / (1 + Math.exp(-logit));
+                // Rescale from (0.27, 0.73) to (0.45, 0.82) — MLB hit rate range
+                return 0.45 + sig * 0.37;
+              };
+              const hitProbability = Math.min(0.80, logisticCal(rawScore));
+              const hitProbabilityPct = Math.round(hitProbability * 100);
+
+              // ── Sportsbook edge filter ────────────────────────────────────
+              // Compare model probability to implied book probability.
+              // Edge = model - implied. Positive edge = bet. No odds = no filter.
+              const playerNameKey = fullName.toLowerCase();
+              const impliedProb   = hitPropImpliedMap[playerNameKey] ?? null;
+              const edge          = impliedProb !== null ? hitProbability - impliedProb : null;
+              // Tier thresholds: A needs edge >= +6%, B >= +3%, C >= 0%
+              // If no book line: include based on model score alone (edge = null)
+              const hasPositiveEdge = edge === null || edge >= 0;
+              if (!hasPositiveEdge) { console.log(`[BTS] edge filter OUT: ${fullName} pid=${pid} edge=${edge !== null ? Math.round(edge*100) : "n/a"}% implied=${impliedProb !== null ? Math.round(impliedProb*100) : "n/a"}%`); continue; } // negative edge = skip
+
+              // ── Confidence tier (Phase 1: incorporates edge + slot + probability) ──
+              const confTierBTS: "A" | "B" | "C" = (() => {
+                const edgePct = (edge ?? 0) * 100;
+                if (hitProbabilityPct >= 68 && lineupSlot <= 4 && edgePct >= 6) return "A";
+                if (hitProbabilityPct >= 64 && edgePct >= 3) return "B";
+                return "C";
+              })();
+
+              // ── Gate 3: Minimum calibrated hit probability ────────────────
+              if (hitProbabilityPct < MIN_HIT_PROBABILITY) { console.log(`[BTS] prob filter OUT: ${fullName} pid=${pid} prob=${hitProbabilityPct} raw=${rawScore.toFixed(3)}`); continue; }
+
+              const playerLineupSource = p.lineupSource ?? lineupSrc;
+
+              console.log(`[BTS] CANDIDATE: ${fullName} pid=${pid} prob=${hitProbabilityPct} tier=${confTierBTS} slot=${lineupSlot} bats=${bats}`);
+              candidates.push({
+                playerId: pid,
+                name: fullName,
+                team: teamName,
+                side,
+                bats,
+                lineupSlot,
+                lineupSource: playerLineupSource,
+                isScratched,
+                isOverridePick,
+                opponentPitcher: side === "home"
+                  ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
+                  : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
+                pitcherAvgAllowed: pitcherAvgVsMe,
+                bvp: { avg: bvp.avg, hits: bvp.hits, ab: bvp.ab, signal: bvp.signal },
+                pitcherStats: {
+                  era:             oppPitcherSeasonStats?.era              ?? null,
+                  last5ERA:        oppPitcherSeasonStats?.last5ERA         ?? null,
+                  last3ERA:        oppPitcherSeasonStats?.last3ERA         ?? null,   // Phase 2
+                  last3AvgIP:      oppPitcherSeasonStats?.last3AvgIP       ?? null,   // Phase 2
+                  last3H9:         oppPitcherSeasonStats?.last3H9          ?? null,   // Phase 2
+                  leashProbability:oppPitcherSeasonStats?.leashProbability ?? null,   // Phase 2
+                  k9:              oppPitcherSeasonStats?.k9               ?? null,
+                  whip:            oppPitcherSeasonStats?.whip             ?? null,
+                  ip:              oppPitcherSeasonStats?.ip               ?? 0,
+                  xba:        parseFloat(oppPitcherSavant?.xba              ?? "0") || null,
+                  xwoba:      parseFloat(oppPitcherSavant?.xwoba            ?? "0") || null,
+                  hardHitPct: parseFloat(oppPitcherSavant?.hard_hit_percent ?? "0") || null,
+                  gbPct:      parseFloat(oppPitcherSavant?.groundballs_percent    ?? "0") || null,
+                  fbPct:      parseFloat(oppPitcherSavant?.flyballs_percent     ?? "0") || null,
+                  swStrPct:   parseFloat(oppPitcherSavant?.p_swinging_strike_perc ?? "0") || null,
+                  pitcherKPct:parseFloat(oppPitcherSavant?.k_percent             ?? "0") || null,
+                  pitcherBbPct:parseFloat(oppPitcherSavant?.bb_percent           ?? "0") || null,
+                },
+                stats: {
+                  avg14:      stats.avg14,
+                  avg30:      stats.avg30,
+                  avg7:       stats.avg7,
+                  avgSeason:  stats.avgSeason,
+                  babip14:    stats.babip14,
+                  ghp14:      stats.ghp14,
+                  kPct:       stats.kPct,
+                  bbPct:      stats.bbPct,
+                  xba:        parseFloat(savant?.xba               ?? "0") || null,
+                  xwoba:      parseFloat(savant?.xwoba             ?? "0") || null,
+                  hardHitPct: parseFloat(savant?.hard_hit_percent  ?? "0") || null,
+                  barrelPct:  parseFloat(savant?.barrel_batted_rate ?? "0") || null,
+                  launchAngle:parseFloat(savant?.launch_angle_avg  ?? "0") || null,
+                  xbabip:     parseFloat(savant?.xbabip            ?? "0") || null,
+                  whiffPct:   parseFloat(savant?.whiff_percent    ?? "0") || null,
+                  zContactPct:parseFloat(savant?.z_contact_percent ?? "0") || null,
+                  sprintSpeed:parseFloat(savant?.sprint_speed     ?? "0") || null,
+                  avgHome:    stats.avgHome ?? null,
+                  avgAway:    stats.avgAway ?? null,
+                  // Phase 2: rolling Statcast windows
+                  xba15d:     parseFloat(sav15d?.xba               ?? "0") || null,
+                  xwoba15d:   parseFloat(sav15d?.xwoba             ?? "0") || null,
+                  hardHit15d: parseFloat(sav15d?.hard_hit_percent  ?? "0") || null,
+                  xba30d:     parseFloat(sav30d?.xba               ?? "0") || null,
+                  xwoba30d:   parseFloat(sav30d?.xwoba             ?? "0") || null,
+                  hardHit30d: parseFloat(sav30d?.hard_hit_percent  ?? "0") || null,
+                  // Phase 2: pitch-type matchup score
+                  pitchTypeMatchup: pitchMatchup !== null ? Math.round(pitchMatchup * 100) : null,
+                },
+                gamelog: stats.gamelog,
+                game: {
+                  matchup:     slateEntry.matchup,
+                  total,
+                  venue,
+                  gameTime:    localTime,
+                  gameStartMs: gameDate ? new Date(gameDate).getTime() : null,
+                  weather: {
+                    tempF, wind, windMph, windDir: sw?.windDir ?? "",
+                    windOut, windIn, humidity, precipInches, isDome,
+                    impactLabel, impactTier, hitterImpact,
+                  },
+                },
+                rawScore,
+                hitProbability:  hitProbabilityPct,
+                impliedProb:     impliedProb !== null ? Math.round(impliedProb * 100) : null,
+                edge:            edge !== null ? Math.round(edge * 100) : null,
+                inTargetRange:   hitProbability >= 0.60 && hitProbability <= 0.80,
+                confidenceTier:  confTierBTS,
+              });
+            } catch (playerErr: any) { console.warn(`[BTS] player scoring error pid=${p.id ?? p.person?.id} team=${teamName} slot=${slotIdx}: ${playerErr.message}`); }
+          }
+          return candidates;
+        };
+
+        const [homeCandidates, awayCandidates] = await Promise.all([
+          buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? "", homeLineupSource, awaySeasonStats, awayPitcherSavant),
+          buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? "", awayLineupSource, homeSeasonStats, homePitcherSavant),
+        ]);
+
+        candidatePicks.push(...homeCandidates, ...awayCandidates);
+        console.log(`[BTS] game=${slateEntry.matchup} home=${homeCandidates.length} away=${awayCandidates.length} candidates`);
+
+        } catch (gameErr: any) {
+          console.warn(`[BTS] game processing error for ${slateEntry?.matchup ?? game.gamePk}: ${gameErr.message}`);
+        }
+      }
+
+      console.log(`[BTS] game loop complete — totalCandidates=${candidatePicks.length}`);
+
+      // ── 7b. Daily candidate log (Phase 1) ────────────────────────────
+      // Logs every scored candidate with features, scores, edge, and decision.
+      // Written to server/bts_logs/YYYY-MM-DD.json for backtesting + calibration.
+      try {
+        const logDir  = path.join(__dirname, "bts_logs");
+        const logPath = path.join(logDir, `${targetDate}.json`);
+        let existing: any[] = [];
+        try {
+          if (fs.existsSync(logPath)) existing = JSON.parse(fs.readFileSync(logPath, "utf8"));
+        } catch {}
+        const existingIds = new Set(existing.map((e: any) => e.playerId));
+        const newEntries  = candidatePicks
+          .filter((p: any) => !existingIds.has(p.playerId))
+          .map((p: any) => ({
+            loggedAt:       new Date().toISOString(),
+            date:           targetDate,
+            playerId:       p.playerId,
+            name:           p.name,
+            team:           p.team,
+            lineupSlot:     p.lineupSlot,
+            side:           p.side,
+            bats:           p.bats,
+            rawScore:       p.rawScore,
+            hitProbability: p.hitProbability,
+            confTier:       p.confidenceTier,
+            isOverride:     p.isOverridePick,
+            impliedProb:    p.impliedProb,
+            edge:           p.edge,
+            avg14:          p.stats?.avg14,
+            avg30:          p.stats?.avg30,
+            ghp14:          p.stats?.ghp14,
+            avgSeason:      p.stats?.avgSeason,
+            xba:            p.stats?.xba,
+            xwoba:          p.stats?.xwoba,
+            kPct:           p.stats?.kPct,
+            whiffPct:       p.stats?.whiffPct,
+            zContactPct:    p.stats?.zContactPct,
+            hardHitPct:     p.stats?.hardHitPct,
+            barrelPct:      p.stats?.barrelPct,
+            launchAngle:    p.stats?.launchAngle,
+            pitcherXwoba:    p.pitcherStats?.xwoba,
+            pitcherLast5ERA: p.pitcherStats?.last5ERA,
+            pitcherLast3ERA: p.pitcherStats?.last3ERA,        // Phase 2
+            pitcherLeash:    p.pitcherStats?.leashProbability, // Phase 2
+            xba15d:          p.stats?.xba15d,                 // Phase 2
+            xwoba15d:        p.stats?.xwoba15d,               // Phase 2
+            xba30d:          p.stats?.xba30d,                 // Phase 2
+            xwoba30d:        p.stats?.xwoba30d,               // Phase 2
+            pitchTypeMatchup:p.stats?.pitchTypeMatchup,       // Phase 2
+            venue:           p.game?.venue,
+            gameTotal:       p.game?.total,
+            result:          "pending",
+            hits:            null,
+            ab:              null,
+          }));
+        if (newEntries.length > 0) {
+          if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+          fs.writeFileSync(logPath, JSON.stringify([...existing, ...newEntries], null, 2));
+        }
+      } catch (logErr) { /* non-fatal — log failure doesn't block picks */ }
+
+      // ── 8. One-per-team rule + hard 15-pick cap ─────────────────────
+      // Sort override picks to the BOTTOM (show normal picks first)
+      candidatePicks.sort((a, b) => {
+        if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
+        return b.hitProbability - a.hitProbability;
+      });
+      const seenTeams = new Set<string>();
+      const freshPicks: any[] = [];
+      for (const p of candidatePicks) {
+        if (seenTeams.has(p.team)) continue;
+        seenTeams.add(p.team);
+        freshPicks.push(p);
+        if (freshPicks.length >= 10) break; // hard 10-pick ceiling for auto-analysis (manual adds can go to 15)
+      }
+
+      // ── Merge into the daily persistent cache ──────────────────────────
+      // Rule: once a player is in today's cache they stay ALL day.
+      // New players from freshPicks can be added (up to the 10-cap).
+      // Existing cached players are NEVER removed.
+      if (!btsPicksCache[targetDate]) {
+        btsPicksCache[targetDate] = [];
+      }
+      const cachedEntries = btsPicksCache[targetDate];
+      const cachedIds = new Set(cachedEntries.map((e: BtsPickEntry) => e.playerId));
+
+      for (const pick of freshPicks) {
+        if (cachedIds.has(pick.playerId)) {
+          // Already cached — refresh snapshot + probability but keep lockedAt/result
+          const existing = cachedEntries.find((e: BtsPickEntry) => e.playerId === pick.playerId)!;
+          existing.snapshot       = pick;
+          existing.hitProbability = pick.hitProbability;
+          continue;
+        }
+        if (cachedEntries.length >= (targetDate === "2026-05-06" ? 15 : 10)) break; // 15 cap on 5/6/26 only, 10 all other days
+        cachedEntries.push({
+          playerId:       pick.playerId,
+          name:           pick.name,
+          team:           pick.team,
+          hitProbability: pick.hitProbability,
+          lockedAt:       new Date().toISOString(),
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       pick,
+        } as BtsPickEntry);
+        saveBtsPicksCache(); // persist new pick immediately
+        cachedIds.add(pick.playerId);
+      }
+
+
+      // ── Scratch-swap: replace confirmed-scratched picks before game starts ─────
+      // Rule: if a cached pick's player is confirmed NOT in the official lineup
+      // AND the game hasn't started yet → swap them with the best available
+      // candidate from the same team who IS confirmed in the lineup.
+      // This override applies even after the 11:45 AM CT deadline because
+      // a player being out of the lineup is a data-confirmed fact, not a guess.
+      const nowMsForSwap = Date.now();
+      for (let ci = 0; ci < cachedEntries.length; ci++) {
+        const entry = cachedEntries[ci];
+        const snap  = entry.snapshot;
+        if (!snap) continue;
+
+        // Only swap if the pick is scratched AND the game hasn't started yet
+        // (don't swap in-progress or already-graded picks)
+        const gameStartMs = snap.game?.gameStartMs ?? null;
+        const gameStarted = gameStartMs ? nowMsForSwap >= gameStartMs : false;
+        if (!snap.isScratched || gameStarted) continue;
+        if (entry.result !== "pending") continue; // already graded — leave alone
+
+        // Find the best replacement: same team, confirmed in lineup, not already cached
+        const cachedIdSet = new Set(cachedEntries.map((e: BtsPickEntry) => e.playerId));
+        const replacement = candidatePicks
+          .filter(c =>
+            c.team === snap.team &&                     // same team
+            c.playerId !== snap.playerId &&             // not the same player
+            !cachedIdSet.has(c.playerId) &&            // not already cached
+            c.lineupSource === "confirmed" &&           // must be in confirmed lineup
+            !c.isScratched                             // definitely not scratched
+          )
+          .sort((a: any, b: any) => b.hitProbability - a.hitProbability)[0] ?? null;
+
+        if (!replacement) {
+          console.log(`[BTS Scratch-Swap] No confirmed replacement for scratched ${snap.name} (${snap.team}) — keeping slot`);
+          continue;
+        }
+
+        console.log(`[BTS Scratch-Swap] Replacing scratched ${snap.name} → ${replacement.name} (${snap.team}) pre-game`);
+
+        // Replace in-place — keep the original lockedAt timestamp
+        cachedEntries[ci] = {
+          playerId:       replacement.playerId,
+          name:           replacement.name,
+          team:           replacement.team,
+          hitProbability: replacement.hitProbability,
+          lockedAt:       entry.lockedAt,   // preserve original lock time
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       { ...replacement, swappedFrom: snap.name, swapReason: "scratched_from_lineup" },
+        } as BtsPickEntry;
+      }
+
+      // Persist any scratch-swaps made above
+      if (cachedEntries.some((e: BtsPickEntry) => e.snapshot?.swapReason === "scratched_from_lineup")) {
+        saveBtsPicksCache();
+      }
+
+      // ── Run grader on today's cached picks ────────────────────────────
+      await runBtsGrader(targetDate);
+
+      // Rebuild topPicks from cache so display order = entry order (pick added first = rank 1)
+      const topPicks: any[] = cachedEntries.map((e: BtsPickEntry) => ({
+        ...e.snapshot,
+        result:    e.result,
+        hits:      e.hits,
+        ab:        e.ab,
+        gradedAt:  e.gradedAt,
+        lockedAt:  e.lockedAt,
+      }));
+
+
+      // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
+      for (const pick of topPicks) {
+        const p = pick;
+        if (!p.stats) continue;  // guard: skip if snapshot missing stats (malformed entry)
+        const avg14Str  = p.stats.avg14  ? "." + Math.round(p.stats.avg14  * 1000).toString().padStart(3, "0") : null;
+        const avg7Str   = p.stats.avg7   ? "." + Math.round(p.stats.avg7   * 1000).toString().padStart(3, "0") : null;
+        const xbaStr    = p.stats.xba    ? "." + Math.round(p.stats.xba    * 1000).toString().padStart(3, "0") : null;
+        const pitcherStr = p.pitcherAvgAllowed ? "." + Math.round(p.pitcherAvgAllowed * 1000).toString().padStart(3, "0") : null;
+        const side = p.bats === "L" ? "left-handed batters" : "right-handed batters";
+        const pitcherName = p.opponentPitcher?.name ?? "today's starter";
+
+        // ─ Opening sentence ─
+        let opening = "";
+        if (p.stats.avg14 >= 0.300) {
+          opening = `🔥 ${p.name} is absolutely locked in, hitting ${avg14Str} over the last 14 days — one of the hottest bats on today's slate.`;
+        } else if (p.stats.avg14 >= 0.280) {
+          opening = `⚡ ${p.name} is in strong form, raking at ${avg14Str} over the last 14 days with consistent plate appearances.`;
+        } else if (p.stats.avg14 >= 0.250) {
+          opening = `📊 ${p.name} is putting together solid numbers, batting ${avg14Str} across the last two weeks.`;
+        } else if (p.isOverridePick) {
+          opening = `⚠️ ${p.name} is in a cold stretch at ${avg14Str} over the last 14 days but is here on a **Statcast override** — elite underlying contact metrics and a highly hittable matchup forced the model’s hand.`;
+        } else {
+          opening = `🧊 ${p.name} is in a bit of a cold stretch at ${avg14Str} over the last 14 days, but the matchup and underlying metrics still offer value today.`;
+        }
+
+        // ─ Bullet points (collect the strongest signals) ─
+        const bullets: string[] = [];
+
+        // GHP
+        if (p.stats.ghp14 !== undefined && p.stats.ghp14 !== null) {
+          const ghpPct = Math.round(p.stats.ghp14 * 100);
+          if (ghpPct >= 80) bullets.push(`💥 Hit in **${ghpPct}%** of the last 14 games (elite streak consistency)`);
+          else if (ghpPct >= 65) bullets.push(`✅ Recorded a hit in **${ghpPct}%** of the last 14 games`);
+          else if (ghpPct >= 50) bullets.push(`📅 Got a hit in **${ghpPct}%** of L14 games`);
+        }
+
+        // 7d hot streak
+        if (avg7Str && p.stats.avg7 >= 0.300) {
+          bullets.push(`🔥 Hitting **${avg7Str}** over the last 7 days — currently in peak hot-streak territory`);
+        }
+
+        // Pitcher matchup
+        if (pitcherStr) {
+          if (p.pitcherAvgAllowed >= 0.290) {
+            bullets.push(`🎯 Faces **${pitcherName}**, who allows **.${Math.round(p.pitcherAvgAllowed*1000).toString().padStart(3,"0")}** BA vs ${side} — a highly favorable matchup`);
+          } else if (p.pitcherAvgAllowed >= 0.260) {
+            bullets.push(`⚡ Opponent **${pitcherName}** allows **${pitcherStr}** to ${side} this season`);
+          } else if (p.pitcherAvgAllowed < 0.230) {
+            bullets.push(`⚠️ **${pitcherName}** is tough on ${side} (**${pitcherStr}** BA allowed) — matchup is the key risk here`);
+          }
+        }
+
+        // Statcast quality
+        if (xbaStr && p.stats.xba >= 0.310) {
+          bullets.push(`📊 Statcast xBA of **${xbaStr}** confirms he's hitting the ball with elite quality, not just luck`);
+        } else if (xbaStr && p.stats.xba >= 0.290) {
+          bullets.push(`📊 Strong Statcast xBA **${xbaStr}** — quality of contact backs up the surface stats`);
+        }
+        if (p.stats.hardHitPct && p.stats.hardHitPct >= 45) {
+          bullets.push(`🔨 **${p.stats.hardHitPct.toFixed(0)}%** hard-hit rate — consistently barreling the ball at 95+ mph`);
+        } else if (p.stats.hardHitPct && p.stats.hardHitPct >= 38) {
+          bullets.push(`🔨 **${p.stats.hardHitPct.toFixed(0)}%** hard-hit rate keeps him in play as a quality-contact pick`);
+        }
+
+        // xwOBA
+        if (p.stats.xwoba && p.stats.xwoba >= 0.370) {
+          bullets.push(`🎯 xwOBA of **.${Math.round(p.stats.xwoba*1000).toString().padStart(3,"0")}** ranks him among the best hitters in the game right now`);
+        }
+
+        // Game environment
+        if (p.game?.total >= 10) {
+          bullets.push(`🏙️ High-total game (O/U ${p.game.total}) — offenses are expected to produce today`);
+        } else if (p.game?.total >= 9) {
+          bullets.push(`🏙️ Game total set at ${p.game.total} — favorable run environment`);
+        }
+
+        // Weather note — uses structured weather impact
+        if (p.game?.weather) {
+          const w = p.game.weather;
+          if (w.isDome) {
+            // dome: no weather bullet
+          } else if (w.impactTier === "major" || w.impactTier === "moderate") {
+            bullets.push(w.impactLabel);
+            if (w.precipInches >= 0.05) bullets.push(`🌧️ Rain in forecast — watch for postponement`);
+          } else if (w.tempF >= 75) {
+            bullets.push(`☀️ Warm ${w.tempF}°F — hitter-friendly conditions${w.windMph > 5 ? " · wind " + w.windMph + "mph " + w.windDir : ""}`);
+          } else if (w.tempF <= 50) {
+            bullets.push(`🥶 Cold ${w.tempF}°F at first pitch — can suppress offense`);
+          } else if (w.windMph >= 8 && (w.windOut || w.windIn)) {
+            bullets.push(w.impactLabel);
+          }
+        }
+
+        // Lineup confirmation bonus
+        if (p.lineupSource === "confirmed") {
+          bullets.push(`✅ Officially confirmed in today's batting order — no lineup risk`);
+        } else {
+          bullets.push(`📡 Projected in lineup based on recent batting order — confirm before locking in`);
+        }
+
+        // Cap bullets to 4 for readability
+        const finalBullets = bullets.slice(0, 4);
+
+        // Assemble full summary
+        pick.rationale = opening + "\n" + finalBullets.map(b => `• ${b}`).join("\n");
+      }
+
+      // ── Deadline + 30-min pre-game lock logic ──────────────────────────────
+      const nowMs    = Date.now();
+      const ctNow    = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const ctHour   = ctNow.getHours();
+      const ctMin    = ctNow.getMinutes();
+      const THIRTY_MIN_MS = 30 * 60 * 1000;
+
+      // Past 11:45 AM CT → global deadline crossed
+      const pastDeadline = ctHour > 11 || (ctHour === 11 && ctMin >= 45);
+
+      // Annotate each pick with its individual lock state:
+      //   locked = true  → pick is on the card and cannot be removed until day ends
+      //   locked = false → pick can still update (before 11:45 AND >30 min before game)
+      //   eligible = false → game already started (>0 min past first pitch) — hide pick
+      const annotatedPicks = topPicks.map(p => {
+        const startMs    = p.game?.gameStartMs ?? null;
+        const minsToGame = startMs ? (startMs - nowMs) / 60000 : Infinity;
+        const gameStarted = startMs ? nowMs >= startMs : false;
+
+        // Pick is locked once either condition is met:
+        //   1. Past 11:45 AM CT global deadline, OR
+        //   2. Within 30 min of this specific game's first pitch
+        const locked = pastDeadline || minsToGame <= 30;
+
+        // Pick is eligible to show as long as game hasn't started
+        // (once the game is live/complete the pick stays visible all day —
+        //  we only hide if it's >0 min past start AND past today entirely)
+        return { ...p, locked, minsToGame: Math.round(minsToGame), gameStarted };
+      });
+
+      // After global deadline: ALL cached picks stay on card all day
+      // Before global deadline: only keep picks whose game hasn't started yet
+      //   (but any pick that came in via the cache — i.e. was previously locked—
+      //    always stays visible regardless of game start status)
+      const finalPicks = annotatedPicks.filter(p => {
+        // Always show a pick once it's been graded (result known) or locked
+        if (p.locked || p.result === "win" || p.result === "loss") return true;
+        // Before deadline: hide a pick only if the game has already started AND
+        // the pick was never locked in (pre-deadline, no lineup yet)
+        if (!pastDeadline && p.gameStarted && !p.locked) return false;
+        return true;
+      });
+
+      const confirmedCount = finalPicks.filter(p => p.lineupSource === "confirmed").length;
+      const projectedCount = finalPicks.filter(p => p.lineupSource === "projected").length;
+      const scratchedCount = finalPicks.filter(p => p.isScratched).length;
+
+      // Season record (accumulated across all in-memory graded picks)
+      const todayWins    = cachedEntries.filter((e: BtsPickEntry) => e.result === "win").length;
+      const todayLosses  = cachedEntries.filter((e: BtsPickEntry) => e.result === "loss").length;
+      const todayPending = cachedEntries.filter((e: BtsPickEntry) => e.result === "pending").length;
+      const todayWinPct  = (todayWins + todayLosses) > 0
+        ? Math.round((todayWins / (todayWins + todayLosses)) * 100)
+        : null;
+
+      const seasonTotal   = btsSeasonRecord.wins + btsSeasonRecord.losses;
+      const seasonWinPct  = seasonTotal > 0
+        ? Math.round((btsSeasonRecord.wins / seasonTotal) * 100)
+        : null;
+
+      res.json({
+        date:          targetDate,
+        generatedAt:   new Date().toISOString(),
+        pastDeadline,
+        nowMs,
+        confirmedCount,
+        projectedCount,
+        scratchedCount,
+        slate:        slateGames,
+        picks:        finalPicks,
+        bestPick:     finalPicks[0] ?? null,
+        doubleDowns:  finalPicks.slice(1, 4),
+        dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
+        // Grading / record data
+        todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },
+        seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: seasonWinPct },
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/reanalyze (owner only)
+  // Removes picks for today's date where the game hasn't started and the
+  // result is still pending, then returns a cleared list so the next
+  // GET /api/bts-picks re-runs a fresh analysis.
+  // Picks where the game is in-progress or complete are NEVER removed.
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/inject — owner-only: force-add specific players into today's cache immediately
+  // Body: { players: [{ playerId, name, team, hitProbability }] }
+  app.post("/api/bts/inject", requireOwner, async (req, res) => {
+    try {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+      const players: any[] = req.body?.players ?? [];
+      if (!players.length) return res.status(400).json({ error: "players array required" });
+      if (!btsPicksCache[targetDate]) btsPicksCache[targetDate] = [];
+      const cache = btsPicksCache[targetDate];
+      const existingIds = new Set(cache.map((e: BtsPickEntry) => e.playerId));
+      const added: string[] = [];
+      for (const p of players) {
+        if (existingIds.has(p.playerId)) { continue; }
+        if (cache.length >= (targetDate === "2026-05-06" ? 15 : 10)) break; // 15 cap on 5/6/26 only, 10 all other days
+        cache.push({
+          playerId:       p.playerId,
+          name:           p.name,
+          team:           p.team ?? "",
+          hitProbability: p.hitProbability ?? 70,
+          lockedAt:       new Date().toISOString(),
+          result:         "pending",
+          hits:           null,
+          ab:             null,
+          gradedAt:       null,
+          snapshot:       { playerId: p.playerId, name: p.name, team: p.team, hitProbability: p.hitProbability, manuallyAdded: true },
+        } as BtsPickEntry);
+        existingIds.add(p.playerId);
+        added.push(p.name);
+      }
+      saveBtsPicksCache();
+      console.log(`[BTS] Injected by owner: ${added.join(", ")}`);
+      res.json({ ok: true, added, total: cache.length, date: targetDate });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/bts/reanalyze", requireOwner, async (req, res) => {
+    try {
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const nowMs = Date.now();
+      const existing: BtsPickEntry[] = btsPicksCache[targetDate] ?? [];
+
+      // Keep picks where: result is NOT pending (graded win/loss/no_game)
+      // OR game is already in-progress (gameStartMs in past by more than 10 min).
+      // Remove picks where result is still pending AND game has not started yet.
+      const kept: BtsPickEntry[] = [];
+      const removed: string[] = [];
+
+      for (const entry of existing) {
+        const snap = entry.snapshot as any;
+        const gameStartMs: number | null = snap?.game?.gameStartMs ?? snap?.gameStartMs ?? null;
+        const gameState: string  = snap?.game?.state ?? snap?.state ?? "";
+        const isGraded  = entry.result !== "pending";
+        const isPlaying = gameState === "in_progress" || gameState === "in" ||
+                          (gameStartMs != null && nowMs > gameStartMs + 10 * 60_000);
+
+        if (isGraded || isPlaying) {
+          kept.push(entry);
+        } else {
+          removed.push(entry.name ?? (entry as any).playerName ?? String(entry.playerId));
+        }
+      }
+
+      // Update the in-memory cache
+      btsPicksCache[targetDate] = kept;
+
+      // Persist the cleared cache to DB + disk
+      saveBtsPicksCache();
+
+      // Also remove cleared rows from bts_picks table
+      if (removed.length > 0 && existing.length > kept.length) {
+        const keptIds = kept.map(e => e.playerId);
+        await db.query(
+          `DELETE FROM bts_picks WHERE pick_date = $1 AND player_id != ALL($2::int[]) AND result = 'pending'`,
+          [targetDate, keptIds]
+        ).catch(() => { /* non-fatal */ });
+      }
+
+      console.log(`[BTS] Reanalyze by owner: removed ${removed.length} picks (${removed.join(", ")}), kept ${kept.length}`);
+
+      res.json({
+        ok: true,
+        date: targetDate,
+        removed: removed.length,
+        removedNames: removed,
+        kept: kept.length,
+        message: removed.length === 0
+          ? "No eligible picks to remove — all picks are graded or their game is in progress."
+          : `Removed ${removed.length} pre-game pick${removed.length > 1 ? "s" : ""}. Refresh BTS to get fresh analysis.`,
+      });
+    } catch (e: any) {
+      console.error("[BTS] reanalyze error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts-history — all historical BTS picks grouped by date
+  // Survives redeployments via bts_picks.json persisted to GitHub.
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/bts-history", async (_req, res) => {
+    try {
+      await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+      // Build a list of days sorted descending, each with picks + record
+      const days = Object.entries(btsPicksCache)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, entries]) => {
+          const wins    = (entries as BtsPickEntry[]).filter(e => e.result === "win").length;
+          const losses  = (entries as BtsPickEntry[]).filter(e => e.result === "loss").length;
+          const pending = (entries as BtsPickEntry[]).filter(e => e.result === "pending").length;
+          const winPct  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : null;
+          return { date, picks: entries, wins, losses, pending, winPct };
+        });
+
+      const totalWins   = btsSeasonRecord.wins;
+      const totalLosses = btsSeasonRecord.losses;
+      const seasonWinPct = (totalWins + totalLosses) > 0
+        ? Math.round((totalWins / (totalWins + totalLosses)) * 100) : null;
+
+      // Yesterday: most recent fully-graded day (no pending picks)
+      const fullyGraded = days.filter(d => d.pending === 0 && (d.wins + d.losses) > 0);
+      const yesterdayDay = fullyGraded[0] ?? null;
+
+      res.json({
+        days,
+        seasonRecord:    { wins: totalWins, losses: totalLosses, winPct: seasonWinPct },
+        yesterdayRecord: yesterdayDay
+          ? { date: yesterdayDay.date, wins: yesterdayDay.wins, losses: yesterdayDay.losses, winPct: yesterdayDay.winPct }
+          : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, days: [], seasonRecord: { wins: 0, losses: 0, winPct: null }, yesterdayRecord: null });
+    }
+  });
+
+
+  // ════════════════════════════════════════════════════════════════════
+  // GET /api/fantasy-intel  — Live fantasy intelligence across all sports
+  // Sources: ESPN rosters/news/transactions, Sleeper player DB + trending
+  // Cached 15 min server-side to avoid hammering free APIs
+  // ════════════════════════════════════════════════════════════════════
+  let fantasyIntelCache: { data: any; ts: number } | null = null;
+  const FANTASY_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+  app.get("/api/fantasy-intel", async (req, res) => {
+    try {
+      const sport = (req.query.sport as string || "ALL").toUpperCase();
+      const forceRefresh = req.query.refresh === "1";
+
+      // Serve cached if fresh
+      if (!forceRefresh && fantasyIntelCache && Date.now() - fantasyIntelCache.ts < FANTASY_CACHE_TTL) {
+        const cached = fantasyIntelCache.data;
+        if (sport === "ALL") return res.json(cached);
+        return res.json({ ...cached, players: cached.players.filter((p: any) => p.sport === sport) });
+      }
+
+      // ── 1. Sleeper player DB — full roster with team/position/status ──
+      const [sleeperRes, sleeperTrendAddRes, sleeperTrendDropRes] = await Promise.all([
+        fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(12000) }),
+        fetch("https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours=48&limit=30", { signal: AbortSignal.timeout(8000) }),
+        fetch("https://api.sleeper.app/v1/players/nfl/trending/drop?lookback_hours=48&limit=20", { signal: AbortSignal.timeout(8000) }),
+      ]);
+
+      const sleeperPlayers: Record<string, any> = sleeperRes.ok ? await sleeperRes.json() : {};
+      const trendAdd: any[] = sleeperTrendAddRes.ok ? await sleeperTrendAddRes.json() : [];
+      const trendDrop: any[] = sleeperTrendDropRes.ok ? await sleeperTrendDropRes.json() : [];
+      const trendAddIds = new Set(trendAdd.map((t: any) => t.player_id));
+      const trendDropIds = new Set(trendDrop.map((t: any) => t.player_id));
+
+      // Build Sleeper lookup by full_name
+      const sleeperByName: Record<string, any> = {};
+      const sleeperById: Record<string, any> = {};
+      for (const [pid, p] of Object.entries(sleeperPlayers)) {
+        if (p.full_name) sleeperByName[p.full_name.toLowerCase()] = { ...p, sleeper_id: pid };
+        sleeperById[pid] = { ...p, sleeper_id: pid };
+      }
+
+      // ── 2. ESPN news (all sports) — injuries, transactions, analysis ──
+      const espnSports = [
+        { sport: "NFL", path: "football/nfl" },
+        { sport: "NBA", path: "basketball/nba" },
+        { sport: "MLB", path: "baseball/mlb" },
+        { sport: "NHL", path: "hockey/nhl" },
+      ];
+
+      const newsMap: Record<string, any[]> = {}; // playerName -> alerts[]
+      const teamNewsMap: Record<string, any[]> = {}; // teamName -> alerts[]
+
+      await Promise.all(espnSports.map(async ({ sport: sp, path }) => {
+        try {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/news?limit=50`, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return;
+          const data = await r.json();
+          for (const article of (data.articles || [])) {
+            const headline = article.headline || "";
+            const published = article.published || "";
+            const link = article.links?.web?.href || "";
+            const lower = headline.toLowerCase();
+
+            // Categorize
+            const isInjury = /injur|questionable|out|ruled|day-to-day|il |injured list|concussion|suspend|scratch|dnp/i.test(headline);
+            const isTrade = /trade|deal|acquire|sent to|exchange/i.test(headline);
+            const isDraft = /draft|pick|round|select/i.test(headline);
+            const isSigning = /sign|contract|agree|ink|deal/i.test(headline);
+            const isAnalysis = /outlook|breakout|bust|project|fantasy|must|start|sit|add|waiver/i.test(headline);
+            const type = isInjury ? "injury" : isTrade ? "trade" : isDraft ? "draft" : isSigning ? "signing" : isAnalysis ? "analysis" : "news";
+
+            const alert = { headline, published, type, sport: sp, link };
+
+            // Map to athletes in article
+            for (const cat of (article.categories || [])) {
+              if (cat.type === "athlete") {
+                const name = cat.athlete?.displayName || cat.description;
+                if (name) {
+                  if (!newsMap[name]) newsMap[name] = [];
+                  newsMap[name].push(alert);
+                }
+              }
+              if (cat.type === "team") {
+                const tname = cat.team?.displayName || cat.description;
+                if (tname) {
+                  if (!teamNewsMap[tname]) teamNewsMap[tname] = [];
+                  if (teamNewsMap[tname].length < 5) teamNewsMap[tname].push(alert);
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }));
+
+      // ── 3. ESPN NFL transactions feed ──
+      const transactions: any[] = [];
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/transactions?limit=40", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 30)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+            });
+          }
+        }
+      } catch (_) {}
+
+      // Also get NBA transactions
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=20", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 15)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+              sport: "NBA",
+            });
+          }
+        }
+      } catch (_) {}
+
+      // MLB transactions
+      try {
+        const txRes = await fetch("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/transactions?limit=20", { signal: AbortSignal.timeout(8000) });
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          for (const t of (txData.transactions || []).slice(0, 15)) {
+            transactions.push({
+              date: t.date,
+              description: t.description,
+              team: t.team?.abbreviation || "",
+              teamName: t.team?.displayName || "",
+              teamLogo: t.team?.logos?.[0]?.href || "",
+              sport: "MLB",
+            });
+          }
+        }
+      } catch (_) {}
+
+      transactions.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+      // ── 4. ESPN rosters (NFL + NBA + MLB skill positions) ──
+      // NFL team IDs
+      const NFL_TEAMS: Record<string, string> = {
+        "22":"ARI","1":"ATL","33":"BAL","2":"BUF","29":"CAR","3":"CHI","4":"CIN","5":"CLE",
+        "6":"DAL","7":"DEN","8":"DET","9":"GB","34":"HOU","11":"IND","30":"JAX","12":"KC",
+        "13":"LV","24":"LAC","14":"LAR","15":"MIA","16":"MIN","17":"NE","18":"NO","19":"NYG",
+        "20":"NYJ","21":"PHI","23":"PIT","25":"SF","26":"SEA","27":"TB","10":"TEN","28":"WSH",
+      };
+      const NFL_TEAM_NAMES: Record<string, string> = {
+        "22":"Arizona Cardinals","1":"Atlanta Falcons","33":"Baltimore Ravens","2":"Buffalo Bills",
+        "29":"Carolina Panthers","3":"Chicago Bears","4":"Cincinnati Bengals","5":"Cleveland Browns",
+        "6":"Dallas Cowboys","7":"Denver Broncos","8":"Detroit Lions","9":"Green Bay Packers",
+        "34":"Houston Texans","11":"Indianapolis Colts","30":"Jacksonville Jaguars","12":"Kansas City Chiefs",
+        "13":"Las Vegas Raiders","24":"Los Angeles Chargers","14":"Los Angeles Rams","15":"Miami Dolphins",
+        "16":"Minnesota Vikings","17":"New England Patriots","18":"New Orleans Saints","19":"New York Giants",
+        "20":"New York Jets","21":"Philadelphia Eagles","23":"Pittsburgh Steelers","25":"San Francisco 49ers",
+        "26":"Seattle Seahawks","27":"Tampa Bay Buccaneers","10":"Tennessee Titans","28":"Washington Commanders",
+      };
+
+      const SKILL_POSITIONS_NFL = new Set(["QB","RB","WR","TE","K"]);
+      const SKILL_POSITIONS_NBA = new Set(["PG","SG","SF","PF","C","G","F"]);
+      const SKILL_POSITIONS_MLB = new Set(["SP","RP","C","1B","2B","3B","SS","LF","CF","RF","OF","DH","P"]);
+
+      const players: any[] = [];
+
+      // Fetch NFL rosters in parallel (all 32 teams)
+      const nflRosterResults = await Promise.allSettled(
+        Object.entries(NFL_TEAMS).map(async ([id, abbr]) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamName = NFL_TEAM_NAMES[id] || abbr;
+          const result: any[] = [];
+          for (const group of (data.athletes || [])) {
+            for (const a of (group.items || [])) {
+              const posAbbr = a.position?.abbreviation || "";
+              if (!SKILL_POSITIONS_NFL.has(posAbbr)) continue;
+              const name = a.displayName || "";
+              const sleeperData = sleeperByName[name.toLowerCase()];
+              const playerAlerts = newsMap[name] || [];
+              const isTrendingAdd = sleeperData && trendAddIds.has(sleeperData.sleeper_id);
+              const isTrendingDrop = sleeperData && trendDropIds.has(sleeperData.sleeper_id);
+              const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+              const latestNews = playerAlerts[0] || null;
+              const isRookie = (a.experience?.years ?? 99) === 0;
+
+              result.push({
+                id: `nfl-${a.id}`,
+                espnId: a.id,
+                name,
+                sport: "NFL",
+                team: abbr,
+                teamName,
+                position: posAbbr,
+                jersey: a.jersey || null,
+                status: a.status?.type || "active",
+                injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+                experience: a.experience?.years ?? null,
+                isRookie,
+                isTrendingAdd,
+                isTrendingDrop,
+                sleeperRank: sleeperData?.search_rank || null,
+                newsAlerts: playerAlerts.slice(0, 3),
+                latestNews,
+                headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+              });
+            }
+          }
+          return result;
+        })
+      );
+
+      for (const r of nflRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 5. NBA rosters (sample top teams) ──
+      const NBA_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30"];
+      const nbaRosterResults = await Promise.allSettled(
+        NBA_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            if (!SKILL_POSITIONS_NBA.has(posAbbr)) continue;
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `nba-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "NBA",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of nbaRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 6. MLB rosters ──
+      const MLB_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30"];
+      const mlbRosterResults = await Promise.allSettled(
+        MLB_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `mlb-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "MLB",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/mlb/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of mlbRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 7. NHL rosters ──
+      const NHL_TEAM_IDS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32"];
+      const nhlRosterResults = await Promise.allSettled(
+        NHL_TEAM_IDS.map(async (id) => {
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/${id}/roster`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) return [];
+          const data = await r.json();
+          const teamAbbr = data.team?.abbreviation || id;
+          const teamName = data.team?.displayName || id;
+          const result: any[] = [];
+          for (const a of (data.athletes || [])) {
+            const posAbbr = a.position?.abbreviation || "";
+            if (posAbbr === "G") return result; // skip goalies for now (not fantasy skill)
+            const name = a.displayName || "";
+            const playerAlerts = newsMap[name] || [];
+            const injuryAlert = playerAlerts.find((x: any) => x.type === "injury");
+            result.push({
+              id: `nhl-${a.id}`,
+              espnId: a.id,
+              name,
+              sport: "NHL",
+              team: teamAbbr,
+              teamName,
+              position: posAbbr,
+              jersey: a.jersey || null,
+              status: a.status?.type || "active",
+              injuryStatus: injuryAlert?.headline ? detectFantasyInjury(injuryAlert.headline) : (a.injuries?.[0]?.status || null),
+              experience: a.experience?.years ?? null,
+              isRookie: (a.experience?.years ?? 99) === 0,
+              isTrendingAdd: false,
+              isTrendingDrop: false,
+              newsAlerts: playerAlerts.slice(0, 3),
+              latestNews: playerAlerts[0] || null,
+              headshot: `https://a.espncdn.com/combiner/i?img=/i/headshots/nhl/players/full/${a.id}.png&w=96&h=70&scale=crop`,
+            });
+          }
+          return result;
+        })
+      );
+      for (const r of nhlRosterResults) {
+        if (r.status === "fulfilled") players.push(...r.value);
+      }
+
+      // ── 8. Inject trending signals ──
+      // Sleeper trending applies to NFL only (they have Sleeper IDs)
+      // Already flagged isTrendingAdd/Drop above for NFL
+
+      // ── 9. Build team roster map (for team drill-down) ──
+      const teamRosters: Record<string, any[]> = {};
+      for (const p of players) {
+        const key = `${p.sport}-${p.team}`;
+        if (!teamRosters[key]) teamRosters[key] = [];
+        teamRosters[key].push(p);
+      }
+
+      // ── 10. Headlines feed (top 20 fantasy-relevant stories) ──
+      const headlines: any[] = [];
+      for (const [, alerts] of Object.entries(newsMap)) {
+        for (const a of alerts) {
+          if (!headlines.find(h => h.headline === a.headline)) {
+            headlines.push(a);
+          }
+        }
+      }
+      headlines.sort((a: any, b: any) => new Date(b.published || 0).getTime() - new Date(a.published || 0).getTime());
+
+      const result = {
+        generatedAt: new Date().toISOString(),
+        players,
+        transactions: transactions.slice(0, 50),
+        headlines: headlines.slice(0, 40),
+        teamRosters,
+        trendingAdd: trendAdd.slice(0, 10).map((t: any) => ({
+          count: t.count,
+          player: sleeperById[t.player_id] ? {
+            name: sleeperById[t.player_id].full_name,
+            position: sleeperById[t.player_id].position,
+            team: sleeperById[t.player_id].team,
+            sport: "NFL",
+          } : null,
+        })).filter((t: any) => t.player),
+        trendingDrop: trendDrop.slice(0, 10).map((t: any) => ({
+          count: t.count,
+          player: sleeperById[t.player_id] ? {
+            name: sleeperById[t.player_id].full_name,
+            position: sleeperById[t.player_id].position,
+            team: sleeperById[t.player_id].team,
+            sport: "NFL",
+          } : null,
+        })).filter((t: any) => t.player),
+      };
+
+      // Cache it
+      fantasyIntelCache = { data: result, ts: Date.now() };
+
+      if (sport === "ALL") return res.json(result);
+      return res.json({ ...result, players: result.players.filter((p: any) => p.sport === sport) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OWNER ADMIN PANEL — Sections 1-7
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Helper: write audit log entry
+  async function auditLog(actor: string, action: string, target?: string, detail?: string) {
+    try {
+      await db.query(`INSERT INTO audit_log (actor,action,target,detail) VALUES ($1,$2,$3,$4)`,
+        [actor, action, target ?? null, detail ?? null]);
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Section 1: Enhanced user control ──────────────────────────────────────
+
+  // GET /api/admin/users/:id/history — login history
+  app.get("/api/admin/users/:id/history", requireOwner, async (req: Request, res: Response) => {
+    const logs = await db.query(
+      `SELECT action, detail, ts FROM audit_log WHERE target=$1 ORDER BY ts DESC LIMIT 30`,
+      [req.params.id]
+    );
+    res.json(logs.rows);
+  });
+
+  // POST /api/admin/users/:id/refund — cancel and deactivate user
+  app.post("/api/admin/users/:id/refund", requireOwner, async (req: Request, res: Response) => {
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user) return res.status(400).json({ error: "User not found" });
+    try {
+      await db.query(`UPDATE users SET sub_status='cancelled', tier=NULL WHERE id=$1`, [req.params.id]);
+      await auditLog((req as any).user?.email ?? "owner", "refund", req.params.id, `Cancelled by owner`);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/users/:id/cancel — cancel membership
+  app.post("/api/admin/users/:id/cancel", requireOwner, async (req: Request, res: Response) => {
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    try {
+      await db.query(`UPDATE users SET sub_status='cancelled', tier=NULL WHERE id=$1`, [req.params.id]);
+      await auditLog((req as any).user?.email ?? "owner", "cancel_sub", req.params.id, `Cancelled subscription`);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/users/:id/extend-trial — extend trial by N days
+  app.post("/api/admin/users/:id/extend-trial", requireOwner, async (req: Request, res: Response) => {
+    const { days } = req.body ?? {};
+    const d = parseInt(days);
+    if (!d || d < 1 || d > 365) return res.status(400).json({ error: "Days must be 1-365" });
+    const user = await db.queryOne(`SELECT * FROM users WHERE id=$1`, [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const base = user.trial_expires && new Date(user.trial_expires) > new Date() ? new Date(user.trial_expires) : new Date();
+    base.setDate(base.getDate() + d);
+    await db.query(`UPDATE users SET trial_expires=$1, sub_status='active', tier='pro' WHERE id=$2`, [base, req.params.id]);
+    await auditLog((req as any).user?.email ?? "owner", "extend_trial", req.params.id, `Extended trial by ${d} days`);
+    res.json({ success: true, trial_expires: base });
+  });
+
+  // PATCH /api/admin/users/:id/flag — flag/unflag suspicious account
+  app.patch("/api/admin/users/:id/flag", requireOwner, async (req: Request, res: Response) => {
+    const { reason } = req.body ?? {};
+    const row = await db.queryOne(
+      `UPDATE users SET is_flagged = NOT is_flagged, flag_reason = CASE WHEN NOT is_flagged THEN $2 ELSE NULL END WHERE id=$1 RETURNING id,email,is_flagged,flag_reason`,
+      [req.params.id, reason ?? "Flagged by admin"]
+    );
+    if (!row) return res.status(404).json({ error: "Not found" });
+    await auditLog((req as any).user?.email ?? "owner", row.is_flagged ? "flag_user" : "unflag_user", req.params.id, reason ?? "");
+    res.json(row);
+  });
+
+  // ── Section 2: Feature Flags ───────────────────────────────────────────────
+
+  app.get("/api/admin/feature-flags", requireOwner, async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT * FROM feature_flags ORDER BY min_tier, label`);
+    res.json(rows.rows);
+  });
+
+  app.patch("/api/admin/feature-flags/:id", requireOwner, async (req: Request, res: Response) => {
+    const { enabled, min_tier, kill_switch } = req.body ?? {};
+    const sets: string[] = ["updated_at=NOW()"];
+    const vals: any[] = [];
+    if (enabled !== undefined) { vals.push(enabled); sets.push(`enabled=$${vals.length}`); }
+    if (min_tier !== undefined) { vals.push(min_tier); sets.push(`min_tier=$${vals.length}`); }
+    if (kill_switch !== undefined) { vals.push(kill_switch); sets.push(`kill_switch=$${vals.length}`); }
+    if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
+    vals.push(req.params.id);
+    const row = await db.queryOne(
+      `UPDATE feature_flags SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING *`,
+      vals
+    );
+    if (!row) return res.status(404).json({ error: "Flag not found" });
+    await auditLog((req as any).user?.email ?? "owner", "update_feature_flag", row.key,
+      JSON.stringify({ enabled, min_tier, kill_switch }));
+    res.json(row);
+  });
+
+  // Public endpoint: frontend reads feature flags to conditionally show tabs
+  app.get("/api/feature-flags", async (_req: Request, res: Response) => {
+    const rows = await db.query(`SELECT key, enabled, min_tier, kill_switch FROM feature_flags`);
+    const map: Record<string, any> = {};
+    for (const r of rows.rows) map[r.key] = r;
+    res.json(map);
+  });
+
+  // POST /api/track-page — lightweight tab usage tracker (auth optional)
+  app.post("/api/track-page", async (req: Request, res: Response) => {
+    const { page } = req.body ?? {};
+    if (!page) return res.json({ ok: true });
+    const authHeader = req.headers.authorization;
+    let userId: number | null = null;
+    if (authHeader) {
+      try {
+        const token = authHeader.replace("Bearer ", "");
+        const payload = verifyJWT(token) as any;
+        userId = payload?.userId ?? null;
+      } catch { /* ok */ }
+    }
+    await db.query(`INSERT INTO page_events (user_id, page) VALUES ($1,$2)`, [userId, page]).catch(() => {});
+    res.json({ ok: true });
+  });
+
+  // ── Section 3: API Health ──────────────────────────────────────────────────
+
+  app.get("/api/admin/api-health", requireOwner, async (_req: Request, res: Response) => {
+    // Last result per service
+    const rows = await db.query(`
+      SELECT DISTINCT ON (service) service, status, latency_ms, error, ts
+      FROM api_health_log ORDER BY service, ts DESC
+    `);
+    // Error count last 24h per service
+    const errs = await db.query(`
+      SELECT service, COUNT(*) as err_count FROM api_health_log
+      WHERE status='error' AND ts > NOW()-INTERVAL '24 hours' GROUP BY service
+    `);
+    const errMap: Record<string,number> = {};
+    for (const r of errs.rows) errMap[r.service] = parseInt(r.err_count);
+    const result = rows.rows.map((r: any) => ({ ...r, errors_24h: errMap[r.service] ?? 0 }));
+    res.json(result);
+  });
+
+  app.get("/api/admin/api-health/logs", requireOwner, async (req: Request, res: Response) => {
+    const service = req.query.service as string | undefined;
+    const rows = service
+      ? await db.query(`SELECT * FROM api_health_log WHERE service=$1 ORDER BY ts DESC LIMIT 50`, [service])
+      : await db.query(`SELECT * FROM api_health_log ORDER BY ts DESC LIMIT 100`);
+    res.json(rows.rows);
+  });
+
+  // DELETE /api/admin/api-health/errors — clear all error entries from the log
+  app.delete("/api/admin/api-health/errors", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { service } = req.query as { service?: string };
+      if (service) {
+        await db.query(`DELETE FROM api_health_log WHERE status='error' AND service=$1`, [service]);
+      } else {
+        await db.query(`DELETE FROM api_health_log WHERE status='error'`);
+      }
+      await auditLog((req as any).user?.email ?? "owner", "clear_api_errors", service ?? "all");
+      res.json({ ok: true, cleared: service ?? "all" });
+    } catch (e: any) {
+      console.error("[clear-api-errors]", e.message);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // POST /api/admin/api-health/ping — ping a specific service and record result
+  app.post("/api/admin/api-health/ping", requireOwner, async (req: Request, res: Response) => {
+    const { service } = req.body ?? {};
+    const oddsApiKey = process.env.ODDS_API_KEY || "15c62ebc-0905-4858-87e4-87160b253149";
+    const SERVICES: Record<string, { url: string; headers?: any }> = {
+      odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=${oddsApiKey}` },
+      espn:           { url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard` },
+      mlb_stats:      { url: `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${new Date().toISOString().split('T')[0]}` },
+      action_network: { url: `https://api.actionnetwork.com/web/v1/scoreboard/mlb?date=${new Date().toISOString().split('T')[0].replace(/-/g,'')}`, headers: { 'x-api-key': process.env.ACTION_NETWORK_KEY || '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2', 'User-Agent': 'Mozilla/5.0 (compatible; ClubhouseIQ/1.0)', 'Referer': 'https://www.actionnetwork.com/' } },
+      // wttr.in blocks datacenter IPs — use json format which is more permissive
+      weather:        { url: `https://wttr.in/Chicago?format=j1`, headers: { 'User-Agent': 'curl/7.68.0', 'Accept': 'application/json' } },
+    };
+    const svc = SERVICES[service];
+    if (!svc) return res.status(400).json({ error: `Unknown service: ${service}` });
+    const start = Date.now();
+    try {
+      await axios.get(svc.url, { headers: svc.headers ?? {}, timeout: 8000 });
+      const latency = Date.now() - start;
+      await db.query(`INSERT INTO api_health_log (service,status,latency_ms) VALUES ($1,'ok',$2)`, [service, latency]);
+      res.json({ service, status: 'ok', latency_ms: latency });
+    } catch (e: any) {
+      const latency = Date.now() - start;
+      const errMsg = e.response?.status ? `HTTP ${e.response.status}` : e.message;
+      await db.query(`INSERT INTO api_health_log (service,status,latency_ms,error) VALUES ($1,'error',$2,$3)`, [service, latency, errMsg]);
+      res.json({ service, status: 'error', latency_ms: latency, error: errMsg });
+    }
+  });
+
+  // ── Section 4: Analytics ──────────────────────────────────────────────────
+
+  app.get("/api/admin/analytics", requireOwner, async (_req: Request, res: Response) => {
+    try {
+      // Tab usage (last 7 days)
+      const tabUsage = await db.query(`
+        SELECT page, COUNT(*) as views FROM page_events
+        WHERE ts > NOW()-INTERVAL '7 days' GROUP BY page ORDER BY views DESC LIMIT 15
+      `);
+
+      // Conversion funnel
+      const funnel = await db.query(`
+        SELECT
+          COUNT(CASE WHEN tier IS NULL THEN 1 END) as free_count,
+          COUNT(CASE WHEN tier='basic' THEN 1 END) as basic_count,
+          COUNT(CASE WHEN tier='pro'   THEN 1 END) as pro_count
+        FROM users WHERE NOT is_owner
+      `);
+
+      // MRR from DB (approx: basic=$5, pro=$15, active subs only)
+      const mrrData = await db.query(`
+        SELECT tier, COUNT(*) as cnt FROM users
+        WHERE sub_status='active' AND tier IN ('basic','pro') AND NOT is_owner GROUP BY tier
+      `);
+      let mrr = 0;
+      for (const r of mrrData.rows) {
+        mrr += (r.tier === 'pro' ? 15 : 5) * parseInt(r.cnt);
+      }
+
+      // Churn (cancelled in last 30 days) — approximate from audit log
+      const churn = await db.query(`
+        SELECT COUNT(*) as cnt FROM audit_log
+        WHERE action='cancel_sub' AND ts > NOW()-INTERVAL '30 days'
+      `);
+
+      // Revenue from DB — approximate from active subscriptions
+      const revenueData = await db.query(`
+        SELECT tier, COUNT(*) as cnt FROM users
+        WHERE sub_status='active' AND tier IS NOT NULL AND is_owner=FALSE
+        GROUP BY tier
+      `);
+      let whopRevenue = 0;
+      for (const row of revenueData.rows) {
+        const price = row.tier === 'pro' ? 15 : row.tier === 'basic' ? 5 : 0;
+        whopRevenue += price * parseInt(row.cnt);
+      }
+
+      res.json({
+        tabUsage: tabUsage.rows,
+        funnel: funnel.rows[0],
+        mrr,
+        churn_30d: parseInt(churn.rows[0].cnt),
+        gumroad_revenue_30d: whopRevenue,
+        stripe_refunds_30d: 0,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Section 5: Notifications & Messaging ──────────────────────────────────
+
+  // POST /api/admin/send-blast — email blast to tier(s)
+  app.post("/api/admin/send-blast", requireOwner, async (req: Request, res: Response) => {
+    const { subject, body, tiers } = req.body ?? {};
+    if (!subject || !body) return res.status(400).json({ error: "Subject and body required" });
+    const tierFilter = Array.isArray(tiers) && tiers.length > 0
+      ? tiers : ['free', 'basic', 'pro'];
+    // Map 'free' tier to NULL in DB
+    const conditions = tierFilter.map((t: string) => t === 'free' ? `tier IS NULL` : `tier='${t}'`);
+    const users = await db.query(
+      `SELECT email FROM users WHERE (${conditions.join(' OR ')}) AND NOT is_disabled AND NOT is_owner`
+    );
+    if (!users.rows.length) return res.json({ success: true, sent: 0 });
+    try {
+      const resendClient = new (await import('resend')).Resend(process.env.RESEND_API_KEY!);
+      const FROM = "Clubhouse IQ <noreply@clubhouseiq.app>";
+      let sent = 0;
+      // Send in batches of 10
+      for (let i = 0; i < users.rows.length; i += 10) {
+        const batch = users.rows.slice(i, i+10);
+        await Promise.all(batch.map((u: any) =>
+          resendClient.emails.send({ from: FROM, to: u.email, subject, html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;"><p style="white-space:pre-wrap;color:#131A24">${body}</p><hr style="margin:24px 0;border:none;border-top:1px solid #eee"/><p style="color:#8A9BB0;font-size:11px">Clubhouse IQ · <a href="https://clubhouse-iq.up.railway.app">clubhouse-iq.up.railway.app</a></p></div>` })
+        ));
+        sent += batch.length;
+      }
+      await auditLog((req as any).user?.email ?? "owner", "email_blast", undefined, `Sent to ${sent} users: "${subject}"`);
+      res.json({ success: true, sent });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/admin/announcement — set/clear in-app banner
+  app.post("/api/admin/announcement", requireOwner, async (req: Request, res: Response) => {
+    const { message, type } = req.body ?? {}; // type: info|warning|success
+    if (message) {
+      await db.query(`INSERT INTO app_settings (key,value) VALUES ('announcement', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [JSON.stringify({ message, type: type ?? 'info', ts: new Date().toISOString() })]);
+    } else {
+      await db.query(`DELETE FROM app_settings WHERE key='announcement'`);
+    }
+    res.json({ success: true });
+  });
+
+  // GET /api/announcement — public, used by frontend to show banner
+  app.get("/api/announcement", async (_req: Request, res: Response) => {
+    const row = await db.queryOne(`SELECT value FROM app_settings WHERE key='announcement'`);
+    if (!row) return res.json(null);
+    try { res.json(JSON.parse(row.value)); } catch { res.json(null); }
+  });
+
+  // ── Section 6: Deployment / Version Info ──────────────────────────────────
+
+  app.get("/api/admin/deployment", requireOwner, async (_req: Request, res: Response) => {
+    // Read version info baked in at build time (if present)
+    let gitSha = process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? null;
+    let deployedAt = process.env.RAILWAY_DEPLOYMENT_ID ? null : null; // Railway doesn't expose this easily
+    let branch = process.env.RAILWAY_GIT_BRANCH ?? "main";
+    // Try to read from a baked-in version file
+    try {
+      const vf = require('fs').readFileSync(require('path').join(__dirname, '../version.json'), 'utf-8');
+      const vd = JSON.parse(vf);
+      gitSha = gitSha ?? vd.sha;
+      deployedAt = vd.buildTime;
+      branch = vd.branch ?? branch;
+    } catch { /* ok */ }
+    res.json({
+      git_sha: gitSha,
+      git_sha_short: gitSha ? gitSha.slice(0,8) : null,
+      branch,
+      deployed_at: deployedAt,
+      github_url: gitSha ? `https://github.com/abudnick8/prop-edge/commit/${gitSha}` : "https://github.com/abudnick8/prop-edge",
+      railway_url: "https://railway.app/project/c88d82a5-56b0-452e-8840-66587aeb94a9",
+      app_url: "https://clubhouse-iq.up.railway.app",
+    });
+  });
+
+  // ── Section 7: System Settings — API keys, audit log ─────────────────────
+
+  // GET /api/admin/audit-log
+  app.get("/api/admin/audit-log", requireOwner, async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string ?? "50"), 200);
+    const rows = await db.query(`SELECT * FROM audit_log ORDER BY ts DESC LIMIT $1`, [limit]);
+    res.json(rows.rows);
+  });
+
+  // GET/PATCH /api/admin/api-keys — owner manages API keys stored in app_settings
+  app.get("/api/admin/api-keys", requireOwner, async (_req: Request, res: Response) => {
+    const keys = ['odds_api_key', 'action_network_key'];
+    const rows = await db.query(`SELECT key,value FROM app_settings WHERE key=ANY($1)`, [keys]);
+    const result: Record<string,string> = {};
+    for (const r of rows.rows) {
+      // Mask all but last 4 chars
+      result[r.key] = r.value.length > 8 ? '•'.repeat(r.value.length - 4) + r.value.slice(-4) : r.value;
+    }
+    res.json(result);
+  });
+
+  app.patch("/api/admin/api-keys", requireOwner, async (req: Request, res: Response) => {
+    const allowed = ['odds_api_key', 'action_network_key'];
+    const updates = req.body ?? {};
+    for (const [key, value] of Object.entries(updates)) {
+      if (!allowed.includes(key)) continue;
+      await db.query(`INSERT INTO app_settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2`, [key, value]);
+    }
+    await auditLog((req as any).user?.email ?? "owner", "update_api_keys", undefined, Object.keys(updates).join(", "));
+    res.json({ success: true });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ══ THE BOOK — Owner-only paper sportsbook ════════════════════════════════════
+
+  // ─ Helper: American odds → decimal multiplier ─────────────────────
+  function americanToDecimal(odds: number): number {
+    if (odds >= 100) return odds / 100 + 1;
+    return 100 / Math.abs(odds) + 1;
+  }
+
+  // ─ Parlay payout calc ─────────────────────────────────────
+  function calcParlayPayout(stake: number, oddsArr: number[]): number {
+    const mult = oddsArr.reduce((acc, o) => acc * americanToDecimal(o), 1);
+    return parseFloat((stake * mult).toFixed(2));
+  }
+
+  // ─ Round Robin combos ─────────────────────────────────
+  function getCombinations<T>(arr: T[], size: number): T[][] {
+    if (size > arr.length) return [];
+    if (size === 1) return arr.map(x => [x]);
+    return arr.flatMap((x, i) =>
+      getCombinations(arr.slice(i + 1), size - 1).map(rest => [x, ...rest])
+    );
+  }
+
+  // ─ Fetch DraftKings odds from The Odds API ──────────────────
+  async function getOddsApiKey(): Promise<string> {
+    // Prefer env var, fall back to DB settings
+    if (process.env.ODDS_API_KEY) return process.env.ODDS_API_KEY;
+    try {
+      const s = await storage.getSettings();
+      return s?.oddsApiKey ?? "";
+    } catch { return ""; }
+  }
+
+  async function fetchDraftKingsOdds(sport: string): Promise<any[]> {
+    const sportMap: Record<string, string> = {
+      mlb: "baseball_mlb",
+      nfl: "americanfootball_nfl",
+      nba: "basketball_nba",
+      nhl: "icehockey_nhl",
+    };
+    const sportKey = sportMap[sport.toLowerCase()];
+    if (!sportKey) return [];
+    const apiKey = await getOddsApiKey();
+    if (!apiKey) return [];
+    try {
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings,fanduel,betmgm&oddsFormat=american`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      const now = Date.now();
+      // Only return games that have NOT started yet (commence_time in the future)
+      const games: any[] = resp.data ?? [];
+      return games.filter(g => {
+        const ct = g.commence_time ? new Date(g.commence_time).getTime() : 0;
+        return ct > now;
+      });
+    } catch (e: any) {
+      console.warn(`[Book] DraftKings odds fetch error (${sport}):`, e.message);
+      return [];
+    }
+  }
+
+  // MLB prop market keys allowed (per user rules)
+  const MLB_PROP_MARKETS = [
+    "player_hits",
+    "player_home_runs",
+    "player_runs_scored",
+    "player_rbis",
+    "player_total_bases",
+    "player_singles",
+    "player_doubles",
+    "player_stolen_bases",
+    "player_strikeouts",
+    "player_pitcher_strikeouts",
+    "player_pitcher_outs",
+    "player_hits_allowed",
+    "player_earned_runs",
+    "player_walks",
+    "player_pitcher_walks",
+    "player_first_innings_runs_allowed",
+  ];
+
+  const NBA_NHL_NFL_PROP_MARKETS = [
+    "player_points",
+    "player_rebounds",
+    "player_assists",
+    "player_threes",
+    "player_blocks",
+    "player_steals",
+    "player_points_rebounds_assists",
+    "player_anytime_td",
+    "player_reception_yards",
+    "player_rushing_yards",
+    "player_passing_yards",
+    "player_passing_tds",
+    "player_receptions",
+    "player_shots_on_goal",
+    "player_goal_scorer",
+  ];
+
+  // ─ Linemate market name → Odds API style key mapping ───────────────────
+  const LINEMATE_TO_PROP_KEY: Record<string, string> = {
+    // MLB hitter
+    HITTER_HITS:                    "player_hits",
+    HITTER_HOME_RUNS:               "player_home_runs",
+    HITTER_TOTAL_BASES:             "player_total_bases",
+    HITTER_RUNS_BATTED_IN:          "player_rbis",
+    HITTER_RUNS:                    "player_runs_scored",
+    HITTER_SINGLES:                 "player_singles",
+    HITTER_DOUBLES:                 "player_doubles",
+    HITTER_STOLEN_BASES:            "player_stolen_bases",
+    HITTER_STRIKEOUTS:              "player_strikeouts",
+    // MLB pitcher
+    PITCHER_STRIKEOUTS:             "player_pitcher_strikeouts",
+    PITCHER_OUTS:                   "player_pitcher_outs",
+    PITCHER_HITS_ALLOWED:           "player_hits_allowed",
+    PITCHER_EARNED_RUNS:            "player_earned_runs",
+    PITCHER_WALKS:                  "player_pitcher_walks",
+    PITCHER_INNINGS_PITCHED:        "player_pitcher_outs",
+    // NBA
+    POINTS:                         "player_points",
+    REBOUNDS:                       "player_rebounds",
+    ASSISTS:                        "player_assists",
+    THREE_POINTERS_MADE:            "player_threes",
+    BLOCKS:                         "player_blocks",
+    STEALS:                         "player_steals",
+    POINTS_REBOUNDS_ASSISTS:        "player_points_rebounds_assists",
+    // NHL
+    SHOTS_ON_GOAL:                  "player_shots_on_goal",
+    GOALS:                          "player_goals",
+    // NFL
+    PASSING_YARDS:                  "player_passing_yards",
+    PASSING_TOUCHDOWNS:             "player_passing_tds",
+    RUSHING_YARDS:                  "player_rushing_yards",
+    RECEIVING_YARDS:                "player_reception_yards",
+    RECEPTIONS:                     "player_receptions",
+    ANYTIME_TOUCHDOWN:              "player_anytime_td",
+  };
+
+  // Linemate game code → Odds API event id cache (populated when linemate data fetched)
+  const linematePropCache: Record<string, { markets: any[]; fetchedAt: number }> = {};
+  const LINEMATE_PROP_CACHE_TTL = 8 * 60 * 1000; // 8 minutes
+
+  // ─ Fetch player props from Linemate (free, no plan restriction) ──────────────
+  async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
+    const sportKey = sport.toLowerCase();
+    const cacheKey = `${sportKey}:${eventId}`;
+
+    // Return from cache if fresh
+    const cached = linematePropCache[cacheKey];
+    if (cached && Date.now() - cached.fetchedAt < LINEMATE_PROP_CACHE_TTL) {
+      return cached.markets;
+    }
+
+    try {
+      // 1. Use linemate cache if already populated (from /api/linemate-props calls)
+      //    Otherwise fetch directly from linemate
+      let linemateMarkets: any[] = [];
+      const lmCached = linemateCache.get(sportKey);
+      if (lmCached && Date.now() - lmCached.ts < LINEMATE_TTL) {
+        linemateMarkets = lmCached.data?.markets ?? [];
+      } else {
+        // Fresh fetch from linemate
+        const BASE = `https://api.linemate.io/api/${sportKey}`;
+        const marketsRes = await axios.get(`${BASE}/v2/markets`, {
+          params: { levelsToInclude: "player" },
+          headers: LINEMATE_HEADERS,
+          timeout: 12000,
+        });
+        const raw: any[] = Array.isArray(marketsRes.data) ? marketsRes.data : [];
+        const rawFiltered = raw.filter((m: any) => m.player && m.name);
+        linemateMarkets = rawFiltered.map((m: any) => normalisePick(
+            { gameId: m.gameId, player: m.player, team: m.team, opposingTeam: m.opposingTeam, isHome: m.isHome, market: m, outcome: "OVER", pregameHitRecords: m.pregameHitRecords, pregameAverages: m.pregameAverages },
+            "MARKET", sportKey.toUpperCase()
+          ));
+        // Update linemate cache — store rawMarkets to preserve books+alternates for Book props
+        const existing = lmCached?.data ?? {};
+        linemateCache.set(sportKey, { data: { ...existing, markets: linemateMarkets, rawMarkets: rawFiltered }, ts: Date.now() });
+      }
+
+      // 2. Also fetch the odds API for this event for actual odds (American format)
+      //    Falls back to -110/-110 if unavailable
+      const apiKey = await getOddsApiKey();
+      let oddsMap: Record<string, { overOdds: number; underOdds: number }> = {};
+      // Try to get h2h odds (we know those work) — props odds not available on free plan
+      // We'll use the bookLines from linemate itself for odds
+
+      // 3. Convert raw linemate markets into Book's market/outcome format
+      //    Raw linemate data has books.bookname.over.alternates with additional lines+odds
+
+      // Helper: extract all {line, overOdds, underOdds} from raw linemate books object
+      function extractLines(books: any): { line: number; overOdds: number | null; underOdds: number | null }[] {
+        const map = new Map<number, { overOdds: number | null; underOdds: number | null }>();
+        if (!books || typeof books !== "object") return [];
+        for (const bdata of Object.values(books as Record<string, any>)) {
+          if (!bdata || typeof bdata !== "object") continue;
+          const over  = (bdata as any).over  ?? null;
+          const under = (bdata as any).under ?? null;
+          // Main line
+          const mainVal = over?.current?.value ?? under?.current?.value ?? null;
+          if (mainVal != null) {
+            const e = map.get(mainVal) ?? { overOdds: null, underOdds: null };
+            if (over?.current?.odds?.american  != null && e.overOdds  == null) e.overOdds  = over.current.odds.american;
+            if (under?.current?.odds?.american != null && e.underOdds == null) e.underOdds = under.current.odds.american;
+            map.set(mainVal, e);
+          }
+          // Over alternates
+          for (const [altKey, altData] of Object.entries((over?.alternates ?? {}) as Record<string, any>)) {
+            const aVal = parseFloat(altKey);
+            if (isNaN(aVal)) continue;
+            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
+            if (altData?.odds?.american != null && e.overOdds == null) e.overOdds = altData.odds.american;
+            map.set(aVal, e);
+          }
+          // Under alternates
+          for (const [altKey, altData] of Object.entries((under?.alternates ?? {}) as Record<string, any>)) {
+            const aVal = parseFloat(altKey);
+            if (isNaN(aVal)) continue;
+            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
+            if (altData?.odds?.american != null && e.underOdds == null) e.underOdds = altData.odds.american;
+            map.set(aVal, e);
+          }
+        }
+        return Array.from(map.entries())
+          .map(([line, odds]) => ({ line, ...odds }))
+          .sort((a, b) => a.line - b.line);
+      }
+
+      // Group by market type (prop key)
+      const marketMap: Record<string, any> = {};
+
+      // Work from raw linemate data when available to get alternates
+      const rawLmData: any[] = lmCached?.data?.rawMarkets ?? [];
+      const sourceArr = rawLmData.length > 0 ? rawLmData : linemateMarkets;
+      const usingRaw  = rawLmData.length > 0;
+
+      for (const m of sourceArr) {
+        const playerName = usingRaw ? (m.player?.fullName ?? "") : (m.playerName ?? "");
+        const marketName = usingRaw ? (m.name ?? "")            : (m.marketName ?? "");
+        const teamCode   = usingRaw ? (m.team?.code ?? "")      : (m.teamCode ?? "");
+        const position   = usingRaw ? (m.player?.position ?? "") : (m.playerPos ?? "");
+        const gameId     = m.gameId ?? null;
+        const books      = usingRaw ? (m.books ?? {}) : {};
+
+        if (!playerName || !marketName) continue;
+        const propKey = LINEMATE_TO_PROP_KEY[marketName] ?? null;
+        if (!propKey) continue;
+
+        // Build sorted list of available lines with odds
+        let allLines: { line: number; overOdds: number | null; underOdds: number | null }[] = [];
+        if (usingRaw && Object.keys(books).length > 0) {
+          allLines = extractLines(books);
+        }
+        // Fallback to normalized bookLines
+        if (allLines.length === 0) {
+          const bl = m.bookLines ?? {};
+          const be = Object.values(bl) as any[];
+          const cl = m.consensusLine ?? null;
+          if (cl != null) {
+            allLines = [{ line: cl, overOdds: be.find((b: any) => b.overOdds != null)?.overOdds ?? -110, underOdds: be.find((b: any) => b.underOdds != null)?.underOdds ?? -110 }];
+          }
+        }
+        if (allLines.length === 0) continue;
+
+        // Primary line: lowest line that has overOdds, or just first
+        const primaryLine = allLines.find(l => l.overOdds != null) ?? allLines[0];
+
+        if (!marketMap[propKey]) {
+          marketMap[propKey] = { key: propKey, outcomes: [], bookmaker: "linemate" };
+        }
+
+        // Over outcome — includes all alternate lines with odds
+        const overAlternates = allLines.filter(l => l.overOdds != null).map(l => ({ line: l.line, overOdds: l.overOdds!, underOdds: l.underOdds }));
+        marketMap[propKey].outcomes.push({
+          name:        "Over",
+          description: playerName,
+          point:       primaryLine.line,
+          price:       primaryLine.overOdds ?? -110,
+          team:        teamCode || null,
+          position:    position || null,
+          gameId,
+          alternates:  overAlternates,
+        });
+
+        // Under outcome — skip for HR and SB (user rule: only overs shown)
+        if (propKey !== "player_home_runs" && propKey !== "player_stolen_bases") {
+          const underLines = allLines.filter(l => l.underOdds != null);
+          const underPrimary = underLines[underLines.length - 1] ?? primaryLine; // highest line for under
+          const underAlternates = underLines.map(l => ({ line: l.line, overOdds: l.overOdds, underOdds: l.underOdds! }));
+          marketMap[propKey].outcomes.push({
+            name:        "Under",
+            description: playerName,
+            point:       underPrimary.line,
+            price:       underPrimary.underOdds ?? -110,
+            team:        teamCode || null,
+            position:    position || null,
+            gameId,
+            alternates:  underAlternates,
+          });
+        }
+      }
+
+      const markets = Object.values(marketMap);
+      console.log(`[Book Props] linemate ${sport}: ${markets.length} markets, ${markets.reduce((s: number, m: any) => s + m.outcomes.length, 0)} outcomes`);
+
+      // Cache per-sport (not per eventId) since linemate data covers all games
+      linematePropCache[`${sportKey}:ALL`] = { markets, fetchedAt: Date.now() };
+      linematePropCache[cacheKey] = { markets, fetchedAt: Date.now() };
+
+      return markets;
+    } catch (e: any) {
+      console.error(`[Book Props] Linemate fetch error:`, e.message);
+      return [];
+    }
+  }
+
+  // ─ Book grader: grade all open legs that have results available ───
+  async function gradeBookLegs(): Promise<void> {
+    try {
+      const openLegs = await db.query(
+        `SELECT l.*, s.account_id, s.slip_type, s.stake, s.id as slip_id
+         FROM book_legs l
+         JOIN book_slips s ON l.slip_id = s.id
+         WHERE l.result = 'pending' AND s.status = 'open'
+         ORDER BY l.game_date ASC`
+      );
+      if (!openLegs.rows.length) return;
+
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+      for (const leg of openLegs.rows) {
+        let result: "win" | "loss" | "push" | "void" | null = null;
+        let actualValue: number | null = null;
+
+        // Only grade games from today or earlier
+        if (leg.game_date > today) continue;
+
+        try {
+          if (leg.bet_type === "prop" && leg.player_id && leg.stat_type) {
+            // Use MLB Stats API for player props
+            const glResp = await axios.get(
+              `https://statsapi.mlb.com/api/v1/people/${leg.player_id}/stats?stats=gameLog&season=${leg.game_date.slice(0,4)}&group=hitting,pitching`,
+              { timeout: 5000 }
+            );
+            const splits = glResp.data?.stats?.flatMap((s: any) => s.splits ?? []) ?? [];
+            const daySplit = splits.find((s: any) => s.date === leg.game_date);
+            if (!daySplit) continue; // no data yet
+
+            const statMap: Record<string, string> = {
+              hits: "hits", home_runs: "homeRuns", total_bases: "totalBases",
+              rbis: "rbi", stolen_bases: "stolenBases", strikeouts: "strikeOuts",
+              pitcher_strikeouts: "strikeOuts", points: "hits", rebounds: "hits", assists: "hits",
+            };
+            const statKey = statMap[leg.stat_type] ?? leg.stat_type;
+            actualValue = parseFloat(daySplit.stat?.[statKey] ?? "0");
+
+            if (actualValue === leg.line) result = "push";
+            else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
+            else result = actualValue < leg.line ? "win" : "loss";
+
+          } else if (leg.bet_type === "moneyline" || leg.bet_type === "spread" || leg.bet_type === "total") {
+            // Use MLB schedule/boxscore for game bets
+            const schedResp = await axios.get(
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${leg.game_date}&hydrate=linescore`,
+              { timeout: 5000 }
+            );
+            const games = schedResp.data?.dates?.[0]?.games ?? [];
+            const game = games.find((g: any) => {
+              const ht = g.teams?.home?.team?.name ?? "";
+              const at = g.teams?.away?.team?.name ?? "";
+              return (ht.includes(leg.home_team?.split(" ").pop() ?? "__") ||
+                      at.includes(leg.away_team?.split(" ").pop() ?? "__"));
+            });
+            if (!game) continue;
+            const state = game.status?.abstractGameState;
+            if (state !== "Final") continue; // game not over yet
+
+            const homeScore = game.teams?.home?.score ?? 0;
+            const awayScore = game.teams?.away?.score ?? 0;
+            actualValue = homeScore;
+
+            if (leg.bet_type === "moneyline") {
+              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const homeWon = homeScore > awayScore;
+              if (homeScore === awayScore) result = "push";
+              else result = (pickedHome && homeWon) || (!pickedHome && !homeWon) ? "win" : "loss";
+            } else if (leg.bet_type === "spread") {
+              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const adjustedScore = pickedHome ? homeScore + leg.line : awayScore + leg.line;
+              const opponentScore = pickedHome ? awayScore : homeScore;
+              if (adjustedScore === opponentScore) result = "push";
+              else result = adjustedScore > opponentScore ? "win" : "loss";
+            } else if (leg.bet_type === "total") {
+              const total = homeScore + awayScore;
+              if (total === leg.line) result = "push";
+              else result = (leg.over_under === "over" ? total > leg.line : total < leg.line) ? "win" : "loss";
+            }
+          }
+        } catch { continue; }
+
+        if (!result) continue;
+
+        // Update leg result
+        await db.query(
+          `UPDATE book_legs SET result=$1, actual_value=$2, graded_at=NOW() WHERE id=$3`,
+          [result, actualValue, leg.id]
+        );
+
+        // Check if all legs in slip are graded
+        const slipLegs = await db.query(
+          `SELECT result FROM book_legs WHERE slip_id=$1`, [leg.slip_id]
+        );
+        const legResults = slipLegs.rows.map((r: any) => r.result);
+        if (legResults.includes("pending")) continue; // still waiting on other legs
+
+        // Determine slip outcome
+        let slipStatus: string;
+        if (legResults.every((r: string) => r === "void")) {
+          slipStatus = "void";
+        } else {
+          const activeLegResults = legResults.filter((r: string) => r !== "void");
+          if (activeLegResults.length === 0) {
+            slipStatus = "void";
+          } else if (activeLegResults.every((r: string) => r === "win")) {
+            slipStatus = "won";
+          } else if (activeLegResults.some((r: string) => r === "loss")) {
+            slipStatus = "lost";
+          } else {
+            slipStatus = "push"; // all push
+          }
+        }
+
+        // Recalculate payout for void legs (parlay: void leg removed, recalc odds)
+        let finalPayout = 0;
+        if (slipStatus === "won") {
+          const activeLeg = await db.query(
+            `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result != 'void'`, [leg.slip_id]
+          );
+          const activeOdds = activeLeg.rows.map((r: any) => r.odds_american);
+          const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [leg.slip_id]);
+          if (activeOdds.length === 1) {
+            finalPayout = parseFloat((slip.stake * americanToDecimal(activeOdds[0])).toFixed(2));
+          } else {
+            finalPayout = calcParlayPayout(slip.stake, activeOdds);
+          }
+        } else if (slipStatus === "push" || slipStatus === "void") {
+          const slip = await db.queryOne(`SELECT stake FROM book_slips WHERE id=$1`, [leg.slip_id]);
+          finalPayout = parseFloat(slip.stake);
+        }
+
+        // Settle the slip
+        await db.query(
+          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+          [slipStatus, finalPayout || null, leg.slip_id]
+        );
+
+        // Credit account if won/push/void
+        if (finalPayout > 0) {
+          await db.query(
+            `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+            [finalPayout, leg.account_id]
+          );
+          const txType = slipStatus === "won" ? "win" : slipStatus === "push" ? "push" : "void_refund";
+          await db.query(
+            `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [leg.account_id, finalPayout, txType, leg.slip_id, `Slip #${leg.slip_id} settled: ${slipStatus}`]
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn("[Book] Grader error:", e.message);
+    }
+  }
+
+  // Run book grader every 5 minutes
+  setInterval(() => gradeBookLegs(), 5 * 60 * 1000);
+
+  // ─ GET /api/book/accounts ────────────────────────────────────
+  app.get("/api/book/accounts", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.userId;
+      const accounts = await db.query(
+        `SELECT a.*,
+           COALESCE(SUM(CASE WHEN s.status='won' THEN s.payout_received - s.stake ELSE 0 END),0) as total_profit,
+           COUNT(CASE WHEN s.status IN ('won','lost','push') THEN 1 END) as settled_slips,
+           COUNT(CASE WHEN s.status='won' THEN 1 END) as won_slips,
+           COUNT(CASE WHEN s.status='open' THEN 1 END) as open_slips
+         FROM book_accounts a
+         LEFT JOIN book_slips s ON s.account_id = a.id
+         WHERE a.user_id=$1
+         GROUP BY a.id ORDER BY a.created_at ASC`,
+        [userId]
+      );
+      res.json({ accounts: accounts.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/accounts ─────────────────────────────────
+  app.post("/api/book/accounts", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.userId;
+      const { name } = req.body ?? {};
+      const acct = await db.queryOne(
+        `INSERT INTO book_accounts (user_id, name, balance) VALUES ($1,$2,10000) RETURNING *`,
+        [userId, name ?? "New Account"]
+      );
+      await db.query(
+        `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,10000,'deposit','Starting balance')`,
+        [acct.id]
+      );
+      res.json({ account: acct });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ PATCH /api/book/accounts/:id ────────────────────────────
+  app.patch("/api/book/accounts/:id", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { name, addCoins } = req.body ?? {};
+      const id = parseInt(req.params.id);
+      if (name) await db.query(`UPDATE book_accounts SET name=$1 WHERE id=$2`, [name, id]);
+      if (addCoins && addCoins > 0) {
+        await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [addCoins, id]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,$2,'deposit','Manual coin deposit')`,
+          [id, addCoins]
+        );
+      }
+      const updated = await db.queryOne(`SELECT * FROM book_accounts WHERE id=$1`, [id]);
+      res.json({ account: updated });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/odds?sport=mlb ────────────────────────────
+  app.get("/api/book/odds", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const sport = (req.query.sport as string) ?? "mlb";
+      const odds = await fetchDraftKingsOdds(sport);
+      res.json({ sport, games: odds });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/props?sport=mlb&eventId=xxx&homeTeam=X&awayTeam=Y ─────────
+  app.get("/api/book/props", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const sport     = (req.query.sport as string) ?? "mlb";
+      const eventId   = req.query.eventId as string;
+      const homeTeam  = (req.query.homeTeam as string) ?? "";
+      const awayTeam  = (req.query.awayTeam as string) ?? "";
+      const debug     = req.query.debug === "1";
+      if (!eventId) return res.status(400).json({ error: "eventId required" });
+
+      // Debug: show what key is resolved
+      if (debug) {
+        const k = await getOddsApiKey();
+        const hasEnv = !!process.env.ODDS_API_KEY;
+        const dbSettings = await storage.getSettings();
+        const hasDb = !!dbSettings?.oddsApiKey;
+        // Live API test — bulk endpoint for player props
+        let apiTestResult: any = {};
+        const sportKey = sport.toLowerCase() === "mlb" ? "baseball_mlb" :
+                         sport.toLowerCase() === "nba" ? "basketball_nba" :
+                         sport.toLowerCase() === "nhl" ? "icehockey_nhl" : "basketball_nba";
+        if (k) {
+          try {
+            const testUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${k}&regions=us&markets=player_points,player_hits&bookmakers=draftkings,fanduel&oddsFormat=american`;
+            const testResp = await axios.get(testUrl, { timeout: 10000 });
+            const events: any[] = Array.isArray(testResp.data) ? testResp.data : [];
+            const propEvents = events.filter((e: any) =>
+              e.bookmakers?.some((b: any) => b.markets?.length > 0)
+            );
+            apiTestResult = {
+              ok: true,
+              totalEvents: events.length,
+              eventsWithProps: propEvents.length,
+              sampleEventIds: propEvents.slice(0, 3).map((e: any) => e.id),
+              remainingRequests: testResp.headers["x-requests-remaining"],
+              usedRequests: testResp.headers["x-requests-used"],
+              rawSample: propEvents[0] ? {
+                id: propEvents[0].id,
+                teams: `${propEvents[0].away_team} @ ${propEvents[0].home_team}`,
+                bookmakers: propEvents[0].bookmakers?.map((b: any) => ({
+                  key: b.key,
+                  markets: b.markets?.map((m: any) => `${m.key}(${m.outcomes?.length})`)
+                }))
+              } : null
+            };
+          } catch (e: any) {
+            apiTestResult = { ok: false, error: e.response?.data?.message ?? e.message, status: e.response?.status };
+          }
+        }
+        return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", apiTest: apiTestResult });
+      }
+
+      const allMarkets = await fetchDraftKingsProps(sport, eventId);
+
+      // Build team code set from homeTeam + awayTeam for filtering
+      // Linemate uses short codes like "MIA", "WSH", "BOS" etc.
+      // We match by checking if the full team name contains the code or vice versa
+      let allowedCodes: Set<string> | null = null;
+      if (homeTeam || awayTeam) {
+        allowedCodes = new Set<string>();
+        // Build a broad team-name-to-code map from the TEAM_CITY_MAP
+        const teamWords = [homeTeam, awayTeam]
+          .filter(Boolean)
+          .flatMap(t => t.split(" ").map((w: string) => w.toLowerCase()));
+        // We'll match outcomes whose team code appears in the team name words
+        // e.g. homeTeam="Miami Marlins" → matches "MIA", "marlins" etc.
+        // We use the outcome's team field (linemate code) and check if it loosely matches
+        // — collect all codes first, then filter
+        for (const m of allMarkets) {
+          for (const o of (m.outcomes ?? [])) {
+            const code = (o.team ?? "").toLowerCase();
+            if (!code) continue;
+            const matchesHome = homeTeam?.toLowerCase().includes(code) || teamWords.some((w: string) => code.includes(w) || w.includes(code));
+            if (matchesHome) allowedCodes!.add(o.team);
+          }
+        }
+        // If we couldn't resolve any codes, fall back to showing all
+        if (allowedCodes.size === 0) allowedCodes = null;
+      }
+
+      // Filter markets to only this game's teams, then enrich with full team name
+      const enriched = allMarkets
+        .map((m: any) => ({
+          ...m,
+          outcomes: (m.outcomes ?? []).filter((o: any) =>
+            !allowedCodes || allowedCodes.has(o.team)
+          ).map((o: any) => ({
+            ...o,
+            // Map linemate team code to full team name
+            team: o.team
+              ? ([homeTeam, awayTeam].find((t: string) => t?.toLowerCase().includes((o.team ?? "").toLowerCase())) ?? o.team)
+              : null,
+          })),
+        }))
+        .filter((m: any) => m.outcomes.length > 0);
+
+      res.json({ markets: enriched, homeTeam, awayTeam });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/bet ──────────────────────────────────────
+  // Body: { accountId, slipType, stake, legs: [{ sport, betType, gameId, homeTeam, awayTeam,
+  //         playerId, playerName, statType, line, overUnder, pickLabel, oddsAmerican, gameDate, gameTime }]
+  //         rrSize? (for round robin — 2 or 3 legs per combo) }
+  app.post("/api/book/bet", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { accountId, slipType, stake, legs, rrSize } = req.body ?? {};
+      if (!accountId || !stake || !legs?.length) return res.status(400).json({ error: "accountId, stake, legs required" });
+      if (stake <= 0) return res.status(400).json({ error: "Stake must be positive" });
+
+      const account = await db.queryOne(`SELECT * FROM book_accounts WHERE id=$1`, [accountId]);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      if (slipType === "round_robin") {
+        const comboSize = rrSize ?? 2;
+        const combos = getCombinations(legs, comboSize);
+        if (!combos.length) return res.status(400).json({ error: "Not enough legs for round robin" });
+
+        const stakePerCombo = parseFloat((stake / combos.length).toFixed(2));
+        const totalStake = stakePerCombo * combos.length;
+        if (parseFloat(account.balance) < totalStake)
+          return res.status(400).json({ error: `Insufficient coins. Need ${totalStake}, have ${account.balance}` });
+
+        // Create parent RR slip (no payout — just a container)
+        const parent = await db.queryOne(
+          `INSERT INTO book_slips (account_id, slip_type, stake, potential_payout, status)
+           VALUES ($1,'round_robin',$2,$3,'open') RETURNING *`,
+          [accountId, totalStake, 0]
+        );
+
+        const childSlips: any[] = [];
+        for (const combo of combos) {
+          const comboOdds = combo.map((l: any) => l.oddsAmerican);
+          const comboPayout = calcParlayPayout(stakePerCombo, comboOdds);
+          const child = await db.queryOne(
+            `INSERT INTO book_slips (account_id, slip_type, rr_parent_id, stake, potential_payout, status)
+             VALUES ($1,'parlay',$2,$3,$4,'open') RETURNING *`,
+            [accountId, parent.id, stakePerCombo, comboPayout]
+          );
+          for (const leg of combo) {
+            await db.query(
+              `INSERT INTO book_legs (slip_id,sport,bet_type,game_id,home_team,away_team,player_id,player_name,stat_type,line,over_under,pick_label,odds_american,game_date,game_time)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+              [child.id,leg.sport,leg.betType,leg.gameId,leg.homeTeam,leg.awayTeam,leg.playerId,leg.playerName,leg.statType,leg.line,leg.overUnder,leg.pickLabel,leg.oddsAmerican,leg.gameDate,leg.gameTime]
+            );
+          }
+          childSlips.push(child);
+        }
+
+        await db.query(`UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`, [totalStake, accountId]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id,amount,tx_type,slip_id,note) VALUES ($1,$2,'stake',$3,$4)`,
+          [accountId, -totalStake, parent.id, `RR ${combos.length}x${comboSize}-leg parlays`]
+        );
+        return res.json({ ok: true, slipType: "round_robin", parentId: parent.id, combos: childSlips.length, totalStake });
+      }
+
+      // Single or Parlay
+      const oddsArr = legs.map((l: any) => l.oddsAmerican);
+      const payout = slipType === "parlay"
+        ? calcParlayPayout(stake, oddsArr)
+        : parseFloat((stake * americanToDecimal(oddsArr[0])).toFixed(2));
+
+      if (parseFloat(account.balance) < stake)
+        return res.status(400).json({ error: `Insufficient coins. Need ${stake}, have ${account.balance}` });
+
+      const slip = await db.queryOne(
+        `INSERT INTO book_slips (account_id,slip_type,stake,potential_payout,status)
+         VALUES ($1,$2,$3,$4,'open') RETURNING *`,
+        [accountId, slipType, stake, payout]
+      );
+      for (const leg of legs) {
+        await db.query(
+          `INSERT INTO book_legs (slip_id,sport,bet_type,game_id,home_team,away_team,player_id,player_name,stat_type,line,over_under,pick_label,odds_american,game_date,game_time)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [slip.id,leg.sport,leg.betType,leg.gameId,leg.homeTeam,leg.awayTeam,leg.playerId,leg.playerName,leg.statType,leg.line,leg.overUnder,leg.pickLabel,leg.oddsAmerican,leg.gameDate,leg.gameTime]
+        );
+      }
+      await db.query(`UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`, [stake, accountId]);
+      await db.query(
+        `INSERT INTO book_transactions (account_id,amount,tx_type,slip_id,note) VALUES ($1,$2,'stake',$3,$4)`,
+        [accountId, -stake, slip.id, `${slipType} bet placed`]
+      );
+      res.json({ ok: true, slipType, slipId: slip.id, stake, potentialPayout: payout });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/slips?accountId=&status=open|settled|all ───────
+  app.get("/api/book/slips", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      const status    = (req.query.status as string) ?? "all";
+      const limit     = parseInt((req.query.limit as string) ?? "50");
+      let where = `WHERE s.account_id=$1`;
+      if (status === "open")    where += ` AND s.status='open'`;
+      if (status === "settled") where += ` AND s.status IN ('won','lost','push','void')`;
+      const slips = await db.query(
+        `SELECT s.*,
+           json_agg(l ORDER BY l.id) as legs
+         FROM book_slips s
+         JOIN book_legs l ON l.slip_id = s.id
+         ${where} AND s.rr_parent_id IS NULL
+         GROUP BY s.id
+         ORDER BY s.placed_at DESC
+         LIMIT $2`,
+        [accountId, limit]
+      );
+      res.json({ slips: slips.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/transactions?accountId= ─────────────────────
+  app.get("/api/book/transactions", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      const txns = await db.query(
+        `SELECT * FROM book_transactions WHERE account_id=$1 ORDER BY created_at DESC LIMIT 100`,
+        [accountId]
+      );
+      res.json({ transactions: txns.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/insights?accountId= ───────────────────────
+  app.get("/api/book/insights", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+
+      const slips = await db.query(
+        `SELECT s.slip_type, s.status, s.stake, s.payout_received,
+                l.sport, l.bet_type, l.stat_type, l.odds_american, l.result as leg_result
+         FROM book_slips s
+         JOIN book_legs l ON l.slip_id = s.id
+         WHERE s.account_id=$1 AND s.status IN ('won','lost','push') AND s.rr_parent_id IS NULL`,
+        [accountId]
+      );
+
+      const bankroll = await db.query(
+        `SELECT amount, tx_type, created_at FROM book_transactions WHERE account_id=$1 ORDER BY created_at ASC`,
+        [accountId]
+      );
+
+      // ROI by bet type
+      const roiByType: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+      const roiBySport: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+      const roiByStatType: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+
+      for (const row of slips.rows) {
+        const profit = row.status === "won" ? parseFloat(row.payout_received) - parseFloat(row.stake)
+                     : row.status === "push" ? 0
+                     : -parseFloat(row.stake);
+        const key = row.slip_type;
+        if (!roiByType[key]) roiByType[key] = { stake: 0, profit: 0, count: 0, wins: 0 };
+        roiByType[key].stake  += parseFloat(row.stake);
+        roiByType[key].profit += profit;
+        roiByType[key].count  += 1;
+        if (row.status === "won") roiByType[key].wins += 1;
+
+        const sk = row.sport ?? "unknown";
+        if (!roiBySport[sk]) roiBySport[sk] = { stake: 0, profit: 0, count: 0, wins: 0 };
+        roiBySport[sk].stake  += parseFloat(row.stake);
+        roiBySport[sk].profit += profit;
+        roiBySport[sk].count  += 1;
+        if (row.status === "won") roiBySport[sk].wins += 1;
+
+        if (row.stat_type) {
+          const stk = row.stat_type;
+          if (!roiByStatType[stk]) roiByStatType[stk] = { stake: 0, profit: 0, count: 0, wins: 0 };
+          roiByStatType[stk].stake  += parseFloat(row.stake);
+          roiByStatType[stk].profit += profit;
+          roiByStatType[stk].count  += 1;
+          if (row.status === "won") roiByStatType[stk].wins += 1;
+        }
+      }
+
+      // Bankroll curve (running balance)
+      let running = 0;
+      const curve = bankroll.rows.map((t: any) => {
+        running += parseFloat(t.amount);
+        return { ts: t.created_at, balance: parseFloat(running.toFixed(2)), type: t.tx_type };
+      });
+
+      // Build insight tips
+      const tips: string[] = [];
+      for (const [type, d] of Object.entries(roiByType)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (type === "parlay" && roi < -10) tips.push(`Your parlay ROI is ${roi.toFixed(1)}% — consider fewer legs or smaller parlay stakes.`);
+        if (type === "single" && roi > 5)  tips.push(`Singles are your best bet type at ${roi.toFixed(1)}% ROI.`);
+      }
+      for (const [sport, d] of Object.entries(roiBySport)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (roi > 10 && d.count >= 5) tips.push(`${sport.toUpperCase()} bets are profitable at ${roi.toFixed(1)}% ROI over ${d.count} bets.`);
+        if (roi < -15 && d.count >= 5) tips.push(`${sport.toUpperCase()} is costing you — ${roi.toFixed(1)}% ROI. Consider skipping or reducing stake.`);
+      }
+      for (const [st, d] of Object.entries(roiByStatType)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (roi > 15 && d.count >= 3) tips.push(`${st} props are hitting at ${roi.toFixed(1)}% ROI — lean into these.`);
+      }
+      if (tips.length === 0) tips.push("Place more bets to unlock performance insights.");
+
+      res.json({
+        roiByType: Object.entries(roiByType).map(([k,v]) => ({ type: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        roiBySport: Object.entries(roiBySport).map(([k,v]) => ({ sport: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        roiByStatType: Object.entries(roiByStatType).map(([k,v]) => ({ statType: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        bankrollCurve: curve,
+        tips,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/grade-now (owner: manually trigger grader) ────
+  app.post("/api/book/grade-now", requireOwner, async (_req: Request, res: Response) => {
+    await gradeBookLegs();
+    res.json({ ok: true, message: "Grader run complete" });
+  });
+
+  // ─ PATCH /api/book/legs/:id/override — owner: manually correct a graded leg ────
+  // Body: { result: 'win'|'loss'|'push'|'void', actualValue?: number, note?: string }
+  app.patch("/api/book/legs/:id/override", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const legId = parseInt(req.params.id);
+      const { result, actualValue, note } = req.body ?? {};
+      const allowed = ["win", "loss", "push", "void"];
+      if (!allowed.includes(result)) return res.status(400).json({ error: "result must be win|loss|push|void" });
+
+      // Get the leg + its slip + account
+      const leg = await db.queryOne(
+        `SELECT l.*, s.account_id, s.stake, s.status as slip_status, s.payout_received
+         FROM book_legs l
+         JOIN book_slips s ON l.slip_id = s.id
+         WHERE l.id = $1`, [legId]
+      );
+      if (!leg) return res.status(404).json({ error: "Leg not found" });
+
+      const prevResult = leg.result;
+      const slipId     = leg.slip_id;
+      const accountId  = leg.account_id;
+
+      // 1. Update the leg
+      await db.query(
+        `UPDATE book_legs SET result=$1, actual_value=COALESCE($2, actual_value),
+         graded_at=NOW() WHERE id=$3`,
+        [result, actualValue ?? null, legId]
+      );
+
+      // 2. Recalculate slip status from all legs
+      const allLegs = await db.query(
+        `SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slipId]
+      );
+      const legResults = allLegs.rows.map((r: any) => r.result);
+
+      // If any leg still pending, leave slip open
+      if (legResults.includes("pending")) {
+        return res.json({ ok: true, legId, newResult: result, slipStatus: "still_open", note: "Slip still has pending legs" });
+      }
+
+      // Determine new slip status
+      let newSlipStatus: string;
+      const activeResults = legResults.filter((r: string) => r !== "void");
+      if (activeResults.length === 0)             newSlipStatus = "void";
+      else if (activeResults.every((r: string) => r === "win")) newSlipStatus = "won";
+      else if (activeResults.some((r: string) => r === "loss")) newSlipStatus = "lost";
+      else                                         newSlipStatus = "push";
+
+      // 3. Reverse previous settlement if slip was already settled
+      const wasSettled = ["won", "lost", "push", "void"].includes(leg.slip_status);
+      if (wasSettled && leg.payout_received > 0) {
+        // Claw back the old payout
+        await db.query(
+          `UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`,
+          [leg.payout_received, accountId]
+        );
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,'stake',$3,$4)`,
+          [accountId, -parseFloat(leg.payout_received), slipId,
+           `Override reversal: slip #${slipId} (was ${leg.slip_status})`]
+        );
+      }
+
+      // 4. Calculate new payout
+      let newPayout = 0;
+      if (newSlipStatus === "won") {
+        const activeOddsRows = await db.query(
+          `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result != 'void'`, [slipId]
+        );
+        const activeOdds = activeOddsRows.rows.map((r: any) => r.odds_american);
+        const slipRow = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+        newPayout = activeOdds.length === 1
+          ? parseFloat((parseFloat(slipRow.stake) * americanToDecimal(activeOdds[0])).toFixed(2))
+          : calcParlayPayout(parseFloat(slipRow.stake), activeOdds);
+      } else if (newSlipStatus === "push" || newSlipStatus === "void") {
+        const slipRow = await db.queryOne(`SELECT stake FROM book_slips WHERE id=$1`, [slipId]);
+        newPayout = parseFloat(slipRow.stake);
+      }
+
+      // 5. Settle slip with new values
+      await db.query(
+        `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+        [newSlipStatus, newPayout || null, slipId]
+      );
+
+      // 6. Credit new payout to account
+      if (newPayout > 0) {
+        await db.query(
+          `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+          [newPayout, accountId]
+        );
+        const txType = newSlipStatus === "won" ? "win" : newSlipStatus === "push" ? "push" : "void_refund";
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [accountId, newPayout, txType, slipId,
+           `Override by owner: leg #${legId} ${prevResult} → ${result}${note ? " ("+note+")" : ""}`]
+        );
+      }
+
+      await auditLog(
+        (req as any).user?.email ?? "owner", "book_override",
+        `leg:${legId} slip:${slipId}`,
+        `${prevResult} → ${result}${note ? " note:"+note : ""}`
+      );
+
+      res.json({
+        ok: true, legId,
+        prevResult, newResult: result,
+        slipId, newSlipStatus, newPayout,
+        message: `Leg #${legId} updated: ${prevResult} → ${result}. Slip #${slipId} is now ${newSlipStatus}.`,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ PATCH /api/book/slips/:id/void — owner: void an entire slip ────
+  app.patch("/api/book/slips/:id/void", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const slipId  = parseInt(req.params.id);
+      const { note } = req.body ?? {};
+      const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+      if (!slip) return res.status(404).json({ error: "Slip not found" });
+
+      // Refund stake if not already voided
+      if (slip.status !== "void") {
+        // If previously settled with payout, claw it back first
+        if (slip.payout_received > 0) {
+          await db.query(
+            `UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`,
+            [slip.payout_received, slip.account_id]
+          );
+        }
+        // Refund original stake
+        await db.query(
+          `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+          [slip.stake, slip.account_id]
+        );
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,'void_refund',$3,$4)`,
+          [slip.account_id, parseFloat(slip.stake), slipId,
+           `Slip #${slipId} voided by owner${note ? ": "+note : ""}`]
+        );
+      }
+
+      await db.query(`UPDATE book_slips SET status='void', settled_at=NOW() WHERE id=$1`, [slipId]);
+      await db.query(`UPDATE book_legs SET result='void', graded_at=NOW() WHERE slip_id=$1 AND result='pending'`, [slipId]);
+
+      await auditLog(
+        (req as any).user?.email ?? "owner", "book_void_slip",
+        `slip:${slipId}`, note ?? ""
+      );
+
+      res.json({ ok: true, slipId, message: `Slip #${slipId} voided. Stake refunded.` });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  function detectFantasyInjury(headline: string): string | null {
+    const h = headline.toLowerCase();
+    if (h.includes("60-day") || h.includes("season-ending") || h.includes("out for season")) return "Out (Season)";
+    if (h.includes("10-day il") || h.includes("15-day il") || h.includes("injured list")) return "IL";
+    if (h.includes("concussion")) return "Concussion Protocol";
+    if (h.includes("ruled out") || h.includes("out indefinitely") || h.includes("placed on")) return "Out";
+    if (h.includes("day-to-day")) return "Day-to-Day";
+    if (h.includes("questionable")) return "Questionable";
+    if (h.includes("doubtful")) return "Doubtful";
+    if (h.includes("activated") || h.includes("returned from")) return "Activated";
+    if (h.includes("suspend")) return "Suspended";
+    return null;
+  }
+
 
   return httpServer;
 }

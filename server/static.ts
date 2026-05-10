@@ -16,7 +16,22 @@ export function serveStatic(app: Express) {
 
   // index: false prevents express.static from serving index.html directly,
   // so ALL html requests fall through to the polyfill-injection handler below
-  app.use(express.static(distPath, { index: false }));
+  //
+  // Cache strategy:
+  // - Hashed assets (index-ABC123.js) → immutable, cache 1 year
+  // - Everything else (fonts, images without hash) → revalidate each time
+  app.use(express.static(distPath, {
+    index: false,
+    setHeaders(res, filePath) {
+      // Hashed asset filenames never change content — safe to cache forever
+      if (/\/assets\/[^/]+-[A-Za-z0-9]{8}\.(js|css)$/.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        // Everything else: always revalidate
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  }));
 
   // Serve index.html with Safari polyfills injected at the very start of <head>
   // MUST come after express.static so asset files (js/css) are served directly

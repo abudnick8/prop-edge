@@ -6,7 +6,7 @@
  * Drop <CheatSheetInline section="spread" /> for a collapsible inline tip.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BookOpen, X, DollarSign, Users, TrendingUp, TrendingDown,
   Zap, ChevronDown, ChevronRight, Info, Minus,
@@ -694,6 +694,14 @@ export function CheatSheetDrawer({
     initialSection ?? "howtoread"
   );
 
+  // Lock body scroll while open — prevents iOS scroll bleed-through
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   if (!open) return null;
 
   const renderSection = () => {
@@ -714,13 +722,17 @@ export function CheatSheetDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      style={{ zIndex: 200 }}
       onClick={onClose}
+      // Prevent touch-scroll events from reaching content behind the backdrop on iOS
+      onTouchMove={e => e.stopPropagation()}
     >
       <div
         className="bg-card border border-border rounded-2xl w-full max-w-sm flex flex-col"
         style={{ maxHeight: "88vh" }}
         onClick={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
