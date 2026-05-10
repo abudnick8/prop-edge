@@ -11953,21 +11953,37 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const hasEnv = !!process.env.ODDS_API_KEY;
         const dbSettings = await storage.getSettings();
         const hasDb = !!dbSettings?.oddsApiKey;
-        // Live API test with the resolved key
+        // Live API test — bulk endpoint for player props
         let apiTestResult: any = {};
+        const sportKey = sport.toLowerCase() === "mlb" ? "baseball_mlb" :
+                         sport.toLowerCase() === "nba" ? "basketball_nba" :
+                         sport.toLowerCase() === "nhl" ? "icehockey_nhl" : "basketball_nba";
         if (k) {
           try {
-            const testUrl = `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${eventId}/odds?apiKey=${k}&regions=us&markets=player_hits&bookmakers=draftkings,fanduel&oddsFormat=american`;
-            const testResp = await axios.get(testUrl, { timeout: 8000 });
-            const bks = testResp.data?.bookmakers ?? [];
+            const testUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${k}&regions=us&markets=player_points,player_hits&bookmakers=draftkings,fanduel&oddsFormat=american`;
+            const testResp = await axios.get(testUrl, { timeout: 10000 });
+            const events: any[] = Array.isArray(testResp.data) ? testResp.data : [];
+            const propEvents = events.filter((e: any) =>
+              e.bookmakers?.some((b: any) => b.markets?.length > 0)
+            );
             apiTestResult = {
               ok: true,
-              bookmakers: bks.map((b: any) => ({ key: b.key, markets: b.markets?.map((m: any) => m.key) })),
+              totalEvents: events.length,
+              eventsWithProps: propEvents.length,
+              sampleEventIds: propEvents.slice(0, 3).map((e: any) => e.id),
               remainingRequests: testResp.headers["x-requests-remaining"],
               usedRequests: testResp.headers["x-requests-used"],
+              rawSample: propEvents[0] ? {
+                id: propEvents[0].id,
+                teams: `${propEvents[0].away_team} @ ${propEvents[0].home_team}`,
+                bookmakers: propEvents[0].bookmakers?.map((b: any) => ({
+                  key: b.key,
+                  markets: b.markets?.map((m: any) => `${m.key}(${m.outcomes?.length})`)
+                }))
+              } : null
             };
           } catch (e: any) {
-            apiTestResult = { ok: false, error: e.response?.data?.message ?? e.message };
+            apiTestResult = { ok: false, error: e.response?.data?.message ?? e.message, status: e.response?.status };
           }
         }
         return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", apiTest: apiTestResult });
