@@ -11620,95 +11620,162 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     "player_goal_scorer",
   ];
 
-  // Prop market cache: sport → { markets per eventId, fetched timestamp }
-  const propCache: Record<string, { byEvent: Record<string, any[]>; fetchedAt: number }> = {};
-  const PROP_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  // ─ Linemate market name → Odds API style key mapping ───────────────────
+  const LINEMATE_TO_PROP_KEY: Record<string, string> = {
+    // MLB hitter
+    HITTER_HITS:                    "player_hits",
+    HITTER_HOME_RUNS:               "player_home_runs",
+    HITTER_TOTAL_BASES:             "player_total_bases",
+    HITTER_RUNS_BATTED_IN:          "player_rbis",
+    HITTER_RUNS:                    "player_runs_scored",
+    HITTER_SINGLES:                 "player_singles",
+    HITTER_DOUBLES:                 "player_doubles",
+    HITTER_STOLEN_BASES:            "player_stolen_bases",
+    HITTER_STRIKEOUTS:              "player_strikeouts",
+    // MLB pitcher
+    PITCHER_STRIKEOUTS:             "player_pitcher_strikeouts",
+    PITCHER_OUTS:                   "player_pitcher_outs",
+    PITCHER_HITS_ALLOWED:           "player_hits_allowed",
+    PITCHER_EARNED_RUNS:            "player_earned_runs",
+    PITCHER_WALKS:                  "player_pitcher_walks",
+    PITCHER_INNINGS_PITCHED:        "player_pitcher_outs",
+    // NBA
+    POINTS:                         "player_points",
+    REBOUNDS:                       "player_rebounds",
+    ASSISTS:                        "player_assists",
+    THREE_POINTERS_MADE:            "player_threes",
+    BLOCKS:                         "player_blocks",
+    STEALS:                         "player_steals",
+    POINTS_REBOUNDS_ASSISTS:        "player_points_rebounds_assists",
+    // NHL
+    SHOTS_ON_GOAL:                  "player_shots_on_goal",
+    GOALS:                          "player_goals",
+    // NFL
+    PASSING_YARDS:                  "player_passing_yards",
+    PASSING_TOUCHDOWNS:             "player_passing_tds",
+    RUSHING_YARDS:                  "player_rushing_yards",
+    RECEIVING_YARDS:                "player_reception_yards",
+    RECEPTIONS:                     "player_receptions",
+    ANYTIME_TOUCHDOWN:              "player_anytime_td",
+  };
 
-  // ─ Fetch player props from The Odds API (bulk endpoint, cached per sport) ─────
+  // Linemate game code → Odds API event id cache (populated when linemate data fetched)
+  const linematePropCache: Record<string, { markets: any[]; fetchedAt: number }> = {};
+  const LINEMATE_PROP_CACHE_TTL = 8 * 60 * 1000; // 8 minutes
+
+  // ─ Fetch player props from Linemate (free, no plan restriction) ──────────────
   async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
-    const sportMap: Record<string, string> = {
-      mlb: "baseball_mlb",
-      nfl: "americanfootball_nfl",
-      nba: "basketball_nba",
-      nhl: "icehockey_nhl",
-    };
-    const sportKey = sportMap[sport.toLowerCase()];
-    if (!sportKey) return [];
-    const apiKey = await getOddsApiKey();
-    if (!apiKey) {
-      console.warn("[Book Props] No Odds API key found");
-      return [];
-    }
+    const sportKey = sport.toLowerCase();
+    const cacheKey = `${sportKey}:${eventId}`;
 
     // Return from cache if fresh
-    const cached = propCache[sport];
-    if (cached && Date.now() - cached.fetchedAt < PROP_CACHE_TTL) {
-      return cached.byEvent[eventId] ?? [];
+    const cached = linematePropCache[cacheKey];
+    if (cached && Date.now() - cached.fetchedAt < LINEMATE_PROP_CACHE_TTL) {
+      return cached.markets;
     }
 
-    // Pick market list for this sport
-    const marketList = sport.toLowerCase() === "mlb" ? MLB_PROP_MARKETS : NBA_NHL_NFL_PROP_MARKETS;
-    const bookmakers = ["draftkings", "fanduel", "betmgm", "bovada"];
+    try {
+      // 1. Use linemate cache if already populated (from /api/linemate-props calls)
+      //    Otherwise fetch directly from linemate
+      let linemateMarkets: any[] = [];
+      const lmCached = linemateCache.get(sportKey);
+      if (lmCached && Date.now() - lmCached.ts < LINEMATE_TTL) {
+        linemateMarkets = lmCached.data?.markets ?? [];
+      } else {
+        // Fresh fetch from linemate
+        const BASE = `https://api.linemate.io/api/${sportKey}`;
+        const marketsRes = await axios.get(`${BASE}/v2/markets`, {
+          params: { levelsToInclude: "player" },
+          headers: LINEMATE_HEADERS,
+          timeout: 12000,
+        });
+        const raw: any[] = Array.isArray(marketsRes.data) ? marketsRes.data : [];
+        linemateMarkets = raw
+          .filter((m: any) => m.player && m.name)
+          .map((m: any) => normalisePick(
+            { gameId: m.gameId, player: m.player, team: m.team, opposingTeam: m.opposingTeam, isHome: m.isHome, market: m, outcome: "OVER", pregameHitRecords: m.pregameHitRecords, pregameAverages: m.pregameAverages },
+            "MARKET", sportKey.toUpperCase()
+          ));
+        // Update linemate cache
+        const existing = lmCached?.data ?? {};
+        linemateCache.set(sportKey, { data: { ...existing, markets: linemateMarkets }, ts: Date.now() });
+      }
 
-    // Use the BULK odds endpoint (not event-specific) — this is what's available on standard plans
-    // Fetch in batches of 4 markets (bulk endpoint has stricter limits)
-    const byEvent: Record<string, Record<string, any>> = {}; // eventId -> marketKey -> market
-    const batchSize = 4;
+      // 2. Also fetch the odds API for this event for actual odds (American format)
+      //    Falls back to -110/-110 if unavailable
+      const apiKey = await getOddsApiKey();
+      let oddsMap: Record<string, { overOdds: number; underOdds: number }> = {};
+      // Try to get h2h odds (we know those work) — props odds not available on free plan
+      // We'll use the bookLines from linemate itself for odds
 
-    for (let i = 0; i < marketList.length; i += batchSize) {
-      const batch = marketList.slice(i, i + batchSize);
-      try {
-        const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=${batch.join(",")}&bookmakers=${bookmakers.join(",")}&oddsFormat=american`;
-        const resp = await axios.get(url, { timeout: 12000 });
-        const events: any[] = Array.isArray(resp.data) ? resp.data : [];
-        const now = Date.now();
+      // 3. Convert linemate markets to Odds API market format
+      //    We need to match by eventId — linemate uses gameId codes like "mlb-123"
+      //    We match by team names from the book/odds games list
+      // Since we don’t have a direct gameId→eventId map here, we return ALL props for the sport
+      //    and filter by team in the props route handler
 
-        for (const event of events) {
-          // Only include future (unstarted) events
-          const ct = event.commence_time ? new Date(event.commence_time).getTime() : 0;
-          if (ct <= now) continue;
+      // Group by market type (prop key)
+      const marketMap: Record<string, any> = {};
 
-          const eid = event.id;
-          if (!byEvent[eid]) byEvent[eid] = {};
+      for (const m of linemateMarkets) {
+        if (!m.playerName || m.consensusLine == null) continue;
 
-          for (const bk of (event.bookmakers ?? [])) {
-            for (const mkt of (bk.markets ?? [])) {
-              if (!byEvent[eid][mkt.key]) {
-                byEvent[eid][mkt.key] = { ...mkt, bookmaker: bk.key };
-              } else {
-                // Merge outcomes from additional bookmakers
-                const existing = byEvent[eid][mkt.key];
-                const existingSet = new Set(
-                  existing.outcomes.map((o: any) => `${o.description ?? o.name}|${o.name}`)
-                );
-                for (const oc of mkt.outcomes) {
-                  const key = `${oc.description ?? oc.name}|${oc.name}`;
-                  if (!existingSet.has(key)) {
-                    existing.outcomes.push(oc);
-                    existingSet.add(key);
-                  }
-                }
-              }
-            }
-          }
+        const propKey = LINEMATE_TO_PROP_KEY[m.marketName] ?? null;
+        if (!propKey) continue;
+
+        // Skip under for HR and SB (per user rules)
+        if ((propKey === "player_home_runs" || propKey === "player_stolen_bases")) {
+          // Only overs allowed for HR/SB
         }
 
-        console.log(`[Book Props] Bulk batch ${batch.join(",")}: ${events.length} events`);
-      } catch (e: any) {
-        console.error(`[Book Props] Bulk fetch error (${batch[0]}..):`, e.response?.data?.message ?? e.message);
+        if (!marketMap[propKey]) {
+          marketMap[propKey] = { key: propKey, outcomes: [], bookmaker: "linemate" };
+        }
+
+        // Get best odds from bookLines
+        const bookLines = m.bookLines ?? {};
+        const bookEntries = Object.values(bookLines) as any[];
+        const overOdds  = bookEntries.find(b => b.overOdds != null)?.overOdds  ?? -110;
+        const underOdds = bookEntries.find(b => b.underOdds != null)?.underOdds ?? -110;
+        const line = m.consensusLine;
+
+        // Add over outcome
+        marketMap[propKey].outcomes.push({
+          name:        "Over",
+          description: m.playerName,
+          point:       line,
+          price:       overOdds,
+          team:        m.teamCode ?? null,
+          position:    m.playerPos ?? null,
+          gameId:      m.gameId ?? null,
+        });
+
+        // Add under outcome (skip for HR and SB per user rules)
+        if (propKey !== "player_home_runs" && propKey !== "player_stolen_bases") {
+          marketMap[propKey].outcomes.push({
+            name:        "Under",
+            description: m.playerName,
+            point:       line,
+            price:       underOdds,
+            team:        m.teamCode ?? null,
+            position:    m.playerPos ?? null,
+            gameId:      m.gameId ?? null,
+          });
+        }
       }
-    }
 
-    // Convert to array form and store in cache
-    const byEventArr: Record<string, any[]> = {};
-    for (const [eid, mktMap] of Object.entries(byEvent)) {
-      byEventArr[eid] = Object.values(mktMap);
-    }
-    propCache[sport] = { byEvent: byEventArr, fetchedAt: Date.now() };
+      const markets = Object.values(marketMap);
+      console.log(`[Book Props] linemate ${sport}: ${markets.length} markets, ${markets.reduce((s: number, m: any) => s + m.outcomes.length, 0)} outcomes`);
 
-    const result = byEventArr[eventId] ?? [];
-    console.log(`[Book Props] ${sport} event ${eventId}: ${result.length} markets`);
-    return result;
+      // Cache per-sport (not per eventId) since linemate data covers all games
+      linematePropCache[`${sportKey}:ALL`] = { markets, fetchedAt: Date.now() };
+      linematePropCache[cacheKey] = { markets, fetchedAt: Date.now() };
+
+      return markets;
+    } catch (e: any) {
+      console.error(`[Book Props] Linemate fetch error:`, e.message);
+      return [];
+    }
   }
 
   // ─ Book grader: grade all open legs that have results available ───
@@ -11989,61 +12056,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", apiTest: apiTestResult });
       }
 
-      const markets = await fetchDraftKingsProps(sport, eventId);
+      const allMarkets = await fetchDraftKingsProps(sport, eventId);
 
-      // Build player→team map from MLB rosters when sport is mlb and teams known
-      let playerTeamMap: Record<string, string> = {};
-      let playerPosMap: Record<string, string> = {};
-      if (sport === "mlb" && (homeTeam || awayTeam)) {
-        try {
-          const teamNames = [homeTeam, awayTeam].filter(Boolean);
-          // Fetch all MLB teams once, then fetch rosters in parallel
-          const allTeamsResp = await axios.get(
-            `https://statsapi.mlb.com/api/v1/teams?sportId=1&season=2026`,
-            { timeout: 4000 }
-          );
-          const allTeams: any[] = allTeamsResp.data?.teams ?? [];
-
-          const rosterResults = await Promise.all(teamNames.map(async teamName => {
-            try {
-              const keyword = teamName.split(" ").pop()?.toLowerCase() ?? "";
-              const matched = allTeams.find((t: any) =>
-                t.name?.toLowerCase().includes(keyword) ||
-                t.teamName?.toLowerCase().includes(keyword) ||
-                t.abbreviation?.toLowerCase() === keyword
-              );
-              if (!matched) return { teamName, players: [] as any[] };
-              const rosterResp = await axios.get(
-                `https://statsapi.mlb.com/api/v1/teams/${matched.id}/roster?rosterType=active&season=2026`,
-                { timeout: 4000 }
-              );
-              const roster: any[] = rosterResp.data?.roster ?? [];
-              return { teamName, players: roster.map((r: any) => ({
-                name: r.person?.fullName ?? "",
-                position: r.position?.abbreviation ?? "",
-              })) };
-            } catch { return { teamName, players: [] as any[] }; }
-          }));
-          for (const { teamName, players } of rosterResults) {
-            for (const p of players) {
-              const key = p.name.toLowerCase();
-              playerTeamMap[key] = teamName;
-              playerPosMap[key] = p.position;
-            }
+      // Build team code set from homeTeam + awayTeam for filtering
+      // Linemate uses short codes like "MIA", "WSH", "BOS" etc.
+      // We match by checking if the full team name contains the code or vice versa
+      let allowedCodes: Set<string> | null = null;
+      if (homeTeam || awayTeam) {
+        allowedCodes = new Set<string>();
+        // Build a broad team-name-to-code map from the TEAM_CITY_MAP
+        const teamWords = [homeTeam, awayTeam]
+          .filter(Boolean)
+          .flatMap(t => t.split(" ").map((w: string) => w.toLowerCase()));
+        // We'll match outcomes whose team code appears in the team name words
+        // e.g. homeTeam="Miami Marlins" → matches "MIA", "marlins" etc.
+        // We use the outcome's team field (linemate code) and check if it loosely matches
+        // — collect all codes first, then filter
+        for (const m of allMarkets) {
+          for (const o of (m.outcomes ?? [])) {
+            const code = (o.team ?? "").toLowerCase();
+            if (!code) continue;
+            const matchesHome = homeTeam?.toLowerCase().includes(code) || teamWords.some((w: string) => code.includes(w) || w.includes(code));
+            if (matchesHome) allowedCodes!.add(o.team);
           }
-        } catch { /* non-fatal */ }
+        }
+        // If we couldn't resolve any codes, fall back to showing all
+        if (allowedCodes.size === 0) allowedCodes = null;
       }
 
-      // Enrich markets: attach team + position to each outcome
-      const enriched = markets.map((m: any) => ({
-        ...m,
-        outcomes: (m.outcomes ?? []).map((o: any) => {
-          const pname = (o.description ?? o.name ?? "").toLowerCase();
-          const team = playerTeamMap[pname] ?? null;
-          const position = playerPosMap[pname] ?? null;
-          return { ...o, team, position };
-        }),
-      }));
+      // Filter markets to only this game's teams, then enrich with full team name
+      const enriched = allMarkets
+        .map((m: any) => ({
+          ...m,
+          outcomes: (m.outcomes ?? []).filter((o: any) =>
+            !allowedCodes || allowedCodes.has(o.team)
+          ).map((o: any) => ({
+            ...o,
+            // Map linemate team code to full team name
+            team: o.team
+              ? ([homeTeam, awayTeam].find((t: string) => t?.toLowerCase().includes((o.team ?? "").toLowerCase())) ?? o.team)
+              : null,
+          })),
+        }))
+        .filter((m: any) => m.outcomes.length > 0);
 
       res.json({ markets: enriched, homeTeam, awayTeam });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
