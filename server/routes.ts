@@ -11674,7 +11674,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
         }
       } catch (e: any) {
-        console.warn(`[Book Props] Batch fetch error (${batch[0]}..):`, e.message);
+        console.error(`[Book Props] Batch fetch error (${batch.join(",")}):`, e.response?.data ?? e.message);
       }
     }
 
@@ -11925,7 +11925,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const hasEnv = !!process.env.ODDS_API_KEY;
         const dbSettings = await storage.getSettings();
         const hasDb = !!dbSettings?.oddsApiKey;
-        return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", keyDeactivated: k === "4134e9d0" });
+        // Live API test with the resolved key
+        let apiTestResult: any = {};
+        if (k) {
+          try {
+            const testUrl = `https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${eventId}/odds?apiKey=${k}&regions=us&markets=player_hits&bookmakers=draftkings,fanduel&oddsFormat=american`;
+            const testResp = await axios.get(testUrl, { timeout: 8000 });
+            const bks = testResp.data?.bookmakers ?? [];
+            apiTestResult = {
+              ok: true,
+              bookmakers: bks.map((b: any) => ({ key: b.key, markets: b.markets?.map((m: any) => m.key) })),
+              remainingRequests: testResp.headers["x-requests-remaining"],
+              usedRequests: testResp.headers["x-requests-used"],
+            };
+          } catch (e: any) {
+            apiTestResult = { ok: false, error: e.response?.data?.message ?? e.message };
+          }
+        }
+        return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", apiTest: apiTestResult });
       }
 
       const markets = await fetchDraftKingsProps(sport, eventId);
