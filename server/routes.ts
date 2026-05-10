@@ -11560,7 +11560,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     try {
       const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings&oddsFormat=american`;
       const resp = await axios.get(url, { timeout: 8000 });
-      return resp.data ?? [];
+      const now = Date.now();
+      // Only return games that have NOT started yet (commence_time in the future)
+      const games: any[] = resp.data ?? [];
+      return games.filter(g => {
+        const ct = g.commence_time ? new Date(g.commence_time).getTime() : 0;
+        return ct > now;
+      });
     } catch (e: any) {
       console.warn(`[Book] DraftKings odds fetch error (${sport}):`, e.message);
       return [];
