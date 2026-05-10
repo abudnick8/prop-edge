@@ -226,6 +226,77 @@ async function runMigrations() {
       )
     `);
 
+    // ── The Book — paper sportsbook tables ─────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS book_accounts (
+        id          SERIAL PRIMARY KEY,
+        user_id     INT REFERENCES users(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL DEFAULT 'Main Account',
+        balance     NUMERIC(12,2) NOT NULL DEFAULT 10000.00,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_accounts_user_idx ON book_accounts(user_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS book_slips (
+        id              SERIAL PRIMARY KEY,
+        account_id      INT REFERENCES book_accounts(id) ON DELETE CASCADE,
+        slip_type       TEXT NOT NULL DEFAULT 'single', -- 'single'|'parlay'|'round_robin'
+        rr_parent_id    INT REFERENCES book_slips(id) ON DELETE CASCADE DEFAULT NULL,
+        stake           NUMERIC(12,2) NOT NULL,
+        potential_payout NUMERIC(12,2) NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'open', -- 'open'|'won'|'lost'|'push'|'void'
+        placed_at       TIMESTAMPTZ DEFAULT NOW(),
+        settled_at      TIMESTAMPTZ DEFAULT NULL,
+        payout_received NUMERIC(12,2) DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_slips_account_idx ON book_slips(account_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_slips_status_idx  ON book_slips(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_slips_rr_idx      ON book_slips(rr_parent_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS book_legs (
+        id              SERIAL PRIMARY KEY,
+        slip_id         INT REFERENCES book_slips(id) ON DELETE CASCADE,
+        sport           TEXT NOT NULL,
+        bet_type        TEXT NOT NULL,  -- 'moneyline'|'spread'|'total'|'prop'
+        game_id         TEXT DEFAULT NULL,
+        home_team       TEXT DEFAULT NULL,
+        away_team       TEXT DEFAULT NULL,
+        player_id       INT DEFAULT NULL,
+        player_name     TEXT DEFAULT NULL,
+        stat_type       TEXT DEFAULT NULL,  -- 'hits'|'strikeouts'|'pts' etc
+        line            NUMERIC(8,2) DEFAULT NULL,
+        over_under      TEXT DEFAULT NULL,  -- 'over'|'under' for props/totals
+        pick_label      TEXT NOT NULL,      -- human label e.g. "LAD -1.5"
+        odds_american   INT NOT NULL,       -- DraftKings snapshot e.g. -110
+        game_date       TEXT NOT NULL,      -- YYYY-MM-DD
+        game_time       TEXT DEFAULT NULL,
+        result          TEXT DEFAULT 'pending', -- 'win'|'loss'|'push'|'void'|'pending'
+        actual_value    NUMERIC(8,2) DEFAULT NULL, -- actual stat/score at grade
+        graded_at       TIMESTAMPTZ DEFAULT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_legs_slip_idx    ON book_legs(slip_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_legs_date_idx    ON book_legs(game_date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_legs_status_idx  ON book_legs(result)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS book_transactions (
+        id          SERIAL PRIMARY KEY,
+        account_id  INT REFERENCES book_accounts(id) ON DELETE CASCADE,
+        amount      NUMERIC(12,2) NOT NULL,  -- positive=credit, negative=debit
+        tx_type     TEXT NOT NULL,  -- 'deposit'|'stake'|'win'|'loss'|'push'|'void_refund'
+        slip_id     INT REFERENCES book_slips(id) ON DELETE SET NULL DEFAULT NULL,
+        note        TEXT DEFAULT NULL,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_tx_account_idx ON book_transactions(account_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS book_tx_slip_idx    ON book_transactions(slip_id)`);
+
     console.log("[DB] Migrations complete");
   } catch (err: any) {
     console.warn("[DB] Migration warning:", err.message);
