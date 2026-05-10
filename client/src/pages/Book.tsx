@@ -908,7 +908,7 @@ function BetSlipTab({
   const [betFilter, setBetFilter] = useState<BetFilter>("all");
   const [legs, setLegs] = useState<Leg[]>([]);
   const [slipType, setSlipType] = useState<SlipType>("single");
-  const [rrSize, setRrSize] = useState<2 | 3>(2);
+  const [rrSize, setRrSize] = useState<number>(2);
   const [stake, setStake] = useState<string>("");
   const [placing, setPlacing] = useState(false);
 
@@ -926,6 +926,13 @@ function BetSlipTab({
 
   // Max legs by slip type
   const maxLegs = slipType === "single" ? 1 : 10;
+
+  // Clamp rrSize if legs are removed (rrSize must be <= legs.length - 1)
+  React.useEffect(() => {
+    if (slipType === "round_robin" && legs.length >= 3 && rrSize > legs.length - 1) {
+      setRrSize(legs.length - 1);
+    }
+  }, [legs.length, slipType]);
 
   function isInSlip(gameId: string, betType: string, pickLabel: string): boolean {
     return legs.some(l => l.gameId === gameId && l.betType === betType && l.pickLabel === pickLabel);
@@ -1306,24 +1313,27 @@ function BetSlipTab({
           ))}
         </div>
 
-        {/* RR size */}
-        {slipType === "round_robin" && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+        {/* RR size — dynamic: 2-leg up to legs.length */}
+        {slipType === "round_robin" && legs.length >= 3 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>Combo size:</span>
-            {([2, 3] as (2 | 3)[]).map(n => (
-              <button
-                key={n}
-                onClick={() => setRrSize(n)}
-                style={{
-                  padding: "4px 12px", borderRadius: 16, border: `1.5px solid ${rrSize === n ? GOLD : "#ddd"}`,
-                  background: rrSize === n ? `rgba(212,168,67,0.12)` : "transparent",
-                  color: rrSize === n ? GOLD : MUTED,
-                  fontWeight: 700, fontSize: 12, cursor: "pointer",
-                }}
-              >
-                {n}-leg
-              </button>
-            ))}
+            {Array.from({ length: legs.length - 1 }, (_, i) => i + 2).map(n => {
+              const count = numCombos(legs.length, n);
+              return (
+                <button
+                  key={n}
+                  onClick={() => setRrSize(n)}
+                  style={{
+                    padding: "4px 12px", borderRadius: 16, border: `1.5px solid ${rrSize === n ? GOLD : "#ddd"}`,
+                    background: rrSize === n ? `rgba(212,168,67,0.12)` : "transparent",
+                    color: rrSize === n ? GOLD : MUTED,
+                    fontWeight: 700, fontSize: 12, cursor: "pointer",
+                  }}
+                >
+                  {n}-leg <span style={{ fontSize: 10, fontWeight: 500 }}>({count})</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
