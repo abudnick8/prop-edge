@@ -11522,6 +11522,683 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ══ THE BOOK — Owner-only paper sportsbook ════════════════════════════════════
+
+  // ─ Helper: American odds → decimal multiplier ─────────────────────
+  function americanToDecimal(odds: number): number {
+    if (odds >= 100) return odds / 100 + 1;
+    return 100 / Math.abs(odds) + 1;
+  }
+
+  // ─ Parlay payout calc ─────────────────────────────────────
+  function calcParlayPayout(stake: number, oddsArr: number[]): number {
+    const mult = oddsArr.reduce((acc, o) => acc * americanToDecimal(o), 1);
+    return parseFloat((stake * mult).toFixed(2));
+  }
+
+  // ─ Round Robin combos ─────────────────────────────────
+  function getCombinations<T>(arr: T[], size: number): T[][] {
+    if (size > arr.length) return [];
+    if (size === 1) return arr.map(x => [x]);
+    return arr.flatMap((x, i) =>
+      getCombinations(arr.slice(i + 1), size - 1).map(rest => [x, ...rest])
+    );
+  }
+
+  // ─ Fetch DraftKings odds from The Odds API ──────────────────
+  async function fetchDraftKingsOdds(sport: string): Promise<any[]> {
+    const sportMap: Record<string, string> = {
+      mlb: "baseball_mlb",
+      nfl: "americanfootball_nfl",
+      nba: "basketball_nba",
+      nhl: "icehockey_nhl",
+    };
+    const sportKey = sportMap[sport.toLowerCase()];
+    if (!sportKey) return [];
+    const apiKey = process.env.ODDS_API_KEY;
+    if (!apiKey) return [];
+    try {
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings&oddsFormat=american`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return resp.data ?? [];
+    } catch (e: any) {
+      console.warn(`[Book] DraftKings odds fetch error (${sport}):`, e.message);
+      return [];
+    }
+  }
+
+  // ─ Fetch DraftKings player props ───────────────────────────
+  async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
+    const sportMap: Record<string, string> = {
+      mlb: "baseball_mlb",
+      nfl: "americanfootball_nfl",
+      nba: "basketball_nba",
+      nhl: "icehockey_nhl",
+    };
+    const sportKey = sportMap[sport.toLowerCase()];
+    if (!sportKey) return [];
+    const apiKey = process.env.ODDS_API_KEY;
+    if (!apiKey) return [];
+    try {
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=player_hits,player_home_runs,player_total_bases,player_rbis,player_stolen_bases,player_strikeouts,player_pitcher_strikeouts,player_points,player_rebounds,player_assists,player_threes&bookmakers=draftkings&oddsFormat=american`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      const bk = (resp.data?.bookmakers ?? []).find((b: any) => b.key === "draftkings");
+      return bk?.markets ?? [];
+    } catch { return []; }
+  }
+
+  // ─ Book grader: grade all open legs that have results available ───
+  async function gradeBookLegs(): Promise<void> {
+    try {
+      const openLegs = await db.query(
+        `SELECT l.*, s.account_id, s.slip_type, s.stake, s.id as slip_id
+         FROM book_legs l
+         JOIN book_slips s ON l.slip_id = s.id
+         WHERE l.result = 'pending' AND s.status = 'open'
+         ORDER BY l.game_date ASC`
+      );
+      if (!openLegs.rows.length) return;
+
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+      for (const leg of openLegs.rows) {
+        let result: "win" | "loss" | "push" | "void" | null = null;
+        let actualValue: number | null = null;
+
+        // Only grade games from today or earlier
+        if (leg.game_date > today) continue;
+
+        try {
+          if (leg.bet_type === "prop" && leg.player_id && leg.stat_type) {
+            // Use MLB Stats API for player props
+            const glResp = await axios.get(
+              `https://statsapi.mlb.com/api/v1/people/${leg.player_id}/stats?stats=gameLog&season=${leg.game_date.slice(0,4)}&group=hitting,pitching`,
+              { timeout: 5000 }
+            );
+            const splits = glResp.data?.stats?.flatMap((s: any) => s.splits ?? []) ?? [];
+            const daySplit = splits.find((s: any) => s.date === leg.game_date);
+            if (!daySplit) continue; // no data yet
+
+            const statMap: Record<string, string> = {
+              hits: "hits", home_runs: "homeRuns", total_bases: "totalBases",
+              rbis: "rbi", stolen_bases: "stolenBases", strikeouts: "strikeOuts",
+              pitcher_strikeouts: "strikeOuts", points: "hits", rebounds: "hits", assists: "hits",
+            };
+            const statKey = statMap[leg.stat_type] ?? leg.stat_type;
+            actualValue = parseFloat(daySplit.stat?.[statKey] ?? "0");
+
+            if (actualValue === leg.line) result = "push";
+            else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
+            else result = actualValue < leg.line ? "win" : "loss";
+
+          } else if (leg.bet_type === "moneyline" || leg.bet_type === "spread" || leg.bet_type === "total") {
+            // Use MLB schedule/boxscore for game bets
+            const schedResp = await axios.get(
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${leg.game_date}&hydrate=linescore`,
+              { timeout: 5000 }
+            );
+            const games = schedResp.data?.dates?.[0]?.games ?? [];
+            const game = games.find((g: any) => {
+              const ht = g.teams?.home?.team?.name ?? "";
+              const at = g.teams?.away?.team?.name ?? "";
+              return (ht.includes(leg.home_team?.split(" ").pop() ?? "__") ||
+                      at.includes(leg.away_team?.split(" ").pop() ?? "__"));
+            });
+            if (!game) continue;
+            const state = game.status?.abstractGameState;
+            if (state !== "Final") continue; // game not over yet
+
+            const homeScore = game.teams?.home?.score ?? 0;
+            const awayScore = game.teams?.away?.score ?? 0;
+            actualValue = homeScore;
+
+            if (leg.bet_type === "moneyline") {
+              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const homeWon = homeScore > awayScore;
+              if (homeScore === awayScore) result = "push";
+              else result = (pickedHome && homeWon) || (!pickedHome && !homeWon) ? "win" : "loss";
+            } else if (leg.bet_type === "spread") {
+              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const adjustedScore = pickedHome ? homeScore + leg.line : awayScore + leg.line;
+              const opponentScore = pickedHome ? awayScore : homeScore;
+              if (adjustedScore === opponentScore) result = "push";
+              else result = adjustedScore > opponentScore ? "win" : "loss";
+            } else if (leg.bet_type === "total") {
+              const total = homeScore + awayScore;
+              if (total === leg.line) result = "push";
+              else result = (leg.over_under === "over" ? total > leg.line : total < leg.line) ? "win" : "loss";
+            }
+          }
+        } catch { continue; }
+
+        if (!result) continue;
+
+        // Update leg result
+        await db.query(
+          `UPDATE book_legs SET result=$1, actual_value=$2, graded_at=NOW() WHERE id=$3`,
+          [result, actualValue, leg.id]
+        );
+
+        // Check if all legs in slip are graded
+        const slipLegs = await db.query(
+          `SELECT result FROM book_legs WHERE slip_id=$1`, [leg.slip_id]
+        );
+        const legResults = slipLegs.rows.map((r: any) => r.result);
+        if (legResults.includes("pending")) continue; // still waiting on other legs
+
+        // Determine slip outcome
+        let slipStatus: string;
+        if (legResults.every((r: string) => r === "void")) {
+          slipStatus = "void";
+        } else {
+          const activeLegResults = legResults.filter((r: string) => r !== "void");
+          if (activeLegResults.length === 0) {
+            slipStatus = "void";
+          } else if (activeLegResults.every((r: string) => r === "win")) {
+            slipStatus = "won";
+          } else if (activeLegResults.some((r: string) => r === "loss")) {
+            slipStatus = "lost";
+          } else {
+            slipStatus = "push"; // all push
+          }
+        }
+
+        // Recalculate payout for void legs (parlay: void leg removed, recalc odds)
+        let finalPayout = 0;
+        if (slipStatus === "won") {
+          const activeLeg = await db.query(
+            `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result != 'void'`, [leg.slip_id]
+          );
+          const activeOdds = activeLeg.rows.map((r: any) => r.odds_american);
+          const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [leg.slip_id]);
+          if (activeOdds.length === 1) {
+            finalPayout = parseFloat((slip.stake * americanToDecimal(activeOdds[0])).toFixed(2));
+          } else {
+            finalPayout = calcParlayPayout(slip.stake, activeOdds);
+          }
+        } else if (slipStatus === "push" || slipStatus === "void") {
+          const slip = await db.queryOne(`SELECT stake FROM book_slips WHERE id=$1`, [leg.slip_id]);
+          finalPayout = parseFloat(slip.stake);
+        }
+
+        // Settle the slip
+        await db.query(
+          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+          [slipStatus, finalPayout || null, leg.slip_id]
+        );
+
+        // Credit account if won/push/void
+        if (finalPayout > 0) {
+          await db.query(
+            `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+            [finalPayout, leg.account_id]
+          );
+          const txType = slipStatus === "won" ? "win" : slipStatus === "push" ? "push" : "void_refund";
+          await db.query(
+            `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [leg.account_id, finalPayout, txType, leg.slip_id, `Slip #${leg.slip_id} settled: ${slipStatus}`]
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn("[Book] Grader error:", e.message);
+    }
+  }
+
+  // Run book grader every 5 minutes
+  setInterval(() => gradeBookLegs(), 5 * 60 * 1000);
+
+  // ─ GET /api/book/accounts ────────────────────────────────────
+  app.get("/api/book/accounts", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.userId;
+      const accounts = await db.query(
+        `SELECT a.*,
+           COALESCE(SUM(CASE WHEN s.status='won' THEN s.payout_received - s.stake ELSE 0 END),0) as total_profit,
+           COUNT(CASE WHEN s.status IN ('won','lost','push') THEN 1 END) as settled_slips,
+           COUNT(CASE WHEN s.status='won' THEN 1 END) as won_slips,
+           COUNT(CASE WHEN s.status='open' THEN 1 END) as open_slips
+         FROM book_accounts a
+         LEFT JOIN book_slips s ON s.account_id = a.id
+         WHERE a.user_id=$1
+         GROUP BY a.id ORDER BY a.created_at ASC`,
+        [userId]
+      );
+      res.json({ accounts: accounts.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/accounts ─────────────────────────────────
+  app.post("/api/book/accounts", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.userId;
+      const { name } = req.body ?? {};
+      const acct = await db.queryOne(
+        `INSERT INTO book_accounts (user_id, name, balance) VALUES ($1,$2,10000) RETURNING *`,
+        [userId, name ?? "New Account"]
+      );
+      await db.query(
+        `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,10000,'deposit','Starting balance')`,
+        [acct.id]
+      );
+      res.json({ account: acct });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ PATCH /api/book/accounts/:id ────────────────────────────
+  app.patch("/api/book/accounts/:id", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { name, addCoins } = req.body ?? {};
+      const id = parseInt(req.params.id);
+      if (name) await db.query(`UPDATE book_accounts SET name=$1 WHERE id=$2`, [name, id]);
+      if (addCoins && addCoins > 0) {
+        await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [addCoins, id]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,$2,'deposit','Manual coin deposit')`,
+          [id, addCoins]
+        );
+      }
+      const updated = await db.queryOne(`SELECT * FROM book_accounts WHERE id=$1`, [id]);
+      res.json({ account: updated });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/odds?sport=mlb ────────────────────────────
+  app.get("/api/book/odds", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const sport = (req.query.sport as string) ?? "mlb";
+      const odds = await fetchDraftKingsOdds(sport);
+      res.json({ sport, games: odds });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/props?sport=mlb&eventId=xxx ────────────────
+  app.get("/api/book/props", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const sport   = (req.query.sport as string) ?? "mlb";
+      const eventId = req.query.eventId as string;
+      if (!eventId) return res.status(400).json({ error: "eventId required" });
+      const markets = await fetchDraftKingsProps(sport, eventId);
+      res.json({ markets });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/bet ──────────────────────────────────────
+  // Body: { accountId, slipType, stake, legs: [{ sport, betType, gameId, homeTeam, awayTeam,
+  //         playerId, playerName, statType, line, overUnder, pickLabel, oddsAmerican, gameDate, gameTime }]
+  //         rrSize? (for round robin — 2 or 3 legs per combo) }
+  app.post("/api/book/bet", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { accountId, slipType, stake, legs, rrSize } = req.body ?? {};
+      if (!accountId || !stake || !legs?.length) return res.status(400).json({ error: "accountId, stake, legs required" });
+      if (stake <= 0) return res.status(400).json({ error: "Stake must be positive" });
+
+      const account = await db.queryOne(`SELECT * FROM book_accounts WHERE id=$1`, [accountId]);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      if (slipType === "round_robin") {
+        const comboSize = rrSize ?? 2;
+        const combos = getCombinations(legs, comboSize);
+        if (!combos.length) return res.status(400).json({ error: "Not enough legs for round robin" });
+
+        const stakePerCombo = parseFloat((stake / combos.length).toFixed(2));
+        const totalStake = stakePerCombo * combos.length;
+        if (parseFloat(account.balance) < totalStake)
+          return res.status(400).json({ error: `Insufficient coins. Need ${totalStake}, have ${account.balance}` });
+
+        // Create parent RR slip (no payout — just a container)
+        const parent = await db.queryOne(
+          `INSERT INTO book_slips (account_id, slip_type, stake, potential_payout, status)
+           VALUES ($1,'round_robin',$2,$3,'open') RETURNING *`,
+          [accountId, totalStake, 0]
+        );
+
+        const childSlips: any[] = [];
+        for (const combo of combos) {
+          const comboOdds = combo.map((l: any) => l.oddsAmerican);
+          const comboPayout = calcParlayPayout(stakePerCombo, comboOdds);
+          const child = await db.queryOne(
+            `INSERT INTO book_slips (account_id, slip_type, rr_parent_id, stake, potential_payout, status)
+             VALUES ($1,'parlay',$2,$3,$4,'open') RETURNING *`,
+            [accountId, parent.id, stakePerCombo, comboPayout]
+          );
+          for (const leg of combo) {
+            await db.query(
+              `INSERT INTO book_legs (slip_id,sport,bet_type,game_id,home_team,away_team,player_id,player_name,stat_type,line,over_under,pick_label,odds_american,game_date,game_time)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+              [child.id,leg.sport,leg.betType,leg.gameId,leg.homeTeam,leg.awayTeam,leg.playerId,leg.playerName,leg.statType,leg.line,leg.overUnder,leg.pickLabel,leg.oddsAmerican,leg.gameDate,leg.gameTime]
+            );
+          }
+          childSlips.push(child);
+        }
+
+        await db.query(`UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`, [totalStake, accountId]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id,amount,tx_type,slip_id,note) VALUES ($1,$2,'stake',$3,$4)`,
+          [accountId, -totalStake, parent.id, `RR ${combos.length}x${comboSize}-leg parlays`]
+        );
+        return res.json({ ok: true, slipType: "round_robin", parentId: parent.id, combos: childSlips.length, totalStake });
+      }
+
+      // Single or Parlay
+      const oddsArr = legs.map((l: any) => l.oddsAmerican);
+      const payout = slipType === "parlay"
+        ? calcParlayPayout(stake, oddsArr)
+        : parseFloat((stake * americanToDecimal(oddsArr[0])).toFixed(2));
+
+      if (parseFloat(account.balance) < stake)
+        return res.status(400).json({ error: `Insufficient coins. Need ${stake}, have ${account.balance}` });
+
+      const slip = await db.queryOne(
+        `INSERT INTO book_slips (account_id,slip_type,stake,potential_payout,status)
+         VALUES ($1,$2,$3,$4,'open') RETURNING *`,
+        [accountId, slipType, stake, payout]
+      );
+      for (const leg of legs) {
+        await db.query(
+          `INSERT INTO book_legs (slip_id,sport,bet_type,game_id,home_team,away_team,player_id,player_name,stat_type,line,over_under,pick_label,odds_american,game_date,game_time)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [slip.id,leg.sport,leg.betType,leg.gameId,leg.homeTeam,leg.awayTeam,leg.playerId,leg.playerName,leg.statType,leg.line,leg.overUnder,leg.pickLabel,leg.oddsAmerican,leg.gameDate,leg.gameTime]
+        );
+      }
+      await db.query(`UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`, [stake, accountId]);
+      await db.query(
+        `INSERT INTO book_transactions (account_id,amount,tx_type,slip_id,note) VALUES ($1,$2,'stake',$3,$4)`,
+        [accountId, -stake, slip.id, `${slipType} bet placed`]
+      );
+      res.json({ ok: true, slipType, slipId: slip.id, stake, potentialPayout: payout });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/slips?accountId=&status=open|settled|all ───────
+  app.get("/api/book/slips", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      const status    = (req.query.status as string) ?? "all";
+      const limit     = parseInt((req.query.limit as string) ?? "50");
+      let where = `WHERE s.account_id=$1`;
+      if (status === "open")    where += ` AND s.status='open'`;
+      if (status === "settled") where += ` AND s.status IN ('won','lost','push','void')`;
+      const slips = await db.query(
+        `SELECT s.*,
+           json_agg(l ORDER BY l.id) as legs
+         FROM book_slips s
+         JOIN book_legs l ON l.slip_id = s.id
+         ${where} AND s.rr_parent_id IS NULL
+         GROUP BY s.id
+         ORDER BY s.placed_at DESC
+         LIMIT $2`,
+        [accountId, limit]
+      );
+      res.json({ slips: slips.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/transactions?accountId= ─────────────────────
+  app.get("/api/book/transactions", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      const txns = await db.query(
+        `SELECT * FROM book_transactions WHERE account_id=$1 ORDER BY created_at DESC LIMIT 100`,
+        [accountId]
+      );
+      res.json({ transactions: txns.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ GET /api/book/insights?accountId= ───────────────────────
+  app.get("/api/book/insights", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+
+      const slips = await db.query(
+        `SELECT s.slip_type, s.status, s.stake, s.payout_received,
+                l.sport, l.bet_type, l.stat_type, l.odds_american, l.result as leg_result
+         FROM book_slips s
+         JOIN book_legs l ON l.slip_id = s.id
+         WHERE s.account_id=$1 AND s.status IN ('won','lost','push') AND s.rr_parent_id IS NULL`,
+        [accountId]
+      );
+
+      const bankroll = await db.query(
+        `SELECT amount, tx_type, created_at FROM book_transactions WHERE account_id=$1 ORDER BY created_at ASC`,
+        [accountId]
+      );
+
+      // ROI by bet type
+      const roiByType: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+      const roiBySport: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+      const roiByStatType: Record<string, { stake: number; profit: number; count: number; wins: number }> = {};
+
+      for (const row of slips.rows) {
+        const profit = row.status === "won" ? parseFloat(row.payout_received) - parseFloat(row.stake)
+                     : row.status === "push" ? 0
+                     : -parseFloat(row.stake);
+        const key = row.slip_type;
+        if (!roiByType[key]) roiByType[key] = { stake: 0, profit: 0, count: 0, wins: 0 };
+        roiByType[key].stake  += parseFloat(row.stake);
+        roiByType[key].profit += profit;
+        roiByType[key].count  += 1;
+        if (row.status === "won") roiByType[key].wins += 1;
+
+        const sk = row.sport ?? "unknown";
+        if (!roiBySport[sk]) roiBySport[sk] = { stake: 0, profit: 0, count: 0, wins: 0 };
+        roiBySport[sk].stake  += parseFloat(row.stake);
+        roiBySport[sk].profit += profit;
+        roiBySport[sk].count  += 1;
+        if (row.status === "won") roiBySport[sk].wins += 1;
+
+        if (row.stat_type) {
+          const stk = row.stat_type;
+          if (!roiByStatType[stk]) roiByStatType[stk] = { stake: 0, profit: 0, count: 0, wins: 0 };
+          roiByStatType[stk].stake  += parseFloat(row.stake);
+          roiByStatType[stk].profit += profit;
+          roiByStatType[stk].count  += 1;
+          if (row.status === "won") roiByStatType[stk].wins += 1;
+        }
+      }
+
+      // Bankroll curve (running balance)
+      let running = 0;
+      const curve = bankroll.rows.map((t: any) => {
+        running += parseFloat(t.amount);
+        return { ts: t.created_at, balance: parseFloat(running.toFixed(2)), type: t.tx_type };
+      });
+
+      // Build insight tips
+      const tips: string[] = [];
+      for (const [type, d] of Object.entries(roiByType)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (type === "parlay" && roi < -10) tips.push(`Your parlay ROI is ${roi.toFixed(1)}% — consider fewer legs or smaller parlay stakes.`);
+        if (type === "single" && roi > 5)  tips.push(`Singles are your best bet type at ${roi.toFixed(1)}% ROI.`);
+      }
+      for (const [sport, d] of Object.entries(roiBySport)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (roi > 10 && d.count >= 5) tips.push(`${sport.toUpperCase()} bets are profitable at ${roi.toFixed(1)}% ROI over ${d.count} bets.`);
+        if (roi < -15 && d.count >= 5) tips.push(`${sport.toUpperCase()} is costing you — ${roi.toFixed(1)}% ROI. Consider skipping or reducing stake.`);
+      }
+      for (const [st, d] of Object.entries(roiByStatType)) {
+        const roi = d.stake > 0 ? (d.profit / d.stake * 100) : 0;
+        if (roi > 15 && d.count >= 3) tips.push(`${st} props are hitting at ${roi.toFixed(1)}% ROI — lean into these.`);
+      }
+      if (tips.length === 0) tips.push("Place more bets to unlock performance insights.");
+
+      res.json({
+        roiByType: Object.entries(roiByType).map(([k,v]) => ({ type: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        roiBySport: Object.entries(roiBySport).map(([k,v]) => ({ sport: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        roiByStatType: Object.entries(roiByStatType).map(([k,v]) => ({ statType: k, ...v, roi: v.stake > 0 ? +(v.profit/v.stake*100).toFixed(1) : 0, winPct: v.count > 0 ? +(v.wins/v.count*100).toFixed(1) : 0 })),
+        bankrollCurve: curve,
+        tips,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ POST /api/book/grade-now (owner: manually trigger grader) ────
+  app.post("/api/book/grade-now", requireOwner, async (_req: Request, res: Response) => {
+    await gradeBookLegs();
+    res.json({ ok: true, message: "Grader run complete" });
+  });
+
+  // ─ PATCH /api/book/legs/:id/override — owner: manually correct a graded leg ────
+  // Body: { result: 'win'|'loss'|'push'|'void', actualValue?: number, note?: string }
+  app.patch("/api/book/legs/:id/override", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const legId = parseInt(req.params.id);
+      const { result, actualValue, note } = req.body ?? {};
+      const allowed = ["win", "loss", "push", "void"];
+      if (!allowed.includes(result)) return res.status(400).json({ error: "result must be win|loss|push|void" });
+
+      // Get the leg + its slip + account
+      const leg = await db.queryOne(
+        `SELECT l.*, s.account_id, s.stake, s.status as slip_status, s.payout_received
+         FROM book_legs l
+         JOIN book_slips s ON l.slip_id = s.id
+         WHERE l.id = $1`, [legId]
+      );
+      if (!leg) return res.status(404).json({ error: "Leg not found" });
+
+      const prevResult = leg.result;
+      const slipId     = leg.slip_id;
+      const accountId  = leg.account_id;
+
+      // 1. Update the leg
+      await db.query(
+        `UPDATE book_legs SET result=$1, actual_value=COALESCE($2, actual_value),
+         graded_at=NOW() WHERE id=$3`,
+        [result, actualValue ?? null, legId]
+      );
+
+      // 2. Recalculate slip status from all legs
+      const allLegs = await db.query(
+        `SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slipId]
+      );
+      const legResults = allLegs.rows.map((r: any) => r.result);
+
+      // If any leg still pending, leave slip open
+      if (legResults.includes("pending")) {
+        return res.json({ ok: true, legId, newResult: result, slipStatus: "still_open", note: "Slip still has pending legs" });
+      }
+
+      // Determine new slip status
+      let newSlipStatus: string;
+      const activeResults = legResults.filter((r: string) => r !== "void");
+      if (activeResults.length === 0)             newSlipStatus = "void";
+      else if (activeResults.every((r: string) => r === "win")) newSlipStatus = "won";
+      else if (activeResults.some((r: string) => r === "loss")) newSlipStatus = "lost";
+      else                                         newSlipStatus = "push";
+
+      // 3. Reverse previous settlement if slip was already settled
+      const wasSettled = ["won", "lost", "push", "void"].includes(leg.slip_status);
+      if (wasSettled && leg.payout_received > 0) {
+        // Claw back the old payout
+        await db.query(
+          `UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`,
+          [leg.payout_received, accountId]
+        );
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,'stake',$3,$4)`,
+          [accountId, -parseFloat(leg.payout_received), slipId,
+           `Override reversal: slip #${slipId} (was ${leg.slip_status})`]
+        );
+      }
+
+      // 4. Calculate new payout
+      let newPayout = 0;
+      if (newSlipStatus === "won") {
+        const activeOddsRows = await db.query(
+          `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result != 'void'`, [slipId]
+        );
+        const activeOdds = activeOddsRows.rows.map((r: any) => r.odds_american);
+        const slipRow = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+        newPayout = activeOdds.length === 1
+          ? parseFloat((parseFloat(slipRow.stake) * americanToDecimal(activeOdds[0])).toFixed(2))
+          : calcParlayPayout(parseFloat(slipRow.stake), activeOdds);
+      } else if (newSlipStatus === "push" || newSlipStatus === "void") {
+        const slipRow = await db.queryOne(`SELECT stake FROM book_slips WHERE id=$1`, [slipId]);
+        newPayout = parseFloat(slipRow.stake);
+      }
+
+      // 5. Settle slip with new values
+      await db.query(
+        `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+        [newSlipStatus, newPayout || null, slipId]
+      );
+
+      // 6. Credit new payout to account
+      if (newPayout > 0) {
+        await db.query(
+          `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+          [newPayout, accountId]
+        );
+        const txType = newSlipStatus === "won" ? "win" : newSlipStatus === "push" ? "push" : "void_refund";
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [accountId, newPayout, txType, slipId,
+           `Override by owner: leg #${legId} ${prevResult} → ${result}${note ? " ("+note+")" : ""}`]
+        );
+      }
+
+      await auditLog(
+        (req as any).user?.email ?? "owner", "book_override",
+        `leg:${legId} slip:${slipId}`,
+        `${prevResult} → ${result}${note ? " note:"+note : ""}`
+      );
+
+      res.json({
+        ok: true, legId,
+        prevResult, newResult: result,
+        slipId, newSlipStatus, newPayout,
+        message: `Leg #${legId} updated: ${prevResult} → ${result}. Slip #${slipId} is now ${newSlipStatus}.`,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─ PATCH /api/book/slips/:id/void — owner: void an entire slip ────
+  app.patch("/api/book/slips/:id/void", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const slipId  = parseInt(req.params.id);
+      const { note } = req.body ?? {};
+      const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+      if (!slip) return res.status(404).json({ error: "Slip not found" });
+
+      // Refund stake if not already voided
+      if (slip.status !== "void") {
+        // If previously settled with payout, claw it back first
+        if (slip.payout_received > 0) {
+          await db.query(
+            `UPDATE book_accounts SET balance = balance - $1 WHERE id=$2`,
+            [slip.payout_received, slip.account_id]
+          );
+        }
+        // Refund original stake
+        await db.query(
+          `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
+          [slip.stake, slip.account_id]
+        );
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note)
+           VALUES ($1,$2,'void_refund',$3,$4)`,
+          [slip.account_id, parseFloat(slip.stake), slipId,
+           `Slip #${slipId} voided by owner${note ? ": "+note : ""}`]
+        );
+      }
+
+      await db.query(`UPDATE book_slips SET status='void', settled_at=NOW() WHERE id=$1`, [slipId]);
+      await db.query(`UPDATE book_legs SET result='void', graded_at=NOW() WHERE slip_id=$1 AND result='pending'`, [slipId]);
+
+      await auditLog(
+        (req as any).user?.email ?? "owner", "book_void_slip",
+        `slip:${slipId}`, note ?? ""
+      );
+
+      res.json({ ok: true, slipId, message: `Slip #${slipId} voided. Stake refunded.` });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   function detectFantasyInjury(headline: string): string | null {
     const h = headline.toLowerCase();
     if (h.includes("60-day") || h.includes("season-ending") || h.includes("out for season")) return "Out (Season)";
