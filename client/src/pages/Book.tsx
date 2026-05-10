@@ -1483,6 +1483,117 @@ function BetSlipTab({
   );
 }
 
+// ─── Live progress types ────────────────────────────────────────────────────
+interface LegProgress {
+  legId: number;
+  playerName: string | null;
+  statType: string | null;
+  line: number;
+  overUnder: string;
+  pickLabel: string;
+  oddsAmerican: number;
+  gameDate: string;
+  homeTeam: string;
+  awayTeam: string;
+  betType: string;
+  currentStat: number | null;
+  gameStatus: "scheduled" | "live" | "final";
+  status: string; // pending | winning | losing | win | loss | push
+  legResult: string | null;
+  homeScore?: string | null;
+  awayScore?: string | null;
+  gamePeriod?: string | null;
+  gamePeriodLabel?: string | null;
+}
+
+function legStatusColor(s: string) {
+  if (s === "win" || s === "winning")  return { bg: "#dcfce7", text: "#16a34a", border: "#16a34a" };
+  if (s === "loss" || s === "losing")  return { bg: "#fee2e2", text: "#dc2626", border: "#dc2626" };
+  if (s === "push")                    return { bg: "#f1f5f9", text: "#64748b", border: "#64748b" };
+  return { bg: "#fefce8", text: "#d97706", border: "#e5e7eb" };
+}
+
+function ProgressBar({ current, line, isOver }: { current: number; line: number; isOver: boolean }) {
+  const pct = Math.min(100, Math.round((current / line) * 100));
+  const winning = isOver ? current >= line : current <= line;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ height: 5, background: "#e2e8f0", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: winning ? "#16a34a" : "#ef4444", borderRadius: 4, transition: "width 0.4s" }} />
+      </div>
+    </div>
+  );
+}
+
+function SlipProgressPanel({ slipId, token }: { slipId: number; token: string }) {
+  const { data, isLoading } = useQuery<{ legs: LegProgress[] }>({
+    queryKey: ["slip-progress", slipId],
+    queryFn: async () => {
+      const r = await fetch(`/api/book/slip-progress?slipId=${slipId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Failed to load progress");
+      return r.json();
+    },
+    refetchInterval: 30_000, // refresh every 30s
+    staleTime: 25_000,
+  });
+
+  if (isLoading) return <div style={{ padding: "10px 0", color: MUTED, fontSize: 12, textAlign: "center" }}>Loading live stats...</div>;
+  if (!data?.legs?.length) return <div style={{ padding: "6px 0", color: MUTED, fontSize: 11, textAlign: "center" }}>No progress data available yet</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {data.legs.map(leg => {
+        const sc = legStatusColor(leg.status);
+        const isOver = (leg.over_under ?? "over") === "over";
+        const hasLiveStat = leg.currentStat !== null;
+        const isPlayerProp = !!leg.playerName;
+        return (
+          <div key={leg.legId} style={{
+            background: sc.bg,
+            border: `1.5px solid ${sc.border}`,
+            borderRadius: 10, padding: "10px 12px",
+          }}>
+            {/* Header row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: FG, marginBottom: 1 }}>{leg.pickLabel}</div>
+                {leg.gameStatus !== "scheduled" && leg.homeTeam && (
+                  <div style={{ fontSize: 10, color: MUTED }}>
+                    {leg.awayTeam} {leg.awayScore ?? "-"} @ {leg.homeTeam} {leg.homeScore ?? "-"}
+                    {leg.gamePeriodLabel && <span style={{ marginLeft: 5, color: leg.gameStatus === "live" ? "#ef4444" : MUTED, fontWeight: 700 }}>{leg.gameStatus === "live" ? "● LIVE" : "FINAL"}</span>}
+                  </div>
+                )}
+                {leg.gameStatus === "scheduled" && (
+                  <div style={{ fontSize: 10, color: MUTED }}>Scheduled · {leg.gameDate ?? ""}</div>
+                )}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 800, color: sc.text, textTransform: "uppercase", marginLeft: 8, whiteSpace: "nowrap" }}>
+                {leg.status === "pending" ? (leg.gameStatus === "scheduled" ? "TBD" : "–") : leg.status.toUpperCase()}
+              </span>
+            </div>
+
+            {/* Player stat progress */}
+            {isPlayerProp && hasLiveStat && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: FG }}>
+                  <span>Current: <strong>{leg.currentStat}</strong></span>
+                  <span>Line: {isOver ? "O" : "U"} {leg.line}</span>
+                </div>
+                <ProgressBar current={leg.currentStat!} line={leg.line} isOver={isOver} />
+              </div>
+            )}
+            {isPlayerProp && !hasLiveStat && leg.gameStatus !== "scheduled" && (
+              <div style={{ marginTop: 4, fontSize: 10, color: MUTED }}>Stats not yet available</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 2 — MY BETS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1497,6 +1608,7 @@ function MyBetsTab({
 }) {
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
+  const [expandedProgress, setExpandedProgress] = useState<number | null>(null);
   const [overrideLegId, setOverrideLegId] = useState<number | null>(null);
   const [overrideResult, setOverrideResult] = useState<"win"|"loss"|"push"|"void">("win");
   const [overrideNote, setOverrideNote] = useState("");
@@ -1575,6 +1687,8 @@ function MyBetsTab({
           {slips.map(slip => {
             const sc = statusColor(slip.status);
             const expanded = expandedSlip === slip.id;
+            const progressOpen = expandedProgress === slip.id;
+            const isOpenSlip = slip.status === "open";
             return (
               <div key={slip.id} style={{ background: CARD_BG, borderRadius: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 {/* Slip header */}
@@ -1614,6 +1728,31 @@ function MyBetsTab({
                     </div>
                   </div>
                 </div>
+
+                {/* Live Progress toggle — only on open bets */}
+                {isOpenSlip && (
+                  <div style={{ borderTop: "1px solid #f1f5f9" }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); setExpandedProgress(progressOpen ? null : slip.id); }}
+                      style={{
+                        width: "100%", padding: "8px 14px", background: progressOpen ? "rgba(19,35,58,0.04)" : "none",
+                        border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite" }} />
+                        Live Progress
+                      </span>
+                      {progressOpen ? <ChevronUp size={13} color={NAVY} /> : <ChevronDown size={13} color={NAVY} />}
+                    </button>
+                    {progressOpen && (
+                      <div style={{ padding: "0 14px 12px" }}>
+                        <SlipProgressPanel slipId={slip.id} token={token} />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Expanded legs + override controls */}
                 {expanded && (

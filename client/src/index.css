@@ -498,3 +498,8 @@ html:not(.dark) .text-rose-300    { color: #9f1239 !important; }
 html:not(.dark) .text-orange-300  { color: #9a3412 !important; }  /* orange-800 */
 html:not(.dark) .text-red-300     { color: #991b1b !important; }  /* red-800 */
 html:not(.dark) .text-lime-300    { color: #3f6212 !important; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}

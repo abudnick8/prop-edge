@@ -12423,6 +12423,138 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─ GET /api/book/transactions?accountId= ─────────────────────
+  // ─ GET /api/book/slip-progress?slipId= ──────────────────────────────────
+  // Returns live ESPN stat progress for every leg in a slip.
+  app.get("/api/book/slip-progress", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const slipId = parseInt(req.query.slipId as string);
+      if (!slipId) return res.status(400).json({ error: "slipId required" });
+
+      const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+      if (!slip) return res.status(404).json({ error: "Slip not found" });
+
+      let legs: any[];
+      if (slip.slip_type === "round_robin") {
+        const childLegs = await db.query(
+          `SELECT DISTINCT ON (l.game_id, l.bet_type, l.pick_label) l.*
+           FROM book_slips cs JOIN book_legs l ON l.slip_id = cs.id
+           WHERE cs.rr_parent_id=$1 ORDER BY l.game_id, l.bet_type, l.pick_label, l.id`,
+          [slipId]
+        );
+        legs = childLegs.rows;
+      } else {
+        const result = await db.query(`SELECT * FROM book_legs WHERE slip_id=$1 ORDER BY id`, [slipId]);
+        legs = result.rows;
+      }
+
+      const PROP_TO_STAT: Record<string, string> = {
+        player_hits: "HITS", player_home_runs: "HR", player_rbis: "RBI",
+        player_runs_scored: "RUNS_SCORED", player_total_bases: "TOTAL_BASES",
+        player_singles: "SINGLES", player_doubles: "DOUBLES",
+        player_stolen_bases: "STOLEN_BASES", player_strikeouts: "STRIKEOUTS_BATTER",
+        player_pitcher_strikeouts: "PITCHER_K", player_pitcher_outs: "PITCHER_OUTS",
+        player_hits_allowed: "HITS_ALLOWED", player_earned_runs: "EARNED_RUNS",
+        player_walks: "WALKS", player_pitcher_walks: "WALKS_ALLOWED",
+        player_points: "POINTS", player_rebounds: "REBOUNDS", player_assists: "ASSISTS",
+        player_threes: "3PM", player_blocks: "BLOCKS", player_steals: "STEALS",
+        player_points_rebounds_assists: "PRA",
+        player_passing_yards: "PASS_YDS", player_rushing_yards: "RUSH_YDS",
+        player_reception_yards: "REC_YDS", player_receptions: "RECEPTIONS",
+        player_passing_tds: "TOUCHDOWNS", player_shots_on_goal: "SHOTS_ON_GOAL",
+        player_goals: "GOALS",
+      };
+
+      const SPORT_KEY_MAP: Record<string, string> = {
+        baseball_mlb: "MLB", mlb: "MLB",
+        basketball_nba: "NBA", nba: "NBA",
+        icehockey_nhl: "NHL", nhl: "NHL",
+        americanfootball_nfl: "NFL", nfl: "NFL",
+      };
+
+      // Cache ESPN scoreboard + summaries within this request
+      const scoreboardCache: Record<string, any[]> = {};
+      const summaryCache: Record<string, any> = {};
+
+      const results = await Promise.all(legs.map(async (leg: any) => {
+        const base: any = {
+          legId: leg.id, playerName: leg.player_name, statType: leg.stat_type,
+          line: leg.line, overUnder: leg.over_under, pickLabel: leg.pick_label,
+          oddsAmerican: leg.odds_american, gameDate: leg.game_date,
+          homeTeam: leg.home_team, awayTeam: leg.away_team, betType: leg.bet_type,
+          currentStat: null, gameStatus: "scheduled",
+          status: leg.result ?? "pending", legResult: leg.result ?? null,
+        };
+
+        // Team bets or no stat type — skip stat lookup
+        if (!leg.player_name || !leg.stat_type) return base;
+
+        const sportKey = (leg.sport ?? "mlb").toLowerCase();
+        const espnSport = SPORT_KEY_MAP[sportKey] ?? "MLB";
+        const statCat = PROP_TO_STAT[leg.stat_type] ?? leg.stat_type?.toUpperCase().replace("PLAYER_", "");
+
+        try {
+          const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+          if (!scoreboardCache[espnSport]) {
+            scoreboardCache[espnSport] = await mlFetchScoreboard(espnSport, today);
+          }
+          const events: any[] = scoreboardCache[espnSport] ?? [];
+
+          const matchedEvent = events.find((ev: any) => {
+            const comp = ev.competitions?.[0];
+            const teams = (comp?.competitors ?? []).map((c: any) => c.team?.displayName ?? "");
+            return teams.some((t: string) => mlTeamsMatch(t, leg.home_team ?? "")) ||
+                   teams.some((t: string) => mlTeamsMatch(t, leg.away_team ?? ""));
+          });
+          if (!matchedEvent) return base;
+
+          const comp = matchedEvent.competitions?.[0];
+          const statusType = comp?.status?.type;
+          const gameState = statusType?.name ?? "STATUS_SCHEDULED";
+          let gameStatus = "scheduled";
+          if (statusType?.completed) gameStatus = "final";
+          else if (gameState === "STATUS_IN_PROGRESS" || gameState === "STATUS_HALFTIME" || gameState === "STATUS_END_PERIOD") gameStatus = "live";
+          base.gameStatus = gameStatus;
+
+          // Get score
+          const homeComp = comp?.competitors?.find((c: any) => c.homeAway === "home");
+          const awayComp = comp?.competitors?.find((c: any) => c.homeAway === "away");
+          base.homeScore = homeComp?.score ?? null;
+          base.awayScore = awayComp?.score ?? null;
+          base.gamePeriod = comp?.status?.displayClock ?? null;
+          base.gamePeriodLabel = comp?.status?.period ? `${espnSport === "MLB" ? "Inn" : "Q"}${comp.status.period}` : null;
+
+          if (gameStatus === "scheduled") return base;
+
+          const espnId = matchedEvent.id;
+          if (!summaryCache[espnId]) {
+            summaryCache[espnId] = await mlFetchGameSummary(espnSport, espnId);
+          }
+          const summary = summaryCache[espnId];
+          if (!summary) return base;
+
+          const stat = mlExtractPlayerStat(summary, espnSport, leg.player_name, statCat);
+          base.currentStat = stat;
+
+          if (stat !== null && leg.result == null) {
+            const line = parseFloat(leg.line);
+            const isOver = (leg.over_under ?? "over") === "over";
+            if (gameStatus === "final") {
+              if (isOver) base.status = stat > line ? "win" : stat === line ? "push" : "loss";
+              else        base.status = stat < line ? "win" : stat === line ? "push" : "loss";
+            } else {
+              if (isOver) base.status = stat >= line ? "winning" : "losing";
+              else        base.status = stat <= line ? "winning" : "losing";
+            }
+          }
+        } catch { /* ESPN unavailable */ }
+
+        return base;
+      }));
+
+      res.json({ legs: results });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/book/transactions", requireOwner, async (req: Request, res: Response) => {
     try {
       const accountId = parseInt(req.query.accountId as string);
