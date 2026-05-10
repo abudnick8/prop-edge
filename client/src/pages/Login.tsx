@@ -57,7 +57,7 @@ export default function Login() {
         setError("Invalid access code.");
         return;
       }
-      const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: false };
+      const guestUser = { id: 0, email: "guest@clubhouseiq.app", tier: "pro" as const, subStatus: "active", isOwner: true };
       login("guest-dev-token", guestUser);
     } catch { setError("Network error — please try again."); }
     finally { setLoading(false); }
