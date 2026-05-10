@@ -11690,15 +11690,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           timeout: 12000,
         });
         const raw: any[] = Array.isArray(marketsRes.data) ? marketsRes.data : [];
-        linemateMarkets = raw
-          .filter((m: any) => m.player && m.name)
-          .map((m: any) => normalisePick(
+        const rawFiltered = raw.filter((m: any) => m.player && m.name);
+        linemateMarkets = rawFiltered.map((m: any) => normalisePick(
             { gameId: m.gameId, player: m.player, team: m.team, opposingTeam: m.opposingTeam, isHome: m.isHome, market: m, outcome: "OVER", pregameHitRecords: m.pregameHitRecords, pregameAverages: m.pregameAverages },
             "MARKET", sportKey.toUpperCase()
           ));
-        // Update linemate cache
+        // Update linemate cache — store rawMarkets to preserve books+alternates for Book props
         const existing = lmCached?.data ?? {};
-        linemateCache.set(sportKey, { data: { ...existing, markets: linemateMarkets }, ts: Date.now() });
+        linemateCache.set(sportKey, { data: { ...existing, markets: linemateMarkets, rawMarkets: rawFiltered }, ts: Date.now() });
       }
 
       // 2. Also fetch the odds API for this event for actual odds (American format)
@@ -11708,58 +11707,117 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Try to get h2h odds (we know those work) — props odds not available on free plan
       // We'll use the bookLines from linemate itself for odds
 
-      // 3. Convert linemate markets to Odds API market format
-      //    We need to match by eventId — linemate uses gameId codes like "mlb-123"
-      //    We match by team names from the book/odds games list
-      // Since we don’t have a direct gameId→eventId map here, we return ALL props for the sport
-      //    and filter by team in the props route handler
+      // 3. Convert raw linemate markets into Book's market/outcome format
+      //    Raw linemate data has books.bookname.over.alternates with additional lines+odds
+
+      // Helper: extract all {line, overOdds, underOdds} from raw linemate books object
+      function extractLines(books: any): { line: number; overOdds: number | null; underOdds: number | null }[] {
+        const map = new Map<number, { overOdds: number | null; underOdds: number | null }>();
+        if (!books || typeof books !== "object") return [];
+        for (const bdata of Object.values(books as Record<string, any>)) {
+          if (!bdata || typeof bdata !== "object") continue;
+          const over  = (bdata as any).over  ?? null;
+          const under = (bdata as any).under ?? null;
+          // Main line
+          const mainVal = over?.current?.value ?? under?.current?.value ?? null;
+          if (mainVal != null) {
+            const e = map.get(mainVal) ?? { overOdds: null, underOdds: null };
+            if (over?.current?.odds?.american  != null && e.overOdds  == null) e.overOdds  = over.current.odds.american;
+            if (under?.current?.odds?.american != null && e.underOdds == null) e.underOdds = under.current.odds.american;
+            map.set(mainVal, e);
+          }
+          // Over alternates
+          for (const [altKey, altData] of Object.entries((over?.alternates ?? {}) as Record<string, any>)) {
+            const aVal = parseFloat(altKey);
+            if (isNaN(aVal)) continue;
+            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
+            if (altData?.odds?.american != null && e.overOdds == null) e.overOdds = altData.odds.american;
+            map.set(aVal, e);
+          }
+          // Under alternates
+          for (const [altKey, altData] of Object.entries((under?.alternates ?? {}) as Record<string, any>)) {
+            const aVal = parseFloat(altKey);
+            if (isNaN(aVal)) continue;
+            const e = map.get(aVal) ?? { overOdds: null, underOdds: null };
+            if (altData?.odds?.american != null && e.underOdds == null) e.underOdds = altData.odds.american;
+            map.set(aVal, e);
+          }
+        }
+        return Array.from(map.entries())
+          .map(([line, odds]) => ({ line, ...odds }))
+          .sort((a, b) => a.line - b.line);
+      }
 
       // Group by market type (prop key)
       const marketMap: Record<string, any> = {};
 
-      for (const m of linemateMarkets) {
-        if (!m.playerName || m.consensusLine == null) continue;
+      // Work from raw linemate data when available to get alternates
+      const rawLmData: any[] = lmCached?.data?.rawMarkets ?? [];
+      const sourceArr = rawLmData.length > 0 ? rawLmData : linemateMarkets;
+      const usingRaw  = rawLmData.length > 0;
 
-        const propKey = LINEMATE_TO_PROP_KEY[m.marketName] ?? null;
+      for (const m of sourceArr) {
+        const playerName = usingRaw ? (m.player?.fullName ?? "") : (m.playerName ?? "");
+        const marketName = usingRaw ? (m.name ?? "")            : (m.marketName ?? "");
+        const teamCode   = usingRaw ? (m.team?.code ?? "")      : (m.teamCode ?? "");
+        const position   = usingRaw ? (m.player?.position ?? "") : (m.playerPos ?? "");
+        const gameId     = m.gameId ?? null;
+        const books      = usingRaw ? (m.books ?? {}) : {};
+
+        if (!playerName || !marketName) continue;
+        const propKey = LINEMATE_TO_PROP_KEY[marketName] ?? null;
         if (!propKey) continue;
 
-        // Skip under for HR and SB (per user rules)
-        if ((propKey === "player_home_runs" || propKey === "player_stolen_bases")) {
-          // Only overs allowed for HR/SB
+        // Build sorted list of available lines with odds
+        let allLines: { line: number; overOdds: number | null; underOdds: number | null }[] = [];
+        if (usingRaw && Object.keys(books).length > 0) {
+          allLines = extractLines(books);
         }
+        // Fallback to normalized bookLines
+        if (allLines.length === 0) {
+          const bl = m.bookLines ?? {};
+          const be = Object.values(bl) as any[];
+          const cl = m.consensusLine ?? null;
+          if (cl != null) {
+            allLines = [{ line: cl, overOdds: be.find((b: any) => b.overOdds != null)?.overOdds ?? -110, underOdds: be.find((b: any) => b.underOdds != null)?.underOdds ?? -110 }];
+          }
+        }
+        if (allLines.length === 0) continue;
+
+        // Primary line: lowest line that has overOdds, or just first
+        const primaryLine = allLines.find(l => l.overOdds != null) ?? allLines[0];
 
         if (!marketMap[propKey]) {
           marketMap[propKey] = { key: propKey, outcomes: [], bookmaker: "linemate" };
         }
 
-        // Get best odds from bookLines
-        const bookLines = m.bookLines ?? {};
-        const bookEntries = Object.values(bookLines) as any[];
-        const overOdds  = bookEntries.find(b => b.overOdds != null)?.overOdds  ?? -110;
-        const underOdds = bookEntries.find(b => b.underOdds != null)?.underOdds ?? -110;
-        const line = m.consensusLine;
-
-        // Add over outcome
+        // Over outcome — includes all alternate lines with odds
+        const overAlternates = allLines.filter(l => l.overOdds != null).map(l => ({ line: l.line, overOdds: l.overOdds!, underOdds: l.underOdds }));
         marketMap[propKey].outcomes.push({
           name:        "Over",
-          description: m.playerName,
-          point:       line,
-          price:       overOdds,
-          team:        m.teamCode ?? null,
-          position:    m.playerPos ?? null,
-          gameId:      m.gameId ?? null,
+          description: playerName,
+          point:       primaryLine.line,
+          price:       primaryLine.overOdds ?? -110,
+          team:        teamCode || null,
+          position:    position || null,
+          gameId,
+          alternates:  overAlternates,
         });
 
-        // Add under outcome (skip for HR and SB per user rules)
+        // Under outcome — skip for HR and SB (user rule: only overs shown)
         if (propKey !== "player_home_runs" && propKey !== "player_stolen_bases") {
+          const underLines = allLines.filter(l => l.underOdds != null);
+          const underPrimary = underLines[underLines.length - 1] ?? primaryLine; // highest line for under
+          const underAlternates = underLines.map(l => ({ line: l.line, overOdds: l.overOdds, underOdds: l.underOdds! }));
           marketMap[propKey].outcomes.push({
             name:        "Under",
-            description: m.playerName,
-            point:       line,
-            price:       underOdds,
-            team:        m.teamCode ?? null,
-            position:    m.playerPos ?? null,
-            gameId:      m.gameId ?? null,
+            description: playerName,
+            point:       underPrimary.line,
+            price:       underPrimary.underOdds ?? -110,
+            team:        teamCode || null,
+            position:    position || null,
+            gameId,
+            alternates:  underAlternates,
           });
         }
       }
