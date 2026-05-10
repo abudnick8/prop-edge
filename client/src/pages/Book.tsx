@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
   Lightbulb, Wallet, Clock, Trophy, AlertCircle,
   Edit2, PlusCircle, Loader2, ChevronRight, ChevronUp,
-  User, ChevronDown as Chevron,
+  User, ChevronDown as Chevron, Share2, Camera,
 } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -100,6 +100,10 @@ interface SlipLeg {
   sport?: string;
   bet_type?: string;
   game_date?: string;
+  stat_type?: string;
+  line?: number;
+  over_under?: string;
+  player_name?: string;
 }
 
 interface Slip {
@@ -1594,6 +1598,127 @@ function SlipProgressPanel({ slipId, token }: { slipId: number; token: string })
   );
 }
 
+// ─── Slip share overlay ───────────────────────────────────────────────────────
+function SlipShareCard({ slip, onClose }: { slip: Slip; onClose: () => void }) {
+  const typeLabel = slip.slip_type === "round_robin" ? "Round Robin" : slip.slip_type.charAt(0).toUpperCase() + slip.slip_type.slice(1);
+  const sc = statusColor(slip.status);
+  const isWon  = slip.status === "won";
+  const isLost = slip.status === "lost";
+
+  const headerBg  = isWon ? "#16a34a" : isLost ? "#dc2626" : NAVY;
+  const accentCol = isWon ? "#bbf7d0" : isLost ? "#fecaca" : GOLD;
+
+  return (
+    /* Dark dim overlay — tap outside card to close */
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.82)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "24px 16px",
+      }}
+    >
+      {/* The share card itself — stop propagation so tapping it doesn't close */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 380,
+          borderRadius: 20, overflow: "hidden",
+          boxShadow: "0 8px 48px rgba(0,0,0,0.5)",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+        }}
+      >
+        {/* Header */}
+        <div style={{ background: headerBg, padding: "18px 20px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Clubhouse IQ</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", marginTop: 2 }}>{typeLabel}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ background: accentCol, color: headerBg, fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 20, letterSpacing: 0.5 }}>
+                {slip.status.toUpperCase()}
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+                {new Date(slip.placed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </div>
+            </div>
+          </div>
+          {/* Stake / payout row */}
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1, background: "rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 12px" }}>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase" }}>Stake</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{fmtCoins(slip.stake)}</div>
+            </div>
+            <div style={{ flex: 1, background: "rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 12px" }}>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase" }}>
+                {slip.status === "won" ? "Won" : slip.status === "lost" ? "Lost" : "To Win"}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: accentCol }}>
+                {slip.payout_received != null ? fmtCoins(slip.payout_received) : fmtCoins(slip.potential_payout)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Legs */}
+        <div style={{ background: "#fff", padding: "14px 20px" }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>
+            {slip.legs.length} Leg{slip.legs.length !== 1 ? "s" : ""}
+            {slip.slip_type === "round_robin" && slip.rr_combos ? ` · ${slip.rr_combos.length} combos` : ""}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {slip.legs.map((leg, i) => {
+              const rc = legResultColor(leg.result ?? "pending");
+              const resultDot = leg.result === "win" ? "🟢" : leg.result === "loss" ? "🔴" : leg.result === "push" ? "🟡" : "⚪";
+              return (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 10px", borderRadius: 10,
+                  background: leg.result === "win" ? "#f0fdf4" : leg.result === "loss" ? "#fef2f2" : "#f8fafc",
+                  border: `1px solid ${leg.result === "win" ? "#bbf7d0" : leg.result === "loss" ? "#fecaca" : "#e2e8f0"}`,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {leg.pick_label}
+                    </div>
+                    {leg.stat_type && leg.line != null && (
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
+                        {leg.over_under === "over" ? "O" : "U"} {leg.line} · {fmtOdds(leg.odds_american)}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{resultDot}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ background: "#f8fafc", padding: "10px 20px 14px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Camera size={12} color={MUTED} />
+          <span style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>Take a screenshot to share · clubhouseiq.app</span>
+        </div>
+      </div>
+
+      {/* Close hint */}
+      <button
+        onClick={onClose}
+        style={{
+          marginTop: 20, background: "rgba(255,255,255,0.12)", border: "none",
+          color: "#fff", fontSize: 13, fontWeight: 600, padding: "10px 28px",
+          borderRadius: 20, cursor: "pointer",
+        }}
+      >
+        Close
+      </button>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 2 — MY BETS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1609,6 +1734,7 @@ function MyBetsTab({
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
   const [expandedProgress, setExpandedProgress] = useState<number | null>(null);
+  const [shareSlip, setShareSlip] = useState<Slip | null>(null);
   const [overrideLegId, setOverrideLegId] = useState<number | null>(null);
   const [overrideResult, setOverrideResult] = useState<"win"|"loss"|"push"|"void">("win");
   const [overrideNote, setOverrideNote] = useState("");
@@ -1634,6 +1760,9 @@ function MyBetsTab({
 
   return (
     <div style={{ padding: "12px 12px 0" }}>
+      {/* Share overlay */}
+      {shareSlip && <SlipShareCard slip={shareSlip} onClose={() => setShareSlip(null)} />}
+
       {/* Account selector */}
       {accounts.length > 0 && (
         <select
@@ -1723,8 +1852,23 @@ function MyBetsTab({
                         {slip.settled_at && ` · Settled ${fmtDateTime(slip.settled_at)}`}
                       </div>
                     </div>
-                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>
-                      {slip.legs.length} leg{slip.legs.length !== 1 ? "s" : ""}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                      <div style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>
+                        {slip.legs.length} leg{slip.legs.length !== 1 ? "s" : ""}
+                      </div>
+                      {/* Share button */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setShareSlip(slip); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 4,
+                          background: "none", border: `1.5px solid ${MUTED}`,
+                          borderRadius: 20, padding: "3px 9px",
+                          cursor: "pointer", color: MUTED, fontSize: 10, fontWeight: 700,
+                        }}
+                      >
+                        <Share2 size={10} />
+                        Share
+                      </button>
                     </div>
                   </div>
                 </div>
