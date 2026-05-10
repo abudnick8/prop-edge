@@ -124,30 +124,47 @@ type BetsFilter = "open" | "settled" | "all";
 
 // ─── Prop stat label map ──────────────────────────────────────────────────────
 const PROP_STAT_LABELS: Record<string, string> = {
-  player_hits:               "Hits",
-  player_home_runs:          "HR",
-  player_total_bases:        "Total Bases",
-  player_rbis:               "RBI",
-  player_stolen_bases:       "SB",
-  player_strikeouts:         "K",
-  player_pitcher_strikeouts: "Pitcher K",
-  player_pitcher_outs:       "Pitcher Outs",
-  player_hits_allowed:       "Hits Allowed",
-  player_earned_runs:        "ER",
-  player_walks:              "BB",
-  player_points:             "PTS",
-  player_rebounds:           "REB",
-  player_assists:            "AST",
-  player_threes:             "3PT",
-  player_blocks:             "BLK",
-  player_steals:             "STL",
-  player_shots_on_goal:      "SOG",
-  player_goals:              "Goals",
-  player_pass_tds:           "Pass TD",
-  player_pass_yds:           "Pass Yds",
-  player_rush_yds:           "Rush Yds",
-  player_reception_yds:      "Rec Yds",
-  player_receptions:         "Rec",
+  // MLB
+  player_hits:                        "Hits",
+  player_home_runs:                   "HR",
+  player_total_bases:                 "Total Bases",
+  player_rbis:                        "RBI",
+  player_runs_scored:                 "Runs",
+  player_singles:                     "Singles",
+  player_doubles:                     "Doubles",
+  player_stolen_bases:                "SB",
+  player_strikeouts:                  "K (Batter)",
+  player_pitcher_strikeouts:          "Pitcher K",
+  player_pitcher_outs:                "Pitcher Outs",
+  player_hits_allowed:                "Hits Allowed",
+  player_earned_runs:                 "ER",
+  player_walks:                       "BB (Batter)",
+  player_pitcher_walks:               "BB Allowed",
+  player_first_innings_runs_allowed:  "NRFI",
+  // NBA
+  player_points:                      "PTS",
+  player_rebounds:                    "REB",
+  player_assists:                     "AST",
+  player_threes:                      "3PT",
+  player_blocks:                      "BLK",
+  player_steals:                      "STL",
+  player_points_rebounds_assists:     "PRA",
+  // NFL
+  player_anytime_td:                  "Anytime TD",
+  player_reception_yards:             "Rec Yds",
+  player_rushing_yards:               "Rush Yds",
+  player_passing_yards:               "Pass Yds",
+  player_passing_tds:                 "Pass TD",
+  player_receptions:                  "Rec",
+  // NHL
+  player_shots_on_goal:               "SOG",
+  player_goal_scorer:                 "Goal Scorer",
+  player_goals:                       "Goals",
+  // legacy keys (older API format)
+  player_pass_tds:                    "Pass TD",
+  player_pass_yds:                    "Pass Yds",
+  player_rush_yds:                    "Rush Yds",
+  player_reception_yds:               "Rec Yds",
 };
 
 function statLabel(key: string): string {
@@ -421,7 +438,7 @@ const POSITION_GROUPS: Record<Sport, string[]> = {
 };
 
 // Batter vs Pitcher grouping for MLB
-const MLB_PITCHER_MARKETS = new Set(["player_pitcher_strikeouts", "player_pitcher_outs", "player_hits_allowed", "player_earned_runs", "player_walks"]);
+const MLB_PITCHER_MARKETS = new Set(["player_pitcher_strikeouts", "player_pitcher_outs", "player_hits_allowed", "player_earned_runs", "player_pitcher_walks", "player_first_innings_runs_allowed"]);
 const MLB_BATTER_POS = new Set(["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "OF"]);
 const MLB_PITCHER_POS = new Set(["SP", "RP", "P"]);
 
