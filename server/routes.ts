@@ -11916,7 +11916,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const eventId   = req.query.eventId as string;
       const homeTeam  = (req.query.homeTeam as string) ?? "";
       const awayTeam  = (req.query.awayTeam as string) ?? "";
+      const debug     = req.query.debug === "1";
       if (!eventId) return res.status(400).json({ error: "eventId required" });
+
+      // Debug: show what key is resolved
+      if (debug) {
+        const k = await getOddsApiKey();
+        const hasEnv = !!process.env.ODDS_API_KEY;
+        const dbSettings = await storage.getSettings();
+        const hasDb = !!dbSettings?.oddsApiKey;
+        return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", keyDeactivated: k === "4134e9d0" });
+      }
+
       const markets = await fetchDraftKingsProps(sport, eventId);
 
       // Build player→team map from MLB rosters when sport is mlb and teams known
