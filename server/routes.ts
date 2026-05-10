@@ -11680,6 +11680,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const LINEMATE_PROP_CACHE_TTL = 8 * 60 * 1000; // 8 minutes
 
   // ─ Fetch player props from Linemate (free, no plan restriction) ──────────────
+  // Dedicated raw-market cache for Book props (separate from Props Hub cache)
+  const bookRawCache: Record<string, { raw: any[]; ts: number }> = {};
+  const BOOK_RAW_TTL = 8 * 60_000; // 8-min cache
+
   async function fetchDraftKingsProps(sport: string, eventId: string): Promise<any[]> {
     const sportKey = sport.toLowerCase();
     const cacheKey = `${sportKey}:${eventId}`;
@@ -11691,14 +11695,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
 
     try {
-      // 1. Use linemate cache if already populated (from /api/linemate-props calls)
-      //    Otherwise fetch directly from linemate
-      let linemateMarkets: any[] = [];
-      const lmCached = linemateCache.get(sportKey);
-      if (lmCached && Date.now() - lmCached.ts < LINEMATE_TTL) {
-        linemateMarkets = lmCached.data?.markets ?? [];
+      // 1. Always use raw Linemate data (books + alternates) — use dedicated Book raw cache
+      //    Never use Props Hub linemateCache (it strips rawMarkets)
+      let rawFiltered: any[] = [];
+      const rawCached = bookRawCache[sportKey];
+      if (rawCached && Date.now() - rawCached.ts < BOOK_RAW_TTL) {
+        rawFiltered = rawCached.raw;
       } else {
-        // Fresh fetch from linemate
         const BASE = `https://api.linemate.io/api/${sportKey}`;
         const marketsRes = await axios.get(`${BASE}/v2/markets`, {
           params: { levelsToInclude: "player" },
@@ -11706,14 +11709,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           timeout: 12000,
         });
         const raw: any[] = Array.isArray(marketsRes.data) ? marketsRes.data : [];
-        const rawFiltered = raw.filter((m: any) => m.player && m.name);
-        linemateMarkets = rawFiltered.map((m: any) => normalisePick(
-            { gameId: m.gameId, player: m.player, team: m.team, opposingTeam: m.opposingTeam, isHome: m.isHome, market: m, outcome: "OVER", pregameHitRecords: m.pregameHitRecords, pregameAverages: m.pregameAverages },
-            "MARKET", sportKey.toUpperCase()
-          ));
-        // Update linemate cache — store rawMarkets to preserve books+alternates for Book props
-        const existing = lmCached?.data ?? {};
-        linemateCache.set(sportKey, { data: { ...existing, markets: linemateMarkets, rawMarkets: rawFiltered }, ts: Date.now() });
+        rawFiltered = raw.filter((m: any) => m.player && m.name);
+        bookRawCache[sportKey] = { raw: rawFiltered, ts: Date.now() };
+      }
+      const linemateMarkets: any[] = rawFiltered.map((m: any) => normalisePick(
+          { gameId: m.gameId, player: m.player, team: m.team, opposingTeam: m.opposingTeam, isHome: m.isHome, market: m, outcome: "OVER", pregameHitRecords: m.pregameHitRecords, pregameAverages: m.pregameAverages },
+          "MARKET", sportKey.toUpperCase()
+        ));
+      // Keep linemateCache updated for Props Hub benefit too
+      const lmExisting = linemateCache.get(sportKey)?.data ?? {};
+      if (!linemateCache.get(sportKey) || Date.now() - (linemateCache.get(sportKey)?.ts ?? 0) > LINEMATE_TTL) {
+        linemateCache.set(sportKey, { data: { ...lmExisting, markets: linemateMarkets, rawMarkets: rawFiltered }, ts: Date.now() });
       }
 
       // 2. Also fetch the odds API for this event for actual odds (American format)
@@ -11828,8 +11834,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Work from raw linemate data when available to get alternates
       // Re-read from cache after potential fresh fetch (lmCached captured before fetch may be stale)
-      const freshLmCached = linemateCache.get(sportKey);
-      const rawLmData: any[] = freshLmCached?.data?.rawMarkets ?? lmCached?.data?.rawMarkets ?? [];
+      // Use dedicated bookRawCache (always has rawMarkets, unlike Props Hub linemateCache)
+      const rawLmData: any[] = bookRawCache[sportKey]?.raw ?? [];
       const sourceArr = rawLmData.length > 0 ? rawLmData : linemateMarkets;
       const usingRaw  = rawLmData.length > 0;
 
