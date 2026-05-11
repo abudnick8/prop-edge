@@ -4842,7 +4842,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           picks[propGroup] = sport === "mlb"
             ? raw.filter((p: any) => {
                 const mn = (p.marketName ?? "").toUpperCase();
-                if (mn === "HITTER_TRIPLES" || mn === "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN") return false;
+                if (mn === "HITTER_TRIPLES") return false;
                 if ((mn === "HITTER_STOLEN_BASES" || mn === "HITTER_HOME_RUNS") && (p.pickSide ?? "").toUpperCase() === "UNDER") return false;
                 return true;
               })
@@ -4854,7 +4854,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       // MLB banned market names — triples and H+R+RBI combo are not displayed
       const MLB_BANNED_MARKETS = new Set([
         "HITTER_TRIPLES",
-        "HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN",
       ]);
 
       let markets: any[] = [];
@@ -11601,6 +11600,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // MLB prop market keys allowed (per user rules)
   const MLB_PROP_MARKETS = [
     "player_hits",
+    "player_hrr",
     "player_home_runs",
     "player_runs_scored",
     "player_rbis",
@@ -11639,8 +11639,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─ Linemate market name → Odds API style key mapping ───────────────────
   const LINEMATE_TO_PROP_KEY: Record<string, string> = {
     // MLB hitter
-    HITTER_HITS:                    "player_hits",
-    HITTER_HOME_RUNS:               "player_home_runs",
+    HITTER_HITS:                                   "player_hits",
+    HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN:     "player_hrr",
+    HITTER_HOME_RUNS:                              "player_home_runs",
     HITTER_TOTAL_BASES:             "player_total_bases",
     HITTER_RUNS_BATTED_IN:          "player_rbis",
     HITTER_RUNS:                    "player_runs_scored",
