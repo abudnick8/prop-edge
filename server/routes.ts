@@ -12393,31 +12393,85 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const allMarkets = await fetchDraftKingsProps(sport, eventId);
 
-      // Build team code set from homeTeam + awayTeam for filtering
-      // Linemate uses short codes like "MIA", "WSH", "BOS" etc.
-      // We match by checking if the full team name contains the code or vice versa
-      let allowedCodes: Set<string> | null = null;
-      if (homeTeam || awayTeam) {
-        allowedCodes = new Set<string>();
-        // Build a broad team-name-to-code map from the TEAM_CITY_MAP
-        const teamWords = [homeTeam, awayTeam]
-          .filter(Boolean)
-          .flatMap(t => t.split(" ").map((w: string) => w.toLowerCase()));
-        // We'll match outcomes whose team code appears in the team name words
-        // e.g. homeTeam="Miami Marlins" → matches "MIA", "marlins" etc.
-        // We use the outcome's team field (linemate code) and check if it loosely matches
-        // — collect all codes first, then filter
-        for (const m of allMarkets) {
-          for (const o of (m.outcomes ?? [])) {
-            const code = (o.team ?? "").toLowerCase();
-            if (!code) continue;
-            const matchesHome = homeTeam?.toLowerCase().includes(code) || teamWords.some((w: string) => code.includes(w) || w.includes(code));
-            if (matchesHome) allowedCodes!.add(o.team);
+      // Explicit Odds-API full name → Linemate short code map (avoids fuzzy false matches)
+      const ODDS_TO_LM: Record<string, string> = {
+        // MLB
+        "Arizona Diamondbacks": "ARI", "Atlanta Braves": "ATL", "Baltimore Orioles": "BAL",
+        "Boston Red Sox": "BOS", "Chicago Cubs": "CHC", "Chicago White Sox": "CWS",
+        "Cincinnati Reds": "CIN", "Cleveland Guardians": "CLE", "Colorado Rockies": "COL",
+        "Detroit Tigers": "DET", "Houston Astros": "HOU", "Kansas City Royals": "KC",
+        "Los Angeles Angels": "LAA", "Los Angeles Dodgers": "LAD", "Miami Marlins": "MIA",
+        "Milwaukee Brewers": "MIL", "Minnesota Twins": "MIN", "New York Mets": "NYM",
+        "New York Yankees": "NYY", "Oakland Athletics": "OAK", "Philadelphia Phillies": "PHI",
+        "Pittsburgh Pirates": "PIT", "San Diego Padres": "SD", "San Francisco Giants": "SF",
+        "Seattle Mariners": "SEA", "St. Louis Cardinals": "STL", "Tampa Bay Rays": "TB",
+        "Texas Rangers": "TEX", "Toronto Blue Jays": "TOR", "Washington Nationals": "WSH",
+        "Athletics": "OAK",
+        // NBA
+        "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
+        "Charlotte Hornets": "CHA", "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE",
+        "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN", "Detroit Pistons": "DET",
+        "Golden State Warriors": "GSW", "Houston Rockets": "HOU", "Indiana Pacers": "IND",
+        "Los Angeles Clippers": "LAC", "Los Angeles Lakers": "LAL", "Memphis Grizzlies": "MEM",
+        "Miami Heat": "MIA", "Milwaukee Bucks": "MIL", "Minnesota Timberwolves": "MIN",
+        "New Orleans Pelicans": "NOP", "New York Knicks": "NYK", "Oklahoma City Thunder": "OKC",
+        "Orlando Magic": "ORL", "Philadelphia 76ers": "PHI", "Phoenix Suns": "PHX",
+        "Portland Trail Blazers": "POR", "Sacramento Kings": "SAC", "San Antonio Spurs": "SAS",
+        "Toronto Raptors": "TOR", "Utah Jazz": "UTA", "Washington Wizards": "WAS",
+        // NFL
+        "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
+        "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
+        "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE", "Dallas Cowboys": "DAL",
+        "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
+        "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX",
+        "Kansas City Chiefs": "KC", "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC",
+        "Los Angeles Rams": "LAR", "Miami Dolphins": "MIA", "Minnesota Vikings": "MIN",
+        "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
+        "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT",
+        "San Francisco 49ers": "SF", "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB",
+        "Tennessee Titans": "TEN", "Washington Commanders": "WSH",
+        // NHL
+        "Anaheim Ducks": "ANA", "Arizona Coyotes": "ARI", "Boston Bruins": "BOS",
+        "Buffalo Sabres": "BUF", "Calgary Flames": "CGY", "Carolina Hurricanes": "CAR",
+        "Chicago Blackhawks": "CHI", "Colorado Avalanche": "COL", "Columbus Blue Jackets": "CBJ",
+        "Dallas Stars": "DAL", "Detroit Red Wings": "DET", "Edmonton Oilers": "EDM",
+        "Florida Panthers": "FLA", "Los Angeles Kings": "LAK", "Minnesota Wild": "MIN",
+        "Montreal Canadiens": "MTL", "Nashville Predators": "NSH", "New Jersey Devils": "NJD",
+        "New York Islanders": "NYI", "New York Rangers": "NYR", "Ottawa Senators": "OTT",
+        "Philadelphia Flyers": "PHI", "Pittsburgh Penguins": "PIT", "San Jose Sharks": "SJS",
+        "Seattle Kraken": "SEA", "St. Louis Blues": "STL", "Tampa Bay Lightning": "TBL",
+        "Toronto Maple Leafs": "TOR", "Utah Hockey Club": "UTA", "Vancouver Canucks": "VAN",
+        "Vegas Golden Knights": "VGK", "Washington Capitals": "WSH", "Winnipeg Jets": "WPG",
+      };
+
+      // Resolve the two team codes for this game
+      const teamCodesToAllow = new Set<string>();
+      for (const teamName of [homeTeam, awayTeam].filter(Boolean)) {
+        const code = ODDS_TO_LM[teamName];
+        if (code) {
+          teamCodesToAllow.add(code);
+        } else {
+          // Fallback: last word of team name as code guess (e.g. "Mets" → "NYM" won't match, but at least we tried)
+          // Also try scanning actual outcome team codes to see if any code is contained in the team name
+          console.log(`[Book Props] No exact code mapping for "${teamName}" — trying fuzzy fallback`);
+          const nameLower = teamName.toLowerCase();
+          const lastName = nameLower.split(" ").pop() ?? "";
+          for (const m of allMarkets) {
+            for (const o of (m.outcomes ?? [])) {
+              const code2 = (o.team ?? "").toUpperCase();
+              if (!code2) continue;
+              // Only match if the code is 2-3 chars and is a clean abbreviation of the city/team
+              // Never match generic short words
+              if (code2.length >= 2 && code2.length <= 4 &&
+                  (nameLower.includes(code2.toLowerCase()) && code2.length >= 3)) {
+                teamCodesToAllow.add(o.team);
+              }
+            }
           }
         }
-        // If we couldn't resolve any codes, fall back to showing all
-        if (allowedCodes.size === 0) allowedCodes = null;
       }
+
+      let allowedCodes: Set<string> | null = teamCodesToAllow.size > 0 ? teamCodesToAllow : null;
 
       // Filter markets to only this game's teams, then enrich with full team name
       const enriched = allMarkets
