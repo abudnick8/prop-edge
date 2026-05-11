@@ -412,7 +412,7 @@ export default function Book() {
       {/* Content */}
       <div style={{ padding: "0 0 80px" }}>
         {subTab === "slip"     && <BetSlipTab token={token} accounts={accounts} accountsLoading={accountsLoading} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} showToast={showToast} onGoToAccounts={() => setSubTab("accounts")} />}
-        {subTab === "bets"     && <MyBetsTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} />}
+        {subTab === "bets"     && <MyBetsTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} showToast={showToast} />}
         {subTab === "accounts" && <AccountsTab token={token} accounts={accounts} accountsLoading={accountsLoading} showCreateAccount={showCreateAccount} setShowCreateAccount={setShowCreateAccount} refetchAccounts={refetchAccounts} showToast={showToast} />}
         {subTab === "insights" && <InsightsTab token={token} accounts={accounts} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} showToast={showToast} />}
       </div>
@@ -1724,12 +1724,13 @@ function SlipShareCard({ slip, onClose }: { slip: Slip; onClose: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function MyBetsTab({
-  token, accounts, selectedAccountId, setSelectedAccountId,
+  token, accounts, selectedAccountId, setSelectedAccountId, showToast,
 }: {
   token: string;
   accounts: Account[];
   selectedAccountId: number | null;
   setSelectedAccountId: (id: number) => void;
+  showToast: (msg: string, type?: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
@@ -1741,6 +1742,7 @@ function MyBetsTab({
   const [overriding, setOverriding] = useState(false);
   const [voidingSlip, setVoidingSlip] = useState<number | null>(null);
   const qc = useQueryClient();
+  const [grading, setGrading] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery<{ slips: Slip[] }>({
     queryKey: ["book-slips", selectedAccountId, statusFilter],
@@ -1806,7 +1808,34 @@ function MyBetsTab({
       </div>
 
       {statusFilter === "open" && (
-        <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, textAlign: "right" }}>Auto-refreshes every 30s</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: MUTED }}>Auto-refreshes every 30s</div>
+          <button
+            disabled={grading}
+            onClick={async () => {
+              setGrading(true);
+              try {
+                const r = await fetch("/api/book/grade-now", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const d = await r.json();
+                const settled = (d.forceSettled ?? 0) + (d.rrSettled ?? 0);
+                showToast(settled > 0 ? `✓ ${settled} slip${settled !== 1 ? "s" : ""} settled` : "No new results yet");
+                qc.invalidateQueries({ queryKey: ["book-slips"] });
+                qc.invalidateQueries({ queryKey: ["book-accounts"] });
+              } catch { showToast("Grade failed", "error"); }
+              finally { setGrading(false); }
+            }}
+            style={{
+              fontSize: 10, fontWeight: 700, color: grading ? MUTED : NAVY, background: "none",
+              border: `1px solid ${grading ? MUTED : NAVY}`, borderRadius: 12, padding: "3px 10px",
+              cursor: grading ? "default" : "pointer", opacity: grading ? 0.6 : 1,
+            }}
+          >
+            {grading ? "Grading..." : "Grade Now"}
+          </button>
+        </div>
       )}
       {statusFilter === "won" && (
         <div style={{ fontSize: 10, color: "#16a34a", marginBottom: 8, textAlign: "right", fontWeight: 700 }}>Winning bets — green is good</div>
