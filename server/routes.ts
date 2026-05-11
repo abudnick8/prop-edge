@@ -12567,6 +12567,86 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─ POST /api/book/settle-leg ─────────────────────────────────────────────
+  // Owner-only: manually settle a single leg as push or void (e.g. postponed game).
+  // After updating the leg, re-evaluates the parent slip settlement.
+  app.post("/api/book/settle-leg", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { legId, result } = req.body ?? {};
+      if (!legId || !["push", "void"].includes(result)) {
+        return res.status(400).json({ error: "legId and result (push|void) required" });
+      }
+
+      // Update the leg
+      await db.query(
+        `UPDATE book_legs SET result=$1, graded_at=NOW(), note='Manual: postponed/rescheduled' WHERE id=$2`,
+        [result, legId]
+      );
+
+      // Get slip info for this leg
+      const leg = await db.queryOne(`SELECT * FROM book_legs WHERE id=$1`, [legId]);
+      if (!leg) return res.status(404).json({ error: "Leg not found" });
+
+      const slipId = leg.slip_id;
+
+      // Check if all legs in slip are now graded
+      const slipLegs = await db.query(`SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slipId]);
+      const legResults = slipLegs.rows.map((r: any) => r.result);
+
+      if (legResults.includes("pending")) {
+        return res.json({ ok: true, slipSettled: false, message: "Leg settled. Slip still has pending legs." });
+      }
+
+      // All legs graded — determine slip outcome
+      const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
+      const active = legResults.filter((r: string) => r !== "void");
+      let slipStatus: string;
+      if (active.length === 0) slipStatus = "void";
+      else if (active.every((r: string) => r === "win")) slipStatus = "won";
+      else if (active.some((r: string) => r === "loss")) slipStatus = "lost";
+      else slipStatus = "push";
+
+      let finalPayout = 0;
+      if (slipStatus === "won") {
+        const winOdds = slipLegs.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
+        finalPayout = winOdds.length === 1
+          ? parseFloat((slip.stake * americanToDecimal(winOdds[0])).toFixed(2))
+          : calcParlayPayout(slip.stake, winOdds);
+      } else if (slipStatus === "push" || slipStatus === "void") {
+        finalPayout = parseFloat(slip.stake);
+      }
+
+      await db.query(
+        `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+        [slipStatus, finalPayout || null, slipId]
+      );
+
+      if (finalPayout > 0) {
+        await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [finalPayout, slip.account_id]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
+          [slip.account_id, finalPayout, slipStatus === "won" ? "win" : "push", slipId, `Leg #${legId} settled as ${result} → slip ${slipStatus}`]
+        );
+      }
+
+      // Roll up RR parent if applicable
+      const parentCheck = await db.queryOne(`SELECT rr_parent_id FROM book_slips WHERE id=$1`, [slipId]);
+      if (parentCheck?.rr_parent_id) {
+        const parentId = parentCheck.rr_parent_id;
+        const siblings = await db.query(`SELECT status, payout_received FROM book_slips WHERE rr_parent_id=$1`, [parentId]);
+        if (siblings.rows.every((r: any) => r.status !== "open")) {
+          const anyWon = siblings.rows.some((r: any) => r.status === "won");
+          const allVoid = siblings.rows.every((r: any) => r.status === "void");
+          const parentStatus = allVoid ? "void" : anyWon ? "won" : "lost";
+          const totalPayout = siblings.rows.reduce((s: number, r: any) => s + parseFloat(r.payout_received ?? 0), 0);
+          await db.query(`UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`, [parentStatus, totalPayout || null, parentId]);
+        }
+      }
+
+      res.json({ ok: true, slipSettled: true, slipStatus, finalPayout });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─ GET /api/book/transactions?accountId= ─────────────────────
   // ─ GET /api/book/slip-progress?slipId= ──────────────────────────────────
   // Returns live ESPN stat progress for every leg in a slip.
@@ -12655,10 +12735,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const comp = matchedEvent.competitions?.[0];
           const statusType = comp?.status?.type;
           const gameState = statusType?.name ?? "STATUS_SCHEDULED";
+          const POSTPONED_STATES = ["STATUS_POSTPONED", "STATUS_SUSPENDED", "STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_RAIN_DELAY", "STATUS_DELAYED"];
           let gameStatus = "scheduled";
           if (statusType?.completed) gameStatus = "final";
+          else if (POSTPONED_STATES.includes(gameState)) gameStatus = "postponed";
           else if (gameState === "STATUS_IN_PROGRESS" || gameState === "STATUS_HALFTIME" || gameState === "STATUS_END_PERIOD") gameStatus = "live";
           base.gameStatus = gameStatus;
+          if (gameStatus === "postponed") {
+            base.postponedReason = comp?.status?.type?.description ?? gameState.replace("STATUS_", "").replace(/_/g, " ");
+          }
 
           // Get score
           const homeComp = comp?.competitors?.find((c: any) => c.homeAway === "home");
@@ -12668,7 +12753,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           base.gamePeriod = comp?.status?.displayClock ?? null;
           base.gamePeriodLabel = comp?.status?.period ? `${espnSport === "MLB" ? "Inn" : "Q"}${comp.status.period}` : null;
 
-          if (gameStatus === "scheduled") return base;
+          if (gameStatus === "scheduled" || gameStatus === "postponed") return base;
 
           const espnId = matchedEvent.id;
           if (!summaryCache[espnId]) {

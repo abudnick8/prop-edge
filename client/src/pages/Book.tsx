@@ -1501,13 +1501,14 @@ interface LegProgress {
   awayTeam: string;
   betType: string;
   currentStat: number | null;
-  gameStatus: "scheduled" | "live" | "final";
+  gameStatus: "scheduled" | "live" | "final" | "postponed";
   status: string; // pending | winning | losing | win | loss | push
   legResult: string | null;
   homeScore?: string | null;
   awayScore?: string | null;
   gamePeriod?: string | null;
   gamePeriodLabel?: string | null;
+  postponedReason?: string | null;
 }
 
 function legStatusColor(s: string) {
@@ -1529,7 +1530,26 @@ function ProgressBar({ current, line, isOver }: { current: number; line: number;
   );
 }
 
-function SlipProgressPanel({ slipId, token }: { slipId: number; token: string }) {
+function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token: string; onSettled?: () => void }) {
+  const [settling, setSettling] = React.useState<number | null>(null); // legId being settled
+  const qc = useQueryClient();
+
+  async function settleLeg(legId: number, result: "push" | "void") {
+    setSettling(legId);
+    try {
+      const r = await fetch("/api/book/settle-leg", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ legId, result }),
+      });
+      const d = await r.json();
+      qc.invalidateQueries({ queryKey: ["slip-progress", slipId] });
+      qc.invalidateQueries({ queryKey: ["book-slips"] });
+      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      if (d.slipSettled) onSettled?.();
+    } finally { setSettling(null); }
+  }
+
   const { data, isLoading } = useQuery<{ legs: LegProgress[] }>({
     queryKey: ["slip-progress", slipId],
     queryFn: async () => {
@@ -1549,21 +1569,77 @@ function SlipProgressPanel({ slipId, token }: { slipId: number; token: string })
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {data.legs.map(leg => {
-        const sc = legStatusColor(leg.status);
+        const sc = leg.gameStatus === "postponed"
+          ? { bg: "#fefce8", text: "#b45309", border: "#f59e0b" }
+          : legStatusColor(leg.status);
         const isOver = (leg.over_under ?? "over") === "over";
         const hasLiveStat = leg.currentStat !== null;
         const isPlayerProp = !!leg.playerName;
+        const isPostponed = leg.gameStatus === "postponed";
+        const isSettling = settling === leg.legId;
         return (
           <div key={leg.legId} style={{
             background: sc.bg,
             border: `1.5px solid ${sc.border}`,
             borderRadius: 10, padding: "10px 12px",
           }}>
+            {/* Postponed alert banner */}
+            {isPostponed && (
+              <div style={{
+                background: "#fef3c7", border: "1px solid #f59e0b",
+                borderRadius: 8, padding: "8px 10px", marginBottom: 8,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#92400e", marginBottom: 4 }}>
+                  ⚠️ Game Postponed{leg.postponedReason ? ` · ${leg.postponedReason}` : ""}
+                </div>
+                <div style={{ fontSize: 10, color: "#78350f", marginBottom: 8 }}>
+                  This game may be rescheduled. Choose how to handle this leg:
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    disabled={isSettling}
+                    onClick={() => settleLeg(leg.legId, "push")}
+                    style={{
+                      flex: 1, padding: "6px 0", borderRadius: 8, border: "none",
+                      background: "#16a34a", color: "#fff", fontSize: 11, fontWeight: 700,
+                      cursor: isSettling ? "default" : "pointer", opacity: isSettling ? 0.6 : 1,
+                    }}
+                  >
+                    {isSettling ? "Settling..." : "Settle as Push"}
+                  </button>
+                  <button
+                    disabled={isSettling}
+                    onClick={() => settleLeg(leg.legId, "void")}
+                    style={{
+                      flex: 1, padding: "6px 0", borderRadius: 8,
+                      border: "1.5px solid #d97706", background: "transparent",
+                      color: "#92400e", fontSize: 11, fontWeight: 700,
+                      cursor: isSettling ? "default" : "pointer", opacity: isSettling ? 0.6 : 1,
+                    }}
+                  >
+                    Void Leg
+                  </button>
+                  <button
+                    disabled={isSettling}
+                    onClick={() => qc.invalidateQueries({ queryKey: ["slip-progress", slipId] })}
+                    style={{
+                      padding: "6px 10px", borderRadius: 8,
+                      border: "1.5px solid #d97706", background: "transparent",
+                      color: "#92400e", fontSize: 11, fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Keep Open
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Header row */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: FG, marginBottom: 1 }}>{leg.pickLabel}</div>
-                {leg.gameStatus !== "scheduled" && leg.homeTeam && (
+                {leg.gameStatus !== "scheduled" && leg.gameStatus !== "postponed" && leg.homeTeam && (
                   <div style={{ fontSize: 10, color: MUTED }}>
                     {leg.awayTeam} {leg.awayScore ?? "-"} @ {leg.homeTeam} {leg.homeScore ?? "-"}
                     {leg.gamePeriodLabel && <span style={{ marginLeft: 5, color: leg.gameStatus === "live" ? "#ef4444" : MUTED, fontWeight: 700 }}>{leg.gameStatus === "live" ? "● LIVE" : "FINAL"}</span>}
@@ -1572,9 +1648,12 @@ function SlipProgressPanel({ slipId, token }: { slipId: number; token: string })
                 {leg.gameStatus === "scheduled" && (
                   <div style={{ fontSize: 10, color: MUTED }}>Scheduled · {leg.gameDate ?? ""}</div>
                 )}
+                {leg.gameStatus === "postponed" && (
+                  <div style={{ fontSize: 10, color: "#b45309", fontWeight: 600 }}>{leg.awayTeam} @ {leg.homeTeam}</div>
+                )}
               </div>
               <span style={{ fontSize: 10, fontWeight: 800, color: sc.text, textTransform: "uppercase", marginLeft: 8, whiteSpace: "nowrap" }}>
-                {leg.status === "pending" ? (leg.gameStatus === "scheduled" ? "TBD" : "–") : leg.status.toUpperCase()}
+                {isPostponed ? "PPD" : leg.status === "pending" ? (leg.gameStatus === "scheduled" ? "TBD" : "–") : leg.status.toUpperCase()}
               </span>
             </div>
 
@@ -1938,7 +2017,14 @@ function MyBetsTab({
                     </button>
                     {progressOpen && (
                       <div style={{ padding: "0 14px 12px" }}>
-                        <SlipProgressPanel slipId={slip.id} token={token} />
+                        <SlipProgressPanel
+                          slipId={slip.id}
+                          token={token}
+                          onSettled={() => {
+                            setExpandedProgress(null);
+                            qc.invalidateQueries({ queryKey: ["book-slips"] });
+                          }}
+                        />
                       </div>
                     )}
                   </div>
