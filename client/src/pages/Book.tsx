@@ -183,15 +183,14 @@ function statLabel(key: string): string {
   return PROP_STAT_LABELS[key] ?? key.replace("player_", "").replace(/_/g, " ").toUpperCase();
 }
 
-// HRR = combined Hits + Runs + RBI group
+// HRR = combined Hits + Runs + RBI group (NOT HR)
 const HRR_KEYS = new Set(["player_hits", "player_runs_scored", "player_rbis"]);
 
-// Prop display order: hits first, HRR second, then alphabetical
+// Prop display order: Hits(0), HRR(1), HR(2), then alphabetical
 const PROP_SORT_ORDER: Record<string, number> = {
   player_hits:        0,
   __HRR__:            1,
-  player_runs_scored: 2,
-  player_rbis:        3,
+  player_home_runs:   2,
 };
 function propSortKey(mkey: string): string {
   const order = PROP_SORT_ORDER[mkey];
@@ -896,7 +895,7 @@ function PropRow({
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {/* Player info */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: FG, wordBreak: "break-word", lineHeight: 1.3 }}>
             {playerName}
           </div>
           <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 1, flexWrap: "wrap" }}>
