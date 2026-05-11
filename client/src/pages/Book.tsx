@@ -132,7 +132,7 @@ type SubTab = "slip" | "bets" | "accounts" | "insights";
 type SlipType = "single" | "parlay" | "round_robin";
 type Sport = "mlb" | "nfl" | "nba" | "nhl";
 type BetFilter = "all" | "moneyline" | "spread" | "total" | "props";
-type BetsFilter = "open" | "settled" | "all";
+type BetsFilter = "open" | "won" | "lost" | "all";
 
 // ─── Prop stat label map ──────────────────────────────────────────────────────
 const PROP_STAT_LABELS: Record<string, string> = {
@@ -1746,7 +1746,9 @@ function MyBetsTab({
     queryKey: ["book-slips", selectedAccountId, statusFilter],
     queryFn: async () => {
       if (!selectedAccountId) return { slips: [] };
-      const r = await fetch(`/api/book/slips?accountId=${selectedAccountId}&status=${statusFilter}`, {
+      // won/lost tabs hit the settled endpoint then client-filters by exact status
+      const apiStatus = (statusFilter === "won" || statusFilter === "lost") ? "settled" : statusFilter;
+      const r = await fetch(`/api/book/slips?accountId=${selectedAccountId}&status=${apiStatus}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(await r.text());
@@ -1756,7 +1758,12 @@ function MyBetsTab({
     refetchInterval: statusFilter === "open" ? 30_000 : false,
   });
 
-  const slips = data?.slips ?? [];
+  // Client-filter for won/lost specific tabs
+  const slips = (data?.slips ?? []).filter(s => {
+    if (statusFilter === "won")  return s.status === "won";
+    if (statusFilter === "lost") return s.status === "lost" || s.status === "push";
+    return true;
+  });
 
   return (
     <div style={{ padding: "12px 12px 0" }}>
@@ -1776,26 +1783,36 @@ function MyBetsTab({
         </select>
       )}
 
-      {/* Status filter */}
+      {/* Status filter tabs */}
       <div style={{ display: "flex", gap: 5, marginBottom: 12 }}>
-        {(["open", "settled", "all"] as BetsFilter[]).map(f => (
+        {([
+          { key: "open",  label: "Open",   activeBg: NAVY,      activeText: "#fff" },
+          { key: "won",   label: "Wins ✓",  activeBg: "#16a34a", activeText: "#fff" },
+          { key: "lost",  label: "Losses",  activeBg: "#dc2626", activeText: "#fff" },
+        ] as { key: BetsFilter; label: string; activeBg: string; activeText: string }[]).map(({ key, label, activeBg, activeText }) => (
           <button
-            key={f}
-            onClick={() => setStatusFilter(f)}
+            key={key}
+            onClick={() => setStatusFilter(key)}
             style={{
               flex: 1, padding: "7px 4px", borderRadius: 8, border: "none", cursor: "pointer",
-              background: statusFilter === f ? NAVY : "rgba(19,35,58,0.06)",
-              color: statusFilter === f ? "#fff" : MUTED,
+              background: statusFilter === key ? activeBg : "rgba(19,35,58,0.06)",
+              color: statusFilter === key ? activeText : MUTED,
               fontWeight: 700, fontSize: 12,
             }}
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {label}
           </button>
         ))}
       </div>
 
       {statusFilter === "open" && (
         <div style={{ fontSize: 10, color: MUTED, marginBottom: 8, textAlign: "right" }}>Auto-refreshes every 30s</div>
+      )}
+      {statusFilter === "won" && (
+        <div style={{ fontSize: 10, color: "#16a34a", marginBottom: 8, textAlign: "right", fontWeight: 700 }}>Winning bets — green is good</div>
+      )}
+      {statusFilter === "lost" && (
+        <div style={{ fontSize: 10, color: "#dc2626", marginBottom: 8, textAlign: "right", fontWeight: 700 }}>Losses · pushes included</div>
       )}
 
       {isLoading ? (
@@ -1809,7 +1826,7 @@ function MyBetsTab({
         </div>
       ) : slips.length === 0 ? (
         <div style={{ textAlign: "center", padding: "32px 0", color: MUTED, fontSize: 13 }}>
-          No {statusFilter !== "all" ? statusFilter : ""} bets found
+          No {statusFilter === "won" ? "winning" : statusFilter === "lost" ? "losing" : statusFilter !== "all" ? statusFilter : ""} bets found
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1873,8 +1890,8 @@ function MyBetsTab({
                   </div>
                 </div>
 
-                {/* Live Progress toggle — only on open bets */}
-                {isOpenSlip && (
+                {/* Live Progress toggle — only on truly open bets */}
+                {isOpenSlip && slip.status === "open" && (
                   <div style={{ borderTop: "1px solid #f1f5f9" }}>
                     <button
                       onClick={e => { e.stopPropagation(); setExpandedProgress(progressOpen ? null : slip.id); }}
