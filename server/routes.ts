@@ -12309,17 +12309,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const id = parseInt(req.params.id);
       const acct = await db.queryOne(`SELECT id, name FROM book_accounts WHERE id=$1`, [id]);
       if (!acct) return res.status(404).json({ error: "Account not found" });
-      // Manual cascade in dependency order (FK cascades handle most, but be explicit)
-      // 1. legs of all slips for this account
-      await db.query(`DELETE FROM book_slip_legs WHERE slip_id IN (SELECT id FROM book_slips WHERE account_id=$1)`, [id]);
-      // 2. all slips (including RR children which also have account_id)
-      await db.query(`DELETE FROM book_slips WHERE account_id=$1`, [id]);
-      // 3. transactions
-      await db.query(`DELETE FROM book_transactions WHERE account_id=$1`, [id]);
-      // 4. the account itself
-      await db.query(`DELETE FROM book_accounts WHERE id=$1`, [id]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      // All child tables have ON DELETE CASCADE on account_id, so one delete handles everything
+      const result = await db.query(`DELETE FROM book_accounts WHERE id=$1`, [id]);
+      console.log(`[Book] Deleted account ${id} (${acct.name}), rows affected: ${result?.rowCount ?? 'unknown'}`);
+      res.json({ ok: true, deleted: id });
+    } catch (e: any) {
+      console.error(`[Book] Delete account error:`, e.message);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ─ GET /api/book/odds?sport=mlb ────────────────────────────
