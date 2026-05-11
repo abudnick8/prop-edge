@@ -2228,19 +2228,26 @@ function AccountsTab({
   }
 
   async function deleteAccount(id: number, name: string) {
-    if (!confirm(`Delete "${name}"? This will permanently remove the account and all its settled history.`)) return;
+    if (!confirm(`Delete "${name}"?\n\nThis will permanently remove the account and all its history. This cannot be undone.`)) return;
     setDeletingId(id);
     try {
       const r = await fetch(`/api/book/accounts/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
-      showToast("Account deleted");
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = d.error ?? `Server error ${r.status}`;
+        showToast(msg, "error");
+        alert(msg);
+        return;
+      }
+      showToast(`"${name}" deleted`);
       refetchAccounts();
     } catch (e: any) {
-      showToast(e.message ?? "Failed to delete account", "error");
+      const msg = e.message ?? "Failed to delete account";
+      showToast(msg, "error");
+      alert(msg);
     } finally {
       setDeletingId(null);
     }
