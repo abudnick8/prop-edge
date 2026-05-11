@@ -12000,10 +12000,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             };
             const statCat = PROP_TO_STAT[leg.stat_type] ?? leg.stat_type?.toUpperCase();
 
-            // Fetch ESPN scoreboard for today’s games
-            const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,"");
-            const events = await mlFetchScoreboard(espnSport, todayStr);
-            const matchedEvent = events.find((ev: any) => {
+            // Fetch ESPN scoreboard — check leg's game_date AND adjacent dates to handle UTC/CDT offset
+            const legDateStr = (leg.game_date ?? "").replace(/-/g, ""); // e.g. "20260510"
+            const nowMs = Date.now();
+            const utcDateStr = new Date(nowMs).toISOString().slice(0,10).replace(/-/g,"");
+            const cdtDateStr = new Date(nowMs - 5*3600*1000).toISOString().slice(0,10).replace(/-/g,"");
+            const datesToCheck = [...new Set([legDateStr, cdtDateStr, utcDateStr].filter(Boolean))];
+            let allEvents: any[] = [];
+            for (const ds of datesToCheck) {
+              const evs = await mlFetchScoreboard(espnSport, ds);
+              allEvents = allEvents.concat(evs);
+            }
+            // Deduplicate by event id
+            const seenEvIds = new Set<string>();
+            allEvents = allEvents.filter((ev: any) => { if (seenEvIds.has(ev.id)) return false; seenEvIds.add(ev.id); return true; });
+            const matchedEvent = allEvents.find((ev: any) => {
               const comp = ev.competitions?.[0];
               const teams = (comp?.competitors ?? []).map((c: any) => c.team?.displayName ?? "");
               return teams.some((t: string) => mlTeamsMatch(t, leg.home_team ?? "")) ||
