@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
   Lightbulb, Wallet, Clock, Trophy, AlertCircle,
   Edit2, PlusCircle, Loader2, ChevronRight, ChevronUp,
-  User, ChevronDown as Chevron, Share2, Camera,
+  User, ChevronDown as Chevron, Share2, Camera, Trash2,
 } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -2182,6 +2182,7 @@ function AccountsTab({
   const [renameId, setRenameId] = useState<number | null>(null);
   const [renameName, setRenameName] = useState("");
   const [patchingId, setPatchingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function createAccount() {
     if (!newAcctName.trim()) return;
@@ -2223,6 +2224,25 @@ function AccountsTab({
       showToast(e.message ?? "Failed to update account", "error");
     } finally {
       setPatchingId(null);
+    }
+  }
+
+  async function deleteAccount(id: number, name: string) {
+    if (!confirm(`Delete "${name}"? This will permanently remove the account and all its settled history.`)) return;
+    setDeletingId(id);
+    try {
+      const r = await fetch(`/api/book/accounts/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      showToast("Account deleted");
+      refetchAccounts();
+    } catch (e: any) {
+      showToast(e.message ?? "Failed to delete account", "error");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -2315,9 +2335,19 @@ function AccountsTab({
                   ) : (
                     <>
                       <span style={{ fontWeight: 700, fontSize: 15, color: FG }}>{acct.name}</span>
-                      <button onClick={() => { setRenameId(acct.id); setRenameName(acct.name); }} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, padding: "2px" }}>
-                        <Edit2 size={14} />
-                      </button>
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <button onClick={() => { setRenameId(acct.id); setRenameName(acct.name); }} title="Rename" style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, padding: "4px" }}>
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => deleteAccount(acct.id, acct.name)}
+                          disabled={deletingId === acct.id}
+                          title="Delete account"
+                          style={{ background: "none", border: "none", cursor: deletingId === acct.id ? "default" : "pointer", color: deletingId === acct.id ? "#fca5a5" : "#ef4444", padding: "4px", opacity: deletingId === acct.id ? 0.5 : 1 }}
+                        >
+                          {deletingId === acct.id ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={14} />}
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
