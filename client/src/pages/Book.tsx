@@ -183,6 +183,22 @@ function statLabel(key: string): string {
   return PROP_STAT_LABELS[key] ?? key.replace("player_", "").replace(/_/g, " ").toUpperCase();
 }
 
+// HRR = combined Hits + HR + RBI group
+const HRR_KEYS = new Set(["player_hits", "player_home_runs", "player_rbis"]);
+
+// Prop display order: hits first, HRR second, then alphabetical
+const PROP_SORT_ORDER: Record<string, number> = {
+  player_hits:        0,
+  __HRR__:            1,
+  player_home_runs:   2,
+  player_rbis:        3,
+};
+function propSortKey(mkey: string): string {
+  const order = PROP_SORT_ORDER[mkey];
+  if (order !== undefined) return String(order).padStart(4, "0") + mkey;
+  return "9999" + statLabel(mkey).toLowerCase();
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtOdds(n: number): string {
@@ -501,10 +517,22 @@ function GamePropsPanel({
     { label: game.home_team.split(" ").pop()!, value: game.home_team },
   ];
 
-  // Build stat type options from available markets
+  // Build stat type options from available markets — sorted, with HRR injected after Hits
+  const hasHrr = markets.some(m => HRR_KEYS.has(m.key));
+  const baseStatOptions = markets
+    .filter(m => !HRR_KEYS.has(m.key)) // HRR keys shown as a group, not individually
+    .sort((a, b) => propSortKey(a.key).localeCompare(propSortKey(b.key)))
+    .map(m => ({ label: statLabel(m.key), value: m.key }));
+  // Insert HRR chip after Hits chip
+  const hitsIdx = baseStatOptions.findIndex(o => o.value === "player_hits");
+  if (hasHrr) {
+    const hrrChip = { label: "HRR", value: "__HRR__" };
+    if (hitsIdx >= 0) baseStatOptions.splice(hitsIdx + 1, 0, hrrChip);
+    else baseStatOptions.unshift(hrrChip);
+  }
   const statOptions = [
     { label: "All Stats", value: "all" },
-    ...markets.map(m => ({ label: statLabel(m.key), value: m.key })),
+    ...baseStatOptions,
   ];
 
   // Position options for this sport
@@ -563,7 +591,9 @@ function GamePropsPanel({
 
   const allRows: FlatRow[] = [];
   for (const market of markets) {
-    if (filterStat !== "all" && market.key !== filterStat) continue;
+    // __HRR__ filter = show only hits, home_runs, rbis
+    if (filterStat === "__HRR__") { if (!HRR_KEYS.has(market.key)) continue; }
+    else if (filterStat !== "all" && market.key !== filterStat) continue;
     const grouped = groupByPlayer(market);
     for (const [playerName, entry] of Object.entries(grouped)) {
       // Search filter
@@ -715,28 +745,76 @@ function GamePropsPanel({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {/* Group by stat type when showing all stats */}
-                {filterStat === "all" ? (
-                  // Group rows by market key
-                  Object.entries(
-                    allRows.reduce((acc, row) => {
-                      const key = row.market.key;
-                      if (!acc[key]) acc[key] = [];
-                      acc[key].push(row);
-                      return acc;
-                    }, {} as Record<string, FlatRow[]>)
-                  ).map(([mkey, rows]) => (
-                    <div key={mkey} style={{ marginBottom: 4 }}>
-                      <div style={{ marginBottom: 5 }}>
-                        <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>
-                          {statLabel(mkey)}
-                        </span>
+                {filterStat === "all" ? (() => {
+                  // 1. Group rows by market key
+                  const byKey = allRows.reduce((acc, row) => {
+                    const key = row.market.key;
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(row);
+                    return acc;
+                  }, {} as Record<string, FlatRow[]>);
+
+                  // 2. Build HRR combined group — merge hits/hr/rbi rows per player
+                  const hrrRows: FlatRow[] = [];
+                  const hrrKeys = Object.keys(byKey).filter(k => HRR_KEYS.has(k));
+                  if (hrrKeys.length > 0) {
+                    // Collect all rows from the three stat types
+                    for (const k of hrrKeys) hrrRows.push(...byKey[k]);
+                  }
+
+                  // 3. Build sorted group list: hits first, HRR second, then alphabetical
+                  const sortedKeys = Object.keys(byKey).sort((a, b) => propSortKey(a).localeCompare(propSortKey(b)));
+
+                  // 4. Render — inject HRR section after Hits
+                  const sections: JSX.Element[] = [];
+                  let hrrInserted = false;
+
+                  for (const mkey of sortedKeys) {
+                    const rows = byKey[mkey];
+                    // After hits section, insert HRR if we have it
+                    if (!hrrInserted && hrrKeys.length > 0 && mkey !== "player_hits" && !HRR_KEYS.has(mkey)) {
+                      hrrInserted = true;
+                      sections.push(
+                        <div key="__HRR__" style={{ marginBottom: 4 }}>
+                          <div style={{ marginBottom: 5 }}>
+                            <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / HR / RBI)</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {hrrRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
+                          </div>
+                        </div>
+                      );
+                    }
+                    // Skip individual hits/hr/rbi sections — they're in HRR
+                    if (HRR_KEYS.has(mkey)) continue;
+                    sections.push(
+                      <div key={mkey} style={{ marginBottom: 4 }}>
+                        <div style={{ marginBottom: 5 }}>
+                          <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>
+                            {statLabel(mkey)}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {rows.map(row => <PropRow key={row.playerName + mkey} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
+                        </div>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {rows.map(row => <PropRow key={row.playerName} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
+                    );
+                  }
+                  // If only HRR keys exist (no non-HRR keys after hits), insert at end
+                  if (!hrrInserted && hrrRows.length > 0) {
+                    sections.push(
+                      <div key="__HRR__" style={{ marginBottom: 4 }}>
+                        <div style={{ marginBottom: 5 }}>
+                          <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / HR / RBI)</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {hrrRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
+                        </div>
                       </div>
-                    </div>
-                  ))
-                ) : (
+                    );
+                  }
+                  return sections;
+                })() : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {allRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
                   </div>
