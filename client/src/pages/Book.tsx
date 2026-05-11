@@ -2174,6 +2174,7 @@ function AccountsTab({
   refetchAccounts: () => void;
   showToast: (msg: string, type?: "success" | "error") => void;
 }) {
+  const qc = useQueryClient();
   const [newAcctName, setNewAcctName] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -2243,7 +2244,9 @@ function AccountsTab({
         return;
       }
       showToast(`"${name}" deleted`);
-      refetchAccounts();
+      // Invalidate cache first, then refetch — ensures stale data is cleared
+      await qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      await refetchAccounts();
     } catch (e: any) {
       const msg = e.message ?? "Failed to delete account";
       showToast(msg, "error");
