@@ -1530,8 +1530,13 @@ function ProgressBar({ current, line, isOver }: { current: number; line: number;
   );
 }
 
-function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token: string; onSettled?: () => void }) {
+function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: number; token: string; onSettled?: () => void; onVoidSlip?: () => void }) {
   const [settling, setSettling] = React.useState<number | null>(null); // legId being settled
+  const [overrideLegId, setOverrideLegId] = React.useState<number | null>(null);
+  const [overrideResult, setOverrideResult] = React.useState<"win"|"loss"|"push"|"void">("win");
+  const [overrideNote, setOverrideNote] = React.useState("");
+  const [overriding, setOverriding] = React.useState(false);
+  const [voidingSlip, setVoidingSlip] = React.useState(false);
   const qc = useQueryClient();
 
   async function settleLeg(legId: number, result: "push" | "void") {
@@ -1548,6 +1553,43 @@ function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token
       qc.invalidateQueries({ queryKey: ["book-accounts"] });
       if (d.slipSettled) onSettled?.();
     } finally { setSettling(null); }
+  }
+
+  async function applyOverride(legId: number) {
+    setOverriding(true);
+    try {
+      const r = await fetch(`/api/book/legs/${legId}/override`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ result: overrideResult, note: overrideNote || undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setOverrideLegId(null);
+      qc.invalidateQueries({ queryKey: ["slip-progress", slipId] });
+      qc.invalidateQueries({ queryKey: ["book-slips"] });
+      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+    } catch (e: any) { alert("Override failed: " + e.message); }
+    setOverriding(false);
+  }
+
+  async function voidSlip() {
+    if (!confirm(`Void entire slip #${slipId}? Stake will be refunded.`)) return;
+    setVoidingSlip(true);
+    try {
+      const r = await fetch(`/api/book/slips/${slipId}/void`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note: overrideNote || "Owner void" }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setOverrideLegId(null);
+      qc.invalidateQueries({ queryKey: ["book-slips"] });
+      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      onVoidSlip?.();
+    } catch (e: any) { alert("Void failed: " + e.message); }
+    setVoidingSlip(false);
   }
 
   const { data, isLoading } = useQuery<{ legs: LegProgress[] }>({
@@ -1639,6 +1681,7 @@ function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: FG, marginBottom: 1 }}>{leg.pickLabel}</div>
+                <div style={{ fontSize: 10, color: MUTED, marginBottom: 1 }}>{fmtOdds(leg.oddsAmerican)}{leg.gameDate ? ` · ${leg.gameDate}` : ""}</div>
                 {leg.gameStatus !== "scheduled" && leg.gameStatus !== "postponed" && leg.homeTeam && (
                   <div style={{ fontSize: 10, color: MUTED }}>
                     {leg.awayTeam} {leg.awayScore ?? "-"} @ {leg.homeTeam} {leg.homeScore ?? "-"}
@@ -1652,9 +1695,18 @@ function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token
                   <div style={{ fontSize: 10, color: "#b45309", fontWeight: 600 }}>{leg.awayTeam} @ {leg.homeTeam}</div>
                 )}
               </div>
-              <span style={{ fontSize: 10, fontWeight: 800, color: sc.text, textTransform: "uppercase", marginLeft: 8, whiteSpace: "nowrap" }}>
-                {isPostponed ? "PPD" : leg.status === "pending" ? (leg.gameStatus === "scheduled" ? "TBD" : "–") : leg.status.toUpperCase()}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: sc.text, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                  {isPostponed ? "PPD" : leg.status === "pending" ? (leg.gameStatus === "scheduled" ? "TBD" : "–") : leg.status.toUpperCase()}
+                </span>
+                <button
+                  onClick={() => { setOverrideLegId(overrideLegId === leg.legId ? null : leg.legId); setOverrideResult("win"); setOverrideNote(""); }}
+                  title="Override grade"
+                  style={{ background: "none", border: `1.5px solid ${overrideLegId === leg.legId ? GOLD : "#cbd5e1"}`, borderRadius: 6, padding: "2px 7px", cursor: "pointer", fontSize: 10, color: overrideLegId === leg.legId ? GOLD : MUTED, fontWeight: 700 }}
+                >
+                  {overrideLegId === leg.legId ? "×" : "✎"}
+                </button>
+              </div>
             </div>
 
             {/* Player stat progress */}
@@ -1669,6 +1721,46 @@ function SlipProgressPanel({ slipId, token, onSettled }: { slipId: number; token
             )}
             {isPlayerProp && !hasLiveStat && leg.gameStatus !== "scheduled" && (
               <div style={{ marginTop: 4, fontSize: 10, color: MUTED }}>Stats not yet available</div>
+            )}
+
+            {/* Inline override panel */}
+            {overrideLegId === leg.legId && (
+              <div style={{ marginTop: 8, padding: "10px", background: "rgba(255,255,255,0.7)", borderRadius: 8, border: `1.5px solid ${GOLD}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: GOLD }}>Override Grade — Leg #{leg.legId}</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {(["win","loss","push","void"] as const).map(r => (
+                    <button key={r} onClick={() => setOverrideResult(r)}
+                      style={{ flex: 1, padding: "5px 2px", borderRadius: 6, border: "1.5px solid",
+                        borderColor: overrideResult === r ? GOLD : "#e2e8f0",
+                        background: overrideResult === r ? GOLD : "transparent",
+                        color: overrideResult === r ? "#fff" : FG,
+                        fontWeight: 700, fontSize: 11, cursor: "pointer", textTransform: "uppercase" }}
+                    >{r}</button>
+                  ))}
+                </div>
+                <input
+                  placeholder="Note (optional)"
+                  value={overrideNote}
+                  onChange={e => setOverrideNote(e.target.value)}
+                  style={{ padding: "6px 10px", borderRadius: 6, border: "1.5px solid #e2e8f0", fontSize: 12, color: FG, background: "#f8fafc" }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => applyOverride(leg.legId)}
+                    disabled={overriding}
+                    style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                  >
+                    {overriding ? "Saving..." : "Apply Override"}
+                  </button>
+                  <button
+                    onClick={voidSlip}
+                    disabled={voidingSlip}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #ef4444", background: "transparent", color: "#ef4444", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                  >
+                    {voidingSlip ? "Voiding..." : "Void Slip"}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         );
@@ -1815,11 +1907,6 @@ function MyBetsTab({
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
   const [expandedProgress, setExpandedProgress] = useState<number | null>(null);
   const [shareSlip, setShareSlip] = useState<Slip | null>(null);
-  const [overrideLegId, setOverrideLegId] = useState<number | null>(null);
-  const [overrideResult, setOverrideResult] = useState<"win"|"loss"|"push"|"void">("win");
-  const [overrideNote, setOverrideNote] = useState("");
-  const [overriding, setOverriding] = useState(false);
-  const [voidingSlip, setVoidingSlip] = useState<number | null>(null);
   const qc = useQueryClient();
   const [grading, setGrading] = useState(false);
 
@@ -2024,137 +2111,40 @@ function MyBetsTab({
                             setExpandedProgress(null);
                             qc.invalidateQueries({ queryKey: ["book-slips"] });
                           }}
+                          onVoidSlip={() => {
+                            setExpandedProgress(null);
+                            setExpandedSlip(null);
+                            qc.invalidateQueries({ queryKey: ["book-slips"] });
+                            qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                          }}
                         />
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Expanded legs + override controls */}
-                {expanded && (
-                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {/* RR combos breakdown */}
-                    {slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>
-                          {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · Stake per combo: {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)}
-                        </div>
-                        {slip.rr_combos.map((combo: any, ci: number) => {
-                          const csc = statusColor(combo.child_status);
-                          return (
-                            <div key={combo.id} style={{ background: "#f1f5f9", borderRadius: 8, padding: "7px 10px", marginBottom: 5 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: FG }}>Combo {ci + 1} — {combo.legs?.length ?? 0}-leg parlay</span>
-                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                  <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 8 }}>{combo.child_status?.toUpperCase()}</span>
-                                  <span style={{ fontSize: 10, color: GOLD, fontWeight: 700 }}>→ {fmtCoins(combo.child_payout)}</span>
-                                </div>
-                              </div>
-                              {combo.legs?.map((cl: any, li: number) => (
-                                <div key={li} style={{ fontSize: 10, color: MUTED, paddingLeft: 8, lineHeight: 1.6 }}>
-                                  • {cl.pick_label} <span style={{ color: FG, fontWeight: 600 }}>{fmtOdds(cl.odds_american)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
-                        <div style={{ borderBottom: "1px solid #e2e8f0", marginBottom: 8, marginTop: 4 }} />
-                        <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 4 }}>All legs selected:</div>
-                      </div>
-                    )}
-                    {slip.legs.map((leg, i) => {
-                      const rc = legResultColor(leg.result);
-                      const isOverriding = overrideLegId === leg.id;
+                {/* Expanded RR combos breakdown — only for round robins */}
+                {expanded && slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
+                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>
+                      {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · Stake per combo: {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)}
+                    </div>
+                    {slip.rr_combos.map((combo: any, ci: number) => {
+                      const csc = statusColor(combo.child_status);
                       return (
-                        <div key={i} style={{ background: "#f8fafc", borderRadius: 8, padding: "7px 10px" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: FG }}>{leg.pick_label}</div>
-                              <div style={{ fontSize: 10, color: MUTED }}>{fmtOdds(leg.odds_american)}{leg.game_date ? ` · ${leg.game_date}` : ""}</div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: rc.text, textTransform: "uppercase" }}>
-                                {leg.result ?? "pending"}
-                              </span>
-                              <button
-                                onClick={() => { setOverrideLegId(isOverriding ? null : leg.id); setOverrideResult("win"); setOverrideNote(""); }}
-                                title="Override grade"
-                                style={{ background: "none", border: "1.5px solid #cbd5e1", borderRadius: 6, padding: "2px 7px", cursor: "pointer", fontSize: 10, color: MUTED, fontWeight: 700 }}
-                              >
-                                {isOverriding ? "×" : "✎"}
-                              </button>
+                        <div key={combo.id} style={{ background: "#f1f5f9", borderRadius: 8, padding: "7px 10px", marginBottom: 5 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: FG }}>Combo {ci + 1} — {combo.legs?.length ?? 0}-leg parlay</span>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 8 }}>{combo.child_status?.toUpperCase()}</span>
+                              <span style={{ fontSize: 10, color: GOLD, fontWeight: 700 }}>→ {fmtCoins(combo.child_payout)}</span>
                             </div>
                           </div>
-                          {isOverriding && (
-                            <div style={{ marginTop: 8, padding: "10px", background: "#fff", borderRadius: 8, border: `1.5px solid ${GOLD}`, display: "flex", flexDirection: "column", gap: 8 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: GOLD }}>Override Grade — Leg #{leg.id}</div>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                {(["win","loss","push","void"] as const).map(r => (
-                                  <button key={r} onClick={() => setOverrideResult(r)}
-                                    style={{ flex: 1, padding: "5px 2px", borderRadius: 6, border: "1.5px solid",
-                                      borderColor: overrideResult === r ? GOLD : "#e2e8f0",
-                                      background: overrideResult === r ? GOLD : "transparent",
-                                      color: overrideResult === r ? "#fff" : FG,
-                                      fontWeight: 700, fontSize: 11, cursor: "pointer", textTransform: "uppercase" }}
-                                  >{r}</button>
-                                ))}
-                              </div>
-                              <input
-                                placeholder="Note (optional)"
-                                value={overrideNote}
-                                onChange={e => setOverrideNote(e.target.value)}
-                                style={{ padding: "6px 10px", borderRadius: 6, border: "1.5px solid #e2e8f0", fontSize: 12, color: FG, background: "#f8fafc" }}
-                              />
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <button
-                                  onClick={async () => {
-                                    setOverriding(true);
-                                    try {
-                                      const r = await fetch(`/api/book/legs/${leg.id}/override`, {
-                                        method: "PATCH",
-                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                        body: JSON.stringify({ result: overrideResult, note: overrideNote || undefined }),
-                                      });
-                                      const d = await r.json();
-                                      if (!r.ok) throw new Error(d.error);
-                                      setOverrideLegId(null);
-                                      qc.invalidateQueries({ queryKey: ["book-slips"] });
-                                      qc.invalidateQueries({ queryKey: ["book-accounts"] });
-                                    } catch (e: any) { alert("Override failed: " + e.message); }
-                                    setOverriding(false);
-                                  }}
-                                  disabled={overriding}
-                                  style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                                >
-                                  {overriding ? "Saving..." : "Apply Override"}
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (!confirm(`Void entire slip #${slip.id}? Stake will be refunded.`)) return;
-                                    setVoidingSlip(slip.id);
-                                    try {
-                                      const r = await fetch(`/api/book/slips/${slip.id}/void`, {
-                                        method: "PATCH",
-                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                        body: JSON.stringify({ note: overrideNote || "Owner void" }),
-                                      });
-                                      const d = await r.json();
-                                      if (!r.ok) throw new Error(d.error);
-                                      setOverrideLegId(null);
-                                      setExpandedSlip(null);
-                                      qc.invalidateQueries({ queryKey: ["book-slips"] });
-                                      qc.invalidateQueries({ queryKey: ["book-accounts"] });
-                                    } catch (e: any) { alert("Void failed: " + e.message); }
-                                    setVoidingSlip(null);
-                                  }}
-                                  disabled={voidingSlip === slip.id}
-                                  style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #ef4444", background: "transparent", color: "#ef4444", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                                >
-                                  Void Slip
-                                </button>
-                              </div>
+                          {combo.legs?.map((cl: any, li: number) => (
+                            <div key={li} style={{ fontSize: 10, color: MUTED, paddingLeft: 8, lineHeight: 1.6 }}>
+                              • {cl.pick_label} <span style={{ color: FG, fontWeight: 600 }}>{fmtOdds(cl.odds_american)}</span>
                             </div>
-                          )}
+                          ))}
                         </div>
                       );
                     })}
