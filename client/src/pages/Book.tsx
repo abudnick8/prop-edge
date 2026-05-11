@@ -183,14 +183,14 @@ function statLabel(key: string): string {
   return PROP_STAT_LABELS[key] ?? key.replace("player_", "").replace(/_/g, " ").toUpperCase();
 }
 
-// HRR = combined Hits + HR + RBI group
-const HRR_KEYS = new Set(["player_hits", "player_home_runs", "player_rbis"]);
+// HRR = combined Hits + Runs + RBI group
+const HRR_KEYS = new Set(["player_hits", "player_runs_scored", "player_rbis"]);
 
 // Prop display order: hits first, HRR second, then alphabetical
 const PROP_SORT_ORDER: Record<string, number> = {
   player_hits:        0,
   __HRR__:            1,
-  player_home_runs:   2,
+  player_runs_scored: 2,
   player_rbis:        3,
 };
 function propSortKey(mkey: string): string {
@@ -777,7 +777,7 @@ function GamePropsPanel({
                       sections.push(
                         <div key="__HRR__" style={{ marginBottom: 4 }}>
                           <div style={{ marginBottom: 5 }}>
-                            <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / HR / RBI)</span>
+                            <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / Runs / RBI)</span>
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             {hrrRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
@@ -805,7 +805,7 @@ function GamePropsPanel({
                     sections.push(
                       <div key="__HRR__" style={{ marginBottom: 4 }}>
                         <div style={{ marginBottom: 5 }}>
-                          <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / HR / RBI)</span>
+                          <span style={{ background: NAVY, color: GOLD, borderRadius: 6, padding: "1px 8px", fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>HRR (Hits / Runs / RBI)</span>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {hrrRows.map(row => <PropRow key={row.playerName + row.market.key} row={row} filterDir={filterDir} buildPropLeg={buildPropLeg} isActive={isActive} toggleLeg={toggleLeg} />)}
