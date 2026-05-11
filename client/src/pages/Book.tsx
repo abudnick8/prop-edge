@@ -1564,11 +1564,16 @@ function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: n
         body: JSON.stringify({ result: overrideResult, note: overrideNote || undefined }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      if (!r.ok) throw new Error(d.error ?? `Server error ${r.status}`);
       setOverrideLegId(null);
-      qc.invalidateQueries({ queryKey: ["slip-progress", slipId] });
-      qc.invalidateQueries({ queryKey: ["book-slips"] });
-      qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      // Invalidate everything so the list updates immediately
+      await qc.invalidateQueries({ queryKey: ["slip-progress", slipId] });
+      await qc.invalidateQueries({ queryKey: ["book-slips"] });
+      await qc.invalidateQueries({ queryKey: ["book-accounts"] });
+      // If slip still has pending legs, let the user know
+      if (d.slipStatus === "still_open") {
+        alert("Leg updated. Slip still has other pending legs — it will settle once all legs are graded.");
+      }
     } catch (e: any) { alert("Override failed: " + e.message); }
     setOverriding(false);
   }

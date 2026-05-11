@@ -12899,11 +12899,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // ─ POST /api/book/grade-now (owner: manually trigger grader) ────
-  app.post("/api/book/grade-now", requireOwner, async (_req: Request, res: Response) => {
-    await gradeBookLegs();
-    res.json({ ok: true, message: "Grader run complete" });
-  });
+  // (duplicate grade-now removed — the full implementation is registered earlier)
 
   // ─ PATCH /api/book/legs/:id/override — owner: manually correct a graded leg ────
   // Body: { result: 'win'|'loss'|'push'|'void', actualValue?: number, note?: string }
@@ -13006,6 +13002,61 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         );
       }
 
+      // 7. RR parent rollup — if this slip is an RR child, check if all siblings are done
+      const slipMeta = await db.queryOne(`SELECT rr_parent_id FROM book_slips WHERE id=$1`, [slipId]);
+      if (slipMeta?.rr_parent_id) {
+        const parentId = slipMeta.rr_parent_id;
+        const siblings = await db.query(
+          `SELECT status, payout_received FROM book_slips WHERE rr_parent_id=$1`, [parentId]
+        );
+        const allDone = siblings.rows.every((r: any) => r.status !== "open");
+        if (allDone) {
+          const anyWon  = siblings.rows.some((r: any) => r.status === "won");
+          const allVoid = siblings.rows.every((r: any) => r.status === "void");
+          const parentStatus = allVoid ? "void" : anyWon ? "won" : "lost";
+          const totalPayout  = siblings.rows.reduce((s: number, r: any) => s + parseFloat(r.payout_received ?? 0), 0);
+          await db.query(
+            `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+            [parentStatus, totalPayout || null, parentId]
+          );
+        }
+      }
+
+      // 8. Force-sweep any other stalled slips for this account now that we've changed a leg
+      const stalledSlips = await db.query(
+        `SELECT s.id, s.account_id, s.stake FROM book_slips s
+         WHERE s.account_id=$1 AND s.status='open' AND s.rr_parent_id IS NULL
+           AND NOT EXISTS (SELECT 1 FROM book_legs l WHERE l.slip_id=s.id AND l.result='pending')
+           AND EXISTS (SELECT 1 FROM book_legs l WHERE l.slip_id=s.id)`,
+        [accountId]
+      );
+      for (const stalled of stalledSlips.rows) {
+        const sLegs = await db.query(`SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [stalled.id]);
+        const sResults = sLegs.rows.map((r: any) => r.result);
+        if (!sResults.length || sResults.includes("pending")) continue;
+        const active = sResults.filter((r: string) => r !== "void");
+        let ss: string;
+        if (active.length === 0) ss = "void";
+        else if (active.every((r: string) => r === "win")) ss = "won";
+        else if (active.some((r: string) => r === "loss")) ss = "lost";
+        else ss = "push";
+        let sp = 0;
+        if (ss === "won") {
+          const wo = sLegs.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
+          sp = wo.length === 1 ? parseFloat((parseFloat(stalled.stake) * americanToDecimal(wo[0])).toFixed(2)) : calcParlayPayout(parseFloat(stalled.stake), wo);
+        } else if (ss === "push" || ss === "void") {
+          sp = parseFloat(stalled.stake);
+        }
+        await db.query(`UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`, [ss, sp || null, stalled.id]);
+        if (sp > 0) {
+          await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [sp, stalled.account_id]);
+          await db.query(
+            `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
+            [stalled.account_id, sp, ss === "won" ? "win" : "push", stalled.id, `Auto-settled stalled slip #${stalled.id}: ${ss}`]
+          );
+        }
+      }
+
       await auditLog(
         (req as any).user?.email ?? "owner", "book_override",
         `leg:${legId} slip:${slipId}`,
@@ -13018,7 +13069,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         slipId, newSlipStatus, newPayout,
         message: `Leg #${legId} updated: ${prevResult} → ${result}. Slip #${slipId} is now ${newSlipStatus}.`,
       });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+    } catch (e: any) {
+      console.error("[Book] Override error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ─ PATCH /api/book/slips/:id/void — owner: void an entire slip ────
