@@ -1950,6 +1950,7 @@ function MyBetsTab({
 }) {
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
+  const [progressOpen, setProgressOpen] = useState<Set<number>>(new Set());
 
   const [shareSlip, setShareSlip] = useState<Slip | null>(null);
   const qc = useQueryClient();
@@ -2129,29 +2130,51 @@ function MyBetsTab({
                   </div>
                 </div>
 
-                {/* Live Progress — always visible on open bets, auto-refreshes every 30s */}
-                {isOpenSlip && slip.status === "open" && (
-                  <div style={{ borderTop: "1px solid #f1f5f9" }}>
-                    <div style={{ padding: "6px 14px 4px", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: NAVY }}>Live Progress</span>
-                    </div>
-                    <div style={{ padding: "0 14px 12px" }}>
-                      <SlipProgressPanel
-                        slipId={slip.id}
-                        token={token}
-                        onSettled={() => {
-                          qc.invalidateQueries({ queryKey: ["book-slips"] });
+                {/* Live Progress — collapsible drawer, defaults open */}
+                {isOpenSlip && slip.status === "open" && (() => {
+                  // Default open: drawer is open unless user explicitly closed it (tracked via -slip.id)
+                  const drawerOpen = !progressOpen.has(-slip.id);
+                  return (
+                    <div style={{ borderTop: "1px solid #f1f5f9" }}>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setProgressOpen(prev => {
+                            const next = new Set(prev);
+                            // Use negative ID to track "manually closed"
+                            if (drawerOpen) next.add(-slip.id); else next.delete(-slip.id);
+                            return next;
+                          });
                         }}
-                        onVoidSlip={() => {
-                          setExpandedSlip(null);
-                          qc.invalidateQueries({ queryKey: ["book-slips"] });
-                          qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                        style={{
+                          width: "100%", padding: "7px 14px", background: drawerOpen ? "rgba(19,35,58,0.03)" : "none",
+                          border: "none", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
                         }}
-                      />
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+                          Live Progress
+                        </span>
+                        {drawerOpen ? <ChevronUp size={13} color={NAVY} /> : <ChevronDown size={13} color={NAVY} />}
+                      </button>
+                      {drawerOpen && (
+                        <div style={{ padding: "0 14px 12px" }}>
+                          <SlipProgressPanel
+                            slipId={slip.id}
+                            token={token}
+                            onSettled={() => qc.invalidateQueries({ queryKey: ["book-slips"] })}
+                            onVoidSlip={() => {
+                              setExpandedSlip(null);
+                              qc.invalidateQueries({ queryKey: ["book-slips"] });
+                              qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Expanded RR combos breakdown — only for round robins */}
                 {expanded && slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
