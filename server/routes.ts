@@ -8691,13 +8691,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (todaySplit) {
         const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
         const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
-        if (ab > 0) return { hits, ab }; // good data — return immediately
-        // ab=0 could mean game in progress or DNP — fall through to boxscore
+        // Game log only populates after game is Final — safe to trust
+        if (ab > 0) return { hits, ab, isFinal: true };
       }
     } catch { /* fall through to boxscore */ }
 
     // ── Attempt 2: Schedule → Boxscore (handles game log lag) ────────
-    // Find all games on dateStr and look for this player in the boxscore
     try {
       const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&hydrate=team`;
       const schedR   = await axios.get(schedUrl, { timeout: 8000 });
@@ -8706,7 +8705,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       for (const game of games) {
         const state = game.status?.abstractGameState; // "Preview"|"Live"|"Final"
-        if (state === "Preview") continue; // game hasn't started yet
+        if (state === "Preview") continue;
         try {
           const boxUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
           const boxR   = await axios.get(boxUrl, { timeout: 8000 });
@@ -8716,19 +8715,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const p = players.find((pl: any) => pl.person?.id === playerId);
             if (p) {
               const stats = p.stats?.batting ?? {};
-              const ab    = parseInt(stats.atBats   ?? "-1", 10);
-              const hits  = parseInt(stats.hits      ?? "0",  10);
-              // For in-progress games, only return if player has had at least 1 AB
-              // (ab=0 mid-game just means they haven't batted yet — wait for more data)
-              if (state === "Final" && ab >= 0) return { hits, ab };
-              if (state === "Live"  && ab >  0) return { hits, ab };
+              const ab    = parseInt(stats.atBats ?? "-1", 10);
+              const hits  = parseInt(stats.hits   ?? "0",  10);
+              const isFinal = state === "Final";
+              // Only return live data if already has a hit (can't un-hit)
+              // For losses, wait until Final to avoid mid-game 0/1 being counted
+              if (isFinal && ab >= 0) return { hits, ab, isFinal: true };
+              if (!isFinal && hits > 0) return { hits, ab, isFinal: false }; // early win is safe
+              // mid-game 0 hits — don't grade yet, wait for Final
             }
           }
         } catch { /* skip this game */ }
       }
     } catch { /* boxscore fallback failed */ }
 
-    return null; // genuinely no data yet
+    return null; // no data yet
   }
 
   // ── Run grader for all pending picks on a given date ─────────────────
