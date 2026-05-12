@@ -12358,13 +12358,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─ POST /api/book/fix-legs ── owner tool to correct wrong team/stat on pending legs ──
   app.post("/api/book/fix-legs", requireOwner, async (req: Request, res: Response) => {
     try {
-      const { playerName, homeTeam, awayTeam, gameDate, fixDate, statType } = req.body ?? {};
+      const { playerName, homeTeam, awayTeam, gameDate, fixDate, statType, forceStatType } = req.body ?? {};
       const setClauses: string[] = [];
       const params: any[] = [];
       if (homeTeam)  { params.push(homeTeam);  setClauses.push(`home_team=$${params.length}`); }
       if (awayTeam)  { params.push(awayTeam);  setClauses.push(`away_team=$${params.length}`); }
-      if (statType)  { params.push(statType);  setClauses.push(`stat_type=$${params.length}`); }
       if (fixDate)   { params.push(fixDate);   setClauses.push(`game_date=$${params.length}`); }
+      // statType: only update legs that DON'T already have a specific stat type
+      // (i.e. only update legs with stripped/generic types like 'hits', 'hrr', null)
+      // unless forceStatType=true is passed explicitly
+      if (statType) {
+        params.push(statType);
+        setClauses.push(`stat_type=$${params.length}`);
+      }
       if (!setClauses.length) return res.status(400).json({ error: "nothing to update" });
       // Build WHERE clause — if playerName is '%' treat as wildcard across all players
       const whereParts: string[] = ["result='pending'"];
@@ -12372,6 +12378,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (playerName && playerName !== "%") {
         params.push(playerName);
         whereParts.push(`player_name ILIKE $${params.length}`);
+      }
+      // SAFETY: when statType is provided without forceStatType=true, only overwrite legs
+      // that have a stripped/generic stat_type (no 'player_' prefix) or are null.
+      // This prevents accidentally overwriting specific types like player_hrr, player_total_bases, etc.
+      // Pass forceStatType:true in the request body to bypass this guard.
+      if (statType && !forceStatType) {
+        whereParts.push(`(stat_type IS NULL OR stat_type NOT LIKE 'player_%')`);
       }
       const result = await db.query(
         `UPDATE book_legs SET ${setClauses.join(",")} WHERE ${whereParts.join(" AND ")}`,
