@@ -935,7 +935,7 @@ function BtsOverridePanel() {
     (p) => p.result === "win" || p.result === "loss"
   );
 
-  const handleOverride = async (pick: BtsPickEntry, newResult: "win" | "loss" | "pending") => {
+  const handleOverride = async (pick: BtsPickEntry, newResult: "win" | "loss") => {
     setOverriding(pick.playerId);
     try {
       const res = await fetch("/api/bts/override-result", {
@@ -944,11 +944,31 @@ function BtsOverridePanel() {
         body: JSON.stringify({ playerId: pick.playerId, result: newResult }),
       });
       if (!res.ok) throw new Error("Failed");
-      setToast(`${pick.name} → ${newResult === "pending" ? "Pending" : newResult === "win" ? "Win ✓" : "Loss ✗"}`);
+      setToast(`${pick.name} → ${newResult === "win" ? "Win ✓" : "Loss ✗"}`);
       setTimeout(() => setToast(null), 3000);
       qc.invalidateQueries({ queryKey: ["/api/bts-picks"] });
     } catch {
       setToast("Override failed — try again");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setOverriding(null);
+    }
+  };
+
+  const handleRemoveAndReplace = async (pick: BtsPickEntry) => {
+    setOverriding(pick.playerId);
+    try {
+      const res = await fetch("/api/bts/remove-player", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ playerId: pick.playerId, name: pick.name }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setToast(`${pick.name} removed — refresh BTS for replacement`);
+      setTimeout(() => setToast(null), 4000);
+      qc.invalidateQueries({ queryKey: ["/api/bts-picks"] });
+    } catch {
+      setToast("Remove failed — try again");
       setTimeout(() => setToast(null), 3000);
     } finally {
       setOverriding(null);
@@ -1038,11 +1058,11 @@ function BtsOverridePanel() {
                     )}
                     <button
                       disabled={busy}
-                      onClick={() => handleOverride(pick, "pending")}
+                      onClick={() => handleRemoveAndReplace(pick)}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 disabled:opacity-40"
                       style={{ background: "rgba(61,75,88,0.1)", color: "#3D4B58", border: "1px solid rgba(61,75,88,0.2)" }}
                     >
-                      <RotateCcw size={10} /> Reset
+                      <RotateCcw size={10} /> Remove &amp; Replace
                     </button>
                   </div>
                 </div>

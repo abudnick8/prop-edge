@@ -10753,19 +10753,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const isPlaying = gameState === "in_progress" || gameState === "in" ||
                         (gameStartMs != null && nowMs > gameStartMs + 10 * 60_000);
 
-      if (isGraded) return res.status(400).json({ error: `${name ?? pick.name} is already graded (${pick.result}) — cannot remove.` });
+      // Allow removal of graded picks too (owner override from Insights)
       // Allow removal even if game is in progress (owner may be catching a late scratch)
 
       // Remove from in-memory cache
       btsPicksCache[targetDate] = existing.filter(e => e.playerId !== Number(playerId));
 
+      // Recalculate season record after removal
+      let wins = 0, losses = 0;
+      for (const [, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries as BtsPickEntry[]) {
+          if (e.result === "win")  wins++;
+          else if (e.result === "loss") losses++;
+        }
+      }
+      btsSeasonRecord.wins   = wins;
+      btsSeasonRecord.losses = losses;
+
       // Add to exclusion set so re-generation skips them today
       if (!btsExcludedByDate[targetDate]) btsExcludedByDate[targetDate] = new Set();
       btsExcludedByDate[targetDate].add(Number(playerId));
 
-      // Persist removal to DB
+      // Persist removal to DB (any result)
       await db.query(
-        `DELETE FROM bts_picks WHERE pick_date=$1 AND player_id=$2 AND result='pending'`,
+        `DELETE FROM bts_picks WHERE pick_date=$1 AND player_id=$2`,
         [targetDate, playerId]
       ).catch(() => {});
 
