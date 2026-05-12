@@ -111,9 +111,9 @@ const SPORT_ESPN_MAP: Record<string, [string, string]> = {
 const STAT_MAP: Record<string, Record<string, [string, string]>> = {
   NBA: {
     PTS:["PTS","int"],POINTS:["PTS","int"],REB:["REB","int"],REBOUNDS:["REB","int"],
-    AST:["AST","int"],ASSISTS:["AST","int"],STL:["STL","int"],BLK:["BLK","int"],
+    AST:["AST","int"],ASSISTS:["AST","int"],STL:["STL","int"],STEALS:["STL","int"],BLK:["BLK","int"],
     BLOCKS:["BLK","int"],TO:["TO","int"],TURNOVERS:["TO","int"],
-    "3PM":["3PT","fraction_left"],THREE_POINTERS_MADE:["3PT","fraction_left"],
+    "3PM":["3PT","fraction_left"],THREE_POINTERS_MADE:["3PT","fraction_left"],THREES:["3PT","fraction_left"],
     "PTS+REB+AST":["PTS+REB+AST","combo"],PRA:["PTS+REB+AST","combo"],
     "PTS+REB":["PTS+REB","combo"],"PTS+AST":["PTS+AST","combo"],"REB+AST":["REB+AST","combo"],
   },
@@ -122,11 +122,14 @@ const STAT_MAP: Record<string, Record<string, [string, string]>> = {
     RBI:["RBI","int"],RUNS_BATTED_IN:["RBI","int"],RBIS:["RBI","int"],
     R:["R","int"],RUNS:["R","int"],RUNS_SCORED:["R","int"],
     BB:["BB","int"],WALKS:["BB","int"],K:["K","int"],SO:["K","int"],
-    STRIKEOUTS_BATTER:["K","int"],"1B":["H","int"],SINGLES:["H","int"],
+    STRIKEOUTS_BATTER:["K","int"],"1B":["1B","int"],SINGLES:["1B","int"],
     "2B":["2B","int"],DOUBLES:["2B","int"],"3B":["3B","int"],TRIPLES:["3B","int"],
     SB:["SB","int"],STOLEN_BASES:["SB","int"],STOLEN_BASE:["SB","int"],
     TB:["TB","int"],TOTAL_BASES:["TB","int"],
-    IP:["IP","float"],PITCHER_OUTS:["OUT","int"],OUTS:["OUT","int"],
+    // HRR = Hits + Runs + RBI (DraftKings combined stat)
+    HRR:["H+R+RBI","combo"],HITTER_HITS_PLUS_RUNS_PLUS_RUNS_BATTED_IN:["H+R+RBI","combo"],
+    // Pitcher stats
+    IP:["IP","float"],PITCHER_OUTS:["IP","float"],OUTS:["OUT","int"],
     ER:["ER","int"],EARNED_RUNS:["ER","int"],STRIKEOUTS:["K","int"],
     PITCHING_K:["K","int"],PITCHER_K:["K","int"],PITCHER_STRIKEOUTS:["K","int"],
     HITS_ALLOWED:["H","int"],PITCHER_HITS:["H","int"],
@@ -12915,6 +12918,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         player_reception_yards: "REC_YDS", player_receptions: "RECEPTIONS",
         player_passing_tds: "TOUCHDOWNS", player_shots_on_goal: "SHOTS_ON_GOAL",
         player_goals: "GOALS",
+        // HRR = Hits + Runs + RBI combined
+        player_hrr: "HRR",
       };
 
       const SPORT_KEY_MAP: Record<string, string> = {
@@ -12946,9 +12951,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const statCat = PROP_TO_STAT[leg.stat_type] ?? leg.stat_type?.toUpperCase().replace("PLAYER_", "");
 
         try {
-          const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+          // Use CDT date (UTC-5) to avoid fetching wrong day after 7pm CDT
+          const cdtNow = new Date(Date.now() - 5 * 3600 * 1000);
+          const today = cdtNow.toISOString().slice(0,10).replace(/-/g,"");
+          const yesterday = new Date(cdtNow.getTime() - 86400000).toISOString().slice(0,10).replace(/-/g,"");
           if (!scoreboardCache[espnSport]) {
-            scoreboardCache[espnSport] = await mlFetchScoreboard(espnSport, today);
+            // Fetch both today and yesterday to catch late-graded games
+            const [todayEvents, yestEvents] = await Promise.all([
+              mlFetchScoreboard(espnSport, today),
+              mlFetchScoreboard(espnSport, yesterday),
+            ]);
+            scoreboardCache[espnSport] = [...todayEvents, ...yestEvents];
           }
           const events: any[] = scoreboardCache[espnSport] ?? [];
 
