@@ -12358,18 +12358,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─ POST /api/book/fix-legs ── owner tool to correct wrong team/stat on pending legs ──
   app.post("/api/book/fix-legs", requireOwner, async (req: Request, res: Response) => {
     try {
-      const { playerName, homeTeam, awayTeam, gameDate, statType } = req.body ?? {};
-      if (!playerName) return res.status(400).json({ error: "playerName required" });
+      const { playerName, homeTeam, awayTeam, gameDate, fixDate, statType } = req.body ?? {};
       const setClauses: string[] = [];
       const params: any[] = [];
-      if (homeTeam) { params.push(homeTeam); setClauses.push(`home_team=$${params.length}`); }
-      if (awayTeam) { params.push(awayTeam); setClauses.push(`away_team=$${params.length}`); }
-      if (statType) { params.push(statType); setClauses.push(`stat_type=$${params.length}`); }
+      if (homeTeam)  { params.push(homeTeam);  setClauses.push(`home_team=$${params.length}`); }
+      if (awayTeam)  { params.push(awayTeam);  setClauses.push(`away_team=$${params.length}`); }
+      if (statType)  { params.push(statType);  setClauses.push(`stat_type=$${params.length}`); }
+      if (fixDate)   { params.push(fixDate);   setClauses.push(`game_date=$${params.length}`); }
       if (!setClauses.length) return res.status(400).json({ error: "nothing to update" });
-      params.push(playerName);
-      const whereDate = gameDate ? ` AND game_date='${gameDate}'` : "";
+      // Build WHERE clause — if playerName is '%' treat as wildcard across all players
+      const whereParts: string[] = ["result='pending'"];
+      if (gameDate) whereParts.push(`game_date='${gameDate}'`);
+      if (playerName && playerName !== "%") {
+        params.push(playerName);
+        whereParts.push(`player_name ILIKE $${params.length}`);
+      }
       const result = await db.query(
-        `UPDATE book_legs SET ${setClauses.join(",")} WHERE player_name ILIKE $${params.length}${whereDate} AND result='pending'`,
+        `UPDATE book_legs SET ${setClauses.join(",")} WHERE ${whereParts.join(" AND ")}`,
         params
       );
       res.json({ ok: true, updated: result.rowCount });

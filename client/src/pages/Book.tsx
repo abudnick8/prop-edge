@@ -536,12 +536,12 @@ function GamePropsPanel({
       homeTeam: game.home_team,
       awayTeam: game.away_team,
       playerName,
-      statType: market.key.replace("player_", ""),
+      statType: market.key,
       line: outcome.point,
       overUnder: ou,
       pickLabel: `${playerName} ${ou === "over" ? "O" : "U"}${outcome.point} ${statLabel(market.key)} (${fmtOdds(outcome.price)})`,
       oddsAmerican: outcome.price,
-      gameDate: gd.toISOString().slice(0, 10),
+      gameDate: gd.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }),
       gameTime: game.commence_time,
     };
   }
@@ -1086,7 +1086,7 @@ function BetSlipTab({
       homeTeam: game.home_team, awayTeam: game.away_team,
       pickLabel: `${outcome.name} ML`,
       oddsAmerican: outcome.price,
-      gameDate: gd.toISOString().slice(0, 10),
+      gameDate: gd.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }),
       gameTime: game.commence_time,
     };
   }
@@ -1100,7 +1100,7 @@ function BetSlipTab({
       line: outcome.point,
       pickLabel: `${outcome.name} ${sign}${outcome.point} (${fmtOdds(outcome.price)})`,
       oddsAmerican: outcome.price,
-      gameDate: gd.toISOString().slice(0, 10),
+      gameDate: gd.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }),
       gameTime: game.commence_time,
     };
   }
@@ -1115,7 +1115,7 @@ function BetSlipTab({
       overUnder: isOver ? "over" : "under",
       pickLabel: `${isOver ? "O" : "U"}${outcome.point} (${fmtOdds(outcome.price)})`,
       oddsAmerican: outcome.price,
-      gameDate: gd.toISOString().slice(0, 10),
+      gameDate: gd.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }),
       gameTime: game.commence_time,
     };
   }
