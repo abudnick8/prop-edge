@@ -12355,6 +12355,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Run book grader every 5 minutes
   setInterval(() => gradeBookLegs(), 5 * 60 * 1000);
 
+  // ─ GET /api/book/debug-legs ─────────────────────────────────────────────
+  app.get("/api/book/debug-legs", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const legs = await db.query(
+        `SELECT l.id, l.player_name, l.bet_type, l.stat_type, l.game_date, l.sport,
+                l.home_team, l.away_team, l.result, l.line, l.over_under
+         FROM book_legs l
+         JOIN book_slips s ON l.slip_id = s.id
+         WHERE l.result = 'pending' AND s.status = 'open'
+         ORDER BY l.game_date ASC LIMIT 50`
+      );
+      res.json({ legs: legs.rows });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─ POST /api/book/grade-now ───────────────────────────────────────────
   // Owner-only manual trigger to run the grader immediately
   app.post("/api/book/grade-now", requireOwner, async (req: Request, res: Response) => {
