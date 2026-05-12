@@ -14,7 +14,7 @@ import {
   Eye, EyeOff, Bell, Send, GitBranch, Settings,
   AlertTriangle, CheckCircle2, XCircle, Clock, Wifi,
   DollarSign, BarChart2, Megaphone, Shield, History,
-  RotateCcw, Ban, Flag, TimerReset, X,
+  RotateCcw, Ban, Flag, TimerReset, X, ShieldAlert,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -907,6 +907,155 @@ function SystemSettingsPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SECTION 8 — BTS Override
+// ══════════════════════════════════════════════════════════════════════════════
+interface BtsPickEntry {
+  playerId: string;
+  name: string;
+  team: string;
+  hitProbability: number;
+  result?: "win" | "loss" | "pending";
+  hits?: number;
+  ab?: number;
+  gradedAt?: string;
+}
+
+function BtsOverridePanel() {
+  const qc = useQueryClient();
+  const [overriding, setOverriding] = useState<string | null>(null);
+  const [toast_, setToast] = useState<string | null>(null);
+
+  const { data: picksData, isLoading } = useQuery<{ picks: BtsPickEntry[] }>({
+    queryKey: ["/api/bts-picks"],
+    queryFn: () => fetch("/api/bts-picks", { headers: authHeaders() }).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  const gradedPicks = (picksData?.picks ?? []).filter(
+    (p) => p.result === "win" || p.result === "loss"
+  );
+
+  const handleOverride = async (pick: BtsPickEntry, newResult: "win" | "loss" | "pending") => {
+    setOverriding(pick.playerId);
+    try {
+      const res = await fetch("/api/bts/override-result", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ playerId: pick.playerId, result: newResult }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setToast(`${pick.name} → ${newResult === "pending" ? "Pending" : newResult === "win" ? "Win ✓" : "Loss ✗"}`);
+      setTimeout(() => setToast(null), 3000);
+      qc.invalidateQueries({ queryKey: ["/api/bts-picks"] });
+    } catch {
+      setToast("Override failed — try again");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setOverriding(null);
+    }
+  };
+
+  return (
+    <Panel icon={<ShieldAlert size={13} />} title="BTS Result Override" badge={gradedPicks.length ? `${gradedPicks.length} graded today` : "No graded picks"} defaultOpen={true}>
+      <div className="p-4 space-y-3">
+        {toast_ && (
+          <div className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: "rgba(19,35,58,0.08)", color: "#131A24" }}>
+            {toast_}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          Override the win/loss result for any graded BTS pick today. Only picks that have already been scored (Win or Loss) appear here. Use Reset to revert a pick back to Pending.
+        </p>
+        {isLoading ? (
+          <div className="space-y-2">
+            <div className="h-12 bg-muted rounded-xl animate-pulse" />
+            <div className="h-12 bg-muted rounded-xl animate-pulse" />
+          </div>
+        ) : gradedPicks.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic py-2">
+            No graded picks yet today. Come back after games have been scored.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {gradedPicks.map((pick) => {
+              const isWin = pick.result === "win";
+              const busy = overriding === pick.playerId;
+              return (
+                <div
+                  key={pick.playerId}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border"
+                  style={{
+                    borderColor: isWin ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)",
+                    background: isWin ? "rgba(34,197,94,0.04)" : "rgba(239,68,68,0.04)",
+                  }}
+                >
+                  {/* Pick info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      {isWin
+                        ? <CheckCircle2 size={12} style={{ color: "#22c55e", flexShrink: 0 }} />
+                        : <XCircle size={12} style={{ color: "#ef4444", flexShrink: 0 }} />}
+                      <span className="text-xs font-bold text-foreground">{pick.name}</span>
+                      <span className="text-[9px] font-semibold text-muted-foreground">{pick.team}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 ml-4">
+                      <span
+                        className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                        style={{
+                          background: isWin ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                          color: isWin ? "#22c55e" : "#ef4444",
+                        }}
+                      >
+                        {isWin ? "HIT" : "NO HIT"}
+                      </span>
+                      {pick.hits != null && (
+                        <span className="text-[9px] text-muted-foreground">{pick.hits}/{pick.ab ?? "?"}AB</span>
+                      )}
+                      <span className="text-[9px] text-muted-foreground">{pick.hitProbability}% prob</span>
+                    </div>
+                  </div>
+
+                  {/* Override buttons */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {isWin ? (
+                      <button
+                        disabled={busy}
+                        onClick={() => handleOverride(pick, "loss")}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 disabled:opacity-40"
+                        style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}
+                      >
+                        <XCircle size={10} /> Loss
+                      </button>
+                    ) : (
+                      <button
+                        disabled={busy}
+                        onClick={() => handleOverride(pick, "win")}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 disabled:opacity-40"
+                        style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}
+                      >
+                        <CheckCircle2 size={10} /> Win
+                      </button>
+                    )}
+                    <button
+                      disabled={busy}
+                      onClick={() => handleOverride(pick, "pending")}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 disabled:opacity-40"
+                      style={{ background: "rgba(61,75,88,0.1)", color: "#3D4B58", border: "1px solid rgba(61,75,88,0.2)" }}
+                    >
+                      <RotateCcw size={10} /> Reset
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function AppInsights() {
@@ -1083,6 +1232,9 @@ export default function AppInsights() {
 
       <SectionDivider label="System Settings" />
       <SystemSettingsPanel />
+
+      <SectionDivider label="BTS Override" />
+      <BtsOverridePanel />
 
       {data && (
         <p className="text-[10px] text-center text-muted-foreground pb-4">

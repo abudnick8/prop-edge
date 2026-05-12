@@ -10664,6 +10664,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/override-result — owner only
+  // Body: { playerId, date?, result: 'win'|'loss'|'pending', hits?, ab? }
+  // Overrides the graded result for an already-graded BTS pick.
+  // Only applicable to picks with result === 'win' or 'loss'.
+  // ─────────────────────────────────────────────────────────────────────
+  app.post("/api/bts/override-result", requireOwner, async (req, res) => {
+    try {
+      const { playerId, result, hits, ab, date } = req.body ?? {};
+      if (!playerId || !result) return res.status(400).json({ error: "playerId and result required" });
+      if (!["win", "loss", "pending"].includes(result)) return res.status(400).json({ error: "result must be win, loss, or pending" });
+
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = date ?? [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const cache: BtsPickEntry[] = btsPicksCache[targetDate] ?? [];
+      const pick = cache.find(e => e.playerId === Number(playerId));
+      if (!pick) return res.status(404).json({ error: "Pick not found for that date" });
+
+      const prevResult = pick.result;
+      pick.result    = result as any;
+      pick.hits      = hits   ?? pick.hits;
+      pick.ab        = ab     ?? pick.ab;
+      pick.gradedAt  = new Date().toISOString();
+
+      // Recalculate season record
+      let wins = 0, losses = 0;
+      for (const [, entries] of Object.entries(btsPicksCache)) {
+        for (const e of entries as BtsPickEntry[]) {
+          if (e.result === "win")  wins++;
+          else if (e.result === "loss") losses++;
+        }
+      }
+      btsSeasonRecord.wins   = wins;
+      btsSeasonRecord.losses = losses;
+
+      saveBtsPicksCache();
+
+      // Persist to DB
+      await db.query(
+        `UPDATE bts_picks SET result=$1, hits=$2, ab=$3, graded_at=NOW() WHERE pick_date=$4 AND player_id=$5`,
+        [result, pick.hits ?? null, pick.ab ?? null, targetDate, playerId]
+      ).catch(() => {});
+
+      console.log(`[BTS] Owner override: ${pick.name} ${prevResult} → ${result} on ${targetDate}`);
+      res.json({ ok: true, playerId, name: pick.name, prevResult, newResult: result });
+    } catch (e: any) {
+      console.error("[BTS] override-result error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // POST /api/bts/remove-player — owner only
   // Body: { playerId: number, name: string }
   // Removes a single pending pre-game pick and excludes them from today's
