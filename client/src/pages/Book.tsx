@@ -1927,7 +1927,7 @@ function MyBetsTab({
 }) {
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
-  const [expandedProgress, setExpandedProgress] = useState<number | null>(null);
+
   const [shareSlip, setShareSlip] = useState<Slip | null>(null);
   const qc = useQueryClient();
   const [grading, setGrading] = useState(false);
@@ -2050,7 +2050,6 @@ function MyBetsTab({
           {slips.map(slip => {
             const sc = statusColor(slip.status);
             const expanded = expandedSlip === slip.id;
-            const progressOpen = expandedProgress === slip.id;
             const isOpenSlip = slip.status === "open";
             return (
               <div key={slip.id} style={{ background: CARD_BG, borderRadius: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
@@ -2107,41 +2106,27 @@ function MyBetsTab({
                   </div>
                 </div>
 
-                {/* Live Progress toggle — only on truly open bets */}
+                {/* Live Progress — always visible on open bets, auto-refreshes every 30s */}
                 {isOpenSlip && slip.status === "open" && (
                   <div style={{ borderTop: "1px solid #f1f5f9" }}>
-                    <button
-                      onClick={e => { e.stopPropagation(); setExpandedProgress(progressOpen ? null : slip.id); }}
-                      style={{
-                        width: "100%", padding: "8px 14px", background: progressOpen ? "rgba(19,35,58,0.04)" : "none",
-                        border: "none", cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                      }}
-                    >
-                      <span style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite" }} />
-                        Live Progress
-                      </span>
-                      {progressOpen ? <ChevronUp size={13} color={NAVY} /> : <ChevronDown size={13} color={NAVY} />}
-                    </button>
-                    {progressOpen && (
-                      <div style={{ padding: "0 14px 12px" }}>
-                        <SlipProgressPanel
-                          slipId={slip.id}
-                          token={token}
-                          onSettled={() => {
-                            setExpandedProgress(null);
-                            qc.invalidateQueries({ queryKey: ["book-slips"] });
-                          }}
-                          onVoidSlip={() => {
-                            setExpandedProgress(null);
-                            setExpandedSlip(null);
-                            qc.invalidateQueries({ queryKey: ["book-slips"] });
-                            qc.invalidateQueries({ queryKey: ["book-accounts"] });
-                          }}
-                        />
-                      </div>
-                    )}
+                    <div style={{ padding: "6px 14px 4px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: NAVY }}>Live Progress</span>
+                    </div>
+                    <div style={{ padding: "0 14px 12px" }}>
+                      <SlipProgressPanel
+                        slipId={slip.id}
+                        token={token}
+                        onSettled={() => {
+                          qc.invalidateQueries({ queryKey: ["book-slips"] });
+                        }}
+                        onVoidSlip={() => {
+                          setExpandedSlip(null);
+                          qc.invalidateQueries({ queryKey: ["book-slips"] });
+                          qc.invalidateQueries({ queryKey: ["book-accounts"] });
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 
