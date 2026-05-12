@@ -1952,6 +1952,9 @@ function MyBetsTab({
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
   const [progressOpen, setProgressOpen] = useState<Set<number>>(new Set());
 
+  // Reset open drawers when switching filters or accounts
+  React.useEffect(() => { setProgressOpen(new Set()); }, [statusFilter, selectedAccountId]);
+
   const [shareSlip, setShareSlip] = useState<Slip | null>(null);
   const qc = useQueryClient();
   const [grading, setGrading] = useState(false);
