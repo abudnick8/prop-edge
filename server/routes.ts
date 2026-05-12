@@ -10295,6 +10295,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (todayExcluded.size > 0) {
         candidatePicks = candidatePicks.filter((p: any) => !todayExcluded.has(p.playerId));
       }
+      // CRITICAL: only allow candidates whose game has NOT started yet
+      // This prevents replacing a scratched player with someone already mid-game
+      const nowMsForCandidates = Date.now();
+      candidatePicks = candidatePicks.filter((p: any) => {
+        const startMs = p.game?.gameStartMs ?? null;
+        if (!startMs) return true; // no start time known — include
+        return nowMsForCandidates < startMs; // only future games
+      });
       // Sort override picks to the BOTTOM (show normal picks first)
       candidatePicks.sort((a, b) => {
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
