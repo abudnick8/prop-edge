@@ -2132,8 +2132,8 @@ function MyBetsTab({
 
                 {/* Live Progress — collapsible drawer, defaults open */}
                 {isOpenSlip && slip.status === "open" && (() => {
-                  // Default open: drawer is open unless user explicitly closed it (tracked via -slip.id)
-                  const drawerOpen = !progressOpen.has(-slip.id);
+                  // Default closed: drawer only opens when user explicitly opens it
+                  const drawerOpen = progressOpen.has(slip.id);
                   return (
                     <div style={{ borderTop: "1px solid #f1f5f9" }}>
                       <button
@@ -2141,8 +2141,7 @@ function MyBetsTab({
                           e.stopPropagation();
                           setProgressOpen(prev => {
                             const next = new Set(prev);
-                            // Use negative ID to track "manually closed"
-                            if (drawerOpen) next.add(-slip.id); else next.delete(-slip.id);
+                            if (drawerOpen) next.delete(slip.id); else next.add(slip.id);
                             return next;
                           });
                         }}
