@@ -12134,7 +12134,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             // Use ESPN boxscore via existing mlExtractPlayerStat for all sports
             const sportKey = (leg.sport ?? "mlb").toLowerCase();
             const espnSport = ({ baseball_mlb:"MLB", mlb:"MLB", basketball_nba:"NBA", nba:"NBA", icehockey_nhl:"NHL", nhl:"NHL", americanfootball_nfl:"NFL", nfl:"NFL" } as Record<string,string>)[sportKey] ?? "MLB";
+            // leg.stat_type stored as "player_hits", "player_hrr", etc.
             const PROP_TO_STAT: Record<string,string> = {
+              player_hits:"HITS", player_home_runs:"HR", player_rbis:"RBI", player_runs_scored:"RUNS_SCORED",
+              player_total_bases:"TOTAL_BASES", player_singles:"SINGLES", player_doubles:"DOUBLES",
+              player_stolen_bases:"STOLEN_BASES", player_strikeouts:"STRIKEOUTS_BATTER",
+              player_pitcher_strikeouts:"PITCHER_K", player_pitcher_outs:"PITCHER_OUTS",
+              player_hits_allowed:"HITS_ALLOWED", player_earned_runs:"EARNED_RUNS",
+              player_walks:"WALKS", player_pitcher_walks:"WALKS_ALLOWED",
+              player_points:"POINTS", player_rebounds:"REBOUNDS", player_assists:"ASSISTS",
+              player_threes:"3PM", player_blocks:"BLOCKS", player_steals:"STEALS",
+              player_points_rebounds_assists:"PRA",
+              player_passing_yards:"PASS_YDS", player_rushing_yards:"RUSH_YDS",
+              player_reception_yards:"REC_YDS", player_receptions:"RECEPTIONS",
+              player_passing_tds:"TOUCHDOWNS", player_shots_on_goal:"SHOTS_ON_GOAL",
+              player_goals:"GOALS", player_hrr:"HRR",
+              // Also support stripped versions (legacy)
               hits:"HITS", home_runs:"HR", rbis:"RBI", runs_scored:"RUNS_SCORED",
               total_bases:"TOTAL_BASES", singles:"SINGLES", doubles:"DOUBLES",
               stolen_bases:"STOLEN_BASES", strikeouts:"STRIKEOUTS_BATTER",
@@ -12143,12 +12158,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               walks:"WALKS", pitcher_walks:"WALKS_ALLOWED",
               points:"POINTS", rebounds:"REBOUNDS", assists:"ASSISTS",
               threes:"3PM", blocks:"BLOCKS", steals:"STEALS",
-              points_rebounds_assists:"PRA",
-              passing_yards:"PASS_YDS", rushing_yards:"RUSH_YDS",
-              reception_yards:"REC_YDS", receptions:"RECEPTIONS",
-              passing_tds:"TOUCHDOWNS", shots_on_goal:"SHOTS_ON_GOAL", goals:"GOALS",
+              points_rebounds_assists:"PRA", hrr:"HRR",
             };
-            const statCat = PROP_TO_STAT[leg.stat_type] ?? leg.stat_type?.toUpperCase();
+            const statCat = PROP_TO_STAT[leg.stat_type] ?? PROP_TO_STAT[leg.stat_type?.replace("player_","")] ?? leg.stat_type?.toUpperCase();
 
             // Fetch ESPN scoreboard — check leg's game_date AND adjacent dates to handle UTC/CDT offset
             const legDateStr = (leg.game_date ?? "").replace(/-/g, ""); // e.g. "20260510"
@@ -12187,33 +12199,47 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             else result = actualValue < leg.line ? "win" : "loss";
 
           } else if (leg.bet_type === "moneyline" || leg.bet_type === "spread" || leg.bet_type === "total") {
-            // Use MLB schedule/boxscore for game bets
-            const schedResp = await axios.get(
-              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${leg.game_date}&hydrate=linescore`,
-              { timeout: 5000 }
-            );
-            const games = schedResp.data?.dates?.[0]?.games ?? [];
-            const game = games.find((g: any) => {
-              const ht = g.teams?.home?.team?.name ?? "";
-              const at = g.teams?.away?.team?.name ?? "";
-              return (ht.includes(leg.home_team?.split(" ").pop() ?? "__") ||
-                      at.includes(leg.away_team?.split(" ").pop() ?? "__"));
+            // Use ESPN for all sports (supports MLB, NBA, NHL, NFL)
+            const sportKey2 = (leg.sport ?? "mlb").toLowerCase();
+            const espnSport2 = ({ baseball_mlb:"MLB", mlb:"MLB", basketball_nba:"NBA", nba:"NBA", icehockey_nhl:"NHL", nhl:"NHL", americanfootball_nfl:"NFL", nfl:"NFL" } as Record<string,string>)[sportKey2] ?? "MLB";
+            const legDateStr2 = (leg.game_date ?? "").replace(/-/g, "");
+            const nowMs2 = Date.now();
+            const cdtDateStr2 = new Date(nowMs2 - 5*3600*1000).toISOString().slice(0,10).replace(/-/g,"");
+            const utcDateStr2 = new Date(nowMs2).toISOString().slice(0,10).replace(/-/g,"");
+            const dates2 = [...new Set([legDateStr2, cdtDateStr2, utcDateStr2].filter(Boolean))];
+            let allEvents2: any[] = [];
+            for (const ds of dates2) {
+              const evs = await mlFetchScoreboard(espnSport2, ds);
+              allEvents2 = allEvents2.concat(evs);
+            }
+            const seenIds2 = new Set<string>();
+            allEvents2 = allEvents2.filter((ev: any) => { if (seenIds2.has(ev.id)) return false; seenIds2.add(ev.id); return true; });
+            const matchedEvent2 = allEvents2.find((ev: any) => {
+              const comp = ev.competitions?.[0];
+              const teams = (comp?.competitors ?? []).map((c: any) => c.team?.displayName ?? "");
+              return teams.some((t: string) => mlTeamsMatch(t, leg.home_team ?? "")) ||
+                     teams.some((t: string) => mlTeamsMatch(t, leg.away_team ?? ""));
             });
-            if (!game) continue;
-            const state = game.status?.abstractGameState;
-            if (state !== "Final") continue; // game not over yet
+            if (!matchedEvent2) continue;
+            if (!matchedEvent2.competitions?.[0]?.status?.type?.completed) continue;
 
-            const homeScore = game.teams?.home?.score ?? 0;
-            const awayScore = game.teams?.away?.score ?? 0;
-            actualValue = homeScore;
+            const comp2 = matchedEvent2.competitions[0];
+            const homeComp2 = comp2.competitors?.find((c: any) => c.homeAway === "home");
+            const awayComp2 = comp2.competitors?.find((c: any) => c.homeAway === "away");
+            const homeScore = parseFloat(homeComp2?.score ?? "0");
+            const awayScore = parseFloat(awayComp2?.score ?? "0");
 
             if (leg.bet_type === "moneyline") {
-              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const label = leg.pick_label.toLowerCase();
+              const homeTeamWords = (leg.home_team ?? "").toLowerCase().split(" ");
+              const pickedHome = homeTeamWords.some((w: string) => w.length > 2 && label.includes(w));
               const homeWon = homeScore > awayScore;
               if (homeScore === awayScore) result = "push";
               else result = (pickedHome && homeWon) || (!pickedHome && !homeWon) ? "win" : "loss";
             } else if (leg.bet_type === "spread") {
-              const pickedHome = leg.pick_label.toLowerCase().includes((leg.home_team ?? "").split(" ").pop()?.toLowerCase() ?? "__");
+              const label = leg.pick_label.toLowerCase();
+              const homeTeamWords = (leg.home_team ?? "").toLowerCase().split(" ");
+              const pickedHome = homeTeamWords.some((w: string) => w.length > 2 && label.includes(w));
               const adjustedScore = pickedHome ? homeScore + leg.line : awayScore + leg.line;
               const opponentScore = pickedHome ? awayScore : homeScore;
               if (adjustedScore === opponentScore) result = "push";
