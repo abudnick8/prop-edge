@@ -117,8 +117,9 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
   const [showShare, setShowShare] = useState(false);
   const [removing, setRemoving] = useState(false);
   const isBest = rank === 1;
-  // Owner can remove a pick if it's still pending and game hasn't started (not locked)
-  const canRemove = isOwner && pick.result === "pending" && !pick.locked;
+  // Owner can scratch a player any time the result is still pending (even after lock time)
+  // This is specifically for handling non-starters, injuries, lineup scratches
+  const canRemove = isOwner && (!pick.result || pick.result === "pending");
 
   return (
     <div

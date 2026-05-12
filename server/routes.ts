@@ -10689,8 +10689,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const isPlaying = gameState === "in_progress" || gameState === "in" ||
                         (gameStartMs != null && nowMs > gameStartMs + 10 * 60_000);
 
-      if (isGraded)  return res.status(400).json({ error: `${name ?? pick.name} is already graded (${pick.result}) — cannot remove.` });
-      if (isPlaying) return res.status(400).json({ error: `${name ?? pick.name}'s game is already in progress — cannot remove.` });
+      if (isGraded) return res.status(400).json({ error: `${name ?? pick.name} is already graded (${pick.result}) — cannot remove.` });
+      // Allow removal even if game is in progress (owner may be catching a late scratch)
 
       // Remove from in-memory cache
       btsPicksCache[targetDate] = existing.filter(e => e.playerId !== Number(playerId));
