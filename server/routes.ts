@@ -9831,7 +9831,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return positiveCount >= 4; // require 4 of 6 signals
       }
       const slateGames: any[] = [];
-      const candidatePicks: any[] = [];
+      let candidatePicks: any[] = [];
 
       for (const game of games) {
         const homeTeam = game.teams?.home;
@@ -10290,6 +10290,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch (logErr) { /* non-fatal — log failure doesn't block picks */ }
 
       // ── 8. One-per-team rule + hard 15-pick cap ─────────────────────
+      // Filter out any players the owner manually removed today
+      const todayExcluded = btsExcludedByDate[targetDate] ?? new Set<number>();
+      if (todayExcluded.size > 0) {
+        candidatePicks = candidatePicks.filter((p: any) => !todayExcluded.has(p.playerId));
+      }
       // Sort override picks to the BOTTOM (show normal picks first)
       candidatePicks.sort((a, b) => {
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
@@ -10646,6 +10651,72 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       console.log(`[BTS] Injected by owner: ${added.join(", ")}`);
       res.json({ ok: true, added, total: cache.length, date: targetDate });
     } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/remove-player — owner only
+  // Body: { playerId: number, name: string }
+  // Removes a single pending pre-game pick and excludes them from today's
+  // re-generation so BTS can find a replacement on the next GET /api/bts-picks.
+  // ─────────────────────────────────────────────────────────────────────
+  const btsExcludedByDate: Record<string, Set<number>> = {};
+
+  app.post("/api/bts/remove-player", requireOwner, async (req, res) => {
+    try {
+      const { playerId, name } = req.body ?? {};
+      if (!playerId) return res.status(400).json({ error: "playerId required" });
+
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const targetDate = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const nowMs = Date.now();
+      const existing: BtsPickEntry[] = btsPicksCache[targetDate] ?? [];
+      const pick = existing.find(e => e.playerId === Number(playerId));
+
+      if (!pick) return res.status(404).json({ error: `Player not found in today's picks` });
+
+      // Block removal if already graded or game in progress
+      const snap = pick.snapshot as any;
+      const gameStartMs: number | null = snap?.game?.gameStartMs ?? snap?.gameStartMs ?? null;
+      const gameState: string = snap?.game?.state ?? snap?.state ?? "";
+      const isGraded  = pick.result !== "pending";
+      const isPlaying = gameState === "in_progress" || gameState === "in" ||
+                        (gameStartMs != null && nowMs > gameStartMs + 10 * 60_000);
+
+      if (isGraded)  return res.status(400).json({ error: `${name ?? pick.name} is already graded (${pick.result}) — cannot remove.` });
+      if (isPlaying) return res.status(400).json({ error: `${name ?? pick.name}'s game is already in progress — cannot remove.` });
+
+      // Remove from in-memory cache
+      btsPicksCache[targetDate] = existing.filter(e => e.playerId !== Number(playerId));
+
+      // Add to exclusion set so re-generation skips them today
+      if (!btsExcludedByDate[targetDate]) btsExcludedByDate[targetDate] = new Set();
+      btsExcludedByDate[targetDate].add(Number(playerId));
+
+      // Persist removal to DB
+      await db.query(
+        `DELETE FROM bts_picks WHERE pick_date=$1 AND player_id=$2 AND result='pending'`,
+        [targetDate, playerId]
+      ).catch(() => {});
+
+      saveBtsPicksCache();
+
+      console.log(`[BTS] Owner removed ${name ?? pick.name} (#${playerId}) from ${targetDate} picks. Excluded for re-gen.`);
+
+      res.json({
+        ok: true,
+        removed: name ?? pick.name,
+        remaining: btsPicksCache[targetDate].length,
+        message: `${name ?? pick.name} removed. Refresh BTS picks to find a replacement.`,
+      });
+    } catch (e: any) {
+      console.error("[BTS] remove-player error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });

@@ -112,10 +112,13 @@ function Chip({ label, value, highlight }: { label: string; value: string; highl
 }
 
 // ─── Pick card ───────────────────────────────────────────────────────────────
-function PickCard({ pick, rank }: { pick: any; rank: number }) {
+function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; isOwner?: boolean; onRemove?: (playerId: number, name: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const isBest = rank === 1;
+  // Owner can remove a pick if it's still pending and game hasn't started (not locked)
+  const canRemove = isOwner && pick.result === "pending" && !pick.locked;
 
   return (
     <div
@@ -201,8 +204,44 @@ function PickCard({ pick, rank }: { pick: any; rank: number }) {
           </p>
         </div>
 
-        {/* Probability ring */}
-        <ProbRing pct={pick.hitProbability} />
+        {/* Probability ring + owner remove button */}
+        <div className="flex flex-col items-center gap-1.5">
+          <ProbRing pct={pick.hitProbability} />
+          {canRemove && (
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (!confirm(`Remove ${pick.name} from today's BTS picks?\n\nBTS will find a replacement on the next refresh.`)) return;
+                setRemoving(true);
+                try {
+                  const r = await fetch("/api/bts/remove-player", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ playerId: pick.playerId, name: pick.name }),
+                  });
+                  const d = await r.json();
+                  if (!r.ok) throw new Error(d.error);
+                  onRemove?.(pick.playerId, pick.name);
+                } catch (err: any) {
+                  alert("Remove failed: " + err.message);
+                  setRemoving(false);
+                }
+              }}
+              disabled={removing}
+              title="Remove player & find replacement"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-opacity"
+              style={{
+                background: "rgba(239,68,68,0.10)",
+                border: "1px solid rgba(239,68,68,0.30)",
+                color: removing ? "#fca5a5" : "#ef4444",
+                opacity: removing ? 0.6 : 1,
+                cursor: removing ? "default" : "pointer",
+              }}
+            >
+              <X size={9} />{removing ? "Removing…" : "Scratch"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Matchup strip */}
@@ -1155,7 +1194,16 @@ export default function BTS() {
           <div className="space-y-3">
             {/* Real picks — capped at 5 initially, 10 when expanded */}
             {visiblePicks.map((pick, i) => (
-              <PickCard key={pick.playerId} pick={pick} rank={i + 1} />
+              <PickCard
+                key={pick.playerId}
+                pick={pick}
+                rank={i + 1}
+                isOwner={isOwner}
+                onRemove={(_playerId, _name) => {
+                  // Immediately invalidate so the list refetches and finds a replacement
+                  queryClient.invalidateQueries({ queryKey: ["/api/bts-picks"] });
+                }}
+              />
             ))}
 
             {/* Empty slots for remaining spots up to the visible limit */}
