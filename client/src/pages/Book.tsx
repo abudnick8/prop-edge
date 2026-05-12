@@ -1705,9 +1705,32 @@ function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: n
                 <div style={{ fontSize: 12, fontWeight: 700, color: FG, marginBottom: 1 }}>{leg.pickLabel}</div>
                 <div style={{ fontSize: 10, color: MUTED, marginBottom: 1 }}>{fmtOdds(leg.oddsAmerican)}{leg.gameDate ? ` · ${leg.gameDate}` : ""}</div>
                 {leg.gameStatus !== "scheduled" && leg.gameStatus !== "postponed" && leg.homeTeam && (
-                  <div style={{ fontSize: 10, color: MUTED }}>
-                    {leg.awayTeam} {leg.awayScore ?? "-"} @ {leg.homeTeam} {leg.homeScore ?? "-"}
-                    {leg.gamePeriodLabel && <span style={{ marginLeft: 5, color: leg.gameStatus === "live" ? "#ef4444" : MUTED, fontWeight: 700 }}>{leg.gameStatus === "live" ? "● LIVE" : "FINAL"}</span>}
+                  <div style={{ marginTop: 4 }}>
+                    {/* Score row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: FG }}>
+                        {leg.awayTeam} <span style={{ fontSize: 13, fontWeight: 800 }}>{leg.awayScore ?? "-"}</span>
+                        <span style={{ fontSize: 10, color: MUTED, margin: "0 4px" }}>@</span>
+                        {leg.homeTeam} <span style={{ fontSize: 13, fontWeight: 800 }}>{leg.homeScore ?? "-"}</span>
+                      </div>
+                      {leg.gameStatus === "live" ? (
+                        <span style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 800, color: "#ef4444", whiteSpace: "nowrap" }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#ef4444", animation: "pulse 1.5s infinite", display: "inline-block" }} />
+                          LIVE
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: MUTED, background: "rgba(61,75,88,0.08)", borderRadius: 6, padding: "1px 6px" }}>FINAL</span>
+                      )}
+                    </div>
+                    {/* Period / inning / clock row */}
+                    {(leg.gamePeriodLabel || leg.gamePeriod) && (
+                      <div style={{ marginTop: 2, fontSize: 10, color: leg.gameStatus === "live" ? "#ef4444" : MUTED, fontWeight: 600 }}>
+                        {leg.gamePeriodLabel && <span>{leg.gamePeriodLabel}</span>}
+                        {leg.gamePeriod && leg.gamePeriod !== "0:00" && leg.gameStatus === "live" && (
+                          <span style={{ marginLeft: 4 }}>· {leg.gamePeriod}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {leg.gameStatus === "scheduled" && (

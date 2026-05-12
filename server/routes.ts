@@ -12992,7 +12992,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           base.homeScore = homeComp?.score ?? null;
           base.awayScore = awayComp?.score ?? null;
           base.gamePeriod = comp?.status?.displayClock ?? null;
-          base.gamePeriodLabel = comp?.status?.period ? `${espnSport === "MLB" ? "Inn" : "Q"}${comp.status.period}` : null;
+          // Build a human-readable period/inning label per sport
+          const period = comp?.status?.period ?? null;
+          const clockStr = comp?.status?.displayClock ?? null;
+          const statusDesc = comp?.status?.type?.description ?? "";
+          const statusName = comp?.status?.type?.name ?? "";
+          if (period) {
+            if (espnSport === "MLB") {
+              // ESPN uses displayClock for "Top" or "Bot" in MLB
+              const half = (clockStr ?? "").toLowerCase().includes("bot") ||
+                           (statusDesc ?? "").toLowerCase().includes("bot") ?
+                           "Bot" : "Top";
+              const ordinals = ["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th"];
+              base.gamePeriodLabel = `${half} ${ordinals[period - 1] ?? period + "th"}`;
+              base.gamePeriod = null; // clock not meaningful for MLB
+            } else if (espnSport === "NBA") {
+              if (statusName === "STATUS_HALFTIME") {
+                base.gamePeriodLabel = "Halftime";
+              } else if (period > 4) {
+                base.gamePeriodLabel = `OT${period - 4 > 1 ? (period - 4) : ""}`;
+              } else {
+                base.gamePeriodLabel = `Q${period}`;
+              }
+            } else if (espnSport === "NHL") {
+              if (period > 3) {
+                base.gamePeriodLabel = statusName === "STATUS_SHOOTOUT" ? "Shootout" : `OT${period - 3 > 1 ? (period - 3) : ""}`;
+              } else {
+                base.gamePeriodLabel = `${["1st","2nd","3rd"][period - 1] ?? period + "rd"} Period`;
+              }
+            } else if (espnSport === "NFL") {
+              if (statusName === "STATUS_HALFTIME") {
+                base.gamePeriodLabel = "Halftime";
+              } else if (period > 4) {
+                base.gamePeriodLabel = "OT";
+              } else {
+                base.gamePeriodLabel = `Q${period}`;
+              }
+            } else {
+              base.gamePeriodLabel = `Period ${period}`;
+            }
+          } else {
+            base.gamePeriodLabel = null;
+          }
 
           if (gameStatus === "scheduled" || gameStatus === "postponed") return base;
 
