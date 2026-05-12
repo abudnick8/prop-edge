@@ -12355,6 +12355,27 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Run book grader every 5 minutes
   setInterval(() => gradeBookLegs(), 5 * 60 * 1000);
 
+  // ─ POST /api/book/fix-legs ── owner tool to correct wrong team/stat on pending legs ──
+  app.post("/api/book/fix-legs", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { playerName, homeTeam, awayTeam, gameDate, statType } = req.body ?? {};
+      if (!playerName) return res.status(400).json({ error: "playerName required" });
+      const setClauses: string[] = [];
+      const params: any[] = [];
+      if (homeTeam) { params.push(homeTeam); setClauses.push(`home_team=$${params.length}`); }
+      if (awayTeam) { params.push(awayTeam); setClauses.push(`away_team=$${params.length}`); }
+      if (statType) { params.push(statType); setClauses.push(`stat_type=$${params.length}`); }
+      if (!setClauses.length) return res.status(400).json({ error: "nothing to update" });
+      params.push(playerName);
+      const whereDate = gameDate ? ` AND game_date='${gameDate}'` : "";
+      const result = await db.query(
+        `UPDATE book_legs SET ${setClauses.join(",")} WHERE player_name ILIKE $${params.length}${whereDate} AND result='pending'`,
+        params
+      );
+      res.json({ ok: true, updated: result.rowCount });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─ GET /api/book/debug-legs ─────────────────────────────────────────────
   app.get("/api/book/debug-legs", requireOwner, async (req: Request, res: Response) => {
     try {
