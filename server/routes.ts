@@ -12352,8 +12352,89 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   }
 
-  // Run book grader every 5 minutes
-  setInterval(() => gradeBookLegs(), 5 * 60 * 1000);
+  // ─ Force-settle helper: sweeps any slip where all legs are graded but slip is still open ─
+  async function forceSettleStalledSlips(): Promise<{ forceSettled: number; rrSettled: number }> {
+    let forceSettled = 0;
+    let rrSettled = 0;
+    try {
+      // Settle any slip (including RR child parlays) where no pending legs remain
+      const stalledSlips = await db.query(
+        `SELECT s.id, s.account_id, s.slip_type, s.stake, s.rr_parent_id
+         FROM book_slips s
+         WHERE s.status = 'open'
+           AND NOT EXISTS (
+             SELECT 1 FROM book_legs l
+             WHERE l.slip_id = s.id AND l.result = 'pending'
+           )
+           AND EXISTS (
+             SELECT 1 FROM book_legs l WHERE l.slip_id = s.id
+           )`
+      );
+      for (const slip of stalledSlips.rows) {
+        const legsQ = await db.query(`SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slip.id]);
+        const legResults = legsQ.rows.map((r: any) => r.result);
+        if (legResults.length === 0 || legResults.includes("pending")) continue;
+        const active = legResults.filter((r: string) => r !== "void");
+        let slipStatus: string;
+        if (active.length === 0) slipStatus = "void";
+        else if (active.every((r: string) => r === "win")) slipStatus = "won";
+        else if (active.some((r: string) => r === "loss")) slipStatus = "lost";
+        else slipStatus = "push";
+        let finalPayout = 0;
+        if (slipStatus === "won") {
+          const winOdds = legsQ.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
+          finalPayout = winOdds.length === 1
+            ? parseFloat((slip.stake * americanToDecimal(winOdds[0])).toFixed(2))
+            : calcParlayPayout(slip.stake, winOdds);
+        } else if (slipStatus === "push" || slipStatus === "void") {
+          finalPayout = parseFloat(slip.stake);
+        }
+        await db.query(
+          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+          [slipStatus, finalPayout || null, slip.id]
+        );
+        if (finalPayout > 0) {
+          await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [finalPayout, slip.account_id]);
+          await db.query(
+            `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
+            [slip.account_id, finalPayout, slipStatus === "won" ? "win" : "push", slip.id, `Force-settled #${slip.id}: ${slipStatus}`]
+          );
+        }
+        forceSettled++;
+      }
+
+      // Roll up RR parents where all children are now settled
+      const openRRParents = await db.query(
+        `SELECT id, account_id FROM book_slips WHERE status='open' AND slip_type='round_robin' AND rr_parent_id IS NULL`
+      );
+      for (const parent of openRRParents.rows) {
+        const children = await db.query(
+          `SELECT status, payout_received FROM book_slips WHERE rr_parent_id=$1`, [parent.id]
+        );
+        if (!children.rows.length) continue;
+        const allDone = children.rows.every((r: any) => r.status !== "open");
+        if (!allDone) continue;
+        const anyWon   = children.rows.some((r: any) => r.status === "won");
+        const allVoid  = children.rows.every((r: any) => r.status === "void");
+        const parentStatus = allVoid ? "void" : anyWon ? "won" : "lost";
+        const totalPayout  = children.rows.reduce((s: number, r: any) => s + parseFloat(r.payout_received ?? 0), 0);
+        await db.query(
+          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
+          [parentStatus, totalPayout || null, parent.id]
+        );
+        rrSettled++;
+      }
+    } catch (e: any) {
+      console.warn("[Book] forceSettle error:", e.message);
+    }
+    return { forceSettled, rrSettled };
+  }
+
+  // Run book grader + stall sweep every 5 minutes
+  setInterval(async () => {
+    await gradeBookLegs();
+    await forceSettleStalledSlips();
+  }, 5 * 60 * 1000);
 
   // ─ POST /api/book/fix-legs ── owner tool to correct wrong team/stat on pending legs ──
   app.post("/api/book/fix-legs", requireOwner, async (req: Request, res: Response) => {
@@ -12414,78 +12495,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   app.post("/api/book/grade-now", requireOwner, async (req: Request, res: Response) => {
     try {
       await gradeBookLegs();
-      // Also force-settle any slips where all legs are graded but slip is still open
-      // (catches edge cases where the per-leg rollup was missed)
-      const stalledSlips = await db.query(
-        `SELECT s.id, s.account_id, s.slip_type, s.stake, s.rr_parent_id
-         FROM book_slips s
-         WHERE s.status = 'open'
-           AND NOT EXISTS (
-             SELECT 1 FROM book_legs l
-             WHERE l.slip_id = s.id AND l.result = 'pending'
-           )
-           AND EXISTS (
-             SELECT 1 FROM book_legs l WHERE l.slip_id = s.id
-           )
-           AND s.rr_parent_id IS NULL`
-      );
-      let forceSettled = 0;
-      for (const slip of stalledSlips.rows) {
-        const legsQ = await db.query(`SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slip.id]);
-        const legResults = legsQ.rows.map((r: any) => r.result);
-        if (legResults.length === 0 || legResults.includes("pending")) continue;
-        const active = legResults.filter((r: string) => r !== "void");
-        let slipStatus: string;
-        if (active.length === 0) slipStatus = "void";
-        else if (active.every((r: string) => r === "win")) slipStatus = "won";
-        else if (active.some((r: string) => r === "loss")) slipStatus = "lost";
-        else slipStatus = "push";
-        let finalPayout = 0;
-        if (slipStatus === "won") {
-          const winOdds = legsQ.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
-          finalPayout = winOdds.length === 1
-            ? parseFloat((slip.stake * americanToDecimal(winOdds[0])).toFixed(2))
-            : calcParlayPayout(slip.stake, winOdds);
-        } else if (slipStatus === "push" || slipStatus === "void") {
-          finalPayout = parseFloat(slip.stake);
-        }
-        await db.query(
-          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
-          [slipStatus, finalPayout || null, slip.id]
-        );
-        if (finalPayout > 0) {
-          await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [finalPayout, slip.account_id]);
-          await db.query(
-            `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
-            [slip.account_id, finalPayout, slipStatus === "won" ? "win" : "push", slip.id, `Force-settled #${slip.id}: ${slipStatus}`]
-          );
-        }
-        forceSettled++;
-      }
-
-      // Also roll up any RR parents where all children are now settled
-      const openRRParents = await db.query(
-        `SELECT id, account_id FROM book_slips WHERE status='open' AND slip_type='round_robin' AND rr_parent_id IS NULL`
-      );
-      let rrSettled = 0;
-      for (const parent of openRRParents.rows) {
-        const children = await db.query(
-          `SELECT status, payout_received FROM book_slips WHERE rr_parent_id=$1`, [parent.id]
-        );
-        if (!children.rows.length) continue;
-        const allDone = children.rows.every((r: any) => r.status !== "open");
-        if (!allDone) continue;
-        const anyWon   = children.rows.some((r: any) => r.status === "won");
-        const allVoid  = children.rows.every((r: any) => r.status === "void");
-        const parentStatus = allVoid ? "void" : anyWon ? "won" : "lost";
-        const totalPayout  = children.rows.reduce((s: number, r: any) => s + parseFloat(r.payout_received ?? 0), 0);
-        await db.query(
-          `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
-          [parentStatus, totalPayout || null, parent.id]
-        );
-        rrSettled++;
-      }
-
+      const { forceSettled, rrSettled } = await forceSettleStalledSlips();
       res.json({ ok: true, forceSettled, rrSettled });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
