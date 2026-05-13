@@ -2079,9 +2079,10 @@ function MyBetsTab({
   const [statusFilter, setStatusFilter] = useState<BetsFilter>("open");
   const [expandedSlip, setExpandedSlip] = useState<number | null>(null);
   const [progressOpen, setProgressOpen] = useState<Set<number>>(new Set());
+  const [combosOpen, setCombosOpen] = useState<Set<number>>(new Set());
 
   // Reset open drawers when switching filters or accounts
-  React.useEffect(() => { setProgressOpen(new Set()); }, [statusFilter, selectedAccountId]);
+  React.useEffect(() => { setProgressOpen(new Set()); setCombosOpen(new Set()); }, [statusFilter, selectedAccountId]);
 
   const [shareSlip, setShareSlip] = useState<Slip | null>(null);
   const qc = useQueryClient();
@@ -2312,12 +2313,33 @@ function MyBetsTab({
                   );
                 })()}
 
-                {/* RR combos breakdown — always visible for round robins */}
-                {slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
-                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)} each
-                    </div>
+                {/* RR combos breakdown — collapsible drawer, default closed */}
+                {slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (() => {
+                  const combosDrawerOpen = combosOpen.has(slip.id);
+                  return (
+                    <div style={{ borderTop: "1px solid #f1f5f9" }}>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setCombosOpen(prev => {
+                            const next = new Set(prev);
+                            if (combosDrawerOpen) next.delete(slip.id); else next.add(slip.id);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          width: "100%", padding: "7px 14px", background: combosDrawerOpen ? "rgba(124,58,237,0.04)" : "none",
+                          border: "none", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", display: "flex", alignItems: "center", gap: 5 }}>
+                          🎲 {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)} each
+                        </span>
+                        {combosDrawerOpen ? <ChevronUp size={12} color="#7c3aed" /> : <ChevronDown size={12} color="#7c3aed" />}
+                      </button>
+                      {combosDrawerOpen && (
+                        <div style={{ padding: "0 14px 12px" }}>
                     {slip.rr_combos.map((combo: any, ci: number) => {
                       const csc = statusColor(combo.child_status);
                       const comboWon  = combo.child_status === "won";
@@ -2374,8 +2396,11 @@ function MyBetsTab({
                         </div>
                       );
                     })}
-                  </div>
-                )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
