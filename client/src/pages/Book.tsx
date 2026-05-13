@@ -2312,22 +2312,64 @@ function MyBetsTab({
                   );
                 })()}
 
-                {/* Expanded RR combos breakdown — only for round robins when expanded */}
-                {expanded && slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
+                {/* RR combos breakdown — always visible for round robins */}
+                {slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
                   <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · Stake per combo: {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)}
+                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)} each
                     </div>
                     {slip.rr_combos.map((combo: any, ci: number) => {
                       const csc = statusColor(combo.child_status);
+                      const comboWon  = combo.child_status === "won";
+                      const comboLost = combo.child_status === "lost";
                       return (
-                        <div key={combo.id} style={{ background: "#f1f5f9", borderRadius: 8, padding: "7px 10px", marginBottom: 5 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: FG }}>Combo {ci + 1} — {combo.legs?.length ?? 0}-leg parlay</span>
+                        <div key={combo.id} style={{
+                          background: comboWon ? "rgba(22,163,74,0.05)" : comboLost ? "rgba(239,68,68,0.05)" : "#f8fafc",
+                          border: `1px solid ${comboWon ? "#bbf7d0" : comboLost ? "#fecaca" : "#e8edf2"}`,
+                          borderRadius: 10, padding: "8px 10px", marginBottom: 6,
+                        }}>
+                          {/* Combo header */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: FG }}>Combo {ci + 1} — {combo.legs?.length ?? 0}-leg</span>
                             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 8 }}>{combo.child_status?.toUpperCase()}</span>
-                              <span style={{ fontSize: 10, color: GOLD, fontWeight: 700 }}>→ {fmtCoins(combo.child_payout)}</span>
+                              <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 8 }}>
+                                {combo.child_status?.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: GOLD }}>→ {fmtCoins(combo.child_payout)}</span>
                             </div>
+                          </div>
+                          {/* Legs inside this combo */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {(combo.legs ?? []).map((cl: any, li: number) => {
+                              const legResult = cl.result;
+                              const legDotColor = legResult === "win" ? "#16a34a" : legResult === "loss" ? "#ef4444" : legResult === "push" ? "#f59e0b" : "#94a3b8";
+                              const legDotLabel = legResult === "win" ? "✓" : legResult === "loss" ? "✗" : legResult === "push" ? "P" : "·";
+                              const legBg = legResult === "win" ? "rgba(22,163,74,0.06)" : legResult === "loss" ? "rgba(239,68,68,0.06)" : "rgba(255,255,255,0.7)";
+                              const legBorder = legResult === "win" ? "#bbf7d0" : legResult === "loss" ? "#fecaca" : "#e2e8f0";
+                              return (
+                                <div key={li} style={{
+                                  display: "flex", alignItems: "center", gap: 7,
+                                  background: legBg, border: `1px solid ${legBorder}`,
+                                  borderRadius: 7, padding: "5px 8px",
+                                }}>
+                                  <div style={{
+                                    width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                                    background: legResult ? legDotColor : legDotColor + "33",
+                                    border: legResult ? "none" : `1.5px solid ${legDotColor}`,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 9, fontWeight: 900, color: legResult ? "#fff" : legDotColor,
+                                  }}>
+                                    {legDotLabel}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {cl.pick_label}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: MUTED }}>{fmtOdds(cl.odds_american)}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
