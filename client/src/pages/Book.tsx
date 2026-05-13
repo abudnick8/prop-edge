@@ -1008,9 +1008,10 @@ function BetSlipTab({
   } else if (slipType === "round_robin" && legs.length >= 3 && stakeNum > 0 && rrSizes.size > 0) {
     const sortedSizes = [...rrSizes].sort((a, b) => a - b);
     const totalCombos = sortedSizes.reduce((sum, s) => sum + numCombos(legs.length, s), 0);
-    totalStake = stakeNum * totalCombos;
+    totalStake = stakeNum; // amount entered IS the grand total split across all combos
+    const stakePerCombo = totalCombos > 0 ? parseFloat((totalStake / totalCombos).toFixed(2)) : 0;
     const sizeLabels = sortedSizes.map(s => `${numCombos(legs.length, s)}×${s}-leg`).join(" + ");
-    payoutDisplay = `${sizeLabels} = ${totalCombos} combos · ${fmtCoins(totalStake)} total`;
+    payoutDisplay = `${sizeLabels} = ${totalCombos} combos · ${fmtCoins(stakePerCombo)}/combo · ${fmtCoins(totalStake)} total`;
   }
 
   const hasAccount = accounts.length > 0 && selectedAccountId !== null;
@@ -1029,15 +1030,19 @@ function BetSlipTab({
     setPlacing(true);
     try {
       if (slipType === "round_robin") {
-        // Fire one POST per selected combo size
+        // Grand total = stakeNum. Split proportionally across combo sizes by combo count.
         const sortedSizes = [...rrSizes].sort((a, b) => a - b);
-        const results = await Promise.all(sortedSizes.map(size =>
-          fetch("/api/book/bet", {
+        const combosPerSize = sortedSizes.map(s => numCombos(legs.length, s));
+        const grandTotalCombos = combosPerSize.reduce((a, b) => a + b, 0);
+        // Stake allocated to each size group = (its share of combos / total combos) * grandTotal
+        const results = await Promise.all(sortedSizes.map((size, idx) => {
+          const sizeStake = parseFloat(((combosPerSize[idx] / grandTotalCombos) * stakeNum).toFixed(2));
+          return fetch("/api/book/bet", {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ accountId: selectedAccountId, slipType, stake: stakeNum, legs, rrSize: size }),
-          })
-        ));
+            body: JSON.stringify({ accountId: selectedAccountId, slipType, stake: sizeStake, legs, rrSize: size }),
+          });
+        }));
         const failed = results.filter(r => !r.ok);
         if (failed.length > 0) {
           const err = await failed[0].json().catch(() => ({ error: "Failed to place bet" }));
