@@ -1814,6 +1814,134 @@ function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: n
   );
 }
 
+// ─── Inline leg summary with progress bars ──────────────────────────────────
+// Shows a compact leg row for every leg in a slip, with a mini progress bar
+// for player props that have live or final stat data.
+function SlipLegSummary({ slipId, legs, token }: { slipId: number; legs: SlipLeg[]; token: string }) {
+  const { data } = useQuery<{ legs: LegProgress[] }>({
+    queryKey: ["slip-progress", slipId],
+    queryFn: async () => {
+      const r = await fetch(`/api/book/slip-progress?slipId=${slipId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+  });
+
+  // Build a map from legId → LegProgress for quick lookup
+  const progressMap = React.useMemo(() => {
+    const m = new Map<number, LegProgress>();
+    (data?.legs ?? []).forEach(lp => m.set(lp.legId, lp));
+    return m;
+  }, [data]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {legs.map((leg, i) => {
+        const prog = progressMap.get(leg.id);
+        // Result: use slip leg result field, fall back to prog status for live legs
+        const result = leg.result; // "win"|"loss"|"push"|"void"|"pending"|undefined
+        const progStatus = prog?.status; // "winning"|"losing"|"win"|"loss"|"pending"
+        const effectiveResult = result === "win" || result === "loss" || result === "push" || result === "void" ? result
+          : progStatus === "win" || progStatus === "winning" ? "win"
+          : progStatus === "loss" || progStatus === "losing" ? "loss"
+          : undefined;
+
+        const bgColor = effectiveResult === "win" ? "rgba(22,163,74,0.06)" : effectiveResult === "loss" ? "rgba(239,68,68,0.06)" : "rgba(19,35,58,0.03)";
+        const borderColor = effectiveResult === "win" ? "#bbf7d0" : effectiveResult === "loss" ? "#fecaca" : "#e8edf2";
+        const dotColor = effectiveResult === "win" ? "#16a34a" : effectiveResult === "loss" ? "#ef4444" : effectiveResult === "push" ? "#f59e0b" : "#94a3b8";
+        const dotLabel = effectiveResult === "win" ? "✓" : effectiveResult === "loss" ? "✗" : effectiveResult === "push" ? "P" : "·";
+
+        // Progress bar data — player props only
+        const isPlayerProp = !!leg.player_name || !!prog?.playerName;
+        const hasStat = prog && prog.currentStat !== null && prog.currentStat !== undefined;
+        const isOver = (leg.over_under ?? prog?.overUnder ?? "over") === "over";
+        const line = leg.line ?? prog?.line ?? 0;
+
+        // displayStat: currentStat holds the live OR final accumulated value from the progress endpoint
+        const displayStat = hasStat ? prog!.currentStat! : null;
+        const showBar = isPlayerProp && line > 0 && displayStat !== null;
+        const pct = showBar ? Math.min(100, Math.round((displayStat! / line) * 100)) : 0;
+        const barWinning = isOver ? (displayStat ?? 0) >= line : (displayStat ?? 0) <= line;
+        // For settled legs, bar color matches result; for live, color tracks current pace
+        const barColor = effectiveResult === "win" ? "#16a34a" : effectiveResult === "loss" ? "#ef4444" : barWinning ? "#16a34a" : "#ef4444";
+
+        const statKey = leg.stat_type ?? prog?.statType ?? undefined;
+        const statShort = statKey ? statLabel(statKey) : "";
+        const isLive = prog?.gameStatus === "live";
+
+        return (
+          <div key={leg.id ?? i} style={{
+            background: bgColor,
+            border: `1px solid ${borderColor}`,
+            borderRadius: 9,
+            padding: "8px 10px",
+          }}>
+            {/* Row: dot · label · stat/result */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Result dot */}
+              <div style={{
+                width: 20, height: 20, borderRadius: "50%",
+                background: dotColor + (result ? "" : "33"),
+                border: result ? "none" : `1.5px solid ${dotColor}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+                fontSize: 10, fontWeight: 900, color: result ? "#fff" : dotColor,
+              }}>
+                {dotLabel}
+              </div>
+              {/* Pick label */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {leg.pick_label}
+                </div>
+                {leg.stat_type && leg.line != null && (
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
+                    {leg.over_under === "over" ? "O" : "U"} {leg.line}{statShort ? ` ${statShort}` : ""} · {fmtOdds(leg.odds_american)}
+                  </div>
+                )}
+              </div>
+              {/* Live badge or stat value */}
+              {hasStat && (
+                <div style={{ flexShrink: 0, textAlign: "right" }}>
+                  {isLive && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 3, marginBottom: 2, justifyContent: "flex-end" }}>
+                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#ef4444", animation: "pulse 1.5s infinite", display: "inline-block" }} />
+                      <span style={{ fontSize: 8, fontWeight: 800, color: "#ef4444" }}>LIVE</span>
+                    </div>
+                  )}
+                  <span style={{ fontSize: 13, fontWeight: 800, color: effectiveResult === "win" ? "#16a34a" : effectiveResult === "loss" ? "#ef4444" : barWinning ? "#16a34a" : "#ef4444" }}>
+                    {displayStat}
+                  </span>
+                  <span style={{ fontSize: 9, color: MUTED, marginLeft: 2 }}>/</span>
+                  <span style={{ fontSize: 9, color: MUTED }}>{isOver ? "O" : "U"}{line}</span>
+                </div>
+              )}
+            </div>
+            {/* Mini progress bar */}
+            {showBar && (
+              <div style={{ marginTop: 5 }}>
+                <div style={{ height: 4, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${pct}%`,
+                    background: barColor,
+                    borderRadius: 3,
+                    transition: "width 0.4s",
+                  }} />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Slip share overlay ───────────────────────────────────────────────────────
 function SlipShareCard({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const typeLabel = slip.slip_type === "round_robin" ? "Round Robin" : slip.slip_type.charAt(0).toUpperCase() + slip.slip_type.slice(1);
@@ -2133,9 +2261,15 @@ function MyBetsTab({
                   </div>
                 </div>
 
-                {/* Live Progress — collapsible drawer, defaults open */}
-                {isOpenSlip && slip.status === "open" && (() => {
-                  // Default closed: drawer only opens when user explicitly opens it
+                {/* Always-visible legs summary with progress bars */}
+                {slip.legs.length > 0 && (
+                  <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px" }}>
+                    <SlipLegSummary slipId={slip.id} legs={slip.legs} token={token} />
+                  </div>
+                )}
+
+                {/* Live Progress drawer — open slips only — for override controls */}
+                {isOpenSlip && (() => {
                   const drawerOpen = progressOpen.has(slip.id);
                   return (
                     <div style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -2149,16 +2283,16 @@ function MyBetsTab({
                           });
                         }}
                         style={{
-                          width: "100%", padding: "7px 14px", background: drawerOpen ? "rgba(19,35,58,0.03)" : "none",
+                          width: "100%", padding: "6px 14px", background: drawerOpen ? "rgba(19,35,58,0.03)" : "none",
                           border: "none", cursor: "pointer",
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
-                          Live Progress
+                        <span style={{ fontSize: 10, fontWeight: 700, color: NAVY, display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+                          Detailed View & Overrides
                         </span>
-                        {drawerOpen ? <ChevronUp size={13} color={NAVY} /> : <ChevronDown size={13} color={NAVY} />}
+                        {drawerOpen ? <ChevronUp size={12} color={NAVY} /> : <ChevronDown size={12} color={NAVY} />}
                       </button>
                       {drawerOpen && (
                         <div style={{ padding: "0 14px 12px" }}>
@@ -2178,10 +2312,10 @@ function MyBetsTab({
                   );
                 })()}
 
-                {/* Expanded RR combos breakdown — only for round robins */}
+                {/* Expanded RR combos breakdown — only for round robins when expanded */}
                 {expanded && slip.slip_type === "round_robin" && slip.rr_combos && slip.rr_combos.length > 0 && (
                   <div style={{ borderTop: "1px solid #f1f5f9", padding: "10px 14px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
                       {slip.rr_combos.length} parlay combo{slip.rr_combos.length !== 1 ? "s" : ""} · Stake per combo: {fmtCoins(parseFloat(slip.stake) / slip.rr_combos.length)}
                     </div>
                     {slip.rr_combos.map((combo: any, ci: number) => {
@@ -2195,11 +2329,6 @@ function MyBetsTab({
                               <span style={{ fontSize: 10, color: GOLD, fontWeight: 700 }}>→ {fmtCoins(combo.child_payout)}</span>
                             </div>
                           </div>
-                          {combo.legs?.map((cl: any, li: number) => (
-                            <div key={li} style={{ fontSize: 10, color: MUTED, paddingLeft: 8, lineHeight: 1.6 }}>
-                              • {cl.pick_label} <span style={{ color: FG, fontWeight: 600 }}>{fmtOdds(cl.odds_american)}</span>
-                            </div>
-                          ))}
                         </div>
                       );
                     })}
