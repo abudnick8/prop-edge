@@ -8522,6 +8522,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const btsSeasonRecord: { wins: number; losses: number; pending: number } =
     { wins: 0, losses: 0, pending: 0 };
 
+  // ── CIQ Streak state — declared early so runBtsGrader can reference it ──
+  interface CiqStreakDayEntry {
+    date:         string;
+    picks:        CiqStreakPick[];
+    isDouble:     boolean;
+    result:       "win" | "loss" | "pending";
+    streakBefore: number;
+    streakAfter:  number | null;
+  }
+  interface CiqStreakPick {
+    playerId: string;
+    name:     string;
+    team:     string;
+    score:    number;
+    result:   "win" | "loss" | "pending";
+    hits:     number | null;
+    ab:       number | null;
+    gradedAt: string | null;
+  }
+  interface CiqStreakState {
+    currentStreak: number;
+    bestStreak:    number;
+    goal:          number;
+    totalDays:     number;
+    totalWins:     number;
+    totalLosses:   number;
+    history:       CiqStreakDayEntry[];
+    lastPickDate:  string | null;
+  }
+  const ciqStreakState: CiqStreakState = {
+    currentStreak: 0, bestStreak: 0, goal: 57,
+    totalDays: 0, totalWins: 0, totalLosses: 0,
+    history: [], lastPickDate: null,
+  };
+
   // Track the last date btsSeasonRecord was fully reconciled from btsPicksCache
   let btsLastReconcileDate = "";
 
@@ -8785,7 +8820,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch { /* non-fatal */ }
     }
-    if (changed) { reconcileSeasonRecord(); saveBtsPicksCache(); }
+    if (changed) {
+      reconcileSeasonRecord();
+      saveBtsPicksCache();
+      // Keep CIQ streak in sync — deferred so hoisted functions are available
+      setTimeout(() => {
+        try {
+          const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+          const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
+          if (dateStr === todayStr && ciqStreakState.lastPickDate !== todayStr) {
+            selectCiqStreakPicksForDate(todayStr).catch(() => {});
+          } else {
+            gradeCiqStreakForDate(dateStr);
+          }
+        } catch { /* non-fatal */ }
+      }, 0);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -10914,6 +10964,179 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+
+  // ════════════════════════════════════════════════════════════════════
+  // CLUBHOUSE IQ AUTO-STREAK
+  // Runs its own Beat-the-Streak attempt separate from user picks.
+  // Each day it selects 1 or 2 players. If 1 pick: must get a hit to
+  // advance by 1. If 2 picks (double-down): BOTH must get a hit to
+  // advance by 2, otherwise streak resets to 0. Goal: reach 57 (beat 56).
+  // ════════════════════════════════════════════════════════════════════
+
+  const CIQ_STREAK_PATH = path.join(__dirname, "ml_data", "ciq_streak.json");
+
+  async function loadCiqStreak() {
+    try {
+      if (fs.existsSync(CIQ_STREAK_PATH)) {
+        const parsed = JSON.parse(fs.readFileSync(CIQ_STREAK_PATH, "utf-8"));
+        Object.assign(ciqStreakState, parsed);
+        console.log(`[CIQ Streak] Loaded from disk: streak=${ciqStreakState.currentStreak}`);
+        return;
+      }
+      const row = await db.queryOne(`SELECT content FROM ml_data_store WHERE filename='ciq_streak.json'`);
+      if (row) {
+        Object.assign(ciqStreakState, JSON.parse(row.content));
+        console.log(`[CIQ Streak] Loaded from DB: streak=${ciqStreakState.currentStreak}`);
+      }
+    } catch (e: any) { console.warn("[CIQ Streak] Load failed:", e.message); }
+  }
+
+  function saveCiqStreak() {
+    const json = JSON.stringify(ciqStreakState, null, 2);
+    try {
+      fs.mkdirSync(path.dirname(CIQ_STREAK_PATH), { recursive: true });
+      fs.writeFileSync(CIQ_STREAK_PATH, json, "utf-8");
+    } catch { /* non-fatal */ }
+    db.query(
+      `INSERT INTO ml_data_store (filename, content, updated_at) VALUES ('ciq_streak.json',$1,NOW())
+       ON CONFLICT (filename) DO UPDATE SET content=$1, updated_at=NOW()`,
+      [json]
+    ).catch((e: any) => console.warn("[CIQ Streak] DB save:", e.message));
+  }
+
+  function ciqCtDateStr(): string {
+    const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    return `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
+  }
+
+  // Select today's CIQ picks from the top scored BTS candidates already in btsPicksCache.
+  // Double-down (2 picks) when top 2 are both high confidence (score ≥ 82 / 78).
+  // Single pick otherwise.
+  async function selectCiqStreakPicksForDate(dateStr: string) {
+    const existing = ciqStreakState.history.find(d => d.date === dateStr);
+    if (existing) return existing;
+
+    const cachedEntries = btsPicksCache[dateStr];
+    if (!cachedEntries?.length) return null;
+
+    const scored = [...cachedEntries]
+      .filter(e => e.snapshot?.hitProbability != null)
+      .sort((a, b) => (b.snapshot.hitProbability ?? 0) - (a.snapshot.hitProbability ?? 0));
+
+    if (scored.length === 0) return null;
+
+    const top1 = scored[0];
+    const top2 = scored[1];
+    const score1 = top1.snapshot?.hitProbability ?? 0;
+    const score2 = top2?.snapshot?.hitProbability ?? 0;
+    const isDouble = score1 >= 82 && score2 >= 78 && top2 != null;
+    const chosen = isDouble ? [top1, top2] : [top1];
+
+    const picks: CiqStreakPick[] = chosen.map(e => ({
+      playerId: e.playerId,
+      name:     e.name,
+      team:     e.snapshot?.team ?? "",
+      score:    Math.round(e.snapshot?.hitProbability ?? 0),
+      result:   e.result === "win" ? "win" : e.result === "loss" ? "loss" : "pending",
+      hits:     e.hits ?? null,
+      ab:       e.ab ?? null,
+      gradedAt: e.gradedAt ?? null,
+    }));
+
+    const dayEntry: CiqStreakDayEntry = {
+      date:         dateStr,
+      picks,
+      isDouble,
+      result:       "pending",
+      streakBefore: ciqStreakState.currentStreak,
+      streakAfter:  null,
+    };
+
+    ciqStreakState.history.push(dayEntry);
+    ciqStreakState.lastPickDate = dateStr;
+    saveCiqStreak();
+    console.log(`[CIQ Streak] Picked for ${dateStr}: ${picks.map(p => p.name).join(" + ")} (${isDouble ? "double-down" : "single"}), streak in: ${dayEntry.streakBefore}`);
+    return dayEntry;
+  }
+
+  // Grade CIQ streak picks by syncing from btsPicksCache after runBtsGrader runs
+  function gradeCiqStreakForDate(dateStr: string) {
+    const dayEntry = ciqStreakState.history.find(d => d.date === dateStr);
+    if (!dayEntry || dayEntry.result !== "pending") return;
+
+    const cachedEntries = btsPicksCache[dateStr] ?? [];
+    let anyPending = false;
+    for (const pick of dayEntry.picks) {
+      const cached = cachedEntries.find(e => e.playerId === pick.playerId);
+      if (!cached) { anyPending = true; continue; }
+      if (cached.result === "win" || cached.result === "loss") {
+        pick.result   = cached.result;
+        pick.hits     = cached.hits ?? null;
+        pick.ab       = cached.ab ?? null;
+        pick.gradedAt = cached.gradedAt ?? null;
+      } else {
+        anyPending = true;
+      }
+    }
+    if (anyPending) return;
+
+    const allWon = dayEntry.picks.every(p => p.result === "win");
+    dayEntry.result = allWon ? "win" : "loss";
+
+    if (allWon) {
+      dayEntry.streakAfter     = dayEntry.streakBefore + dayEntry.picks.length;
+      ciqStreakState.currentStreak = dayEntry.streakAfter;
+      ciqStreakState.totalWins++;
+    } else {
+      dayEntry.streakAfter     = 0;
+      ciqStreakState.currentStreak = 0;
+      ciqStreakState.totalLosses++;
+    }
+    ciqStreakState.totalDays++;
+    if (ciqStreakState.currentStreak > ciqStreakState.bestStreak)
+      ciqStreakState.bestStreak = ciqStreakState.currentStreak;
+
+    saveCiqStreak();
+    console.log(`[CIQ Streak] ${dateStr}: ${dayEntry.result} → streak now ${ciqStreakState.currentStreak}`);
+  }
+
+  // Kick off CIQ streak load on server init
+  loadCiqStreak().then(() => {
+    // After loading, grade any pending history entries using current btsPicksCache
+    for (const entry of ciqStreakState.history) {
+      if (entry.result === "pending") gradeCiqStreakForDate(entry.date);
+    }
+  });
+
+  // GET /api/bts/ciq-streak
+  app.get("/api/bts/ciq-streak", async (_req, res) => {
+    try {
+      const todayStr = ciqCtDateStr();
+      // Auto-pick today if we haven't yet and BTS picks are available
+      if (ciqStreakState.lastPickDate !== todayStr) {
+        await selectCiqStreakPicksForDate(todayStr);
+      }
+      // Re-grade any pending days
+      for (const entry of ciqStreakState.history) {
+        if (entry.result === "pending") gradeCiqStreakForDate(entry.date);
+      }
+      const recentHistory = [...ciqStreakState.history]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 30);
+      res.json({
+        currentStreak: ciqStreakState.currentStreak,
+        bestStreak:    ciqStreakState.bestStreak,
+        goal:          ciqStreakState.goal,
+        totalDays:     ciqStreakState.totalDays,
+        totalWins:     ciqStreakState.totalWins,
+        totalLosses:   ciqStreakState.totalLosses,
+        today:         ciqStreakState.history.find(d => d.date === todayStr) ?? null,
+        history:       recentHistory,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // ════════════════════════════════════════════════════════════════════
   // GET /api/fantasy-intel  — Live fantasy intelligence across all sports

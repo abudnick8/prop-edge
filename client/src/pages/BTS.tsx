@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import ShareCard from "@/components/ShareCard";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -705,6 +705,192 @@ function HowToReadBTS() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CLUBHOUSE IQ AUTO-STREAK PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+function CiqStreakPanel() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ["/api/bts/ciq-streak"],
+    refetchInterval: 5 * 60_000,
+    staleTime: 3 * 60_000,
+  });
+  const d = data as any;
+
+  const current   = d?.currentStreak ?? 0;
+  const best      = d?.bestStreak ?? 0;
+  const goal      = d?.goal ?? 57;
+  const today     = d?.today;
+  const history: any[] = d?.history ?? [];
+  const totalDays = d?.totalDays ?? 0;
+  const totalWins = d?.totalWins ?? 0;
+  const pct       = totalDays > 0 ? Math.round((totalWins / totalDays) * 100) : null;
+  const progress  = Math.min(100, Math.round((current / (goal - 1)) * 100));
+
+  const BG    = "#F6F1E7";
+  const NAVY  = "#13233A";
+  const GOLD  = "#D4A843";
+  const GREEN = "#16a34a";
+  const RED   = "#ef4444";
+  const MUTED = "#3D4B58";
+
+  function DayResult({ entry }: { entry: any }) {
+    const won  = entry.result === "win";
+    const lost = entry.result === "loss";
+    return (
+      <div
+        className="rounded-xl p-3"
+        style={{
+          background: won ? "rgba(22,163,74,0.06)" : lost ? "rgba(239,68,68,0.06)" : "rgba(19,35,58,0.03)",
+          border: `1px solid ${won ? "rgba(22,163,74,0.2)" : lost ? "rgba(239,68,68,0.2)" : "rgba(19,35,58,0.08)"}`,
+        }}
+      >
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold" style={{ color: MUTED }}>{entry.date}</span>
+            {entry.isDouble && (
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "rgba(212,168,67,0.15)", color: GOLD }}>DOUBLE</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {entry.result === "pending" ? (
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}>PENDING</span>
+            ) : won ? (
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "rgba(22,163,74,0.15)", color: GREEN }}>
+                <CheckCircle size={8} /> WIN +{entry.picks.length}
+              </span>
+            ) : (
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "rgba(239,68,68,0.12)", color: RED }}>
+                <XCircle size={8} /> LOSS → RESET
+              </span>
+            )}
+            {entry.streakAfter != null && (
+              <span className="text-[9px] font-bold" style={{ color: MUTED }}>streak: {entry.streakAfter}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          {entry.picks.map((p: any, i: number) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black flex-shrink-0"
+                  style={{ background: NAVY, color: BG }}>{i + 1}</span>
+                <span className="text-[11px] font-bold" style={{ color: NAVY }}>{p.name}</span>
+                <span className="text-[9px]" style={{ color: MUTED }}>{p.team}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold" style={{ color: GOLD }}>{p.score}%</span>
+                <GradeBadge result={p.result} hits={p.hits} ab={p.ab} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ border: `2px solid ${GOLD}40`, background: "rgba(212,168,67,0.04)" }}
+    >
+      {/* Header — always visible */}
+      <button
+        className="w-full flex items-center justify-between p-4"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: NAVY }}>
+            <Swords size={16} style={{ color: GOLD }} />
+          </div>
+          <div className="text-left">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-black" style={{ color: NAVY }}>Clubhouse IQ Streak</p>
+              {current >= 5 && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "rgba(212,168,67,0.15)", color: GOLD }}>
+                  🔥 ON FIRE
+                </span>
+              )}
+            </div>
+            <p className="text-[10px]" style={{ color: MUTED }}>
+              CIQ is playing Beat the Streak — goal: 57 consecutive hits
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Current streak number */}
+          <div className="text-right">
+            <div className="text-2xl font-black" style={{ color: current > 0 ? GOLD : MUTED }}>{current}</div>
+            <div className="text-[9px] font-bold" style={{ color: MUTED }}>streak</div>
+          </div>
+          {open ? <ChevronUp size={16} style={{ color: MUTED }} /> : <ChevronDown size={16} style={{ color: MUTED }} />}
+        </div>
+      </button>
+
+      {/* Progress bar */}
+      <div className="px-4 pb-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[9px] font-bold" style={{ color: MUTED }}>Progress to 57</span>
+          <span className="text-[9px] font-bold" style={{ color: GOLD }}>{current} / {goal - 1}</span>
+        </div>
+        <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.08)" }}>
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${GOLD}, #f59e0b)` }}
+          />
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+        {[
+          { label: "Best Streak", value: best, color: GOLD },
+          { label: "Day Win %", value: pct != null ? `${pct}%` : "—", color: GREEN },
+          { label: "Days Played", value: totalDays, color: NAVY },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl p-2.5 text-center"
+            style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.08)" }}>
+            <div className="text-base font-black" style={{ color: s.color }}>{s.value}</div>
+            <div className="text-[9px] font-medium" style={{ color: MUTED }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Expandable section */}
+      {open && (
+        <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          {/* Today's pick */}
+          <div className="pt-3">
+            <p className="text-[11px] font-black uppercase tracking-wide mb-2" style={{ color: MUTED }}>Today's CIQ Pick</p>
+            {isLoading ? (
+              <div className="rounded-xl p-3 text-center text-xs" style={{ color: MUTED }}>Loading…</div>
+            ) : today ? (
+              <DayResult entry={today} />
+            ) : (
+              <div className="rounded-xl p-3 text-center text-xs" style={{ color: MUTED, border: "1px dashed rgba(19,35,58,0.15)" }}>
+                No pick yet — will auto-select once BTS picks are available today.
+              </div>
+            )}
+          </div>
+
+          {/* History */}
+          {history.length > 1 && (
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-wide mb-2" style={{ color: MUTED }}>Pick History</p>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {history.filter(e => e.date !== today?.date).map((entry: any) => (
+                  <DayResult key={entry.date} entry={entry} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
@@ -1259,6 +1445,9 @@ export default function BTS() {
           </div>
         </div>
       )}
+
+      {/* ─── CLUBHOUSE IQ STREAK ─────────────────────────────────────────── */}
+      <CiqStreakPanel />
 
       {/* Empty state */}
       {!isLoading && !data?.error && picks.length === 0 && (
