@@ -5,7 +5,7 @@ import {
   BookOpen, Plus, RefreshCw, ChevronDown, X, Check,
   TrendingUp, TrendingDown, DollarSign, BarChart2,
   Lightbulb, Wallet, Clock, Trophy, AlertCircle,
-  Edit2, PlusCircle, Loader2, ChevronRight, ChevronUp,
+  Edit2, PlusCircle, MinusCircle, Loader2, ChevronRight, ChevronUp,
   User, ChevronDown as Chevron, Share2, Camera, Trash2,
 } from "lucide-react";
 
@@ -2364,6 +2364,7 @@ function AccountsTab({
 
   const [addCoinsId, setAddCoinsId] = useState<number | null>(null);
   const [addCoinsAmt, setAddCoinsAmt] = useState("");
+  const [withdrawMode, setWithdrawMode] = useState(false);
   const [renameId, setRenameId] = useState<number | null>(null);
   const [renameName, setRenameName] = useState("");
   const [patchingId, setPatchingId] = useState<number | null>(null);
@@ -2402,6 +2403,7 @@ function AccountsTab({
       showToast("Account updated!");
       setAddCoinsId(null);
       setAddCoinsAmt("");
+      setWithdrawMode(false);
       setRenameId(null);
       setRenameName("");
       refetchAccounts();
@@ -2503,6 +2505,7 @@ function AccountsTab({
             const winRate = acct.settled_slips > 0 ? (acct.won_slips / acct.settled_slips * 100) : 0;
             const profitPos = acct.total_profit >= 0;
             const isAddCoins = addCoinsId === acct.id;
+            const isWithdraw = isAddCoins && withdrawMode;
             const isRename = renameId === acct.id;
             const patching = patchingId === acct.id;
 
@@ -2572,38 +2575,91 @@ function AccountsTab({
                 </div>
 
                 {isAddCoins ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      type="number"
-                      value={addCoinsAmt}
-                      onChange={e => setAddCoinsAmt(e.target.value)}
-                      placeholder="Amount to add"
-                      min={1}
-                      style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => patchAccount(acct.id, { addCoins: parseFloat(addCoinsAmt) })}
-                      disabled={patching || !addCoinsAmt}
-                      style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: GOLD, color: NAVY, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-                    >
-                      {patching ? <Loader2 size={14} /> : "Add"}
-                    </button>
-                    <button onClick={() => { setAddCoinsId(null); setAddCoinsAmt(""); }} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#f1f5f9", color: MUTED, cursor: "pointer" }}>
-                      <X size={14} />
-                    </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {/* Mode toggle */}
+                    <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1.5px solid #e2e8f0" }}>
+                      <button
+                        onClick={() => setWithdrawMode(false)}
+                        style={{
+                          flex: 1, padding: "7px", border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                          background: !isWithdraw ? GOLD : "#f8fafc",
+                          color: !isWithdraw ? NAVY : MUTED,
+                        }}
+                      >+ Deposit</button>
+                      <button
+                        onClick={() => setWithdrawMode(true)}
+                        style={{
+                          flex: 1, padding: "7px", border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                          background: isWithdraw ? RED : "#f8fafc",
+                          color: isWithdraw ? "#fff" : MUTED,
+                        }}
+                      >− Withdraw</button>
+                    </div>
+                    {/* Amount input + confirm */}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ flex: 1, position: "relative" }}>
+                        <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: MUTED, fontWeight: 700 }}>$</span>
+                        <input
+                          type="number"
+                          value={addCoinsAmt}
+                          onChange={e => setAddCoinsAmt(e.target.value)}
+                          placeholder={isWithdraw ? "Amount to remove" : "Amount to add"}
+                          min={1}
+                          max={isWithdraw ? acct.balance : undefined}
+                          style={{ width: "100%", padding: "8px 10px 8px 22px", borderRadius: 8, border: `1.5px solid ${isWithdraw ? "#fecaca" : "#e2e8f0"}`, fontSize: 13, boxSizing: "border-box" }}
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        onClick={() => patchAccount(acct.id, isWithdraw
+                          ? { removeCoins: parseFloat(addCoinsAmt) }
+                          : { addCoins: parseFloat(addCoinsAmt) }
+                        )}
+                        disabled={patching || !addCoinsAmt || parseFloat(addCoinsAmt) <= 0}
+                        style={{
+                          padding: "8px 14px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
+                          background: isWithdraw ? RED : GOLD,
+                          color: isWithdraw ? "#fff" : NAVY,
+                          opacity: patching || !addCoinsAmt ? 0.6 : 1,
+                        }}
+                      >
+                        {patching ? <Loader2 size={14} /> : isWithdraw ? "−" : "+"}
+                      </button>
+                      <button
+                        onClick={() => { setAddCoinsId(null); setAddCoinsAmt(""); setWithdrawMode(false); }}
+                        style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#f1f5f9", color: MUTED, cursor: "pointer" }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {/* Warning if withdrawing more than balance */}
+                    {isWithdraw && addCoinsAmt && parseFloat(addCoinsAmt) > acct.balance && (
+                      <div style={{ fontSize: 11, color: RED }}>Amount exceeds balance — will be capped at {fmtCoins(acct.balance)}</div>
+                    )}
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setAddCoinsId(acct.id)}
-                    style={{
-                      width: "100%", padding: "9px", borderRadius: 9, border: `1px solid ${GOLD}`,
-                      background: "rgba(212,168,67,0.08)", color: GOLD, fontWeight: 700, fontSize: 13, cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    }}
-                  >
-                    <PlusCircle size={14} /> Add Coins
-                  </button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => { setAddCoinsId(acct.id); setWithdrawMode(false); }}
+                      style={{
+                        flex: 1, padding: "9px", borderRadius: 9, border: `1px solid ${GOLD}`,
+                        background: "rgba(212,168,67,0.08)", color: GOLD, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                      }}
+                    >
+                      <PlusCircle size={14} /> Add
+                    </button>
+                    <button
+                      onClick={() => { setAddCoinsId(acct.id); setWithdrawMode(true); }}
+                      style={{
+                        flex: 1, padding: "9px", borderRadius: 9, border: `1px solid ${RED}`,
+                        background: "rgba(239,68,68,0.06)", color: RED, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                      }}
+                    >
+                      <MinusCircle size={14} /> Remove
+                    </button>
+                  </div>
                 )}
               </div>
             );

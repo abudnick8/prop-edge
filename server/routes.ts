@@ -12530,14 +12530,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─ PATCH /api/book/accounts/:id ────────────────────────────
   app.patch("/api/book/accounts/:id", requireOwner, async (req: Request, res: Response) => {
     try {
-      const { name, addCoins } = req.body ?? {};
+      const { name, addCoins, removeCoins } = req.body ?? {};
       const id = parseInt(req.params.id);
       if (name) await db.query(`UPDATE book_accounts SET name=$1 WHERE id=$2`, [name, id]);
       if (addCoins && addCoins > 0) {
         await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [addCoins, id]);
         await db.query(
-          `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,$2,'deposit','Manual coin deposit')`,
+          `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,$2,'deposit','Manual deposit')`,
           [id, addCoins]
+        );
+      }
+      if (removeCoins && removeCoins > 0) {
+        // Clamp so balance never goes below 0
+        await db.query(`UPDATE book_accounts SET balance = GREATEST(0, balance - $1) WHERE id=$2`, [removeCoins, id]);
+        await db.query(
+          `INSERT INTO book_transactions (account_id, amount, tx_type, note) VALUES ($1,$2,'withdrawal','Manual withdrawal')`,
+          [id, removeCoins]
         );
       }
       const updated = await db.queryOne(`SELECT * FROM book_accounts WHERE id=$1`, [id]);
