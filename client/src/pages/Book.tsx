@@ -203,7 +203,7 @@ function fmtOdds(n: number): string {
 }
 
 function fmtCoins(n: number): string {
-  return n.toLocaleString();
+  return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtTime(ts: string): string {
@@ -395,7 +395,7 @@ export default function Book() {
             <span style={{ color: "#fff", fontWeight: 700, fontSize: 18, letterSpacing: 0.3 }}>The Book</span>
           </div>
           {selectedAccount && (
-            <span style={{ color: GOLD, fontSize: 12, fontWeight: 700 }}>{fmtCoins(selectedAccount.balance)} coins</span>
+            <span style={{ color: GOLD, fontSize: 12, fontWeight: 700 }}>{fmtCoins(selectedAccount.balance)}</span>
           )}
         </div>
 
@@ -1004,7 +1004,7 @@ function BetSlipTab({
   } else if (slipType === "parlay" && legs.length >= 2 && stakeNum > 0) {
     const dec = legs.reduce((a, l) => a * toDecimal(l.oddsAmerican), 1);
     const combinedAmerican = dec >= 2 ? Math.round((dec - 1) * 100) : Math.round(-100 / (dec - 1));
-    payoutDisplay = `${fmtOdds(combinedAmerican)} → ${fmtCoins(Math.round(calcParlayPayout(stakeNum, legs)))} coins`;
+    payoutDisplay = `${fmtOdds(combinedAmerican)} → ${fmtCoins(Math.round(calcParlayPayout(stakeNum, legs)))}`;
   } else if (slipType === "round_robin" && legs.length >= 3 && stakeNum > 0 && rrSizes.size > 0) {
     const sortedSizes = [...rrSizes].sort((a, b) => a - b);
     const totalCombos = sortedSizes.reduce((sum, s) => sum + numCombos(legs.length, s), 0);
@@ -1441,7 +1441,7 @@ function BetSlipTab({
               style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, background: "#f8fafc", color: FG, fontWeight: 600 }}
             >
               {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name} — {fmtCoins(a.balance)} coins</option>
+                <option key={a.id} value={a.id}>{a.name} — {fmtCoins(a.balance)}</option>
               ))}
             </select>
           </div>
@@ -1449,7 +1449,7 @@ function BetSlipTab({
 
         {/* Stake */}
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>Stake (coins)</div>
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>Stake ($)</div>
           <input
             type="number"
             value={stake}
@@ -1459,7 +1459,7 @@ function BetSlipTab({
             style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 15, background: "#f8fafc", color: FG, fontWeight: 700, boxSizing: "border-box" }}
           />
           {selectedAccount && stakeNum > selectedAccount.balance && (
-            <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>Insufficient balance ({fmtCoins(selectedAccount.balance)} coins)</div>
+            <div style={{ fontSize: 11, color: RED, marginTop: 4 }}>Insufficient balance ({fmtCoins(selectedAccount.balance)})</div>
           )}
         </div>
 
@@ -2547,7 +2547,7 @@ function AccountsTab({
                 </div>
 
                 <div style={{ fontSize: 28, fontWeight: 800, color: FG, marginBottom: 6 }}>
-                  {fmtCoins(acct.balance)} <span style={{ fontSize: 13, fontWeight: 600, color: MUTED }}>coins</span>
+                  {fmtCoins(acct.balance)}
                 </div>
 
                 <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
