@@ -12306,11 +12306,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Settle this slip (could be a child parlay inside an RR)
         await db.query(
           `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
-          [slipStatus, finalPayout || null, leg.slip_id]
+          [slipStatus, slipStatus === "lost" ? 0 : (finalPayout || null), leg.slip_id]
         );
 
         // Credit account if won/push/void
-        if (finalPayout > 0) {
+        if (finalPayout > 0 && slipStatus !== "lost") {
           await db.query(
             `UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`,
             [finalPayout, leg.account_id]
@@ -12391,9 +12391,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
         await db.query(
           `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
-          [slipStatus, finalPayout || null, slip.id]
+          [slipStatus, slipStatus === "lost" ? 0 : (finalPayout || null), slip.id]
         );
-        if (finalPayout > 0) {
+        if (finalPayout > 0 && slipStatus !== "lost") {
           await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [finalPayout, slip.account_id]);
           await db.query(
             `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
@@ -12435,6 +12435,36 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     await gradeBookLegs();
     await forceSettleStalledSlips();
   }, 5 * 60 * 1000);
+
+  // One-time fix: zero out payout_received on lost slips that were incorrectly credited
+  (async () => {
+    try {
+      // Find lost slips that have a positive payout stored
+      const badLost = await db.query(
+        `SELECT s.id, s.account_id, s.payout_received
+         FROM book_slips s
+         WHERE s.status = 'lost' AND s.payout_received > 0`
+      );
+      for (const slip of badLost.rows) {
+        const wrongPayout = parseFloat(slip.payout_received);
+        // Zero out the stored payout
+        await db.query(`UPDATE book_slips SET payout_received = 0 WHERE id=$1`, [slip.id]);
+        // Check if a "win" transaction was posted for this slip and reverse it
+        const badTx = await db.query(
+          `SELECT id, amount FROM book_transactions WHERE slip_id=$1 AND tx_type='win'`, [slip.id]
+        );
+        for (const tx of badTx.rows) {
+          const amt = parseFloat(tx.amount);
+          await db.query(`UPDATE book_accounts SET balance = GREATEST(0, balance - $1) WHERE id=$2`, [amt, slip.account_id]);
+          await db.query(`DELETE FROM book_transactions WHERE id=$1`, [tx.id]);
+          console.log(`[Book] Reversed incorrect win credit of ${amt} for lost slip #${slip.id}`);
+        }
+      }
+      if (badLost.rows.length > 0) console.log(`[Book] Fixed ${badLost.rows.length} incorrectly credited lost slips`);
+    } catch (e: any) {
+      console.warn("[Book] Lost-slip credit fix error:", e.message);
+    }
+  })();
 
   // ─ POST /api/book/fix-legs ── owner tool to correct wrong team/stat on pending legs ──
   app.post("/api/book/fix-legs", requireOwner, async (req: Request, res: Response) => {

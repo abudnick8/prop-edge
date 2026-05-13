@@ -2235,9 +2235,13 @@ function MyBetsTab({
                     <div>
                       <div style={{ fontSize: 12, color: MUTED }}>
                         Stake: <span style={{ fontWeight: 700, color: FG }}>{fmtCoins(slip.stake)}</span> →{" "}
-                        {slip.status !== "open" && slip.payout_received != null
-                          ? <span style={{ fontWeight: 700, color: slip.payout_received > 0 ? "#16a34a" : RED }}>{fmtCoins(slip.payout_received)}</span>
-                          : <span style={{ fontWeight: 700, color: GOLD }}>{fmtCoins(slip.potential_payout)}</span>
+                        {slip.status === "open"
+                          ? <span style={{ fontWeight: 700, color: GOLD }}>{fmtCoins(slip.potential_payout)}</span>
+                          : slip.status === "lost"
+                            ? <span style={{ fontWeight: 700, color: RED }}>$0.00</span>
+                            : slip.payout_received != null
+                              ? <span style={{ fontWeight: 700, color: slip.payout_received > 0 ? "#16a34a" : RED }}>{fmtCoins(slip.payout_received)}</span>
+                              : <span style={{ fontWeight: 700, color: GOLD }}>{fmtCoins(slip.potential_payout)}</span>
                         }
                       </div>
                       <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
@@ -2362,7 +2366,7 @@ function MyBetsTab({
                               <span style={{ background: csc.bg, color: csc.text, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 8 }}>
                                 {combo.child_status?.toUpperCase()}
                               </span>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: GOLD }}>→ {fmtCoins(combo.child_payout)}</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: comboLost ? RED : comboWon ? "#16a34a" : GOLD }}>→ {comboLost ? "$0.00" : fmtCoins(combo.child_payout)}</span>
                             </div>
                           </div>
                           {/* Legs inside this combo */}
