@@ -13220,9 +13220,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Bankroll curve (running balance)
+      // tx_types that reduce balance: 'stake', 'withdrawal'
+      // tx_types that increase balance: 'deposit', 'win', 'push', 'void_refund'
+      const DEBIT_TYPES = new Set(["stake", "withdrawal"]);
       let running = 0;
       const curve = bankroll.rows.map((t: any) => {
-        running += parseFloat(t.amount);
+        const amt = parseFloat(t.amount);
+        running += DEBIT_TYPES.has(t.tx_type) ? -amt : amt;
         return { ts: t.created_at, balance: parseFloat(running.toFixed(2)), type: t.tx_type };
       });
 
