@@ -4212,14 +4212,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       const todayStr = toDateStr(ctNow);
 
-      // ── 1. Backfill: grade ALL past days that still have pending picks ─────
+      // ── 1. Backfill: grade ALL past days that have any non-win picks ────────
+      // Must also re-check "loss" picks: they may have been graded mid-game before
+      // the player got a hit. runBtsGrader skips confirmed wins — safe to retry all.
+      // Only re-check loss grades within the last 3 days (games don't stay live longer).
+      // Older pending picks are also re-checked (shouldn't exist but handles edge cases).
+      const threeDaysAgo = toDateStr(new Date(ctNow.getTime() - 3 * 24 * 60 * 60 * 1000));
       for (const [dateStr, entries] of Object.entries(btsPicksCache)) {
         if (dateStr >= todayStr) continue; // skip today — handled below
-        const stillPending = (entries as BtsPickEntry[]).filter(
-          (e: BtsPickEntry) => !e.result || e.result === "pending"
+        const needsCheck = (entries as BtsPickEntry[]).filter(
+          (e: BtsPickEntry) => {
+            if (!e.result || e.result === "pending") return true; // always retry pending
+            if (e.result === "loss" && dateStr >= threeDaysAgo) return true; // retry recent losses
+            return false; // confirmed win, or old loss — skip
+          }
         );
-        if (stillPending.length === 0) continue;
-        console.log(`[BTS Backfill] Grading ${stillPending.length} pending picks from ${dateStr}`);
+        if (needsCheck.length === 0) continue;
+        console.log(`[BTS Backfill] Re-checking ${needsCheck.length} non-win picks from ${dateStr}`);
         await runBtsGrader(dateStr);
       }
 
