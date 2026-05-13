@@ -1436,14 +1436,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // POST /api/auth/signup
   app.post("/api/auth/signup", async (req: Request, res: Response) => {
     try {
-      const { email, pin, tier = "basic" } = req.body ?? {};
+      const { email, pin } = req.body ?? {};
+      // All new accounts get full access — no tier selection needed
+      const tier = "pro";
 
       if (!isValidEmail(email))
         return res.status(400).json({ error: "Invalid email address" });
       if (!isValidPIN(pin))
         return res.status(400).json({ error: "PIN must be exactly 4 alphanumeric characters" });
-      if (tier !== "free" && tier !== "basic" && tier !== "pro")
-        return res.status(400).json({ error: "Invalid tier" });
 
       const pinHash = await hashPIN(pin);
 
@@ -1466,8 +1466,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         // Reactivate cancelled accounts instead of rejecting
         if (existing.sub_status === "cancelled") {
           await db.query(
-            `UPDATE users SET tier=$1, sub_status='active', updated_at=NOW() WHERE email=LOWER($2)`,
-            [tier, email]
+            `UPDATE users SET tier='pro', sub_status='active', updated_at=NOW() WHERE email=LOWER($1)`,
+            [email]
           );
           return res.json({ success: true });
         }

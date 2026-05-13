@@ -87,9 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isLoggedIn = !!user;
   const isOwner    = user?.isOwner ?? false;
-  const isPro      = isOwner || user?.tier === "pro";
-  const isBasic    = isOwner || user?.tier === "basic" || user?.tier === "pro";
-  // isFree is true for any logged-in user (free tier or above)
+  // All logged-in users have full access — no tier gating
+  const isPro      = !!user;
+  const isBasic    = !!user;
   const isFree     = !!user;
 
   return (

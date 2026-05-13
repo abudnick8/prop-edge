@@ -26,7 +26,7 @@ const OPTIONAL_SPORTS = [
 
 export default function Settings() {
   const { toast } = useToast();
-  const { user, isPro, isBasic, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [prefOpen, setPrefOpen] = useState(false);
   const { data: settings, isLoading } = useQuery<SettingsType>({
     queryKey: ["/api/settings"],
@@ -130,35 +130,15 @@ export default function Settings() {
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <Crown size={15} className="text-primary" />
-          <p className="font-bold text-sm text-foreground">Your Plan</p>
+          <p className="font-bold text-sm text-foreground">Account</p>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <span
-              className="text-xs font-black px-2.5 py-1 rounded-full"
-              style={{
-                background: user?.tier === "pro" ? "rgba(162,59,50,0.1)" : user?.tier === "basic" ? "rgba(37,99,235,0.1)" : "rgba(61,75,88,0.1)",
-                color: user?.tier === "pro" ? "#A23B32" : user?.tier === "basic" ? "#2563eb" : "#3D4B58",
-              }}
-            >
-              {user?.tier === "pro" ? "Pro — $15/mo" : user?.tier === "basic" ? "Basic — $5/mo" : "Free"}
+            <span className="text-xs font-black px-2.5 py-1 rounded-full"
+              style={{ background: "rgba(162,59,50,0.1)", color: "#A23B32" }}>
+              {user?.isOwner ? "Owner" : "Member"}
             </span>
-            {!isPro && (
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                {isBasic ? "Upgrade to Pro for BTS, ML Intel, Top Plays, and more." : "Upgrade to Basic or Pro to unlock picks."}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 items-end">
-            {!isPro && (
-              <Link href="/pricing">
-                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95"
-                  style={{ background: "#A23B32", color: "#fff" }}>
-                  <ArrowUpRight size={12} /> Upgrade
-                </button>
-              </Link>
-            )}
-
+            <p className="text-[11px] text-muted-foreground mt-1.5">Full access to all features.</p>
           </div>
         </div>
       </div>

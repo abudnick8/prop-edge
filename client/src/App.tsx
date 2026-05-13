@@ -25,7 +25,6 @@ import MLInsights from "@/pages/MLInsights";
 import NotFound from "@/pages/not-found";
 import BTS from "@/pages/BTS";
 import Book from "@/pages/Book";
-import Pricing from "@/pages/Pricing";
 import AppInsights from "@/pages/AppInsights";
 import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
@@ -200,33 +199,17 @@ function ScrollToTop() {
   return null;
 }
 
-// ── FeatureGuard — proper component, no hooks-in-callbacks issue ──────────────
+// ── FeatureGuard — feature flag / kill switch only (no tier gating) ──────────
+// All features accessible to any logged-in user.
 function FeatureGuard({
   children,
-  require: req,
   flagKey,
 }: {
   children: React.ReactNode;
-  require: "basic" | "pro" | "free";
+  require?: string; // kept for call-site compat, ignored
   flagKey?: string;
 }) {
-  const { isPro, isBasic, isOwner } = useAuth();
   const flags = useFeatureFlags();
-  const [, navigate] = useHashLocation();
-
-  // Owner bypasses everything
-  if (isOwner) return <>{children}</>;
-
-  // Tier check
-  const tierOk =
-    req === "free" ? true :
-    req === "basic" ? (isPro || isBasic) :
-    isPro;
-
-  if (!tierOk) {
-    setTimeout(() => navigate("/pricing"), 0);
-    return null;
-  }
 
   // Feature flag / kill switch check (only once flags have loaded)
   if (flagKey && flags.length > 0) {
@@ -274,24 +257,24 @@ function OwnerGuard({ children }: { children: React.ReactNode }) {
 
 // ── Route components — defined as named components, NOT inline arrows ─────────
 // This ensures hooks inside FeatureGuard are always called at component level
-function RouteScores()      { return <FeatureGuard require="free"  flagKey="live_scores"><LiveScores /></FeatureGuard>; }
-function RouteFantasy()     { return <FeatureGuard require="free"  flagKey="fantasy"><Fantasy /></FeatureGuard>; }
-function RouteDashboard()   { return <FeatureGuard require="basic" flagKey="dashboard"><Dashboard /></FeatureGuard>; }
-function RouteLinemate()    { return <FeatureGuard require="basic" flagKey="props_hub"><LinemateProps /></FeatureGuard>; }
-function RouteLotto()       { return <FeatureGuard require="basic" flagKey="lotto"><Lotto /></FeatureGuard>; }
-function RouteAllBets()     { return <FeatureGuard require="pro"   flagKey="all_picks"><AllBets /></FeatureGuard>; }
-function RouteBracket()     { return <FeatureGuard require="pro"   flagKey="bracket"><Bracket /></FeatureGuard>; }
-function RouteLineMove()    { return <FeatureGuard require="pro"   flagKey="line_movement"><LineMovement /></FeatureGuard>; }
-function RouteMarkets()     { return <FeatureGuard require="pro"   flagKey="markets"><PredictionMarkets /></FeatureGuard>; }
-function RouteTraders()     { return <FeatureGuard require="pro"   flagKey="markets"><TopTraders /></FeatureGuard>; }
-function RouteConviction()  { return <FeatureGuard require="pro"   flagKey="top_plays"><HighConviction /></FeatureGuard>; }
-function RouteMLInsights()  { return <FeatureGuard require="pro"   flagKey="ml_intel"><MLInsights /></FeatureGuard>; }
-function RouteBTS()         { return <FeatureGuard require="pro"   flagKey="bts"><BTS /></FeatureGuard>; }
+function RouteScores()      { return <FeatureGuard flagKey="live_scores"><LiveScores /></FeatureGuard>; }
+function RouteFantasy()     { return <FeatureGuard flagKey="fantasy"><Fantasy /></FeatureGuard>; }
+function RouteDashboard()   { return <FeatureGuard flagKey="dashboard"><Dashboard /></FeatureGuard>; }
+function RouteLinemate()    { return <FeatureGuard flagKey="props_hub"><LinemateProps /></FeatureGuard>; }
+function RouteLotto()       { return <FeatureGuard flagKey="lotto"><Lotto /></FeatureGuard>; }
+function RouteAllBets()     { return <FeatureGuard flagKey="all_picks"><AllBets /></FeatureGuard>; }
+function RouteBracket()     { return <FeatureGuard flagKey="bracket"><Bracket /></FeatureGuard>; }
+function RouteLineMove()    { return <FeatureGuard flagKey="line_movement"><LineMovement /></FeatureGuard>; }
+function RouteMarkets()     { return <FeatureGuard flagKey="markets"><PredictionMarkets /></FeatureGuard>; }
+function RouteTraders()     { return <FeatureGuard flagKey="markets"><TopTraders /></FeatureGuard>; }
+function RouteConviction()  { return <FeatureGuard flagKey="top_plays"><HighConviction /></FeatureGuard>; }
+function RouteMLInsights()  { return <FeatureGuard flagKey="ml_intel"><MLInsights /></FeatureGuard>; }
+function RouteBTS()         { return <FeatureGuard flagKey="bts"><BTS /></FeatureGuard>; }
 function RouteBook()        { return <OwnerGuard><Book /></OwnerGuard>; }
 function RouteInsights()    { return <OwnerGuard><AppInsights /></OwnerGuard>; }
-function RoutePickDetail(p: any)    { return <FeatureGuard require="basic" flagKey="dashboard"><PickDetail {...p} /></FeatureGuard>; }
-function RouteLottoDetail(p: any)   { return <FeatureGuard require="basic" flagKey="lotto"><PickDetail {...p} /></FeatureGuard>; }
-function RouteBetDetail(p: any)     { return <FeatureGuard require="pro"   flagKey="all_picks"><BetDetail {...p} /></FeatureGuard>; }
+function RoutePickDetail(p: any)    { return <FeatureGuard flagKey="dashboard"><PickDetail {...p} /></FeatureGuard>; }
+function RouteLottoDetail(p: any)   { return <FeatureGuard flagKey="lotto"><PickDetail {...p} /></FeatureGuard>; }
+function RouteBetDetail(p: any)     { return <FeatureGuard flagKey="all_picks"><BetDetail {...p} /></FeatureGuard>; }
 
 function AppInner() {
   const { isConnected } = useWebSocket();
@@ -337,7 +320,6 @@ function AppInner() {
               <Route path="/scores"        component={RouteScores} />
               <Route path="/fantasy"       component={RouteFantasy} />
               <Route path="/settings"      component={Settings} />
-              <Route path="/pricing"       component={Pricing} />
               <Route path="/ask"           component={Ask} />
               <Route path="/"             component={RouteDashboard} />
               <Route path="/linemate"      component={RouteLinemate} />

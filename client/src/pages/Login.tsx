@@ -13,7 +13,6 @@ export default function Login() {
   const [devCode,     setDevCode]     = useState("");
   const [trialCode,   setTrialCode]   = useState("");
   const [trialEmail,  setTrialEmail]  = useState("");
-  const [tier,        setTier]        = useState<"free" | "basic" | "pro">("basic");
   const [showPin,     setShowPin]     = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
@@ -114,7 +113,7 @@ export default function Login() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, pin: pinValue, tier: tier === "free" ? "free" : tier }),
+        body: JSON.stringify({ email, pin: pinValue }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Signup failed"); return; }
@@ -368,35 +367,7 @@ export default function Login() {
                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Confirm PIN</label>
                 <PINBoxes arr={confirmPin} setArr={setConfirmPin} refs={confirmRefs} />
               </div>
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Choose Plan</label>
-                <div className="space-y-2">
-                  {([
-                    { value: "free",  label: "Free",  price: "Free",    color: "#3D4B58", features: ["Live Scores", "Fantasy Tab"] },
-                    { value: "basic", label: "Basic", price: "$5 / mo", color: "#2563eb", features: ["Dashboard", "Props Hub", "Lotto"] },
-                    { value: "pro",   label: "Pro",   price: "$15 / mo",color: "#A23B32", features: ["BTS", "Top Plays", "All Picks", "ML Intel"] },
-                  ] as const).map(opt => {
-                    const active = tier === opt.value;
-                    return (
-                      <button key={opt.value} type="button" onClick={() => setTier(opt.value)}
-                        className="w-full text-left px-3 py-2.5 rounded-xl border-2 transition-all"
-                        style={{ borderColor: active ? opt.color : "rgba(19,35,58,0.15)", background: active ? `${opt.color}08` : "transparent" }}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                            style={{ background: active ? opt.color : "rgba(19,35,58,0.08)", color: active ? "#fff" : "#3D4B58" }}>{opt.label}</span>
-                          <span className="text-sm font-black" style={{ color: active ? opt.color : "#131A24" }}>{opt.price}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {opt.features.map(f => (
-                            <span key={f} className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold"
-                              style={{ background: "rgba(19,35,58,0.06)", color: "#3D4B58" }}>{f}</span>
-                          ))}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+
               <button type="submit" disabled={loading || pinValue.length < 4}
                 className="w-full py-3 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 style={{ background: "#13233A", color: "#F6F1E7" }}>

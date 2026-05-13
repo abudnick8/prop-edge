@@ -3,28 +3,24 @@ import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
 import {
   LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, Lock, LogOut, Crown, BookOpen,
+  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, LogOut, BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-// tier: undefined = free (always accessible when logged in)
-//       'basic' = basic + pro + owner
-//       'pro'   = pro + owner only
 const navItems = [
-  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard, tier: "basic"   },
-  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity,        tier: undefined },
-  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp,      tier: "pro"     },
-  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2,       tier: "pro"     },
-  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy,          tier: "pro"     },
-  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap,             tier: "pro"     },
-  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target,          tier: "pro"     },
-  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart,       tier: "basic"   },
-  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle,         tier: undefined },
-  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket,          tier: "basic"   },
-  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy,          tier: "pro"     },
-  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain,           tier: "pro"     },
-  { href: "/pricing",     label: "Upgrade",        mobileLabel: "Upgrade",  icon: Crown,           tier: undefined },
-  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings,        tier: undefined },
+  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard },
+  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity        },
+  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp      },
+  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2       },
+  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy          },
+  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap             },
+  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target          },
+  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart       },
+  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle         },
+  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket          },
+  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy          },
+  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain           },
+  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings        },
 ];
 
 // Owner-only nav items — appended dynamically when isOwner=true
@@ -104,15 +100,7 @@ export function CiqLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
 // ── Desktop sidebar ─────────────────────────────────────────────────────────
 export function DesktopSidebar() {
   const [location] = useHashLocation();
-  const { user, isOwner, isPro, isBasic, logout } = useAuth();
-
-  function canAccess(tier?: string) {
-    if (isOwner) return true;
-    if (!tier)   return true;               // free tier — always accessible when logged in
-    if (tier === "basic") return isBasic;   // basic or pro
-    if (tier === "pro")   return isPro;     // pro only
-    return false;
-  }
+  const { user, isOwner, logout } = useAuth();
 
   return (
     <aside
@@ -129,13 +117,13 @@ export function DesktopSidebar() {
         <div className="px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
-              style={{ background: isOwner ? "#A23B32" : isPro ? "#2563eb" : "#3D4B58", color: "#F0EAD9" }}>
+              style={{ background: isOwner ? "#A23B32" : "#3D4B58", color: "#F0EAD9" }}>
               {isOwner ? "👑" : user.email[0].toUpperCase()}
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold truncate" style={{ color: "#F0EAD9" }}>{user.email}</p>
-              <p className="text-[9px]" style={{ color: isOwner ? "#A23B32" : isPro ? "#60a5fa" : "rgba(216,204,184,0.5)" }}>
-                {isOwner ? "Owner" : isPro ? "Pro" : isBasic ? "Basic" : "Inactive"}
+              <p className="text-[9px]" style={{ color: isOwner ? "#A23B32" : "rgba(216,204,184,0.5)" }}>
+                {isOwner ? "Owner" : "Member"}
               </p>
             </div>
           </div>
@@ -144,26 +132,9 @@ export function DesktopSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-        {[...navItems, ...(isOwner ? ownerNavItems : [])].map(({ href, label, icon: Icon, tier }) => {
-          const accessible = canAccess(tier);
-          const isActive   = location === href || (href !== "/" && location.startsWith(href));
-          const badge      = NAV_BADGES[href];
-
-          if (!accessible) {
-            return (
-              <div
-                key={href}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm cursor-default"
-                style={{ color: "rgba(216,204,184,0.3)", borderLeft: "2px solid transparent" }}
-                title={tier === "pro" ? "Pro — $15/mo · Tap Upgrade to subscribe" : "Basic — $5/mo · Tap Upgrade to subscribe"}
-              >
-                <Icon size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>{label}</span>
-                <Lock size={11} style={{ flexShrink: 0, opacity: 0.5 }} />
-              </div>
-            );
-          }
-
+        {[...navItems, ...(isOwner ? ownerNavItems : [])].map(({ href, label, icon: Icon }) => {
+          const isActive = location === href || (href !== "/" && location.startsWith(href));
+          const badge    = NAV_BADGES[href];
           return (
             <Link
               key={href} href={href}
@@ -223,15 +194,7 @@ export function DesktopSidebar() {
 // ── Mobile bottom tab bar ─────────────────────────────────────────────────
 export function MobileTabBar() {
   const [location] = useHashLocation();
-  const { isOwner, isPro, isBasic } = useAuth();
-
-  function canAccess(tier?: string) {
-    if (isOwner) return true;
-    if (!tier)   return true;               // free tier — always accessible when logged in
-    if (tier === "basic") return isBasic;   // basic or pro
-    if (tier === "pro")   return isPro;     // pro only
-    return false;
-  }
+  const { isOwner } = useAuth();
 
   return (
     <nav
@@ -239,25 +202,22 @@ export function MobileTabBar() {
       style={{ background: "#13233A", borderTop: "1px solid rgba(255,255,255,0.08)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="flex items-stretch overflow-x-auto scrollbar-none">
-        {[...navItems, ...(isOwner ? ownerNavItems : [])].map(({ href, label, mobileLabel, icon: Icon, tier }) => {
-          const isActive   = location === href || (href !== "/" && location.startsWith(href));
-          const accessible = canAccess(tier);
+        {[...navItems, ...(isOwner ? ownerNavItems : [])].map(({ href, label, mobileLabel, icon: Icon }) => {
+          const isActive = location === href || (href !== "/" && location.startsWith(href));
           return (
             <Link
               key={href}
-              href={accessible ? href : location}
+              href={href}
               className="relative flex-shrink-0 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors"
-              style={{ minWidth: 56, maxWidth: 64, color: !accessible ? "rgba(216,204,184,0.2)" : isActive ? "#F0EAD9" : "rgba(216,204,184,0.45)" }}
+              style={{ minWidth: 56, maxWidth: 64, color: isActive ? "#F0EAD9" : "rgba(216,204,184,0.45)" }}
               data-testid={`mobile-nav-${label.toLowerCase().replace(" ", "-")}`}
             >
-              {isActive && accessible && (
+              {isActive && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2"
                   style={{ width: 20, height: 2, borderRadius: 0, background: "#A23B32" }} />
               )}
-              {accessible
-                ? <Icon size={17} strokeWidth={isActive ? 2.2 : 1.6} />
-                : <Lock size={15} strokeWidth={1.5} />}
-              <span style={{ fontSize: 9, fontWeight: isActive && accessible ? 600 : 400, lineHeight: 1, whiteSpace: "nowrap" }}>
+              <Icon size={17} strokeWidth={isActive ? 2.2 : 1.6} />
+              <span style={{ fontSize: 9, fontWeight: isActive ? 600 : 400, lineHeight: 1, whiteSpace: "nowrap" }}>
                 {mobileLabel}
               </span>
             </Link>
