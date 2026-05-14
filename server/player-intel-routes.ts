@@ -497,7 +497,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
       const sportUp = sport.toUpperCase() as Sport;
       if (!ESPN_SPORT_MAP[sportUp]) return res.status(400).json({ error: `Unsupported sport: ${sport}` });
 
-      const cacheKey = `profile:${sportUp}:${espnId}`;
+      const cacheKey = `profile_v3:${sportUp}:${espnId}`;
       const cached = getCache(profileCache, cacheKey, ONE_HOUR_MS);
       if (cached) return res.json(cached);
 
