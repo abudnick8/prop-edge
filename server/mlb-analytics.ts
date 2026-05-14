@@ -383,6 +383,54 @@ export function getSteamerPitcher(mlbamId: string | number): SteamerPitcherRow |
   return _steamerPitchers.get(String(mlbamId))?.data ?? null;
 }
 
+/**
+ * Look up MLBAM ID by player name from the loaded Steamer caches (batters + pitchers).
+ * Falls back to MLB Stats API people search if not found in cache.
+ * Returns null if not found anywhere.
+ */
+export async function resolveMlbamId(playerName: string): Promise<string | null> {
+  const nameLower = playerName.toLowerCase().trim();
+  const nameParts = nameLower.split(" ");
+
+  // Search batter cache first
+  for (const [id, entry] of _steamerBatters.entries()) {
+    const n = (entry.data.name ?? "").toLowerCase();
+    if (n === nameLower || (nameParts.length >= 2 && n.includes(nameParts[0]) && n.includes(nameParts[nameParts.length - 1]))) {
+      return id;
+    }
+  }
+  // Search pitcher cache
+  for (const [id, entry] of _steamerPitchers.entries()) {
+    const n = (entry.data.name ?? "").toLowerCase();
+    if (n === nameLower || (nameParts.length >= 2 && n.includes(nameParts[0]) && n.includes(nameParts[nameParts.length - 1]))) {
+      return id;
+    }
+  }
+
+  // Fallback: MLB Stats API people search
+  try {
+    const encoded = encodeURIComponent(playerName);
+    const r = await import("axios").then(m => m.default.get(
+      `https://statsapi.mlb.com/api/v1/people/search?names=${encoded}&sportIds=1&fields=people,id,fullName`,
+      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+    ));
+    const people: any[] = r.data?.people ?? [];
+    if (people.length > 0) {
+      // Pick best match
+      for (const p of people) {
+        const pn = (p.fullName ?? "").toLowerCase();
+        if (pn === nameLower || (nameParts.length >= 2 && pn.includes(nameParts[0]) && pn.includes(nameParts[nameParts.length - 1]))) {
+          return String(p.id);
+        }
+      }
+      // Take first
+      return String(people[0].id);
+    }
+  } catch { /* MLB Stats API unavailable */ }
+
+  return null;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // 2. Park Factors (Baseball Savant leaderboard — HR/hit/xBA-based)
 // ═══════════════════════════════════════════════════════════════════════

@@ -29,6 +29,7 @@ interface PlayerData {
   position: string;
   sport: "MLB" | "NBA" | "NFL" | "NHL";
   headshotUrl?: string;
+  headshot?: string;
   season?: Record<string, string | number>;
   gamelog?: GameLogEntry[];
   steamer?: Record<string, string | number>;
@@ -36,6 +37,7 @@ interface PlayerData {
   splits?: { home: Record<string, string | number>; away: Record<string, string | number> };
   avg30?: number;
   avg14?: number;
+  mlbamId?: string | null;
 }
 
 interface GameLogEntry {
@@ -765,10 +767,11 @@ function MatchupsTab({ player }: { player: PlayerData }) {
     enabled: !!searchUrl,
   });
 
-  // BvP data (MLB)
+  // BvP data (MLB) — use bvp-name endpoint which resolves names → MLBAM IDs server-side
+  // This avoids the ESPN ID vs MLBAM ID mismatch entirely
   const bvpUrl =
     isMlb && selectedOpponent
-      ? `/api/intel/bvp?batterId=${player.espnId}&pitcherId=${selectedOpponent.espnId}`
+      ? `/api/intel/bvp-name?batter=${encodeURIComponent(player.name)}&pitcher=${encodeURIComponent(selectedOpponent.name)}`
       : null;
   const {
     data: bvpData,
@@ -776,15 +779,15 @@ function MatchupsTab({ player }: { player: PlayerData }) {
     error: bvpError,
     refetch: refetchBvp,
   } = useQuery<BvPData>({
-    queryKey: ["bvp", player.espnId, selectedOpponent?.espnId],
+    queryKey: ["bvp", player.name, selectedOpponent?.name],
     queryFn: () => fetch(bvpUrl!).then((r) => r.json()),
     enabled: !!bvpUrl,
   });
 
-  // vs-team (non-MLB)
+  // vs-team (non-MLB) — path params: /vs-team/:sport/:playerId/:teamAbbr
   const vsTeamUrl =
     !isMlb && selectedOpponent
-      ? `/api/intel/vs-team?playerId=${player.espnId}&sport=${player.sport}&teamAbbr=${selectedOpponent.teamAbbr}`
+      ? `/api/intel/vs-team/${player.sport}/${player.espnId}/${selectedOpponent.teamAbbr ?? selectedOpponent.team ?? "UNK"}`
       : null;
   const {
     data: vsTeamData,
@@ -1137,8 +1140,9 @@ function ParkTab({ player }: { player: PlayerData }) {
   const [selectedPark, setSelectedPark] = useState("");
   const isMlb = player.sport === "MLB";
 
-  const parkUrl = isMlb && selectedPark
-    ? `/api/intel/park-splits?playerId=${player.espnId}&park=${selectedPark}`
+  // Park splits needs MLBAM ID (player.mlbamId) — falls back to auto-load on first render
+  const parkUrl = isMlb && player.mlbamId
+    ? `/api/intel/park-splits/${player.mlbamId}`
     : null;
   const {
     data: parkData,
