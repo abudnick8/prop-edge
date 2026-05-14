@@ -29,6 +29,7 @@ import {
   getPitcherAnalytics,
   computeAnalyticsBoost,
 } from "./mlb-analytics";
+import { registerPlayerIntelRoutes } from "./player-intel-routes";
 // No payment integration — accounts are free to create, tier managed by owner
 
 // ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
@@ -2163,6 +2164,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // Initialise MLB analytics (FanGraphs Steamer + park factors) at boot
   initMlbAnalytics().catch((e: any) => console.warn("[MLB-Analytics] Init error:", e.message));
+
+  // Player Intel API routes (/api/intel/*)
+  registerPlayerIntelRoutes(app);
 
   // ─── Bets ─────────────────────────────────────────────────────────────────
   app.get("/api/bets", async (req, res) => {

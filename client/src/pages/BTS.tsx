@@ -2,9 +2,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useHashLocation } from "wouter/use-hash-location";
 import ShareCard from "@/components/ShareCard";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -394,6 +395,20 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
         >
           {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           {expanded ? "Less" : "Full breakdown"}
+        </button>
+        <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
+        <button
+          onClick={() => {
+            // Navigate to Player Intel pre-loaded with this player's name
+            const name = encodeURIComponent(pick.name ?? "");
+            window.location.hash = `/intel?q=${name}&sport=MLB`;
+          }}
+          className="flex items-center justify-center gap-1.5 px-4 py-2 text-[11px] font-semibold"
+          style={{ background: "rgba(19,35,58,0.02)", color: "#60a5fa" }}
+          title="Open in Player Intel"
+        >
+          <Search size={12} />
+          Intel
         </button>
         <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
         <button

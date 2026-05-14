@@ -3,7 +3,7 @@ import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
 import {
   LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, LogOut, BookOpen,
+  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, LogOut, BookOpen, Search,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp      },
   { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2       },
   { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy          },
+  { href: "/intel",       label: "Player Intel",   mobileLabel: "Intel",    icon: Search          },
   { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap             },
   { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target          },
   { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart       },

@@ -26,6 +26,7 @@ import NotFound from "@/pages/not-found";
 import BTS from "@/pages/BTS";
 import Book from "@/pages/Book";
 import AppInsights from "@/pages/AppInsights";
+import PlayerIntel from "@/pages/PlayerIntel";
 import { DesktopSidebar, MobileTabBar, CiqLogo } from "@/components/Sidebar";
 import NotificationCenter from "@/components/NotificationCenter";
 import AskDrawer from "@/components/AskDrawer";
@@ -270,6 +271,7 @@ function RouteTraders()     { return <FeatureGuard flagKey="markets"><TopTraders
 function RouteConviction()  { return <FeatureGuard flagKey="top_plays"><HighConviction /></FeatureGuard>; }
 function RouteMLInsights()  { return <FeatureGuard flagKey="ml_intel"><MLInsights /></FeatureGuard>; }
 function RouteBTS()         { return <FeatureGuard flagKey="bts"><BTS /></FeatureGuard>; }
+function RouteIntel()       { return <PlayerIntel />; }
 function RouteBook()        { return <OwnerGuard><Book /></OwnerGuard>; }
 function RouteInsights()    { return <OwnerGuard><AppInsights /></OwnerGuard>; }
 function RoutePickDetail(p: any)    { return <FeatureGuard flagKey="dashboard"><PickDetail {...p} /></FeatureGuard>; }
@@ -336,6 +338,7 @@ function AppInner() {
               <Route path="/conviction"    component={RouteConviction} />
               <Route path="/ml-insights"   component={RouteMLInsights} />
               <Route path="/bts"           component={RouteBTS} />
+              <Route path="/intel"         component={RouteIntel} />
               <Route path="/book"          component={RouteBook} />
               <Route path="/insights"      component={RouteInsights} />
               <Route component={NotFound} />
