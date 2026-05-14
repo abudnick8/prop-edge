@@ -501,22 +501,114 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Scoring Model</p>
             <div className="space-y-1">
               {[
-                { label: "Recent Form", w: 0.20 },
-                { label: "Season Consistency", w: 0.20 },
-                { label: "Statcast Quality", w: 0.20 },
-                { label: "Matchup & External", w: 0.20 },
-                { label: "Market Confluence", w: 0.20 },
+                { label: "Recent Form (13%)", w: 0.13 },
+                { label: "Contact Quality (19%)", w: 0.19 },
+                { label: "Hard Contact (10%)", w: 0.10 },
+                { label: "Pitcher Matchup (24%)", w: 0.24 },
+                { label: "Opportunity (20%)", w: 0.20 },
+                { label: "BvP History (5%)", w: 0.05 },
+                { label: "Stability (9%)", w: 0.09 },
               ].map(c => (
                 <div key={c.label} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-36 text-muted-foreground">{c.label}</span>
-                  <span className="text-muted-foreground">{(c.w * 100).toFixed(0)}%</span>
+                  <span className="flex-1 text-muted-foreground">{c.label}</span>
+                  <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: Math.round(c.w * 120), background: "rgba(212,168,67,0.50)" }} />
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5">
-              Raw: {(pick.rawScore * 100).toFixed(1)} → Prob = min(75%, raw × 133.3%)
-            </p>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <p className="text-[10px] text-muted-foreground">
+                Base score: {(pick.rawScore * 100).toFixed(1)} → Logistic → {pick.hitProbability}%
+              </p>
+              {pick.analyticsBoost != null && pick.analyticsBoost !== 1 && (
+                <p className="text-[10px] font-bold" style={{ color: pick.analyticsBoost > 1 ? "#22c55e" : "#f87171" }}>
+                  Analytics: {pick.analyticsBoost > 1 ? "+" : ""}{((pick.analyticsBoost - 1) * 100).toFixed(1)}%
+                </p>
+              )}
+            </div>
           </div>
+
+          {/* MLB Analytics Layer */}
+          {(pick.analyticsNote || pick.steamerProjection || pick.projectedGameStats) && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Analytics Context</p>
+
+              {/* Analytics note */}
+              {pick.analyticsNote && (
+                <p className="text-[11px] font-semibold mb-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.05)", color: "var(--foreground)" }}>
+                  {pick.analyticsNote}
+                </p>
+              )}
+
+              {/* Steamer projections */}
+              {pick.steamerProjection && (
+                <div className="mb-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Season Projection (Steamer)</p>
+                  <div className="grid grid-cols-4 gap-1">
+                    {pick.steamerProjection.projAVG > 0 && (
+                      <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                        <p className="text-[9px] text-muted-foreground uppercase font-semibold">AVG</p>
+                        <p className="text-xs font-black" style={{ color: pick.steamerProjection.projAVG >= 0.280 ? "#22c55e" : pick.steamerProjection.projAVG >= 0.250 ? "#facc15" : "#f87171" }}>
+                          .{Math.round(pick.steamerProjection.projAVG * 1000).toString().padStart(3, "0")}
+                        </p>
+                      </div>
+                    )}
+                    {pick.steamerProjection.projOBP > 0 && (
+                      <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                        <p className="text-[9px] text-muted-foreground uppercase font-semibold">OBP</p>
+                        <p className="text-xs font-black">.{Math.round(pick.steamerProjection.projOBP * 1000).toString().padStart(3, "0")}</p>
+                      </div>
+                    )}
+                    {pick.steamerProjection.projwOBA > 0 && (
+                      <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                        <p className="text-[9px] text-muted-foreground uppercase font-semibold">wOBA</p>
+                        <p className="text-xs font-black" style={{ color: pick.steamerProjection.projwOBA >= 0.360 ? "#22c55e" : pick.steamerProjection.projwOBA >= 0.320 ? "#facc15" : "#f87171" }}>
+                          .{Math.round(pick.steamerProjection.projwOBA * 1000).toString().padStart(3, "0")}
+                        </p>
+                      </div>
+                    )}
+                    {pick.steamerProjection.wrcPlus > 0 && (
+                      <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                        <p className="text-[9px] text-muted-foreground uppercase font-semibold">wRC+</p>
+                        <p className="text-xs font-black" style={{ color: pick.steamerProjection.wrcPlus >= 120 ? "#22c55e" : pick.steamerProjection.wrcPlus >= 100 ? "#facc15" : "#f87171" }}>
+                          {Math.round(pick.steamerProjection.wrcPlus)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Projected per-game stats */}
+              {pick.projectedGameStats && pick.projectedGameStats.projH > 0 && (
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Proj Per-Game (Park + Pitcher Adj)</p>
+                  <div className="grid grid-cols-4 gap-1">
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">H/G</p>
+                      <p className="text-xs font-black" style={{ color: pick.projectedGameStats.parkAdjProjH >= 1.0 ? "#22c55e" : pick.projectedGameStats.parkAdjProjH >= 0.8 ? "#facc15" : "#f87171" }}>
+                        {pick.projectedGameStats.parkAdjProjH.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">HR/G</p>
+                      <p className="text-xs font-black">{pick.projectedGameStats.parkAdjProjHR.toFixed(3)}</p>
+                    </div>
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">R/G</p>
+                      <p className="text-xs font-black">{pick.projectedGameStats.projR.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">RBI/G</p>
+                      <p className="text-xs font-black">{pick.projectedGameStats.projRBI.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  {pick.projectedGameStats.note && (
+                    <p className="text-[9px] text-muted-foreground mt-1">{pick.projectedGameStats.note}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

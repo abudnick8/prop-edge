@@ -17,6 +17,18 @@ import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from 
 import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
 import { sendPINResetEmail, sendWelcomeEmail, sendNewSignupNotification, SUPPORT_EMAIL } from "./email";
 import crypto from "crypto";
+import {
+  initMlbAnalytics,
+  getBatterAnalytics,
+  getProjectedGameStats,
+  getSteamerBatter,
+  getSteamerPitcher,
+  getParkFactor,
+  getBvpExtended,
+  getStadiumWeather,
+  getPitcherAnalytics,
+  computeAnalyticsBoost,
+} from "./mlb-analytics";
 // No payment integration — accounts are free to create, tier managed by owner
 
 // ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
@@ -2148,6 +2160,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // Start smart wallet tracker at server boot (fire-and-forget)
   startSmartWalletTracker();
+
+  // Initialise MLB analytics (FanGraphs Steamer + park factors) at boot
+  initMlbAnalytics().catch((e: any) => console.warn("[MLB-Analytics] Init error:", e.message));
 
   // ─── Bets ─────────────────────────────────────────────────────────────────
   app.get("/api/bets", async (req, res) => {
@@ -10159,7 +10174,37 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 // Rescale from (0.27, 0.73) to (0.45, 0.82) — MLB hit rate range
                 return 0.45 + sig * 0.37;
               };
-              const hitProbability = Math.min(0.80, logisticCal(rawScore));
+              const hitProbabilityBase = Math.min(0.80, logisticCal(rawScore));
+
+              // ── MLB Analytics boost (Steamer + park factor + BvP extended + weather + pitcher proj) ──
+              // Run in parallel with existing scoring; wraps hit probability post-logistic
+              let analyticsBoostMult = 1.0;
+              let analyticsNote      = "";
+              let steamerProj: any   = null;
+              let projectedStats: any = null;
+              try {
+                const opponentPidForAnalytics = side === "home" ? awayTeam.probablePitcher?.id : homeTeam.probablePitcher?.id;
+                const [pkFactor, wxData, bvpExt, pitcherAn] = await Promise.all([
+                  getParkFactor(venue),
+                  getStadiumWeather(venue, game.gameDate ? new Date(game.gameDate).getTime() : undefined),
+                  opponentPidForAnalytics ? getBvpExtended(pid, opponentPidForAnalytics) : Promise.resolve(null),
+                  opponentPidForAnalytics ? getPitcherAnalytics(opponentPidForAnalytics) : Promise.resolve(null),
+                ]);
+                const steamerBatter = getSteamerBatter(String(pid));
+                steamerProj = steamerBatter;
+                const { boost, note } = computeAnalyticsBoost(steamerBatter, pkFactor, bvpExt, wxData, pitcherAn);
+                analyticsBoostMult = boost;
+                analyticsNote      = note;
+                // Projected per-game stats for explanation drawer
+                projectedStats = getProjectedGameStats(String(pid), venue, opponentPidForAnalytics ? String(opponentPidForAnalytics) : undefined);
+              } catch (analyticsErr: any) {
+                console.warn(`[BTS] analytics boost error pid=${pid}: ${analyticsErr.message}`);
+              }
+
+              // Apply analytics boost — caps at ±10% of base probability
+              const hitProbability = Math.min(0.82, Math.max(0.45,
+                hitProbabilityBase * analyticsBoostMult
+              ));
               const hitProbabilityPct = Math.round(hitProbability * 100);
 
               // ── Sportsbook edge filter ────────────────────────────────────
@@ -10270,6 +10315,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 edge:            edge !== null ? Math.round(edge * 100) : null,
                 inTargetRange:   hitProbability >= 0.60 && hitProbability <= 0.80,
                 confidenceTier:  confTierBTS,
+                // MLB Analytics layer
+                analyticsBoost:  parseFloat(analyticsBoostMult.toFixed(3)),
+                analyticsNote,
+                steamerProjection: steamerProj ? {
+                  projAVG:     steamerProj.avg,
+                  projOBP:     steamerProj.obp,
+                  projSLG:     steamerProj.slg,
+                  projwOBA:    steamerProj.woba,
+                  projHperGame: steamerProj.hPerGame,
+                  projHRperGame:steamerProj.hrPerGame,
+                  projRperGame: steamerProj.rPerGame,
+                  projRBIperGame:steamerProj.rbiPerGame,
+                  projTBperGame: steamerProj.tbPerGame,
+                  wrcPlus:     steamerProj.wrcPlus,
+                  war:         steamerProj.war,
+                } : null,
+                projectedGameStats: projectedStats,
               });
             } catch (playerErr: any) { console.warn(`[BTS] player scoring error pid=${p.id ?? p.person?.id} team=${teamName} slot=${slotIdx}: ${playerErr.message}`); }
           }
