@@ -1759,8 +1759,8 @@ function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: n
               </div>
             </div>
 
-            {/* Player stat progress */}
-            {isPlayerProp && hasLiveStat && (
+            {/* Player stat progress — only show bar while game is live; show stat/line for finals */}
+            {isPlayerProp && hasLiveStat && leg.gameStatus === "live" && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: FG }}>
                   <span>Current: <strong>{leg.currentStat}</strong></span>
@@ -1769,7 +1769,12 @@ function SlipProgressPanel({ slipId, token, onSettled, onVoidSlip }: { slipId: n
                 <ProgressBar current={leg.currentStat!} line={leg.line} isOver={isOver} />
               </div>
             )}
-            {isPlayerProp && !hasLiveStat && leg.gameStatus !== "scheduled" && (
+            {isPlayerProp && hasLiveStat && leg.gameStatus === "final" && (
+              <div style={{ marginTop: 4, fontSize: 11, color: MUTED }}>
+                Final: <strong style={{ color: FG }}>{leg.currentStat}</strong> / {isOver ? "O" : "U"}{leg.line}
+              </div>
+            )}
+            {isPlayerProp && !hasLiveStat && leg.gameStatus !== "scheduled" && leg.gameStatus !== "final" && (
               <div style={{ marginTop: 4, fontSize: 10, color: MUTED }}>Stats not yet available</div>
             )}
 
@@ -1868,8 +1873,7 @@ function SlipLegSummary({ slipId, legs, token }: { slipId: number; legs: SlipLeg
 
         // displayStat: currentStat holds the live OR final accumulated value from the progress endpoint
         const displayStat = hasStat ? prog!.currentStat! : null;
-        const showBar = isPlayerProp && line > 0 && displayStat !== null;
-        const pct = showBar ? Math.min(100, Math.round((displayStat! / line) * 100)) : 0;
+        const pct = isPlayerProp && line > 0 && displayStat !== null ? Math.min(100, Math.round((displayStat! / line) * 100)) : 0;
         const barWinning = isOver ? (displayStat ?? 0) >= line : (displayStat ?? 0) <= line;
         // For settled legs, bar color matches result; for live, color tracks current pace
         const barColor = effectiveResult === "win" ? "#16a34a" : effectiveResult === "loss" ? "#ef4444" : barWinning ? "#16a34a" : "#ef4444";
@@ -1877,6 +1881,8 @@ function SlipLegSummary({ slipId, legs, token }: { slipId: number; legs: SlipLeg
         const statKey = leg.stat_type ?? prog?.statType ?? undefined;
         const statShort = statKey ? statLabel(statKey) : "";
         const isLive = prog?.gameStatus === "live";
+        // Re-compute showBar now that isLive is available (isLive was defined after showBar above, so fix it here)
+        const showBarFinal = isPlayerProp && line > 0 && displayStat !== null && isLive;
 
         return (
           <div key={leg.id ?? i} style={{
@@ -1926,8 +1932,8 @@ function SlipLegSummary({ slipId, legs, token }: { slipId: number; legs: SlipLeg
                 </div>
               )}
             </div>
-            {/* Mini progress bar */}
-            {showBar && (
+            {/* Mini progress bar — only shown while game is live */}
+            {showBarFinal && (
               <div style={{ marginTop: 5 }}>
                 <div style={{ height: 4, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
                   <div style={{
