@@ -43,6 +43,17 @@ const ESPN_SPORT_MAP: Record<Sport, { sport: string; league: string; headshotSpo
   NHL: { sport: "hockey",     league: "nhl", headshotSport: "nhl" },
 };
 
+// ESPN UID sport prefixes used to post-filter results by sport
+// uid format: "s:{sportId}~l:{leagueId}~a:{athleteId}"
+// sportIds: baseball=1, basketball=40, football=20, hockey=70 (approximate — we match on leagueId)
+// leagueIds: mlb=10, nba=46, nfl=28, nhl=90
+const ESPN_LEAGUE_ID_MAP: Record<Sport, string[]> = {
+  MLB: ["10"],      // MLB league id in ESPN UID
+  NBA: ["46"],      // NBA
+  NFL: ["28"],      // NFL
+  NHL: ["90"],      // NHL
+};
+
 function espnHeadshot(headshotSport: string, espnId: string): string {
   return `https://a.espncdn.com/combiner/i?img=/i/headshots/${headshotSport}/players/full/${espnId}.png&w=96&h=70&scale=crop`;
 }
@@ -60,17 +71,58 @@ const MLB_TEAM_IDS: Record<string, number> = {
   TOR: 141, WSH: 120,
 };
 
+// ─── Stat Config per Sport (mirrors fetchESPNGameLog in routes.ts) ──────────
+
+interface SportStatCfg {
+  sn: string;
+  lg: string;
+  seasons: number[];
+  statMap: Record<string, string>;
+}
+
+function getStatCfg(sport: Sport): SportStatCfg {
+  const currentYear = new Date().getFullYear();
+  const cfgs: Record<Sport, SportStatCfg> = {
+    NBA: {
+      sn: "basketball", lg: "nba",
+      seasons: [currentYear, currentYear - 1],
+      statMap: { MIN: "mp", PTS: "pts", REB: "trb", AST: "ast", BLK: "blk", STL: "stl", TO: "tov", FG: "fg_made", "3PT": "fg3_made" },
+    },
+    NHL: {
+      sn: "hockey", lg: "nhl",
+      seasons: [currentYear, currentYear - 1],
+      statMap: { G: "goals", A: "ast", PTS: "pts", S: "shots", "TOI/G": "toi", "+/-": "plusMinus" },
+    },
+    MLB: {
+      sn: "baseball", lg: "mlb",
+      seasons: [currentYear, currentYear - 1],
+      statMap: {
+        AB: "ab", H: "hits", "2B": "doubles", "3B": "triples", HR: "home_runs",
+        RBI: "rbi", BB: "bb", SO: "strikeouts", AVG: "avg", OBP: "obp", SLG: "slg", R: "runs",
+        IP: "ip", ER: "er", K: "strikeouts_p",
+      },
+    },
+    NFL: {
+      sn: "football", lg: "nfl",
+      seasons: [currentYear - 1, currentYear - 2],
+      statMap: { YDS: "yds", TD: "td", INT: "int", ATT: "att", REC: "rec", CAR: "car", LONG: "long" },
+    },
+  };
+  return cfgs[sport];
+}
+
 // ─── Endpoint Implementations ─────────────────────────────────────────────
 
 /**
  * GET /api/intel/search?q=<name>&sport=<MLB|NBA|NFL|NHL>
  * Searches ESPN for players by name and optional sport filter.
+ * Post-filters results using the ESPN UID league ID to ensure sport accuracy.
  */
 async function handleSearch(q: string, sport?: string): Promise<any[]> {
   const asciiQ = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
   // Build sports to search
-  const sportsToSearch: Sport[] = sport
+  const sportsToSearch: Sport[] = sport && sport.toUpperCase() !== "ALL"
     ? [sport.toUpperCase() as Sport]
     : ["MLB", "NBA", "NFL", "NHL"];
 
@@ -89,12 +141,28 @@ async function handleSearch(q: string, sport?: string): Promise<any[]> {
         for (const c of (rg.contents ?? [])) allContents.push(c);
       }
 
+      // Valid ESPN league IDs for this sport (for post-filtering)
+      const validLeagueIds = ESPN_LEAGUE_ID_MAP[s];
+
       for (const item of allContents) {
-        const uidMatch = (item.uid ?? "").match(/~a:(\d+)/);
+        const uid: string = item.uid ?? "";
+        const uidMatch = uid.match(/~a:(\d+)/);
         const espnId = uidMatch ? uidMatch[1] : String(item.id ?? "");
         if (!espnId || seenIds.has(espnId)) continue;
-        seenIds.add(espnId);
 
+        // Post-filter: check if UID league segment matches expected league IDs
+        // uid format: "s:{sportId}~l:{leagueId}~a:{athleteId}"
+        const leagueMatch = uid.match(/~l:(\d+)~/);
+        const uidLeagueId = leagueMatch ? leagueMatch[1] : null;
+        if (uidLeagueId && validLeagueIds.length > 0) {
+          // If we can parse the league id and it doesn't match, skip
+          if (!validLeagueIds.includes(uidLeagueId)) {
+            console.log(`${LOG_PREFIX} skipping ${item.displayName ?? ""} uid=${uid} (league ${uidLeagueId} not in ${validLeagueIds} for ${s})`);
+            continue;
+          }
+        }
+
+        seenIds.add(espnId);
         results.push({
           espnId,
           name:     item.displayName ?? item.name ?? "",
@@ -115,38 +183,138 @@ async function handleSearch(q: string, sport?: string): Promise<any[]> {
 /**
  * GET /api/intel/player/:sport/:espnId
  * Returns full player profile, season stats, game log, and splits.
+ * Uses proven ESPN v3 gamelog endpoint (same pattern as fetchESPNGameLog in routes.ts).
  */
 async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
   const mapping = ESPN_SPORT_MAP[sport];
   if (!mapping) throw new Error(`Unsupported sport: ${sport}`);
 
-  // Fetch ESPN overview for base info + season stats
-  const overviewUrl = `https://site.web.api.espn.com/apis/common/v3/sports/${mapping.sport}/${mapping.league}/athletes/${espnId}/overview`;
-  const gamelogUrl  = `https://site.web.api.espn.com/apis/common/v3/sports/${mapping.sport}/${mapping.league}/athletes/${espnId}/gamelog?season=2026`;
+  const cfg = getStatCfg(sport);
 
-  const [overviewRes, gamelogRes] = await Promise.allSettled([
-    axios.get(overviewUrl,  { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
-    axios.get(gamelogUrl,   { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
-  ]);
+  // ── Step 1: Fetch player bio from ESPN athlete endpoint ──
+  let name = "";
+  let team: string | null = null;
+  let position: string | null = null;
+  let jerseyNumber: string | null = null;
 
-  const overviewData = overviewRes.status === "fulfilled" ? overviewRes.value.data : null;
-  const gamelogData  = gamelogRes.status  === "fulfilled" ? gamelogRes.value.data  : null;
+  try {
+    const athleteUrl = `https://site.web.api.espn.com/apis/common/v3/sports/${mapping.sport}/${mapping.league}/athletes/${espnId}`;
+    const athleteRes = await axios.get(athleteUrl, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS });
+    const ath = athleteRes.data?.athlete ?? athleteRes.data ?? {};
+    name        = ath.displayName ?? ath.fullName ?? ath.name ?? "";
+    team        = ath.team?.abbreviation ?? ath.teamAbbrev ?? null;
+    position    = ath.position?.abbreviation ?? null;
+    jerseyNumber = ath.jersey ?? null;
+  } catch (err: any) {
+    console.warn(`${LOG_PREFIX} athlete bio fetch failed for ${espnId}:`, err.message);
+    // Non-fatal — name will be empty, still return stats
+  }
 
-  // Extract athlete base info
-  const athlete = overviewData?.athlete ?? overviewData?.player ?? {};
-  const name     = athlete.displayName ?? athlete.fullName ?? "";
-  const team     = athlete.team?.abbreviation ?? athlete.teamAbbrev ?? null;
-  const position = athlete.position?.abbreviation ?? null;
+  // ── Step 2: Fetch gamelogs via proven v3 pattern ──────────────────────────
+  // Same exact approach as fetchESPNGameLog in routes.ts
+  const seenEventIds = new Set<string>();
+
+  const parseV3Response = (v3Data: any): Array<{ entry: any; eventInfo: any; labels: string[] }> => {
+    const labels: string[] = v3Data.labels ?? [];
+    const eventsMap: Record<string, any> = v3Data.events ?? {};
+    const entries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+    for (const stype of (v3Data.seasonTypes ?? [])) {
+      for (const cat of (stype.categories ?? [])) {
+        for (const ev of (cat.events ?? [])) {
+          const eid = String(ev.eventId ?? "");
+          if (seenEventIds.has(eid)) continue;
+          seenEventIds.add(eid);
+          const evInfo = eventsMap[eid] ?? {};
+          entries.push({ entry: ev, eventInfo: evInfo, labels });
+        }
+      }
+    }
+    return entries;
+  };
+
+  let allGameEntries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+
+  try {
+    const seasonFetches = await Promise.allSettled(
+      cfg.seasons.map(yr =>
+        axios.get(
+          `https://site.web.api.espn.com/apis/common/v3/sports/${cfg.sn}/${cfg.lg}/athletes/${espnId}/gamelog?season=${yr}`,
+          { timeout: 10000, headers: AXIOS_HEADERS }
+        )
+      )
+    );
+
+    for (const result of seasonFetches) {
+      if (result.status === "fulfilled") {
+        allGameEntries.push(...parseV3Response(result.value.data));
+      }
+    }
+
+    // Sort chronologically oldest → newest
+    allGameEntries.sort((a, b) => {
+      const da = a.eventInfo.gameDate ?? "";
+      const db = b.eventInfo.gameDate ?? "";
+      return da.localeCompare(db);
+    });
+  } catch (err: any) {
+    console.warn(`${LOG_PREFIX} v3 gamelog fetch failed for ${sport} ${espnId}:`, err.message);
+  }
+
+  // ── Step 3: Build normalized game objects ──────────────────────────────────
+  const allGames: any[] = [];
+
+  for (const { entry, eventInfo, labels } of allGameEntries) {
+    const stats = entry.stats ?? [];
+    const statObj: Record<string, string> = {};
+    labels.forEach((lbl, i) => { if (stats[i] != null) statObj[lbl] = String(stats[i]); });
+
+    // Map sport-specific labels to standard keys
+    const mapped: Record<string, string> = {};
+    for (const [label, key] of Object.entries(cfg.statMap)) {
+      if (statObj[label] != null) mapped[key] = statObj[label];
+    }
+    // Handle FG split "9-21"
+    if (statObj["FG"]) {
+      const fgParts = statObj["FG"].split("-");
+      mapped["fg_made"] = fgParts[0] ?? "0";
+      mapped["fg_att"]  = fgParts[1] ?? "0";
+    }
+    if (statObj["3PT"]) {
+      const fgParts = statObj["3PT"].split("-");
+      mapped["fg3_made"] = fgParts[0] ?? "0";
+    }
+
+    const opp      = eventInfo.opponent?.abbreviation ?? "?";
+    const atVs     = eventInfo.atVs ?? "vs";
+    const gameDate = eventInfo.gameDate ? eventInfo.gameDate.split("T")[0] : "";
+    const gameResult = eventInfo.gameResult ?? "";
+    const score    = eventInfo.score ?? "";
+    const eventNote = eventInfo.eventNote ?? eventInfo.shortName ?? "";
+
+    // Also keep raw labels for the sport-specific columns
+    const rawStats: Record<string, string> = { ...statObj };
+
+    allGames.push({
+      date_game:  gameDate,
+      opp_id:     `${atVs === "@" ? "@" : "vs"}${opp}`,
+      result:     gameResult ? `${gameResult} ${score}`.trim() : "",
+      eventNote,
+      source:     "espn_v3",
+      ...mapped,
+      raw:        rawStats,
+    });
+  }
+
+  // ── Step 4: Derive game log (last 10 displayed to user) ───────────────────
+  const gamelog = buildGamelog(allGames, sport, 10);
+
+  // ── Step 5: Derive season stats (aggregate full season) ───────────────────
+  const seasonStats = buildSeasonStats(allGames, sport);
+
+  // ── Step 6: Derive home/away splits from game data ────────────────────────
+  const splits = buildSplits(allGames);
+
   const headshot = espnHeadshot(mapping.headshotSport, espnId);
-
-  // Extract season stats
-  const seasonStats = extractSeasonStats(overviewData, sport);
-
-  // Extract last 10 games from gamelog
-  const gamelog = extractGamelog(gamelogData, sport, 10);
-
-  // Extract splits
-  const splits = extractSplits(overviewData, sport);
 
   return {
     espnId,
@@ -154,115 +322,166 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
     sport,
     team,
     position,
+    jerseyNumber,
     headshot,
     seasonStats,
     gamelog,
     splits,
-    steamerProjection: null, // Populated separately via mlb-analytics if MLB
-    statcastData:      null,
+    steamerProjection: null,
+    statcastData: null,
   };
 }
 
-/** Pull sport-specific season stats from ESPN overview payload */
-function extractSeasonStats(overviewData: any, sport: Sport): Record<string, any> {
-  const stats: Record<string, any> = {};
-  if (!overviewData) return stats;
+/** Build game log display (last N games for user display) */
+function buildGamelog(allGames: any[], sport: Sport, limit: number): any[] {
+  const recent = allGames.slice(-limit);
+  return recent.map(g => {
+    const base: Record<string, any> = {
+      date:     g.date_game,
+      opponent: g.opp_id,
+      result:   g.result,
+    };
+    switch (sport) {
+      case "MLB":
+        Object.assign(base, {
+          H:   g.hits ?? g.raw?.H ?? null,
+          AB:  g.ab   ?? g.raw?.AB ?? null,
+          HR:  g.home_runs ?? g.raw?.HR ?? null,
+          RBI: g.rbi  ?? g.raw?.RBI ?? null,
+          R:   g.runs ?? g.raw?.R ?? null,
+          BB:  g.bb   ?? g.raw?.BB ?? null,
+          SO:  g.strikeouts ?? g.raw?.SO ?? null,
+          AVG: g.avg  ?? g.raw?.AVG ?? null,
+          // Pitching
+          IP:  g.ip   ?? g.raw?.IP ?? null,
+          ER:  g.er   ?? g.raw?.ER ?? null,
+          K:   g.strikeouts_p ?? g.raw?.K ?? null,
+        });
+        break;
+      case "NBA":
+        Object.assign(base, {
+          PTS: g.pts ?? g.raw?.PTS ?? null,
+          REB: g.trb ?? g.raw?.REB ?? null,
+          AST: g.ast ?? g.raw?.AST ?? null,
+          BLK: g.blk ?? g.raw?.BLK ?? null,
+          STL: g.stl ?? g.raw?.STL ?? null,
+          TO:  g.tov ?? g.raw?.TO  ?? null,
+          MIN: g.mp  ?? g.raw?.MIN ?? null,
+        });
+        break;
+      case "NHL":
+        Object.assign(base, {
+          G:    g.goals     ?? g.raw?.G   ?? null,
+          A:    g.ast       ?? g.raw?.A   ?? null,
+          PTS:  g.pts       ?? g.raw?.PTS ?? null,
+          "+/-": g.plusMinus ?? g.raw?.["+/-"] ?? null,
+          S:    g.shots     ?? g.raw?.S   ?? null,
+        });
+        break;
+      case "NFL":
+        Object.assign(base, {
+          YDS: g.yds ?? g.raw?.YDS ?? null,
+          TD:  g.td  ?? g.raw?.TD  ?? null,
+          INT: g.int ?? g.raw?.INT ?? null,
+          ATT: g.att ?? g.raw?.ATT ?? null,
+          REC: g.rec ?? g.raw?.REC ?? null,
+          CAR: g.car ?? g.raw?.CAR ?? null,
+        });
+        break;
+    }
+    return base;
+  });
+}
 
-  // ESPN overview nests stats in different places depending on sport
-  const statsArray: any[] =
-    overviewData?.stats?.splits?.categories ??
-    overviewData?.statistics?.splits?.categories ??
-    overviewData?.seasonStats ??
-    [];
+/** Build aggregate season stats from all game entries */
+function buildSeasonStats(allGames: any[], sport: Sport): Record<string, any> {
+  if (allGames.length === 0) return {};
 
-  const statMap: Record<string, any> = {};
-  for (const cat of statsArray) {
-    for (const stat of (cat.stats ?? [])) {
-      statMap[stat.abbreviation ?? stat.name] = stat.displayValue ?? stat.value;
+  // Use the raw label map which has the exact stat names
+  const sums: Record<string, number> = {};
+  const counts: Record<string, number> = {};
+  const rateKeys = new Set(["AVG", "OBP", "SLG", "OPS", "ERA", "WHIP", "FG%", "3P%", "FT%"]);
+
+  for (const g of allGames) {
+    const raw = g.raw ?? {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (k === "date_game" || k === "opp_id" || k === "result") continue;
+      // Skip composite stats like "9-21"
+      if (String(v).includes("-") && String(v).split("-").length === 2) continue;
+      const n = parseFloat(String(v));
+      if (!isNaN(n)) {
+        sums[k]   = (sums[k]   ?? 0) + n;
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
     }
   }
 
+  const agg: Record<string, any> = { gamesPlayed: allGames.length };
+  for (const k of Object.keys(sums)) {
+    const isRate = rateKeys.has(k) || k.includes("%");
+    agg[k] = isRate
+      ? +(sums[k] / counts[k]).toFixed(3)
+      : sums[k];
+  }
+
+  // Sport-specific picks
   switch (sport) {
     case "MLB":
-      return pickStats(statMap, ["AVG", "OBP", "SLG", "OPS", "HR", "RBI", "R", "SB", "H", "AB", "BB", "SO"]);
+      return pickFields(agg, ["gamesPlayed", "AB", "H", "HR", "RBI", "R", "BB", "SO", "AVG", "OBP", "SLG", "IP", "ER", "K", "2B", "3B", "SB"]);
     case "NBA":
-      return pickStats(statMap, ["PTS", "REB", "AST", "BLK", "STL", "FG%", "3P%", "FT%", "MIN"]);
+      return pickFields(agg, ["gamesPlayed", "PTS", "REB", "AST", "BLK", "STL", "TO", "MIN", "FG%", "3P%", "FT%"]);
     case "NHL":
-      return pickStats(statMap, ["G", "A", "PTS", "+/-", "PIM", "S", "TOI"]);
+      return pickFields(agg, ["gamesPlayed", "G", "A", "PTS", "+/-", "S"]);
     case "NFL":
-      // Return full map; consumer can filter by position
-      return pickStats(statMap, [
-        "ATT", "CMP", "YDS", "TD", "INT",          // QB
-        "CAR", "YDS", "TD", "REC", "RECYDS",       // RB
-        "REC", "YDS", "TD",                         // WR/TE
-        "SKS", "TKL",                               // DEF
-      ]);
+      return pickFields(agg, ["gamesPlayed", "YDS", "TD", "INT", "ATT", "REC", "CAR"]);
     default:
-      return statMap;
+      return agg;
   }
 }
 
-function pickStats(map: Record<string, any>, keys: string[]): Record<string, any> {
+function pickFields(obj: Record<string, any>, keys: string[]): Record<string, any> {
   const out: Record<string, any> = {};
   for (const k of keys) {
-    if (map[k] !== undefined) out[k] = map[k];
+    if (obj[k] !== undefined && obj[k] !== null) out[k] = obj[k];
   }
-  // Also include anything that was found
-  return Object.keys(out).length > 0 ? out : map;
+  return Object.keys(out).length > 0 ? out : obj;
 }
 
-/** Extract last N game entries from ESPN gamelog payload */
-function extractGamelog(gamelogData: any, sport: Sport, limit: number): any[] {
-  if (!gamelogData) return [];
+/** Build home/away splits from game objects using opp_id prefix */
+function buildSplits(allGames: any[]): Record<string, any> {
+  const homeGames = allGames.filter(g => !String(g.opp_id ?? "").startsWith("@"));
+  const awayGames = allGames.filter(g => String(g.opp_id ?? "").startsWith("@"));
 
-  // ESPN gamelog shape: events[] or gameLog.events[]
-  const events: any[] =
-    gamelogData?.gameLog?.events ?? gamelogData?.events ?? [];
-
-  const games: any[] = [];
-  for (const ev of events) {
-    if (games.length >= limit) break;
-    const game: Record<string, any> = {
-      date:     ev.gameDate ?? ev.date ?? null,
-      opponent: ev.opponent?.abbreviation ?? ev.opponent ?? null,
-      result:   ev.result ?? null,
-    };
-    // Flatten stats for this game
-    for (const cat of (ev.stats?.categories ?? ev.categories ?? [])) {
-      for (const s of (cat.stats ?? [])) {
-        game[s.abbreviation ?? s.name] = s.displayValue ?? s.value;
-      }
-    }
-    games.push(game);
-  }
-  return games;
-}
-
-/** Extract home/away or other splits from ESPN overview */
-function extractSplits(overviewData: any, _sport: Sport): Record<string, any> {
-  const splitData: Record<string, any> = {};
-  if (!overviewData) return splitData;
-
-  const splitGroups: any[] =
-    overviewData?.stats?.splits?.splitCategories ??
-    overviewData?.statistics?.splits?.splitCategories ??
-    [];
-
-  for (const sg of splitGroups) {
-    const label = sg.displayName ?? sg.name ?? "misc";
-    splitData[label] = {};
-    for (const sp of (sg.splits ?? [])) {
-      const splitName = sp.displayName ?? sp.abbreviation ?? "unknown";
-      const vals: Record<string, any> = {};
-      for (const cat of (sp.categories ?? [])) {
-        for (const s of (cat.stats ?? [])) {
-          vals[s.abbreviation ?? s.name] = s.displayValue ?? s.value;
+  const aggregateRaw = (games: any[]): Record<string, any> => {
+    if (games.length === 0) return {};
+    const sums: Record<string, number> = {};
+    const counts: Record<string, number> = {};
+    const rateKeys = new Set(["AVG", "OBP", "SLG", "OPS", "ERA", "WHIP", "FG%", "3P%", "FT%"]);
+    for (const g of games) {
+      const raw = g.raw ?? {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (String(v).includes("-") && String(v).split("-").length === 2) continue;
+        const n = parseFloat(String(v));
+        if (!isNaN(n)) {
+          sums[k]   = (sums[k]   ?? 0) + n;
+          counts[k] = (counts[k] ?? 0) + 1;
         }
       }
-      splitData[label][splitName] = vals;
     }
-  }
-  return splitData;
+    const agg: Record<string, any> = { gamesPlayed: games.length };
+    for (const k of Object.keys(sums)) {
+      const isRate = rateKeys.has(k) || k.includes("%");
+      agg[k] = isRate ? +(sums[k] / counts[k]).toFixed(3) : sums[k];
+    }
+    return agg;
+  };
+
+  return {
+    "Home/Away": {
+      Home: aggregateRaw(homeGames),
+      Away: aggregateRaw(awayGames),
+    },
+  };
 }
 
 // ─── Route Registration ────────────────────────────────────────────────────
@@ -344,16 +563,14 @@ export function registerPlayerIntelRoutes(app: Express): void {
       console.log(`${LOG_PREFIX} fetching BvP batter=${batterId} pitcher=${pitcherId}`);
       const bvp: BvpResult = await getBvpExtended(batterId, pitcherId);
 
-      // Enrich with derived rates
       const hitPct  = bvp.ab > 0 ? +(bvp.hits / bvp.ab).toFixed(3) : null;
       const hrPct   = bvp.ab > 0 ? +(bvp.hr   / bvp.ab).toFixed(3) : null;
 
-      // k% requires strikeout data — not in BvpResult, so omit for now
       const enriched = {
         ...bvp,
         hitPct,
         hrPct,
-        kPct: null, // strikeout data not available in BvpResult
+        kPct: null,
       };
 
       setCache(bvpCache, cacheKey, enriched);
@@ -383,7 +600,6 @@ export function registerPlayerIntelRoutes(app: Express): void {
 
       console.log(`${LOG_PREFIX} fetching park splits for playerId=${playerId}`);
 
-      // Fetch home/away splits
       const [haRes, venueRes] = await Promise.allSettled([
         axios.get(
           `https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=statSplits&group=hitting&season=2026&sitCodes=h,a`,
@@ -395,7 +611,6 @@ export function registerPlayerIntelRoutes(app: Express): void {
         ),
       ]);
 
-      // Parse home/away
       let home: any = {};
       let away: any = {};
       if (haRes.status === "fulfilled") {
@@ -410,7 +625,6 @@ export function registerPlayerIntelRoutes(app: Express): void {
         }
       }
 
-      // Parse venue splits, enrich with park factor
       const venueResults: any[] = [];
       if (venueRes.status === "fulfilled") {
         const venueSplits: any[] = venueRes.value.data?.stats?.[0]?.splits ?? [];
@@ -483,19 +697,19 @@ export function registerPlayerIntelRoutes(app: Express): void {
 function flattenMLBStats(stat: any): Record<string, any> {
   if (!stat) return {};
   return {
-    avg:       stat.avg       ?? null,
-    obp:       stat.obp       ?? null,
-    slg:       stat.slg       ?? null,
-    ops:       stat.ops       ?? null,
-    hr:        stat.homeRuns  ?? null,
-    rbi:       stat.rbi       ?? null,
-    hits:      stat.hits      ?? null,
-    atBats:    stat.atBats    ?? null,
-    walks:     stat.baseOnBalls ?? null,
-    strikeOuts:stat.strikeOuts ?? null,
-    doubles:   stat.doubles   ?? null,
-    triples:   stat.triples   ?? null,
-    runs:      stat.runs      ?? null,
+    avg:         stat.avg         ?? null,
+    obp:         stat.obp         ?? null,
+    slg:         stat.slg         ?? null,
+    ops:         stat.ops         ?? null,
+    hr:          stat.homeRuns    ?? null,
+    rbi:         stat.rbi         ?? null,
+    hits:        stat.hits        ?? null,
+    atBats:      stat.atBats      ?? null,
+    walks:       stat.baseOnBalls ?? null,
+    strikeOuts:  stat.strikeOuts  ?? null,
+    doubles:     stat.doubles     ?? null,
+    triples:     stat.triples     ?? null,
+    runs:        stat.runs        ?? null,
     stolenBases: stat.stolenBases ?? null,
     gamesPlayed: stat.gamesPlayed ?? null,
   };
@@ -530,7 +744,6 @@ async function fetchMLBVsTeam(playerId: string, teamAbbr: string): Promise<any> 
     ? flattenMLBStats(careerRes.value.data?.stats?.[0]?.splits?.[0]?.stat)
     : {};
 
-  // Recent games vs this team: pull from vsTeam splits array (up to 5)
   const recentGames: any[] = [];
   if (seasonRes.status === "fulfilled") {
     const splits: any[] = seasonRes.value.data?.stats?.[0]?.splits ?? [];
@@ -546,47 +759,72 @@ async function fetchMLBVsTeam(playerId: string, teamAbbr: string): Promise<any> 
   return { seasonStats, careerStats, recentGames };
 }
 
-/** Fetch non-MLB player vs team stats via ESPN game log, filtered by opponent */
+/** Fetch non-MLB player vs team stats via ESPN v3 game log, filtered by opponent */
 async function fetchESPNVsTeam(sport: Sport, playerId: string, teamAbbr: string): Promise<any> {
-  const mapping = ESPN_SPORT_MAP[sport];
+  const cfg = getStatCfg(sport);
+  const seenEventIds = new Set<string>();
 
-  // Pull a broader game log (up to 82 for NBA, 17 for NFL, 82 for NHL)
-  let gamelogData: any = null;
-  try {
-    const url = `https://site.web.api.espn.com/apis/common/v3/sports/${mapping.sport}/${mapping.league}/athletes/${playerId}/gamelog?season=2026`;
-    const r = await axios.get(url, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS });
-    gamelogData = r.data;
-  } catch (err: any) {
-    console.warn(`${LOG_PREFIX} ESPN gamelog fetch failed for ${sport}:`, err.message);
-  }
-
-  const events: any[] = gamelogData?.gameLog?.events ?? gamelogData?.events ?? [];
-  const vsGames: any[] = [];
-
-  for (const ev of events) {
-    const oppAbbr = (ev.opponent?.abbreviation ?? ev.opponent ?? "").toUpperCase();
-    if (oppAbbr !== teamAbbr) continue;
-
-    const game: Record<string, any> = {
-      date:     ev.gameDate ?? ev.date ?? null,
-      opponent: oppAbbr,
-      result:   ev.result ?? null,
-    };
-    for (const cat of (ev.stats?.categories ?? ev.categories ?? [])) {
-      for (const s of (cat.stats ?? [])) {
-        game[s.abbreviation ?? s.name] = s.displayValue ?? s.value;
+  const parseV3Response = (v3Data: any): Array<{ entry: any; eventInfo: any; labels: string[] }> => {
+    const labels: string[] = v3Data.labels ?? [];
+    const eventsMap: Record<string, any> = v3Data.events ?? {};
+    const entries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+    for (const stype of (v3Data.seasonTypes ?? [])) {
+      for (const cat of (stype.categories ?? [])) {
+        for (const ev of (cat.events ?? [])) {
+          const eid = String(ev.eventId ?? "");
+          if (seenEventIds.has(eid)) continue;
+          seenEventIds.add(eid);
+          const evInfo = eventsMap[eid] ?? {};
+          entries.push({ entry: ev, eventInfo: evInfo, labels });
+        }
       }
     }
-    vsGames.push(game);
+    return entries;
+  };
+
+  let allEntries: Array<{ entry: any; eventInfo: any; labels: string[] }> = [];
+
+  try {
+    const fetches = await Promise.allSettled(
+      cfg.seasons.map(yr =>
+        axios.get(
+          `https://site.web.api.espn.com/apis/common/v3/sports/${cfg.sn}/${cfg.lg}/athletes/${playerId}/gamelog?season=${yr}`,
+          { timeout: 10000, headers: AXIOS_HEADERS }
+        )
+      )
+    );
+    for (const r of fetches) {
+      if (r.status === "fulfilled") allEntries.push(...parseV3Response(r.value.data));
+    }
+  } catch (err: any) {
+    console.warn(`${LOG_PREFIX} v3 gamelog fetch failed for ${sport}:`, err.message);
   }
 
-  // Aggregate season stats vs this team from the filtered games
-  const recentGames = vsGames.slice(-5);
+  // Filter by opponent abbreviation
+  const vsEntries = allEntries.filter(({ eventInfo }) => {
+    const opp = (eventInfo.opponent?.abbreviation ?? "").toUpperCase();
+    return opp === teamAbbr;
+  });
+
+  // Build game list
+  const games: any[] = vsEntries.map(({ entry, eventInfo, labels }) => {
+    const stats = entry.stats ?? [];
+    const statObj: Record<string, string> = {};
+    labels.forEach((lbl, i) => { if (stats[i] != null) statObj[lbl] = String(stats[i]); });
+    return {
+      date:     eventInfo.gameDate ? eventInfo.gameDate.split("T")[0] : "",
+      opponent: teamAbbr,
+      result:   eventInfo.gameResult ?? "",
+      ...statObj,
+    };
+  });
+
+  games.sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
 
   return {
-    seasonStats: aggregateGameStats(vsGames),
-    careerStats: {}, // Historical multi-season career data not available via ESPN gamelog
-    recentGames,
+    seasonStats: aggregateGameStats(games),
+    careerStats: {},
+    recentGames: games.slice(-5),
   };
 }
 
@@ -599,6 +837,7 @@ function aggregateGameStats(games: any[]): Record<string, any> {
   for (const g of games) {
     for (const [k, v] of Object.entries(g)) {
       if (k === "date" || k === "opponent" || k === "result") continue;
+      if (String(v).includes("-") && String(v).split("-").length === 2) continue;
       const n = parseFloat(String(v));
       if (!isNaN(n)) {
         sums[k]   = (sums[k]   ?? 0) + n;
@@ -609,7 +848,6 @@ function aggregateGameStats(games: any[]): Record<string, any> {
 
   const agg: Record<string, any> = { gamesPlayed: games.length };
   for (const k of Object.keys(sums)) {
-    // Ratios (percentages) → average; counting stats → sum
     const isRate = k.includes("%") || k === "AVG" || k === "OBP" || k === "SLG" || k === "OPS"
       || k === "FG%" || k === "3P%" || k === "FT%" || k === "ERA" || k === "WHIP";
     agg[k] = isRate
