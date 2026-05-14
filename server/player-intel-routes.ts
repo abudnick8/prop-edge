@@ -274,7 +274,7 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
     return {
       // Client-compatible keys
       date_game: gameDate,
-      opp:       `${atVs === "@" ? "@" : "vs"}${opp}`,  // "opp" is what the client uses
+      opp:       atVs === "@" ? `@${opp}` : `vs ${opp}`,  // "opp" is what the client uses
       result:    gameResult ? `${gameResult} ${score}`.trim() : "",
       // All raw stat labels
       ...raw,
@@ -376,8 +376,11 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
   switch (sport) {
     case "MLB": {
       const s = agg;
+      // IP is stored as decimal innings (e.g. 50.3 meaning 50 1/3 IP) — round display
+      const ipVal = s.IP != null ? Math.round(s.IP * 10) / 10 : null;
       return {
         gamesPlayed: s.gamesPlayed,
+        // Batting
         AVG: s.AVG ?? null,  avg: s.AVG ?? null,
         OBP: s.OBP ?? null,  obp: s.OBP ?? null,
         SLG: s.SLG ?? null,  slg: s.SLG ?? null,
@@ -387,13 +390,13 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
         H:   s.H   ?? null,  h:   s.H   ?? null,
         BB:  s.BB  ?? null,  bb:  s.BB  ?? null,
         SO:  s.SO  ?? null,  so:  s.SO  ?? null,
-        K:   s.SO  ?? null,  // alias
+        K:   s.K  ?? s.SO ?? null,  // pitchers use K label, batters use SO
         SB:  s.SB  ?? null,  sb:  s.SB  ?? null,
         "2B": s["2B"] ?? null,
         "3B": s["3B"] ?? null,
         AB:  s.AB  ?? null,
         // Pitching
-        IP:  s.IP  ?? null,  ip: s.IP  ?? null,
+        IP:  ipVal,  ip: ipVal,
         ER:  s.ER  ?? null,  er: s.ER  ?? null,
       };
     }
