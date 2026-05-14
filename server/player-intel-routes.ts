@@ -535,7 +535,9 @@ export function registerPlayerIntelRoutes(app: Express): void {
       console.log(`${LOG_PREFIX} fetching profile for ${sportUp} espnId=${espnId}`);
       const profile = await handlePlayerProfile(sportUp, espnId);
 
-      setCache(profileCache, cacheKey, profile);
+      // Only cache if we got meaningful data (prevents caching cold-start empty results)
+      const hasData = profile.name || profile.gamelog?.length > 0 || Object.keys(profile.seasonStats ?? {}).length > 0;
+      if (hasData) setCache(profileCache, cacheKey, profile);
       return res.json(profile);
     } catch (e: any) {
       console.warn(`${LOG_PREFIX} player profile error:`, e.message);
