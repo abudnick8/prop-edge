@@ -733,6 +733,8 @@ function OverviewTab({ player }: { player: PlayerData }) {
 
 // ─── Matchups Tab ─────────────────────────────────────────────────────────────
 
+interface TeamResult { name: string; shortName: string; abbr: string; logo: string | null; color: string | null; }
+
 function MatchupsTab({ player }: { player: PlayerData }) {
   const [searchQ, setSearchQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -741,17 +743,37 @@ function MatchupsTab({ player }: { player: PlayerData }) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const isMlb = player.sport === "MLB";
-  const searchPlaceholder = isMlb ? "Search opposing pitcher..." : "Search opponent team...";
+  const searchPlaceholder = isMlb ? "Search opposing pitcher..." : "Search opponent team (e.g. Lions, Chiefs)...";
+
+  // For non-MLB: fetch full team list once, filter client-side
+  const { data: teamList } = useQuery<TeamResult[]>({
+    queryKey: ["team-list", player.sport],
+    queryFn: () => fetch(`/api/intel/teams/${player.sport}`).then(r => r.json()),
+    enabled: !isMlb,
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+
+  const filteredTeams: TeamResult[] = !isMlb && searchQ.trim().length >= 1 && teamList
+    ? teamList.filter(t =>
+        t.name.toLowerCase().includes(searchQ.toLowerCase()) ||
+        t.shortName.toLowerCase().includes(searchQ.toLowerCase()) ||
+        t.abbr.toLowerCase().includes(searchQ.toLowerCase())
+      ).slice(0, 8)
+    : [];
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    if (searchQ.trim().length < 2) { setDebouncedQ(""); setShowDropdown(false); return; }
-    debounceRef.current = setTimeout(() => { setDebouncedQ(searchQ.trim()); setShowDropdown(true); }, 300);
+    if (isMlb) {
+      if (searchQ.trim().length < 2) { setDebouncedQ(""); setShowDropdown(false); return; }
+      debounceRef.current = setTimeout(() => { setDebouncedQ(searchQ.trim()); setShowDropdown(true); }, 300);
+    } else {
+      setShowDropdown(searchQ.trim().length >= 1);
+    }
     return () => clearTimeout(debounceRef.current);
-  }, [searchQ]);
+  }, [searchQ, isMlb]);
 
-  const searchUrl = debouncedQ
-    ? `/api/intel/search?q=${encodeURIComponent(debouncedQ)}&sport=${player.sport}&positionFilter=${isMlb ? "pitcher" : ""}`
+  const searchUrl = isMlb && debouncedQ
+    ? `/api/intel/search?q=${encodeURIComponent(debouncedQ)}&sport=${player.sport}&positionFilter=pitcher`
     : null;
 
   const { data: searchResults, isFetching: searchLoading } = useQuery<PlayerSearchResult[]>({
@@ -838,7 +860,8 @@ function MatchupsTab({ player }: { player: PlayerData }) {
               style={{ background: "none", border: "none", outline: "none", flex: 1, fontSize: 13, color: "#131A24" }} />
             {searchLoading && <div style={{ width: 14, height: 14, border: "2px solid rgba(19,35,58,0.15)", borderTop: "2px solid #D4A843", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
           </div>
-          {showDropdown && searchResults && searchResults.length > 0 && (
+          {/* MLB: player (pitcher) search results */}
+          {isMlb && showDropdown && searchResults && searchResults.length > 0 && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", overflow: "hidden", marginTop: 4 }}>
               {searchResults.slice(0, 6).map((r) => (
                 <button key={r.espnId} onClick={() => { setSelectedOpponent(r); setSearchQ(""); setShowDropdown(false); }}
@@ -853,9 +876,39 @@ function MatchupsTab({ player }: { player: PlayerData }) {
               ))}
             </div>
           )}
-          {showDropdown && !searchLoading && searchResults && searchResults.length === 0 && (
+          {isMlb && showDropdown && !searchLoading && searchResults && searchResults.length === 0 && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", padding: "0.75rem", fontSize: 13, color: "#3D4B58", marginTop: 4 }}>
-              No players found for "{debouncedQ}"
+              No pitchers found for "{debouncedQ}"
+            </div>
+          )}
+          {/* Non-MLB: team list filtered client-side */}
+          {!isMlb && showDropdown && filteredTeams.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", overflow: "hidden", marginTop: 4 }}>
+              {filteredTeams.map((t) => (
+                <button key={t.abbr}
+                  onClick={() => {
+                    setSelectedOpponent({ espnId: t.abbr, name: t.name, sport: player.sport, team: t.name, teamAbbr: t.abbr, position: "", headshot: t.logo ?? "" });
+                    setSearchQ("");
+                    setShowDropdown(false);
+                  }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "0.6rem 0.75rem", background: "none", border: "none", borderBottom: "1px solid rgba(19,35,58,0.06)", cursor: "pointer", textAlign: "left" }}>
+                  {t.logo
+                    ? <img src={t.logo} alt={t.abbr} style={{ width: 28, height: 28, objectFit: "contain", borderRadius: 4 }} />
+                    : <div style={{ width: 28, height: 28, borderRadius: 4, background: t.color ? `#${t.color}` : "#3D4B58", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff" }}>{t.abbr}</span>
+                      </div>
+                  }
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#131A24" }}>{t.name}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>{t.abbr}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {!isMlb && showDropdown && searchQ.trim().length >= 1 && filteredTeams.length === 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", padding: "0.75rem", fontSize: 13, color: "#3D4B58", marginTop: 4 }}>
+              No teams found for "{searchQ}"
             </div>
           )}
         </div>
@@ -2340,12 +2393,10 @@ export default function PlayerIntel() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Pre-populate search from URL hash params (e.g., navigating from BTS "Intel" button)
+  // Pre-populate search from URL params (e.g., navigating from BTS "Intel" button)
+  // wouter's navigate() puts query string in window.location.search (not hash)
   useEffect(() => {
-    const hash = window.location.hash; // e.g. #/intel?q=Shohei%20Ohtani&sport=MLB
-    const qIdx = hash.indexOf("?");
-    if (qIdx < 0) return;
-    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    const params = new URLSearchParams(window.location.search);
     const qParam = params.get("q");
     const sportParam = params.get("sport") as Sport | null;
     if (qParam) setSearchQuery(decodeURIComponent(qParam));
