@@ -75,13 +75,15 @@ interface BvPData {
 }
 
 interface VsTeamData {
-  season?: Record<string, string | number>;
-  last5?: GameLogEntry[];
+  seasonStats?: Record<string, string | number>;
+  careerStats?: Record<string, string | number>;
+  recentGames?: GameLogEntry[];
 }
 
 interface ParkSplitData {
   home?: Record<string, string | number>;
   away?: Record<string, string | number>;
+  venues?: Array<Record<string, string | number | null>>;
   parkFactor?: { hit: number; hr: number; name: string };
 }
 
@@ -739,26 +741,17 @@ function MatchupsTab({ player }: { player: PlayerData }) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const isMlb = player.sport === "MLB";
-  const searchPlaceholder = isMlb
-    ? "Search opposing pitcher..."
-    : "Search opponent team...";
+  const searchPlaceholder = isMlb ? "Search opposing pitcher..." : "Search opponent team...";
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    if (searchQ.trim().length < 2) {
-      setDebouncedQ("");
-      setShowDropdown(false);
-      return;
-    }
-    debounceRef.current = setTimeout(() => {
-      setDebouncedQ(searchQ.trim());
-      setShowDropdown(true);
-    }, 300);
+    if (searchQ.trim().length < 2) { setDebouncedQ(""); setShowDropdown(false); return; }
+    debounceRef.current = setTimeout(() => { setDebouncedQ(searchQ.trim()); setShowDropdown(true); }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [searchQ]);
 
   const searchUrl = debouncedQ
-    ? `/api/intel/search?q=${encodeURIComponent(debouncedQ)}&sport=MLB&positionFilter=${isMlb ? "pitcher" : ""}`
+    ? `/api/intel/search?q=${encodeURIComponent(debouncedQ)}&sport=${player.sport}&positionFilter=${isMlb ? "pitcher" : ""}`
     : null;
 
   const { data: searchResults, isFetching: searchLoading } = useQuery<PlayerSearchResult[]>({
@@ -767,179 +760,83 @@ function MatchupsTab({ player }: { player: PlayerData }) {
     enabled: !!searchUrl,
   });
 
-  // BvP data (MLB) — use bvp-name endpoint which resolves names → MLBAM IDs server-side
-  // This avoids the ESPN ID vs MLBAM ID mismatch entirely
-  const bvpUrl =
-    isMlb && selectedOpponent
-      ? `/api/intel/bvp-name?batter=${encodeURIComponent(player.name)}&pitcher=${encodeURIComponent(selectedOpponent.name)}`
-      : null;
-  const {
-    data: bvpData,
-    isFetching: bvpLoading,
-    error: bvpError,
-    refetch: refetchBvp,
-  } = useQuery<BvPData>({
+  const bvpUrl = isMlb && selectedOpponent
+    ? `/api/intel/bvp-name?batter=${encodeURIComponent(player.name)}&pitcher=${encodeURIComponent(selectedOpponent.name)}`
+    : null;
+  const { data: bvpData, isFetching: bvpLoading, error: bvpError, refetch: refetchBvp } = useQuery<BvPData>({
     queryKey: ["bvp", player.name, selectedOpponent?.name],
     queryFn: () => fetch(bvpUrl!).then((r) => r.json()),
     enabled: !!bvpUrl,
   });
 
-  // vs-team (non-MLB) — path params: /vs-team/:sport/:playerId/:teamAbbr
-  const vsTeamUrl =
-    !isMlb && selectedOpponent
-      ? `/api/intel/vs-team/${player.sport}/${player.espnId}/${selectedOpponent.teamAbbr ?? selectedOpponent.team ?? "UNK"}`
-      : null;
-  const {
-    data: vsTeamData,
-    isFetching: vsLoading,
-    error: vsError,
-    refetch: refetchVs,
-  } = useQuery<VsTeamData>({
+  const vsTeamUrl = !isMlb && selectedOpponent
+    ? `/api/intel/vs-team/${player.sport}/${player.espnId}/${selectedOpponent.teamAbbr ?? selectedOpponent.team ?? "UNK"}`
+    : null;
+  const { data: vsTeamData, isFetching: vsLoading, error: vsError, refetch: refetchVs } = useQuery<VsTeamData>({
     queryKey: ["vs-team", player.espnId, selectedOpponent?.teamAbbr],
     queryFn: () => fetch(vsTeamUrl!).then((r) => r.json()),
     enabled: !!vsTeamUrl,
   });
 
-  const signalColor = {
-    strong: "#22c55e",
-    struggles: "#ef4444",
-    neutral: "#3D4B58",
-  };
-  const signalLabel = {
-    strong: "💪 Strong History",
-    struggles: "🚫 Struggles",
-    neutral: "Neutral",
-  };
+  const signalColor = { strong: "#22c55e", struggles: "#ef4444", neutral: "#3D4B58" } as const;
+  const signalBg = { strong: "rgba(34,197,94,0.10)", struggles: "rgba(239,68,68,0.10)", neutral: "rgba(61,75,88,0.08)" } as const;
+  const signalLabel = { strong: "💪 Strong History", struggles: "🚫 Struggles vs Pitcher", neutral: "⚡ Neutral History" } as const;
+
+  const vsGameKeys: string[] = [];
+  if (vsTeamData?.recentGames && vsTeamData.recentGames.length > 0) {
+    const skip = new Set(["date", "date_game", "opp", "result", "team"]);
+    Object.keys(vsTeamData.recentGames[0]).forEach(k => { if (!skip.has(k)) vsGameKeys.push(k); });
+  }
+
+  function AvgBar({ value, label }: { value: number; label: string }) {
+    const pct = Math.min(100, (value / 0.5) * 100);
+    const color = value >= 0.3 ? "#22c55e" : value >= 0.25 ? "#D4A843" : "#ef4444";
+    return (
+      <div style={{ marginBottom: "0.75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>{label}</span>
+          <span style={{ fontSize: 13, fontWeight: 900, color }}>{fmtAvg(value)}</span>
+        </div>
+        <div style={{ height: 6, background: "rgba(19,35,58,0.08)", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {/* Opponent Search */}
       <div style={CARD_STYLE}>
-        <p
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "#3D4B58",
-            margin: "0 0 0.75rem",
-          }}
-        >
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
           {isMlb ? "Opposing Pitcher" : "Opponent Team"}
         </p>
         <div style={{ position: "relative" }}>
-          {/* Selected badge */}
           {selectedOpponent && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: "rgba(19,35,58,0.04)",
-                border: "1px solid rgba(19,35,58,0.12)",
-                borderRadius: "0.75rem",
-                padding: "0.5rem 0.75rem",
-                marginBottom: "0.5rem",
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)", borderRadius: "0.75rem", padding: "0.5rem 0.75rem", marginBottom: "0.5rem" }}>
               <PlayerAvatar player={selectedOpponent} size={28} />
-              <span style={{ fontWeight: 700, color: "#131A24", fontSize: 13 }}>
-                {selectedOpponent.name}
-              </span>
-              <span style={{ color: "#3D4B58", fontSize: 11 }}>
-                {selectedOpponent.teamAbbr} · {selectedOpponent.position}
-              </span>
-              <button
-                onClick={() => {
-                  setSelectedOpponent(null);
-                  setSearchQ("");
-                }}
-                style={{
-                  marginLeft: "auto",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#3D4B58",
-                  padding: 2,
-                }}
-              >
+              <span style={{ fontWeight: 700, color: "#131A24", fontSize: 13 }}>{selectedOpponent.name}</span>
+              <span style={{ color: "#3D4B58", fontSize: 11 }}>{selectedOpponent.teamAbbr} · {selectedOpponent.position}</span>
+              <button onClick={() => { setSelectedOpponent(null); setSearchQ(""); }} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#3D4B58", padding: 2 }}>
                 <X size={14} />
               </button>
             </div>
           )}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "rgba(19,35,58,0.04)",
-              border: "1px solid rgba(19,35,58,0.12)",
-              borderRadius: "0.75rem",
-              padding: "0.5rem 0.75rem",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)", borderRadius: "0.75rem", padding: "0.5rem 0.75rem" }}>
             <Search size={14} color="#3D4B58" />
-            <input
-              type="text"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder={searchPlaceholder}
-              style={{
-                background: "none",
-                border: "none",
-                outline: "none",
-                flex: 1,
-                fontSize: 13,
-                color: "#131A24",
-              }}
-            />
-            {searchLoading && <Spinner />}
+            <input type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)} placeholder={searchPlaceholder}
+              style={{ background: "none", border: "none", outline: "none", flex: 1, fontSize: 13, color: "#131A24" }} />
+            {searchLoading && <div style={{ width: 14, height: 14, border: "2px solid rgba(19,35,58,0.15)", borderTop: "2px solid #D4A843", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
           </div>
-
-          {/* Dropdown */}
           {showDropdown && searchResults && searchResults.length > 0 && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                right: 0,
-                zIndex: 50,
-                background: "#fff",
-                border: "1px solid rgba(19,35,58,0.15)",
-                borderRadius: "0.75rem",
-                boxShadow: "0 8px 24px rgba(19,35,58,0.12)",
-                overflow: "hidden",
-                marginTop: 4,
-              }}
-            >
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", overflow: "hidden", marginTop: 4 }}>
               {searchResults.slice(0, 6).map((r) => (
-                <button
-                  key={r.espnId}
-                  onClick={() => {
-                    setSelectedOpponent(r);
-                    setSearchQ("");
-                    setShowDropdown(false);
-                  }}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "0.6rem 0.75rem",
-                    background: "none",
-                    border: "none",
-                    borderBottom: "1px solid rgba(19,35,58,0.06)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
+                <button key={r.espnId} onClick={() => { setSelectedOpponent(r); setSearchQ(""); setShowDropdown(false); }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "0.6rem 0.75rem", background: "none", border: "none", borderBottom: "1px solid rgba(19,35,58,0.06)", cursor: "pointer", textAlign: "left" }}>
                   <PlayerAvatar player={r} size={28} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#131A24" }}>{r.name}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>
-                      {r.teamAbbr} · {r.position}
-                    </p>
+                    <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>{r.teamAbbr} · {r.position}</p>
                   </div>
                   <SportBadge sport={r.sport} />
                 </button>
@@ -947,186 +844,217 @@ function MatchupsTab({ player }: { player: PlayerData }) {
             </div>
           )}
           {showDropdown && !searchLoading && searchResults && searchResults.length === 0 && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                right: 0,
-                zIndex: 50,
-                background: "#fff",
-                border: "1px solid rgba(19,35,58,0.15)",
-                borderRadius: "0.75rem",
-                boxShadow: "0 8px 24px rgba(19,35,58,0.12)",
-                padding: "0.75rem",
-                fontSize: 13,
-                color: "#3D4B58",
-                marginTop: 4,
-              }}
-            >
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", padding: "0.75rem", fontSize: 13, color: "#3D4B58", marginTop: 4 }}>
               No players found for "{debouncedQ}"
             </div>
           )}
         </div>
       </div>
 
-      {/* BvP Results (MLB) */}
+      {/* ── MLB: Batter vs Pitcher ── */}
       {isMlb && selectedOpponent && (
         <>
           {bvpLoading && <Spinner />}
           {bvpError && <ErrorCard message="Failed to load BvP data." onRetry={() => refetchBvp()} />}
-          {bvpData && (
-            <div style={CARD_STYLE}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "0.75rem",
-                  flexWrap: "wrap",
-                  gap: 8,
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    color: "#3D4B58",
-                    margin: 0,
-                  }}
-                >
-                  Batter vs Pitcher
-                </p>
-                {bvpData.signal && (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: signalColor[bvpData.signal],
-                    }}
-                  >
-                    {signalLabel[bvpData.signal]}
-                  </span>
-                )}
-              </div>
+          {!bvpLoading && !bvpError && bvpData && (
+            <>
+              {/* Signal banner */}
+              {bvpData.signal && (
+                <div style={{ background: signalBg[bvpData.signal], border: `1px solid ${signalColor[bvpData.signal]}40`, borderRadius: "0.75rem", padding: "0.75rem 1rem", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: signalColor[bvpData.signal] }}>{signalLabel[bvpData.signal]}</span>
+                  {bvpData.seasonBvP?.AB != null && (
+                    <span style={{ fontSize: 11, color: "#3D4B58", marginLeft: "auto" }}>{fmtNum(bvpData.seasonBvP.AB)} AB this season</span>
+                  )}
+                </div>
+              )}
 
-              {/* Season BvP */}
+              {/* Season BvP — Full stats */}
               {bvpData.seasonBvP && (
-                <>
-                  <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600, margin: "0 0 0.5rem" }}>This Season</p>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))",
-                      gap: "0.4rem",
-                      marginBottom: "0.75rem",
-                    }}
-                  >
-                    {[
-                      ["AB", fmtNum(bvpData.seasonBvP.AB)],
-                      ["H", fmtNum(bvpData.seasonBvP.H)],
-                      ["HR", fmtNum(bvpData.seasonBvP.HR)],
-                      ["RBI", fmtNum(bvpData.seasonBvP.RBI)],
-                      ["AVG", fmtAvg(bvpData.seasonBvP.AVG)],
-                      ["OBP", fmtAvg(bvpData.seasonBvP.OBP)],
-                      ["SLG", fmtAvg(bvpData.seasonBvP.SLG)],
-                    ].map(([label, value]) => (
-                      <StatChip key={label} label={label} value={value} highlight={label === "AVG" && parseFloat(String(bvpData.seasonBvP?.AVG ?? 0)) >= 0.3} />
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 1rem" }}>
+                    2026 Season vs {selectedOpponent.name}
+                  </p>
+                  {bvpData.seasonBvP.AVG != null && (
+                    <AvgBar value={parseFloat(String(bvpData.seasonBvP.AVG))} label="Batting Average" />
+                  )}
+                  {bvpData.seasonBvP.OBP != null && (
+                    <AvgBar value={parseFloat(String(bvpData.seasonBvP.OBP))} label="On-Base %" />
+                  )}
+                  {bvpData.seasonBvP.SLG != null && (
+                    <AvgBar value={parseFloat(String(bvpData.seasonBvP.SLG))} label="Slugging %" />
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(62px, 1fr))", gap: "0.4rem", marginTop: "0.75rem" }}>
+                    {(
+                      [
+                        ["AB",  fmtNum(bvpData.seasonBvP.AB),   false],
+                        ["H",   fmtNum(bvpData.seasonBvP.H),    Number(bvpData.seasonBvP.H) >= 3],
+                        ["2B",  fmtNum(bvpData.seasonBvP.doubles ?? bvpData.seasonBvP["2B"]), false],
+                        ["HR",  fmtNum(bvpData.seasonBvP.HR),   Number(bvpData.seasonBvP.HR) >= 1],
+                        ["RBI", fmtNum(bvpData.seasonBvP.RBI),  Number(bvpData.seasonBvP.RBI) >= 2],
+                        ["TB",  fmtNum(bvpData.seasonBvP.TB ?? bvpData.seasonBvP.totalBases), false],
+                        ["BB",  fmtNum(bvpData.seasonBvP.walks ?? bvpData.seasonBvP.BB), false],
+                        ["K",   fmtNum(bvpData.seasonBvP.strikeOuts ?? bvpData.seasonBvP.K), false],
+                        ["AVG", fmtAvg(bvpData.seasonBvP.AVG),  parseFloat(String(bvpData.seasonBvP.AVG ?? 0)) >= 0.3],
+                        ["OBP", fmtAvg(bvpData.seasonBvP.OBP),  parseFloat(String(bvpData.seasonBvP.OBP ?? 0)) >= 0.35],
+                        ["SLG", fmtAvg(bvpData.seasonBvP.SLG),  parseFloat(String(bvpData.seasonBvP.SLG ?? 0)) >= 0.45],
+                        ["OPS", fmtAvg(bvpData.seasonBvP.ops ?? bvpData.seasonBvP.OPS), parseFloat(String(bvpData.seasonBvP.ops ?? bvpData.seasonBvP.OPS ?? 0)) >= 0.8],
+                      ] as [string, string, boolean][]
+                    ).filter(([, v]) => v !== "—").map(([label, value, hi]) => (
+                      <StatChip key={label} label={label} value={value} highlight={hi} />
                     ))}
                   </div>
-                </>
+                </div>
               )}
 
               {/* Career BvP */}
-              {bvpData.careerBvP && (
-                <>
-                  <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600, margin: "0 0 0.5rem" }}>Career</p>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))",
-                      gap: "0.4rem",
-                    }}
-                  >
-                    {[
-                      ["AB", fmtNum(bvpData.careerBvP.AB)],
-                      ["H", fmtNum(bvpData.careerBvP.H)],
-                      ["HR", fmtNum(bvpData.careerBvP.HR)],
-                      ["RBI", fmtNum(bvpData.careerBvP.RBI)],
-                      ["AVG", fmtAvg(bvpData.careerBvP.AVG)],
-                      ["OBP", fmtAvg(bvpData.careerBvP.OBP)],
-                      ["SLG", fmtAvg(bvpData.careerBvP.SLG)],
-                    ].map(([label, value]) => (
-                      <StatChip key={label} label={label} value={value} highlight={label === "AVG" && parseFloat(String(bvpData.careerBvP?.AVG ?? 0)) >= 0.3} />
+              {bvpData.careerBvP && Object.keys(bvpData.careerBvP).length > 0 && (
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+                    Career vs {selectedOpponent.name}
+                  </p>
+                  {bvpData.careerBvP.AVG != null && (
+                    <AvgBar value={parseFloat(String(bvpData.careerBvP.AVG))} label="Career Average" />
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(62px, 1fr))", gap: "0.4rem", marginTop: "0.5rem" }}>
+                    {(
+                      [
+                        ["AB",  fmtNum(bvpData.careerBvP.AB)],
+                        ["H",   fmtNum(bvpData.careerBvP.H)],
+                        ["2B",  fmtNum(bvpData.careerBvP.doubles ?? bvpData.careerBvP["2B"])],
+                        ["HR",  fmtNum(bvpData.careerBvP.HR)],
+                        ["RBI", fmtNum(bvpData.careerBvP.RBI)],
+                        ["TB",  fmtNum(bvpData.careerBvP.TB ?? bvpData.careerBvP.totalBases)],
+                        ["BB",  fmtNum(bvpData.careerBvP.walks ?? bvpData.careerBvP.BB)],
+                        ["K",   fmtNum(bvpData.careerBvP.strikeOuts ?? bvpData.careerBvP.K)],
+                        ["AVG", fmtAvg(bvpData.careerBvP.AVG)],
+                        ["OBP", fmtAvg(bvpData.careerBvP.OBP)],
+                        ["SLG", fmtAvg(bvpData.careerBvP.SLG)],
+                        ["OPS", fmtAvg(bvpData.careerBvP.ops ?? bvpData.careerBvP.OPS)],
+                      ] as [string, string][]
+                    ).filter(([, v]) => v !== "—").map(([label, value]) => (
+                      <StatChip key={label} label={label} value={value}
+                        highlight={label === "AVG" && parseFloat(String(bvpData.careerBvP?.AVG ?? 0)) >= 0.3} />
                     ))}
                   </div>
-                </>
+                </div>
               )}
-            </div>
+
+              {/* No history note */}
+              {!bvpData.seasonBvP && !bvpData.careerBvP && (
+                <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>
+                    No matchup history found between {player.name} and {selectedOpponent.name}.
+                  </p>
+                  <p style={{ margin: "0.5rem 0 0", fontSize: 11, color: "#3D4B58" }}>
+                    This may be a new matchup or a pitcher with limited MLB history.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
 
-      {/* vs Team (non-MLB) */}
+      {/* ── Non-MLB: vs Team ── */}
       {!isMlb && selectedOpponent && (
         <>
           {vsLoading && <Spinner />}
           {vsError && <ErrorCard message="Failed to load vs-team data." onRetry={() => refetchVs()} />}
-          {vsTeamData && (
-            <div style={CARD_STYLE}>
-              <p
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  color: "#3D4B58",
-                  margin: "0 0 0.75rem",
-                }}
-              >
-                vs {selectedOpponent.teamAbbr}
-              </p>
-              {vsTeamData.season && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
-                    gap: "0.5rem",
-                    marginBottom: vsTeamData.last5 ? "0.75rem" : 0,
-                  }}
-                >
-                  {Object.entries(vsTeamData.season).slice(0, 8).map(([k, v]) => (
-                    <StatChip key={k} label={k} value={String(v ?? "—")} />
-                  ))}
+          {!vsLoading && !vsError && vsTeamData && (
+            <>
+              {/* Season aggregate stats */}
+              {vsTeamData.seasonStats && Object.keys(vsTeamData.seasonStats).length > 0 && (
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+                    Season Totals vs {selectedOpponent.teamAbbr}
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.5rem" }}>
+                    {Object.entries(vsTeamData.seasonStats).map(([k, v]) => (
+                      <StatChip key={k} label={k.toUpperCase()} value={String(v ?? "—")}
+                        highlight={
+                          (player.sport === "NBA" && k === "PTS" && Number(v) >= 20) ||
+                          (player.sport === "NHL" && (k === "G" || k === "PTS") && Number(v) >= 2) ||
+                          (player.sport === "NFL" && k === "YDS" && Number(v) >= 200)
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
-              {vsTeamData.last5 && vsTeamData.last5.length > 0 && (
-                <>
-                  <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600, margin: "0 0 0.5rem" }}>
-                    Last 5 Games vs {selectedOpponent.teamAbbr}
+
+              {/* Per-game history table */}
+              {vsTeamData.recentGames && vsTeamData.recentGames.length > 0 && (
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+                    Game-by-Game vs {selectedOpponent.teamAbbr} ({vsTeamData.recentGames.length} games)
                   </p>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 300 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid rgba(19,35,58,0.12)" }}>
+                          <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase" }}>Date</th>
+                          <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase" }}>Res</th>
+                          {vsGameKeys.slice(0, 8).map(k => (
+                            <th key={k} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase" }}>{k}</th>
+                          ))}
+                        </tr>
+                      </thead>
                       <tbody>
-                        {vsTeamData.last5.map((g, i) => (
-                          <tr key={i} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
-                            <td style={{ padding: "4px 6px", color: "#3D4B58", fontSize: 11 }}>{(g.date_game ?? g.date ?? "").slice(5, 10)}</td>
-                            {Object.entries(g)
-                              .filter(([k]) => !["date_game", "date", "opp"].includes(k))
-                              .slice(0, 5)
-                              .map(([k, v]) => (
-                                <td key={k} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 600 }}>{String(v ?? "—")}</td>
-                              ))}
-                          </tr>
-                        ))}
+                        {vsTeamData.recentGames.map((g, i) => {
+                          const dateStr = String(g.date_game ?? g.date ?? "").slice(5, 10);
+                          const result = String(g.result ?? "");
+                          const isWin = result.startsWith("W");
+                          return (
+                            <tr key={i} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)", background: i % 2 === 0 ? "transparent" : "rgba(19,35,58,0.015)" }}>
+                              <td style={{ padding: "5px 6px", color: "#3D4B58", fontSize: 10, whiteSpace: "nowrap" }}>{dateStr}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, fontSize: 11, color: isWin ? "#22c55e" : "#ef4444" }}>{result || "—"}</td>
+                              {vsGameKeys.slice(0, 8).map(k => {
+                                const val = g[k];
+                                const isPrimary = (player.sport === "NBA" && k === "PTS") || (player.sport === "NHL" && k === "G") || (player.sport === "NFL" && k === "YDS");
+                                const numVal = parseFloat(String(val ?? "0")) || 0;
+                                const isHigh = isPrimary && numVal >= (player.sport === "NBA" ? 20 : player.sport === "NHL" ? 1 : 80);
+                                return (
+                                  <td key={k} style={{ padding: "5px 6px", textAlign: "center", fontWeight: isPrimary ? 800 : 500, color: isHigh ? "#22c55e" : "#131A24", fontSize: 12 }}>
+                                    {val != null ? String(val) : "—"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
-                </>
+                  {/* Per-game averages footer */}
+                  {vsTeamData.recentGames.length >= 2 && (
+                    <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Per-Game Averages</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                        {vsGameKeys.slice(0, 8).map(k => {
+                          const vals = vsTeamData.recentGames!.map(g => parseFloat(String(g[k] ?? "0")) || 0);
+                          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                          if (avg === 0) return null;
+                          return (
+                            <div key={k} style={{ background: "rgba(19,35,58,0.05)", borderRadius: "0.5rem", padding: "3px 8px", display: "flex", gap: 5, alignItems: "center" }}>
+                              <span style={{ fontSize: 9, color: "#3D4B58", fontWeight: 700, textTransform: "uppercase" }}>{k}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>{avg.toFixed(1)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+
+              {/* No data fallback */}
+              {(!vsTeamData.seasonStats || Object.keys(vsTeamData.seasonStats).length === 0) &&
+               (!vsTeamData.recentGames || vsTeamData.recentGames.length === 0) && (
+                <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No matchup data found vs {selectedOpponent.teamAbbr}.</p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -1137,10 +1065,8 @@ function MatchupsTab({ player }: { player: PlayerData }) {
 // ─── Park / Venue Tab ─────────────────────────────────────────────────────────
 
 function ParkTab({ player }: { player: PlayerData }) {
-  const [selectedPark, setSelectedPark] = useState("");
   const isMlb = player.sport === "MLB";
 
-  // Park splits needs MLBAM ID (player.mlbamId) — falls back to auto-load on first render
   const parkUrl = isMlb && player.mlbamId
     ? `/api/intel/park-splits/${player.mlbamId}`
     : null;
@@ -1150,227 +1076,212 @@ function ParkTab({ player }: { player: PlayerData }) {
     error: parkError,
     refetch: refetchPark,
   } = useQuery<ParkSplitData>({
-    queryKey: ["park-splits", player.espnId, selectedPark],
+    queryKey: ["park-splits", player.espnId],
     queryFn: () => fetch(parkUrl!).then((r) => r.json()),
     enabled: !!parkUrl,
   });
 
-  const splits = player.splits;
+  // Prefer parkData splits (MLB Stats API) over player.splits (ESPN gamelog)
+  const home = parkData?.home ?? player.splits?.home;
+  const away = parkData?.away ?? player.splits?.away;
 
-  function SplitRow({ label, home, away }: { label: string; home: string | number | undefined; away: string | number | undefined }) {
-    const h = parseFloat(String(home ?? 0));
-    const a = parseFloat(String(away ?? 0));
+  // MLB split rows config
+  const MLB_SPLIT_ROWS = [
+    { key: "avg",         label: "AVG",   fmt: fmtAvg },
+    { key: "obp",         label: "OBP",   fmt: fmtAvg },
+    { key: "slg",         label: "SLG",   fmt: fmtAvg },
+    { key: "ops",         label: "OPS",   fmt: fmtAvg },
+    { key: "hr",          label: "HR",    fmt: (v: any) => fmtNum(v) },
+    { key: "hits",        label: "H",     fmt: (v: any) => fmtNum(v) },
+    { key: "doubles",     label: "2B",    fmt: (v: any) => fmtNum(v) },
+    { key: "triples",     label: "3B",    fmt: (v: any) => fmtNum(v) },
+    { key: "rbi",         label: "RBI",   fmt: (v: any) => fmtNum(v) },
+    { key: "runs",        label: "R",     fmt: (v: any) => fmtNum(v) },
+    { key: "walks",       label: "BB",    fmt: (v: any) => fmtNum(v) },
+    { key: "strikeOuts",  label: "K",     fmt: (v: any) => fmtNum(v) },
+    { key: "stolenBases", label: "SB",    fmt: (v: any) => fmtNum(v) },
+    { key: "atBats",      label: "AB",    fmt: (v: any) => fmtNum(v) },
+    { key: "gamesPlayed", label: "G",     fmt: (v: any) => fmtNum(v) },
+  ];
+
+  function SplitRow({ label, homeVal, awayVal, isRate }: { label: string; homeVal: any; awayVal: any; isRate?: boolean }) {
+    const h = parseFloat(String(homeVal ?? 0)) || 0;
+    const a = parseFloat(String(awayVal ?? 0)) || 0;
     const homeWins = h > a;
+    const awayWins = a > h;
+    const homeStr = homeVal != null && homeVal !== "" ? String(homeVal) : "—";
+    const awayStr = awayVal != null && awayVal !== "" ? String(awayVal) : "—";
     return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: 8,
-          padding: "0.4rem 0",
-          borderBottom: "1px solid rgba(19,35,58,0.06)",
-        }}
-      >
-        <span
-          style={{
-            textAlign: "right",
-            fontWeight: homeWins ? 800 : 500,
-            color: homeWins ? "#22c55e" : "#131A24",
-            fontSize: 13,
-          }}
-        >
-          {home ?? "—"}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "0.4rem 0", borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+        <span style={{ textAlign: "right", fontWeight: homeWins ? 800 : 500, color: homeWins ? "#22c55e" : "#131A24", fontSize: 13 }}>
+          {homeStr}
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            color: "#3D4B58",
-            minWidth: 40,
-            textAlign: "center",
-          }}
-        >
-          {label}
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", minWidth: 36, textAlign: "center" }}>{label}</span>
+        <span style={{ textAlign: "left", fontWeight: awayWins ? 800 : 500, color: awayWins ? "#22c55e" : "#131A24", fontSize: 13 }}>
+          {awayStr}
         </span>
-        <span
-          style={{
-            textAlign: "left",
-            fontWeight: !homeWins ? 800 : 500,
-            color: !homeWins ? "#22c55e" : "#131A24",
-            fontSize: 13,
-          }}
-        >
-          {away ?? "—"}
-        </span>
+      </div>
+    );
+  }
+
+  function ParkFactorBar({ value, label }: { value: number; label: string }) {
+    const isHitter = value > 1.05;
+    const isPitcher = value < 0.95;
+    const color = isHitter ? "#22c55e" : isPitcher ? "#ef4444" : "#3D4B58";
+    const pct = Math.min(100, Math.max(0, ((value - 0.7) / 0.8) * 100));
+    return (
+      <div style={{ marginBottom: "0.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>{label}</span>
+          <span style={{ fontSize: 12, fontWeight: 900, color }}>
+            {value.toFixed(2)} · {isHitter ? "Hitter-Friendly" : isPitcher ? "Pitcher-Friendly" : "Neutral"}
+          </span>
+        </div>
+        <div style={{ height: 6, background: "rgba(19,35,58,0.08)", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isMlb) {
+    // Non-MLB: show venue/home-away from ESPN gamelog splits
+    const splits = player.splits;
+    if (!splits) {
+      return (
+        <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No venue split data available for {player.sport} players.</p>
+        </div>
+      );
+    }
+    const splitKeys = Object.keys(splits.home).slice(0, 10);
+    return (
+      <div style={CARD_STYLE}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", marginBottom: "0.75rem" }}>
+          <span style={{ textAlign: "right", fontWeight: 700, fontSize: 12, color: "#131A24", textTransform: "uppercase", letterSpacing: "0.05em" }}>Home</span>
+          <span style={{ minWidth: 40 }} />
+          <span style={{ fontWeight: 700, fontSize: 12, color: "#131A24", textTransform: "uppercase", letterSpacing: "0.05em" }}>Away</span>
+        </div>
+        {splitKeys.map(k => (
+          <SplitRow key={k} label={k.toUpperCase()} homeVal={splits.home[k]} awayVal={splits.away[k]} />
+        ))}
       </div>
     );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      {/* Home / Away Splits */}
-      {splits && (
+      {parkLoading && <Spinner />}
+      {parkError && <ErrorCard message="Failed to load park split data." onRetry={() => refetchPark()} />}
+
+      {/* Home / Away full splits */}
+      {(home || away) && !parkLoading && (
         <div style={CARD_STYLE}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              marginBottom: "0.75rem",
-            }}
-          >
-            <span
-              style={{
-                textAlign: "right",
-                fontWeight: 700,
-                fontSize: 12,
-                color: "#131A24",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Home
-            </span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", marginBottom: "0.75rem" }}>
+            <span style={{ textAlign: "right", fontWeight: 700, fontSize: 12, color: "#131A24", textTransform: "uppercase", letterSpacing: "0.05em" }}>Home</span>
             <span style={{ minWidth: 40 }} />
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: 12,
-                color: "#131A24",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Away
-            </span>
+            <span style={{ fontWeight: 700, fontSize: 12, color: "#131A24", textTransform: "uppercase", letterSpacing: "0.05em" }}>Away</span>
           </div>
-          {isMlb ? (
-            <>
-              <SplitRow label="BA" home={fmtAvg(splits.home.avg ?? splits.home.BA)} away={fmtAvg(splits.away.avg ?? splits.away.BA)} />
-              <SplitRow label="OBP" home={fmtAvg(splits.home.obp ?? splits.home.OBP)} away={fmtAvg(splits.away.obp ?? splits.away.OBP)} />
-              <SplitRow label="SLG" home={fmtAvg(splits.home.slg ?? splits.home.SLG)} away={fmtAvg(splits.away.slg ?? splits.away.SLG)} />
-              <SplitRow label="HR" home={splits.home.hr ?? splits.home.HR} away={splits.away.hr ?? splits.away.HR} />
-              <SplitRow label="AB" home={splits.home.ab ?? splits.home.AB} away={splits.away.ab ?? splits.away.AB} />
-            </>
-          ) : (
-            Object.keys(splits.home)
-              .slice(0, 6)
-              .map((k) => (
-                <SplitRow key={k} label={k} home={splits.home[k]} away={splits.away[k]} />
-              ))
-          )}
+          {MLB_SPLIT_ROWS.map(({ key, label, fmt }) => {
+            const hVal = home?.[key];
+            const aVal = away?.[key];
+            if (hVal == null && aVal == null) return null;
+            return (
+              <SplitRow key={key} label={label}
+                homeVal={hVal != null ? fmt(hVal) : "—"}
+                awayVal={aVal != null ? fmt(aVal) : "—"}
+              />
+            );
+          })}
         </div>
       )}
 
-      {/* Park Factor (MLB) */}
-      {isMlb && (
+      {/* Venue-by-Venue breakdown */}
+      {parkData?.venues && parkData.venues.length > 0 && (
         <div style={CARD_STYLE}>
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "#3D4B58",
-              margin: "0 0 0.75rem",
-            }}
-          >
-            <MapPin size={11} style={{ marginRight: 4 }} />
-            Park Factor
-          </p>
-
-          {/* Park Selector */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "rgba(19,35,58,0.04)",
-              border: "1px solid rgba(19,35,58,0.12)",
-              borderRadius: "0.75rem",
-              padding: "0.5rem 0.75rem",
-              marginBottom: "0.75rem",
-            }}
-          >
-            <MapPin size={13} color="#3D4B58" />
-            <select
-              value={selectedPark}
-              onChange={(e) => setSelectedPark(e.target.value)}
-              style={{
-                background: "none",
-                border: "none",
-                outline: "none",
-                flex: 1,
-                fontSize: 13,
-                color: "#131A24",
-                cursor: "pointer",
-              }}
-            >
-              <option value="">Select a park...</option>
-              {MLB_PARKS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={13} color="#3D4B58" />
-          </div>
-
-          {parkLoading && <Spinner />}
-          {parkError && <ErrorCard message="Failed to load park data." onRetry={() => refetchPark()} />}
-
-          {parkData?.parkFactor && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "0.75rem",
-              }}
-            >
-              {[
-                { label: "Hit Factor", value: parkData.parkFactor.hit },
-                { label: "HR Factor", value: parkData.parkFactor.hr },
-              ].map(({ label, value }) => {
-                const isHitter = value > 1.05;
-                const isPitcher = value < 0.95;
-                const color = isHitter ? "#22c55e" : isPitcher ? "#ef4444" : "#3D4B58";
-                const bgColor = isHitter
-                  ? "rgba(34,197,94,0.08)"
-                  : isPitcher
-                  ? "rgba(239,68,68,0.08)"
-                  : "rgba(19,35,58,0.04)";
-                return (
-                  <div
-                    key={label}
-                    style={{
-                      background: bgColor,
-                      border: `1px solid ${isHitter ? "rgba(34,197,94,0.25)" : isPitcher ? "rgba(239,68,68,0.25)" : "rgba(19,35,58,0.10)"}`,
-                      borderRadius: "0.75rem",
-                      padding: "0.75rem",
-                      textAlign: "center",
-                    }}
-                  >
-                    <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", margin: "0 0 4px" }}>{label}</p>
-                    <p style={{ fontSize: 22, fontWeight: 900, color, margin: 0 }}>{value.toFixed(2)}</p>
-                    <p style={{ fontSize: 10, color, fontWeight: 600, margin: "2px 0 0" }}>
-                      {isHitter ? "Hitter-Friendly" : isPitcher ? "Pitcher-Friendly" : "Neutral"}
-                    </p>
-                    {/* Factor bar */}
-                    <div style={{ marginTop: 8, height: 6, background: "rgba(19,35,58,0.08)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.min(100, ((value - 0.7) / 0.8) * 100)}%`, background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedPark && !parkLoading && !parkData && (
-            <p style={{ fontSize: 12, color: "#3D4B58", textAlign: "center", padding: "1rem 0" }}>
-              No park factor data available.
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "0.75rem" }}>
+            <MapPin size={12} color="#3D4B58" />
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+              Venue-by-Venue Performance
             </p>
-          )}
+          </div>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 380 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid rgba(19,35,58,0.12)" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase", minWidth: 100 }}>Venue</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>G</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>AB</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>H</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>HR</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>RBI</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>AVG</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>OBP</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>SLG</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>OPS</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#D4A843", fontSize: 10 }}>PF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parkData.venues.map((v, i) => {
+                  const avg = parseFloat(String(v.avg ?? 0)) || 0;
+                  const pf = v.parkFactor as any;
+                  const pfHit = typeof pf === "object" && pf !== null ? pf.hit : (typeof pf === "number" ? pf : null);
+                  const isHot = avg >= 0.3;
+                  const venueName = String(v.venue ?? "Unknown");
+                  return (
+                    <tr key={i} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)", background: i % 2 === 0 ? "transparent" : "rgba(19,35,58,0.015)" }}>
+                      <td style={{ padding: "5px 6px", fontWeight: 600, fontSize: 11, color: "#131A24", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={venueName}>{venueName}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{v.gamesPlayed ?? "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{v.atBats ?? "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600 }}>{v.hits ?? "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600, color: Number(v.hr) >= 1 ? "#22c55e" : "#131A24" }}>{v.hr ?? "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.rbi ?? "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 800, color: isHot ? "#22c55e" : avg < 0.22 ? "#ef4444" : "#131A24" }}>
+                        {avg > 0 ? fmtAvg(avg) : "—"}
+                      </td>
+                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.obp != null ? fmtAvg(v.obp) : "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.slg != null ? fmtAvg(v.slg) : "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700 }}>{v.ops != null ? fmtAvg(v.ops) : "—"}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, color: pfHit != null ? (pfHit > 1.05 ? "#22c55e" : pfHit < 0.95 ? "#ef4444" : "#3D4B58") : "#3D4B58" }}>
+                        {pfHit != null ? pfHit.toFixed(2) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0", textAlign: "right" }}>PF = Park Factor (hit). &gt;1.05 hitter-friendly · &lt;0.95 pitcher-friendly</p>
+        </div>
+      )}
+
+      {/* Park Factor summary */}
+      {parkData?.parkFactor && (
+        <div style={CARD_STYLE}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "0.75rem" }}>
+            <MapPin size={12} color="#3D4B58" />
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+              Home Park Factor {parkData.parkFactor.name ? `· ${parkData.parkFactor.name}` : ""}
+            </p>
+          </div>
+          <ParkFactorBar value={parkData.parkFactor.hit} label="Hit Factor" />
+          <ParkFactorBar value={parkData.parkFactor.hr} label="HR Factor" />
+          <p style={{ fontSize: 11, color: "#3D4B58", margin: "0.75rem 0 0", lineHeight: 1.5 }}>
+            {parkData.parkFactor.hit > 1.05
+              ? `This park inflates offensive production — batters hit at a higher rate here than league average.`
+              : parkData.parkFactor.hit < 0.95
+              ? `This is a pitcher-friendly park — expect suppressed offensive numbers relative to league average.`
+              : `This park is relatively neutral — stats should reflect true player ability without significant park bias.`}
+          </p>
+        </div>
+      )}
+
+      {/* No data message */}
+      {!parkLoading && !parkError && !home && !away && !parkData?.venues && (
+        <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No park split data available. MLBAM ID may not be resolved for this player.</p>
         </div>
       )}
     </div>
@@ -1382,18 +1293,58 @@ function ParkTab({ player }: { player: PlayerData }) {
 function DeepDiveTab({ player }: { player: PlayerData }) {
   const isMlb = player.sport === "MLB";
   const gamelog = player.gamelog ?? [];
-  const last10 = gamelog.slice(0, 10);
 
-  // Trend analysis
+  // Primary stat key per sport/position
   const primaryKey = isMlb ? "H" : player.sport === "NBA" ? "PTS" : player.sport === "NHL" ? "G" : "YDS";
-  const vals = last10.map((g) => parseFloat(String(g[primaryKey] ?? "0")) || 0);
-  const first5 = vals.slice(5, 10);
-  const last5 = vals.slice(0, 5);
-  const first5Avg = first5.length ? first5.reduce((a, b) => a + b, 0) / first5.length : 0;
-  const last5Avg = last5.length ? last5.reduce((a, b) => a + b, 0) / last5.length : 0;
+  const primaryLabel = isMlb ? "Hits" : player.sport === "NBA" ? "Points" : player.sport === "NHL" ? "Goals" : "Yards";
+
+  // Secondary stat keys for multi-stat comparison
+  const secondaryKeys: { key: string; label: string }[] = isMlb
+    ? [{ key: "HR", label: "HR" }, { key: "RBI", label: "RBI" }, { key: "TB", label: "TB" }]
+    : player.sport === "NBA"
+    ? [{ key: "REB", label: "REB" }, { key: "AST", label: "AST" }]
+    : player.sport === "NHL"
+    ? [{ key: "A", label: "AST" }, { key: "PTS", label: "PTS" }]
+    : player.position === "QB"
+    ? [{ key: "TD", label: "TD" }, { key: "INT", label: "INT" }]
+    : player.position === "RB"
+    ? [{ key: "CAR", label: "CAR" }, { key: "TD", label: "TD" }]
+    : [{ key: "REC", label: "REC" }, { key: "TD", label: "TD" }];
+
+  // Window slices (most recent first)
+  const L5   = gamelog.slice(0, 5);
+  const L10  = gamelog.slice(0, 10);
+  const L30  = gamelog.slice(0, 30);
+  const full = gamelog;
+
+  function windowAvg(games: typeof gamelog, key: string): number {
+    if (!games.length) return 0;
+    const vals = games.map(g => parseFloat(String(g[key] ?? "0")) || 0);
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
+  function windowTotal(games: typeof gamelog, key: string): number {
+    return games.map(g => parseFloat(String(g[key] ?? "0")) || 0).reduce((a, b) => a + b, 0);
+  }
+
+  // Career high for primary stat
+  const allVals = full.map(g => parseFloat(String(g[primaryKey] ?? "0")) || 0);
+  const careerHigh = allVals.length ? Math.max(...allVals) : 0;
+  const careerHighGame = allVals.length ? full[allVals.indexOf(careerHigh)] : null;
+
+  // Consistency: % of games where primary stat >= floor threshold
+  const threshold = isMlb ? 1 : player.sport === "NBA" ? 10 : player.sport === "NHL" ? 1 : 50;
+  const consistencyGames = full.length ? full.filter(g => (parseFloat(String(g[primaryKey] ?? "0")) || 0) >= threshold).length : 0;
+  const consistencyPct = full.length ? (consistencyGames / full.length) * 100 : 0;
+
+  // Trend: L5 vs prior 5
+  const first5Vals = gamelog.slice(5, 10).map(g => parseFloat(String(g[primaryKey] ?? "0")) || 0);
+  const last5Vals  = gamelog.slice(0, 5).map(g => parseFloat(String(g[primaryKey] ?? "0")) || 0);
+  const first5Avg = first5Vals.length ? first5Vals.reduce((a, b) => a + b, 0) / first5Vals.length : 0;
+  const last5Avg  = last5Vals.length  ? last5Vals.reduce((a, b) => a + b, 0) / last5Vals.length : 0;
   const trend = last5Avg > first5Avg * 1.1 ? "up" : last5Avg < first5Avg * 0.9 ? "down" : "stable";
 
-  // Statcast color rating
+  // Statcast color rating helper
   function rateStatcast(key: string, value: number): { label: string; color: string } {
     const ranges: Record<string, { elite: number; good: number; below: number }> = {
       xba: { elite: 0.31, good: 0.27, below: 0.23 },
@@ -1402,12 +1353,11 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
       barrel_pct: { elite: 12, good: 8, below: 4 },
       ev50: { elite: 96, good: 92, below: 88 },
       babip: { elite: 0.35, good: 0.31, below: 0.27 },
-      k_pct: { elite: 10, good: 16, below: 22 }, // lower is better
+      k_pct: { elite: 10, good: 16, below: 22 },
       bb_pct: { elite: 12, good: 9, below: 6 },
     };
     const r = ranges[key.toLowerCase()];
     if (!r) return { label: "Avg", color: "#3D4B58" };
-    // For k_pct, lower is better (invert)
     const lowerBetter = key.toLowerCase() === "k_pct" || key.toLowerCase() === "whiff_pct";
     if (lowerBetter) {
       if (value <= r.elite) return { label: "Elite", color: "#22c55e" };
@@ -1423,79 +1373,258 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
 
   const sc = player.statcast ?? {};
 
+  // Rolling window comparison bar component
+  function RollingRow({ label, l5, l10, l30, season, max }: { label: string; l5: number; l10: number; l30: number; season: number; max: number }) {
+    if (max === 0) return null;
+    const windows = [
+      { lbl: "L5",  val: l5,     color: "#D4A843" },
+      { lbl: "L10", val: l10,    color: "#2563eb" },
+      { lbl: "L30", val: l30,    color: "#9333ea" },
+      { lbl: "Full",val: season, color: "#3D4B58" },
+    ];
+    return (
+      <div style={{ marginBottom: "1rem" }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", margin: "0 0 0.4rem" }}>{label} / Game</p>
+        {windows.map(({ lbl, val, color }) => (
+          <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#3D4B58", minWidth: 28, textTransform: "uppercase" }}>{lbl}</span>
+            <div style={{ flex: 1, height: 8, background: "rgba(19,35,58,0.07)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.min(100, (val / max) * 100)}%`, background: color, borderRadius: 4, transition: "width 0.4s ease" }} />
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 800, color, minWidth: 32, textAlign: "right" }}>{val.toFixed(1)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      {/* Statcast (MLB) */}
+
+      {/* ── Rolling Averages Multi-Window ── */}
+      {gamelog.length >= 3 && (
+        <div style={CARD_STYLE}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 1rem" }}>
+            Rolling Averages
+          </p>
+          {(() => {
+            const primaryL5  = windowAvg(L5, primaryKey);
+            const primaryL10 = windowAvg(L10, primaryKey);
+            const primaryL30 = windowAvg(L30, primaryKey);
+            const primaryFull= windowAvg(full, primaryKey);
+            const maxPrimary = Math.max(primaryL5, primaryL10, primaryL30, primaryFull, 1);
+            return (
+              <RollingRow label={primaryLabel}
+                l5={primaryL5} l10={primaryL10} l30={primaryL30} season={primaryFull} max={maxPrimary} />
+            );
+          })()}
+          {secondaryKeys.map(({ key, label }) => {
+            const l5v  = windowAvg(L5, key);
+            const l10v = windowAvg(L10, key);
+            const l30v = windowAvg(L30, key);
+            const fv   = windowAvg(full, key);
+            const mx   = Math.max(l5v, l10v, l30v, fv, 1);
+            if (mx <= 0.05) return null;
+            return (
+              <RollingRow key={key} label={label}
+                l5={l5v} l10={l10v} l30={l30v} season={fv} max={mx} />
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Trend Summary ── */}
+      {gamelog.length >= 5 && (
+        <div style={{ ...CARD_STYLE, display: "flex", alignItems: "center", gap: 12, padding: "0.9rem 1.25rem" }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: trend === "up" ? "rgba(34,197,94,0.12)" : trend === "down" ? "rgba(239,68,68,0.12)" : "rgba(19,35,58,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {trend === "up" ? <ArrowUp size={18} color="#22c55e" /> : trend === "down" ? <ArrowDown size={18} color="#ef4444" /> : <Minus size={18} color="#3D4B58" />}
+          </div>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: 13, color: "#131A24" }}>
+              {trend === "up" ? "Trending Up 📈" : trend === "down" ? "Trending Down 📉" : "Stable Form"}
+            </p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#3D4B58" }}>
+              L5 avg: <strong>{last5Avg.toFixed(1)}</strong> {primaryLabel} · Prior 5 avg: <strong>{first5Avg.toFixed(1)}</strong>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Consistency Rating ── */}
+      {full.length >= 5 && (
+        <div style={CARD_STYLE}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+            Consistency Rating
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: "0.75rem" }}>
+            <div style={{ position: "relative", width: 60, height: 60, flexShrink: 0 }}>
+              <svg width="60" height="60" viewBox="0 0 60 60">
+                <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(19,35,58,0.10)" strokeWidth="6" />
+                <circle cx="30" cy="30" r="24" fill="none"
+                  stroke={consistencyPct >= 70 ? "#22c55e" : consistencyPct >= 50 ? "#D4A843" : "#ef4444"}
+                  strokeWidth="6"
+                  strokeDasharray={`${(consistencyPct / 100) * 150.8} 150.8`}
+                  strokeLinecap="round"
+                  transform="rotate(-90 30 30)"
+                />
+                <text x="30" y="34" textAnchor="middle" fontSize="13" fontWeight="900" fill="#131A24">
+                  {Math.round(consistencyPct)}%
+                </text>
+              </svg>
+            </div>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: consistencyPct >= 70 ? "#22c55e" : consistencyPct >= 50 ? "#D4A843" : "#ef4444" }}>
+                {consistencyPct >= 70 ? "Very Consistent" : consistencyPct >= 50 ? "Moderately Consistent" : "Inconsistent"}
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#3D4B58" }}>
+                {consistencyGames} of {full.length} games with {threshold}+ {primaryLabel.toLowerCase()}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: 10, color: "#3D4B58" }}>
+                Based on full {full.length}-game sample
+              </p>
+            </div>
+          </div>
+          {/* Window-by-window consistency */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.4rem" }}>
+            {[
+              { label: "L5", games: L5 },
+              { label: "L10", games: L10 },
+              { label: "L30", games: L30 },
+            ].map(({ label, games }) => {
+              if (!games.length) return null;
+              const ct = games.filter(g => (parseFloat(String(g[primaryKey] ?? "0")) || 0) >= threshold).length;
+              const pct = (ct / games.length) * 100;
+              return (
+                <div key={label} style={{ background: "rgba(19,35,58,0.04)", borderRadius: "0.75rem", padding: "0.5rem", textAlign: "center", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>{label}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 900, color: pct >= 70 ? "#22c55e" : pct >= 50 ? "#D4A843" : "#ef4444" }}>{ct}/{games.length}</p>
+                  <p style={{ margin: 0, fontSize: 9, color: "#3D4B58" }}>{Math.round(pct)}%</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Career Highs & Multi-stat summary ── */}
+      {full.length >= 3 && (
+        <div style={CARD_STYLE}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+            Career Highs (This Sample)
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            {/* Primary stat career high */}
+            <div style={{ background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.25)", borderRadius: "0.75rem", padding: "0.5rem 0.6rem", textAlign: "center" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", margin: 0 }}>Best {primaryLabel}</p>
+              <p style={{ fontSize: 20, fontWeight: 900, color: "#D4A843", margin: "2px 0 0" }}>{careerHigh}</p>
+              {careerHighGame && (
+                <p style={{ fontSize: 8, color: "#3D4B58", margin: 0 }}>
+                  {String(careerHighGame.date_game ?? careerHighGame.date ?? "").slice(5, 10)}
+                  {careerHighGame.opp ? ` vs ${careerHighGame.opp}` : ""}
+                </p>
+              )}
+            </div>
+            {/* Secondary stat highs */}
+            {secondaryKeys.map(({ key, label }) => {
+              const vals2 = full.map(g => parseFloat(String(g[key] ?? "0")) || 0);
+              const hi = vals2.length ? Math.max(...vals2) : 0;
+              if (hi === 0) return null;
+              return (
+                <div key={key} style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)", borderRadius: "0.75rem", padding: "0.5rem 0.6rem", textAlign: "center" }}>
+                  <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", margin: 0 }}>Best {label}</p>
+                  <p style={{ fontSize: 20, fontWeight: 900, color: "#131A24", margin: "2px 0 0" }}>{hi}</p>
+                </div>
+              );
+            })}
+            {/* Season total for primary */}
+            <div style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)", borderRadius: "0.75rem", padding: "0.5rem 0.6rem", textAlign: "center" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", margin: 0 }}>Total {primaryLabel}</p>
+              <p style={{ fontSize: 20, fontWeight: 900, color: "#131A24", margin: "2px 0 0" }}>{windowTotal(full, primaryKey)}</p>
+            </div>
+          </div>
+          {/* Multi-stat window table */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid rgba(19,35,58,0.12)" }}>
+                  <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase" }}>Stat</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#D4A843", fontSize: 10 }}>L5</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#2563eb", fontSize: 10 }}>L10</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#9333ea", fontSize: 10 }}>L30</th>
+                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>Season</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[{ key: primaryKey, label: primaryLabel }, ...secondaryKeys].map(({ key, label }) => {
+                  const l5v  = windowAvg(L5, key);
+                  const l10v = windowAvg(L10, key);
+                  const l30v = windowAvg(L30, key);
+                  const fv   = windowAvg(full, key);
+                  if (l5v === 0 && l10v === 0 && l30v === 0 && fv === 0) return null;
+                  return (
+                    <tr key={key} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+                      <td style={{ padding: "5px 6px", fontWeight: 700, fontSize: 11, color: "#131A24" }}>{label}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 800, color: "#D4A843" }}>{l5v.toFixed(1)}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600, color: "#2563eb" }}>{l10v.toFixed(1)}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600, color: "#9333ea" }}>{l30v.toFixed(1)}</td>
+                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600, color: "#3D4B58" }}>{fv.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bar Chart (primary stat) ── */}
+      {L10.length > 0 && (
+        <div style={CARD_STYLE}>
+          <MiniBarChart games={L10} statKey={primaryKey} label={primaryLabel} />
+        </div>
+      )}
+
+      {/* ── Statcast Metrics (MLB) ── */}
       {isMlb && (
         <div style={CARD_STYLE}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
-              Statcast Metrics
-            </p>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>Statcast Metrics</p>
             <span style={{ fontSize: 10, color: "#3D4B58" }}>via Baseball Savant</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(78px, 1fr))", gap: "0.5rem" }}>
-            {[
-              { key: "xba", label: "xBA", fmt: (v: number) => fmtAvg(v) },
-              { key: "xwoba", label: "xwOBA", fmt: (v: number) => fmtAvg(v) },
-              { key: "hh_pct", label: "HH%", fmt: (v: number) => fmtPct(v) },
-              { key: "barrel_pct", label: "Barrel%", fmt: (v: number) => fmtPct(v) },
-              { key: "ev50", label: "EV50", fmt: (v: number) => fmtNum(v, 1) },
-              { key: "la", label: "LA", fmt: (v: number) => fmtNum(v, 1) + "°" },
-              { key: "babip", label: "BABIP", fmt: (v: number) => fmtAvg(v) },
-              { key: "k_pct", label: "K%", fmt: (v: number) => fmtPct(v) },
-              { key: "bb_pct", label: "BB%", fmt: (v: number) => fmtPct(v) },
-              { key: "whiff_pct", label: "Whiff%", fmt: (v: number) => fmtPct(v) },
-            ]
-              .filter(({ key }) => sc[key] != null)
-              .map(({ key, label, fmt }) => {
+          {Object.keys(sc).length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(78px, 1fr))", gap: "0.5rem" }}>
+              {[
+                { key: "xba",        label: "xBA",     fmt: (v: number) => fmtAvg(v) },
+                { key: "xwoba",      label: "xwOBA",   fmt: (v: number) => fmtAvg(v) },
+                { key: "hh_pct",     label: "HH%",     fmt: (v: number) => fmtPct(v) },
+                { key: "barrel_pct", label: "Barrel%", fmt: (v: number) => fmtPct(v) },
+                { key: "ev50",       label: "EV50",    fmt: (v: number) => fmtNum(v, 1) },
+                { key: "la",         label: "LA°",     fmt: (v: number) => fmtNum(v, 1) },
+                { key: "babip",      label: "BABIP",   fmt: (v: number) => fmtAvg(v) },
+                { key: "k_pct",      label: "K%",      fmt: (v: number) => fmtPct(v) },
+                { key: "bb_pct",     label: "BB%",     fmt: (v: number) => fmtPct(v) },
+                { key: "whiff_pct",  label: "Whiff%",  fmt: (v: number) => fmtPct(v) },
+              ].filter(({ key }) => sc[key] != null).map(({ key, label, fmt }) => {
                 const val = parseFloat(String(sc[key] ?? 0));
                 const { label: rLabel, color } = rateStatcast(key, val);
                 return (
-                  <div
-                    key={key}
-                    style={{
-                      background: "rgba(19,35,58,0.03)",
-                      border: "1px solid rgba(19,35,58,0.10)",
-                      borderRadius: "0.75rem",
-                      padding: "0.5rem 0.6rem",
-                      textAlign: "center",
-                    }}
-                  >
+                  <div key={key} style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)", borderRadius: "0.75rem", padding: "0.5rem 0.6rem", textAlign: "center" }}>
                     <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#3D4B58", margin: 0 }}>{label}</p>
                     <p style={{ fontSize: 15, fontWeight: 900, color: "#131A24", margin: "2px 0 1px" }}>{fmt(val)}</p>
-                    <span
-                      style={{
-                        fontSize: 8,
-                        fontWeight: 800,
-                        color,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      {rLabel}
-                    </span>
+                    <span style={{ fontSize: 8, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{rLabel}</span>
                   </div>
                 );
               })}
-          </div>
-          {Object.keys(sc).length === 0 && (
-            <p style={{ fontSize: 12, color: "#3D4B58", textAlign: "center", padding: "0.5rem 0" }}>
-              No Statcast data available for this player.
-            </p>
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: "#3D4B58", textAlign: "center", padding: "0.5rem 0" }}>No Statcast data available for this player.</p>
           )}
         </div>
       )}
 
-      {/* Steamer Full Projection (MLB) */}
+      {/* ── Steamer Projections (MLB) ── */}
       {isMlb && player.steamer && (
-        <div
-          style={{
-            ...CARD_STYLE,
-            background: "rgba(212,168,67,0.05)",
-            border: "1px solid rgba(212,168,67,0.20)",
-          }}
-        >
+        <div style={{ ...CARD_STYLE, background: "rgba(212,168,67,0.05)", border: "1px solid rgba(212,168,67,0.20)" }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#D4A843", margin: "0 0 0.75rem" }}>
             ⚡ Steamer Projections
           </p>
@@ -1507,57 +1636,10 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
         </div>
       )}
 
-      {/* Rolling Form Chart */}
-      {last10.length > 0 && (
-        <div style={CARD_STYLE}>
-          <MiniBarChart
-            games={last10}
-            statKey={primaryKey}
-            label={isMlb ? "Hits" : player.sport === "NBA" ? "Points" : player.sport === "NHL" ? "Goals" : "Yards"}
-          />
-        </div>
-      )}
-
-      {/* Trend Summary */}
-      {last10.length >= 5 && (
-        <div
-          style={{
-            ...CARD_STYLE,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "0.9rem 1.25rem",
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background:
-                trend === "up" ? "rgba(34,197,94,0.12)" : trend === "down" ? "rgba(239,68,68,0.12)" : "rgba(19,35,58,0.08)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {trend === "up" ? (
-              <ArrowUp size={18} color="#22c55e" />
-            ) : trend === "down" ? (
-              <ArrowDown size={18} color="#ef4444" />
-            ) : (
-              <Minus size={18} color="#3D4B58" />
-            )}
-          </div>
-          <div>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: 13, color: "#131A24" }}>
-              {trend === "up" ? "Trending Up 📈" : trend === "down" ? "Trending Down 📉" : "Stable"}
-            </p>
-            <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>
-              Last 5 avg: {last5Avg.toFixed(1)} vs Prior 5 avg: {first5Avg.toFixed(1)}
-            </p>
-          </div>
+      {/* ── No data fallback ── */}
+      {gamelog.length === 0 && Object.keys(sc).length === 0 && !player.steamer && (
+        <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No game log data available to analyze trends.</p>
         </div>
       )}
     </div>
