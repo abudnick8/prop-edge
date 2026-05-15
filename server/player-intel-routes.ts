@@ -838,9 +838,10 @@ export function registerPlayerIntelRoutes(app: Express): void {
         return res.json({ hits: [], total: 0 });
       }
 
-      // 2. Fetch play-by-play for each game — cap at 200 most recent games
-      const recentPks = gamePks.slice(-200);
-      const PBP_CONCURRENCY = 10;
+      // 2. Fetch play-by-play for each game — cap at 100 most recent games
+      // (full feed is ~870KB each; 100 games ≈ 87MB, manageable in ~10s)
+      const recentPks = gamePks.slice(-100);
+      const PBP_CONCURRENCY = 15;
       const hits: any[] = [];
 
       for (let i = 0; i < recentPks.length; i += PBP_CONCURRENCY) {
@@ -848,8 +849,8 @@ export function registerPlayerIntelRoutes(app: Express): void {
         const pbpResults = await Promise.allSettled(
           chunk.map(pk =>
             axios.get(
-              `https://statsapi.mlb.com/api/v1.1/game/${pk}/feed/live?fields=liveData,plays,allPlays,result,matchup,playEvents,hitData,event,batter,id,coordX,coordY,launchSpeed,launchAngle,totalDistance,trajectory`,
-              { timeout: 8000, headers: AXIOS_HEADERS }
+              `https://statsapi.mlb.com/api/v1.1/game/${pk}/feed/live`,
+              { timeout: 12000, headers: AXIOS_HEADERS }
             )
           )
         );
