@@ -1401,8 +1401,8 @@ function ParkTab({ player }: { player: PlayerData }) {
           {/* Chart area */}
           {venuesWithData.length === 0 ? (
             <div style={{ padding: "2rem", textAlign: "center" }}>
-              <p style={{ fontSize: 13, color: "#3D4B58", margin: 0 }}>No ballpark performance data available for {player.name} yet this season.</p>
-              <p style={{ fontSize: 11, color: "#3D4B58", margin: "0.5rem 0 0" }}>Data populates as the player appears at each stadium during the season.</p>
+              <p style={{ fontSize: 13, color: "#3D4B58", margin: 0 }}>No career ballpark performance data available for {player.name}.</p>
+              <p style={{ fontSize: 11, color: "#3D4B58", margin: "0.5rem 0 0" }}>Career data spans the last 5 seasons and populates once loaded.</p>
             </div>
           ) : (
             <>
@@ -1590,7 +1590,7 @@ function ParkTab({ player }: { player: PlayerData }) {
                 </>
               ) : (
                 <div style={{ textAlign: "center", padding: "0.75rem 0" }}>
-                  <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>{player.name} has not played at {selectedVenue} this season.</p>
+                  <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>{player.name} has no career data at {selectedVenue} in the last 5 seasons.</p>
                   <p style={{ margin: "0.4rem 0 0", fontSize: 11, color: "#3D4B58" }}>No stats available yet.</p>
                 </div>
               )}
@@ -1652,7 +1652,7 @@ function ParkTab({ player }: { player: PlayerData }) {
             })}
           </div>
           <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0" }}>
-            Color = season AVG at that park. Tap any stadium for details. {venuesWithData.length}/30 stadiums visited.
+            Color = career AVG at that park (last 5 seasons). Tap any stadium for details. {venuesWithData.length}/30 stadiums visited.
           </p>
         </div>
       )}

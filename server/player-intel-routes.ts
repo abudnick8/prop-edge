@@ -633,49 +633,163 @@ export function registerPlayerIntelRoutes(app: Express): void {
   });
 
   // ── 4. Park Splits — /api/intel/park-splits/:playerId ────────────────────
+  // Career venue aggregation: fetch gamelogs for last 5 seasons, resolve venues
+  // via batch schedule call, then aggregate hitting stats per ballpark.
   app.get("/api/intel/park-splits/:playerId", async (req, res) => {
     try {
       const playerIdNum = parseInt(req.params.playerId, 10);
       if (isNaN(playerIdNum)) return res.status(400).json({ error: "playerId must be a numeric MLBAM ID" });
 
-      const cacheKey = `park-splits:${playerIdNum}`;
+      const cacheKey = `park-splits-career:${playerIdNum}`;
       const cached = getCache(parkCache, cacheKey, ONE_DAY_MS);
       if (cached) return res.json(cached);
 
-      console.log(`${LOG_PREFIX} park splits playerId=${playerIdNum}`);
+      console.log(`${LOG_PREFIX} park splits (career) playerId=${playerIdNum}`);
 
-      const [haRes, venueRes] = await Promise.allSettled([
-        axios.get(
-          `https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=statSplits&group=hitting&season=2026&sitCodes=h,a`,
-          { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
-        ),
-        axios.get(
-          `https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=statSplits&group=hitting&season=2026&sitCodes=venue`,
-          { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
-        ),
-      ]);
+      const currentYear = new Date().getFullYear();
+      const seasons = [currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4];
+
+      // ── Career Home/Away splits (no season param = career aggregate) ────────
+      const haRes = await axios.get(
+        `https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=statSplits&group=hitting&sitCodes=h,a&gameType=R`,
+        { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
+      ).catch(() => null);
 
       let home: any = {};
       let away: any = {};
-      if (haRes.status === "fulfilled") {
-        for (const sp of (haRes.value.data?.stats?.[0]?.splits ?? [])) {
+      if (haRes?.data?.stats?.[0]?.splits) {
+        for (const sp of haRes.data.stats[0].splits) {
+          const code = sp.split?.code ?? "";
           const desc = (sp.split?.description ?? "").toLowerCase();
-          if (sp.split?.code === "h" || desc.includes("home")) home = flattenMLBStats(sp.stat);
-          else if (sp.split?.code === "a" || desc.includes("away")) away = flattenMLBStats(sp.stat);
+          if (code === "h" || desc.includes("home")) home = flattenMLBStats(sp.stat);
+          else if (code === "a" || desc.includes("away")) away = flattenMLBStats(sp.stat);
         }
       }
 
+      // ── Fetch gamelogs for each season in parallel ───────────────────────
+      const gamelogResponses = await Promise.allSettled(
+        seasons.map(yr =>
+          axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=gameLog&group=hitting&season=${yr}&gameType=R`,
+            { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
+          )
+        )
+      );
+
+      // ── Collect all games with their gamePk and per-game stats ───────────
+      interface GameEntry { gamePk: number; stat: any; }
+      const allGames: GameEntry[] = [];
+      for (const res of gamelogResponses) {
+        if (res.status !== "fulfilled") continue;
+        for (const sp of (res.value.data?.stats?.[0]?.splits ?? [])) {
+          const pk = sp.game?.gamePk;
+          if (pk && sp.stat) allGames.push({ gamePk: pk, stat: sp.stat });
+        }
+      }
+
+      // ── Batch resolve venues via schedule API ────────────────────────────
+      const pkToVenue: Record<number, string> = {};
+      if (allGames.length > 0) {
+        const uniquePks = [...new Set(allGames.map(g => g.gamePk))];
+        // Split into chunks of 200 to avoid URL length issues
+        const chunkSize = 200;
+        for (let i = 0; i < uniquePks.length; i += chunkSize) {
+          const chunk = uniquePks.slice(i, i + chunkSize);
+          try {
+            const schedRes = await axios.get(
+              `https://statsapi.mlb.com/api/v1/schedule?gamePks=${chunk.join(",")}&hydrate=venue&fields=dates,games,gamePk,venue,name`,
+              { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
+            );
+            for (const date of (schedRes.data?.dates ?? [])) {
+              for (const g of (date.games ?? [])) {
+                if (g.gamePk && g.venue?.name) {
+                  pkToVenue[g.gamePk] = g.venue.name;
+                }
+              }
+            }
+          } catch { /* skip chunk on error */ }
+        }
+      }
+
+      // ── Aggregate stats per venue ────────────────────────────────────────
+      interface VenueAgg {
+        G: number; AB: number; H: number; HR: number; RBI: number; R: number;
+        BB: number; K: number; SB: number; TB: number;
+        doubles: number; triples: number;
+        obpNum: number; slgNum: number; opsNum: number;
+      }
+      const venueAgg: Record<string, VenueAgg> = {};
+
+      for (const { gamePk, stat } of allGames) {
+        const venueName = pkToVenue[gamePk];
+        if (!venueName) continue;
+        if (!venueAgg[venueName]) {
+          venueAgg[venueName] = { G:0, AB:0, H:0, HR:0, RBI:0, R:0, BB:0, K:0, SB:0, TB:0, doubles:0, triples:0, obpNum:0, slgNum:0, opsNum:0 };
+        }
+        const a = venueAgg[venueName];
+        a.G   += stat.gamesPlayed  ?? 1;
+        a.AB  += stat.atBats       ?? 0;
+        a.H   += stat.hits         ?? 0;
+        a.HR  += stat.homeRuns     ?? 0;
+        a.RBI += stat.rbi          ?? 0;
+        a.R   += stat.runs         ?? 0;
+        a.BB  += stat.baseOnBalls  ?? 0;
+        a.K   += stat.strikeOuts   ?? 0;
+        a.SB  += stat.stolenBases  ?? 0;
+        a.TB  += stat.totalBases   ?? 0;
+        a.doubles += stat.doubles  ?? 0;
+        a.triples += stat.triples  ?? 0;
+      }
+
+      // ── Compute derived stats and build venue array ──────────────────────
       const venues: any[] = [];
-      if (venueRes.status === "fulfilled") {
-        for (const sp of (venueRes.value.data?.stats?.[0]?.splits ?? [])) {
-          const venueName = sp.split?.description ?? sp.venue?.name ?? "Unknown";
-          let parkFactor: any = null;
-          try { parkFactor = await getParkFactor(venueName); } catch { /* ok */ }
-          venues.push({ venue: venueName, ...flattenMLBStats(sp.stat), parkFactor: parkFactor ?? null });
-        }
+      for (const [venueName, a] of Object.entries(venueAgg)) {
+        const avg = a.AB > 0 ? (a.H / a.AB) : 0;
+        const obp = (a.AB + a.BB) > 0 ? ((a.H + a.BB) / (a.AB + a.BB)) : 0;
+        const slg = a.AB > 0 ? (a.TB / a.AB) : 0;
+        const ops = obp + slg;
+        let parkFactor: any = null;
+        try { parkFactor = await getParkFactor(venueName); } catch { /* ok */ }
+        // Use field names the client expects (matches flattenMLBStats keys)
+        venues.push({
+          venue:        venueName,
+          gamesPlayed:  a.G,
+          atBats:       a.AB,
+          hits:         a.H,
+          homeRuns:     a.HR,
+          rbi:          a.RBI,
+          runs:         a.R,
+          baseOnBalls:  a.BB,
+          strikeOuts:   a.K,
+          stolenBases:  a.SB,
+          totalBases:   a.TB,
+          doubles:      a.doubles,
+          triples:      a.triples,
+          // lowercase aliases for STAT_OPTIONS keys
+          avg:          avg > 0 ? avg : 0,
+          obp:          obp > 0 ? obp : 0,
+          slg:          slg > 0 ? slg : 0,
+          ops:          ops > 0 ? ops : 0,
+          hr:           a.HR,
+          walks:        a.BB,
+          // also used in detail chip grid
+          G:    a.G,
+          AB:   a.AB,
+          H:    a.H,
+          HR:   a.HR,
+          RBI:  a.RBI,
+          R:    a.R,
+          BB:   a.BB,
+          K:    a.K,
+          SB:   a.SB,
+          parkFactor: parkFactor ?? null,
+        });
       }
 
-      const result = { home, away, venues };
+      // Sort by most AB (most-played parks first)
+      venues.sort((a, b) => b.AB - a.AB);
+
+      const result = { home, away, venues, careerSeasons: seasons.length };
       setCache(parkCache, cacheKey, result);
       return res.json(result);
     } catch (e: any) {
