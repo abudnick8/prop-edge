@@ -1046,7 +1046,9 @@ export function registerPlayerIntelRoutes(app: Express): void {
       }
 
       const result = { hits, total: hits.length };
-      setCache(parkCache, cacheKey, result);
+      // Only cache if we actually got hits — don't cache 0-hit results
+      // (wrong mlbamId or network glitch) to avoid stale empty charts
+      if (hits.length > 0) setCache(parkCache, cacheKey, result);
       return res.json(result);
     } catch (e: any) {
       console.warn(`${LOG_PREFIX} spray-chart error:`, e.message);

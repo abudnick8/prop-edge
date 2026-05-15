@@ -411,43 +411,85 @@ export function getSteamerPitcher(mlbamId: string | number): SteamerPitcherRow |
  * Falls back to MLB Stats API people search if not found in cache.
  * Returns null if not found anywhere.
  */
+/** Validate a candidate mlbamId by confirming it has hitting game log data
+ * in the current or prior year (proves it's an active position player). */
+async function _validateMlbamId(id: string): Promise<boolean> {
+  const currentYear = new Date().getFullYear();
+  for (const yr of [currentYear, currentYear - 1]) {
+    try {
+      const r = await axios.get(
+        `https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=gameLog&group=hitting&season=${yr}&gameType=R&fields=stats,splits,game,gamePk`,
+        { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      const splits = r.data?.stats?.[0]?.splits ?? [];
+      if (splits.length >= 3) return true; // at least 3 games = real position player
+    } catch { /* ignore */ }
+  }
+  return false;
+}
+
 export async function resolveMlbamId(playerName: string): Promise<string | null> {
   const nameLower = playerName.toLowerCase().trim();
   const nameParts = nameLower.split(" ");
+  const firstName = nameParts[0];
+  const lastName  = nameParts[nameParts.length - 1];
 
-  // Search batter cache first
+  // Helper: strict name match (both first and last name must appear as whole words
+  // or the full name matches exactly — avoids "Cruz" matching "De La Cruz" loosely)
+  const nameMatches = (candidate: string): boolean => {
+    const cn = candidate.toLowerCase();
+    if (cn === nameLower) return true;
+    if (nameParts.length < 2) return cn === nameLower;
+    // Require exact full name containment OR both first/last present
+    // For hyphenated/multi-word last names, require the whole last segment match
+    return cn.includes(firstName) && cn.includes(lastName);
+  };
+
+  // 1. Steamer batter cache — keyed by mlbamId, contains player names
   for (const [id, entry] of _steamerBatters.entries()) {
-    const n = (entry.data.name ?? "").toLowerCase();
-    if (n === nameLower || (nameParts.length >= 2 && n.includes(nameParts[0]) && n.includes(nameParts[nameParts.length - 1]))) {
-      return id;
-    }
+    if (nameMatches(entry.data.name ?? "")) return id;
   }
-  // Search pitcher cache
+  // 2. Steamer pitcher cache
   for (const [id, entry] of _steamerPitchers.entries()) {
-    const n = (entry.data.name ?? "").toLowerCase();
-    if (n === nameLower || (nameParts.length >= 2 && n.includes(nameParts[0]) && n.includes(nameParts[nameParts.length - 1]))) {
-      return id;
-    }
+    if (nameMatches(entry.data.name ?? "")) return id;
   }
 
-  // Fallback: MLB Stats API people search
+  // 3. MLB Stats API people search with validation
   try {
     const encoded = encodeURIComponent(playerName);
-    const r = await import("axios").then(m => m.default.get(
-      `https://statsapi.mlb.com/api/v1/people/search?names=${encoded}&sportIds=1&fields=people,id,fullName`,
+    const r = await axios.get(
+      `https://statsapi.mlb.com/api/v1/people/search?names=${encoded}&sportIds=1&fields=people,id,fullName,active`,
       { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
-    ));
+    );
     const people: any[] = r.data?.people ?? [];
-    if (people.length > 0) {
-      // Pick best match
-      for (const p of people) {
-        const pn = (p.fullName ?? "").toLowerCase();
-        if (pn === nameLower || (nameParts.length >= 2 && pn.includes(nameParts[0]) && pn.includes(nameParts[nameParts.length - 1]))) {
-          return String(p.id);
-        }
+
+    // Sort: exact matches first, then active players, then rest
+    const sorted = [...people].sort((a, b) => {
+      const an = (a.fullName ?? "").toLowerCase();
+      const bn = (b.fullName ?? "").toLowerCase();
+      const aExact = an === nameLower ? 1 : 0;
+      const bExact = bn === nameLower ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+      const aActive = a.active ? 1 : 0;
+      const bActive = b.active ? 1 : 0;
+      return bActive - aActive;
+    });
+
+    // Try each candidate; validate with game log data
+    for (const p of sorted) {
+      const pn = (p.fullName ?? "").toLowerCase();
+      if (!nameMatches(pn)) continue;
+      const candidateId = String(p.id);
+      const valid = await _validateMlbamId(candidateId);
+      if (valid) return candidateId;
+    }
+
+    // Last resort: if only one result and name matches loosely, return without validation
+    if (sorted.length === 1) {
+      const pn = (sorted[0].fullName ?? "").toLowerCase();
+      if (pn.includes(firstName) || pn.includes(lastName)) {
+        return String(sorted[0].id);
       }
-      // Take first
-      return String(people[0].id);
     }
   } catch { /* MLB Stats API unavailable */ }
 
