@@ -980,9 +980,9 @@ export function registerPlayerIntelRoutes(app: Express): void {
         return res.json({ hits: [], total: 0 });
       }
 
-      // 2. Fetch play-by-play for each game — cap at 100 most recent games
-      // (full feed is ~870KB each; 100 games ≈ 87MB, manageable in ~10s)
-      const recentPks = gamePks.slice(-100);
+      // 2. Fetch play-by-play for each game — cap at 60 most recent games
+      // (full feed ~870KB each; 60 games processed at concurrency 20 finishes in ~20s)
+      const recentPks = gamePks.slice(-60);
 
       // ── Resolve venue names for each gamePk ────────────────────────────────
       const pkToVenueSpray: Record<number, string> = {};
@@ -1002,7 +1002,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
         } catch { /* non-fatal — venue stays undefined */ }
       }
 
-      const PBP_CONCURRENCY = 15;
+      const PBP_CONCURRENCY = 20;
       const hits: any[] = [];
 
       for (let i = 0; i < recentPks.length; i += PBP_CONCURRENCY) {
@@ -1028,7 +1028,8 @@ export function registerPlayerIntelRoutes(app: Express): void {
             // Scan playEvents for hitData
             for (const ev of (play.playEvents ?? [])) {
               const hd = ev.hitData;
-              if (!hd?.coordinates?.coordX) continue;
+              // Use != null instead of falsy check so coordX=0 is not skipped
+              if (!hd?.coordinates || hd.coordinates.coordX == null) continue;
               hits.push({
                 x:          hd.coordinates.coordX,
                 y:          hd.coordinates.coordY,
@@ -1074,6 +1075,38 @@ export function registerPlayerIntelRoutes(app: Express): void {
       return res.json(result);
     } catch (e: any) {
       console.warn(`${LOG_PREFIX} vs-team error:`, e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── 7. Team List — /api/intel/teams/:sport ─────────────────────────────────
+  // Returns all teams for a sport so the client can do local filtering
+  app.get("/api/intel/teams/:sport", async (req, res) => {
+    try {
+      const sportUp = req.params.sport.toUpperCase() as Sport;
+      const mapping = ESPN_SPORT_MAP[sportUp];
+      if (!mapping) return res.status(400).json({ error: `Unsupported sport: ${req.params.sport}` });
+
+      const cacheKey = `teams:${sportUp}`;
+      const cached = getCache(parkCache, cacheKey, 24 * 60 * 60 * 1000); // 24h cache
+      if (cached) return res.json(cached);
+
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${mapping.sport}/${mapping.league}/teams?limit=50`;
+      const r = await axios.get(url, { timeout: 8000, headers: AXIOS_HEADERS });
+      const rawTeams = r.data?.sports?.[0]?.leagues?.[0]?.teams ?? [];
+      const teams = rawTeams.map((t: any) => ({
+        name:      t.team?.displayName     ?? t.team?.name ?? "",
+        shortName: t.team?.shortDisplayName ?? t.team?.name ?? "",
+        abbr:      t.team?.abbreviation     ?? "",
+        logo:      t.team?.logos?.[0]?.href ?? null,
+        color:     t.team?.color            ?? null,
+      })).filter((t: any) => t.abbr);
+
+      teams.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      setCache(parkCache, cacheKey, teams);
+      return res.json(teams);
+    } catch (e: any) {
+      console.warn(`${LOG_PREFIX} teams error:`, e.message);
       return res.status(500).json({ error: e.message });
     }
   });

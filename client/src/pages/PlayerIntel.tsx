@@ -1293,17 +1293,25 @@ function SprayChart({ player, selectedVenue }: { player: PlayerData; selectedVen
   const [selected, setSelected] = useState<HitPoint | null>(null);
 
   const enabled = player.sport === "MLB" && !!player.mlbamId;
-  const { data, isFetching, error } = useQuery<SprayData>({
+  const { data, isFetching, error, refetch } = useQuery<SprayData>({
     queryKey: ["spray-chart", player.mlbamId],
     queryFn: () =>
-      fetch(`/api/intel/spray-chart/${player.mlbamId}`).then(r => r.json()),
+      fetch(`/api/intel/spray-chart/${player.mlbamId}`, { signal: AbortSignal.timeout(120000) })
+        .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
     enabled,
     staleTime: 1000 * 60 * 60,
+    retry: 2,
+    retryDelay: 3000,
   });
 
   if (!enabled) return null;
-  if (isFetching) return <Spinner />;
-  if (error || !data) return <ErrorCard message="Could not load spray chart." onRetry={() => {}} />;
+  if (isFetching) return (
+    <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+      <Spinner />
+      <p style={{ margin: "0.75rem 0 0", fontSize: 11, color: "#3D4B58" }}>Building spray chart — first load may take up to 60s…</p>
+    </div>
+  );
+  if (error || !data) return <ErrorCard message="Could not load spray chart. Tap to retry." onRetry={() => refetch()} />;
   if (!data.hits?.length) {
     return (
       <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
