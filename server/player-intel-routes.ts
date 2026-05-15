@@ -851,6 +851,25 @@ export function registerPlayerIntelRoutes(app: Express): void {
       // 2. Fetch play-by-play for each game — cap at 100 most recent games
       // (full feed is ~870KB each; 100 games ≈ 87MB, manageable in ~10s)
       const recentPks = gamePks.slice(-100);
+
+      // ── Resolve venue names for each gamePk ────────────────────────────────
+      const pkToVenueSpray: Record<number, string> = {};
+      const PK_CHUNK = 50;
+      for (let i = 0; i < recentPks.length; i += PK_CHUNK) {
+        const chunk = recentPks.slice(i, i + PK_CHUNK);
+        try {
+          const schedRes = await axios.get(
+            `https://statsapi.mlb.com/api/v1/schedule?gamePks=${chunk.join(",")}&hydrate=venue&fields=dates,games,gamePk,venue,name`,
+            { timeout: 10000, headers: AXIOS_HEADERS }
+          );
+          for (const d of (schedRes.data?.dates ?? [])) {
+            for (const g of (d.games ?? [])) {
+              if (g.gamePk && g.venue?.name) pkToVenueSpray[g.gamePk] = g.venue.name;
+            }
+          }
+        } catch { /* non-fatal — venue stays undefined */ }
+      }
+
       const PBP_CONCURRENCY = 15;
       const hits: any[] = [];
 
@@ -861,13 +880,15 @@ export function registerPlayerIntelRoutes(app: Express): void {
             axios.get(
               `https://statsapi.mlb.com/api/v1.1/game/${pk}/feed/live`,
               { timeout: 12000, headers: AXIOS_HEADERS }
-            )
+            ).then(r => ({ pk, data: r.data }))
           )
         );
 
         for (const r of pbpResults) {
           if (r.status !== "fulfilled") continue;
-          const allPlays = r.value.data?.liveData?.plays?.allPlays ?? [];
+          const { pk, data } = r.value;
+          const venueName = pkToVenueSpray[pk] ?? null;
+          const allPlays = data?.liveData?.plays?.allPlays ?? [];
           for (const play of allPlays) {
             // Must be this batter
             if (play.matchup?.batter?.id !== mlbamId) continue;
@@ -884,6 +905,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
                 speed:      hd.launchSpeed ?? null,
                 angle:      hd.launchAngle ?? null,
                 distance:   hd.totalDistance ?? null,
+                venue:      venueName,
               });
             }
           }

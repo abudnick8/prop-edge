@@ -1203,6 +1203,7 @@ interface HitPoint {
   x: number; y: number;
   event: string; trajectory: string;
   speed: number | null; angle: number | null; distance: number | null;
+  venue?: string | null;
 }
 
 interface SprayData { hits: HitPoint[]; total: number; }
@@ -1234,7 +1235,7 @@ function isHitEvent(event: string): boolean {
   return ["Single","Double","Triple","Home Run"].includes(event);
 }
 
-function SprayChart({ player }: { player: PlayerData }) {
+function SprayChart({ player, selectedVenue }: { player: PlayerData; selectedVenue?: string | null }) {
   const [filter, setFilter] = useState<SprayFilter>("hits");
   const [selected, setSelected] = useState<HitPoint | null>(null);
 
@@ -1258,6 +1259,23 @@ function SprayChart({ player }: { player: PlayerData }) {
     );
   }
 
+  // Venue filter — case-insensitive match on venue name
+  const venueHits = selectedVenue
+    ? data.hits.filter(h => (h.venue ?? "").toLowerCase() === selectedVenue.toLowerCase())
+    : data.hits;
+
+  if (selectedVenue && venueHits.length === 0) {
+    return (
+      <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", marginBottom: 6 }}>
+          <MapPin size={13} color="#D4A843" />
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>Spray Chart</p>
+        </div>
+        <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No batted-ball data at {selectedVenue} in the last 3 seasons.</p>
+      </div>
+    );
+  }
+
   const filterFn = (h: HitPoint): boolean => {
     if (filter === "all") return true;
     if (filter === "hits") return isHitEvent(h.event);
@@ -1268,14 +1286,14 @@ function SprayChart({ player }: { player: PlayerData }) {
     return true;
   };
 
-  const filtered = data.hits.filter(filterFn);
+  const filtered = venueHits.filter(filterFn);
 
-  // Count each type
-  const singles = data.hits.filter(h => h.event === "Single").length;
-  const doubles = data.hits.filter(h => h.event === "Double").length;
-  const triples = data.hits.filter(h => h.event === "Triple").length;
-  const hrs = data.hits.filter(h => h.event === "Home Run").length;
-  const outs = data.hits.filter(h => !isHitEvent(h.event)).length;
+  // Count each type from the venue-filtered pool
+  const singles = venueHits.filter(h => h.event === "Single").length;
+  const doubles = venueHits.filter(h => h.event === "Double").length;
+  const triples = venueHits.filter(h => h.event === "Triple").length;
+  const hrs     = venueHits.filter(h => h.event === "Home Run").length;
+  const outs    = venueHits.filter(h => !isHitEvent(h.event)).length;
 
   // Filter buttons
   const FILTERS: { key: SprayFilter; label: string }[] = [
@@ -1296,7 +1314,10 @@ function SprayChart({ player }: { player: PlayerData }) {
           Spray Chart
         </p>
         <span style={{ marginLeft: "auto", fontSize: 10, color: "#3D4B58" }}>
-          {data.total} balls in play (last 3 seasons)
+          {selectedVenue
+            ? `${venueHits.length} BIP · ${selectedVenue}`
+            : `${data.total} balls in play · all stadiums`
+          }
         </span>
       </div>
 
@@ -1913,7 +1934,7 @@ function ParkTab({ player }: { player: PlayerData }) {
       )}
 
       {/* ── Spray Chart ── */}
-      <SprayChart player={player} />
+      <SprayChart player={player} selectedVenue={selectedVenue} />
 
       {/* ── Park Factor summary (home park) ── */}
       {parkData?.parkFactor && (
