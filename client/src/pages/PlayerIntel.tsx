@@ -778,6 +778,16 @@ function MatchupsTab({ player }: { player: PlayerData }) {
     enabled: !!vsTeamUrl,
   });
 
+  // MLB: also fetch vs-team stats using the pitcher's team abbreviation (second source)
+  const mlbVsTeamUrl = isMlb && selectedOpponent?.teamAbbr && player.mlbamId
+    ? `/api/intel/vs-team/MLB/${player.mlbamId}/${selectedOpponent.teamAbbr}`
+    : null;
+  const { data: mlbVsTeamData, isFetching: mlbVsLoading } = useQuery<VsTeamData>({
+    queryKey: ["mlb-vs-team", player.mlbamId, selectedOpponent?.teamAbbr],
+    queryFn: () => fetch(mlbVsTeamUrl!).then((r) => r.json()),
+    enabled: !!mlbVsTeamUrl,
+  });
+
   const signalColor = { strong: "#22c55e", struggles: "#ef4444", neutral: "#3D4B58" } as const;
   const signalBg = { strong: "rgba(34,197,94,0.10)", struggles: "rgba(239,68,68,0.10)", neutral: "rgba(61,75,88,0.08)" } as const;
   const signalLabel = { strong: "💪 Strong History", struggles: "🚫 Struggles vs Pitcher", neutral: "⚡ Neutral History" } as const;
@@ -948,6 +958,77 @@ function MatchupsTab({ player }: { player: PlayerData }) {
                   <p style={{ margin: "0.5rem 0 0", fontSize: 11, color: "#3D4B58" }}>
                     This may be a new matchup or a pitcher with limited MLB history.
                   </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* MLB vs Team (second source — auto-loaded using pitcher's team) */}
+          {mlbVsTeamData && !mlbVsLoading && selectedOpponent?.teamAbbr && (
+            <>
+              {mlbVsTeamData.seasonStats && Object.keys(mlbVsTeamData.seasonStats).length > 0 && (
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+                    vs {selectedOpponent.teamAbbr} — Season Totals
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(62px, 1fr))", gap: "0.4rem" }}>
+                    {([
+                      ["G",   fmtNum(mlbVsTeamData.seasonStats.gamesPlayed)],
+                      ["AB",  fmtNum(mlbVsTeamData.seasonStats.atBats)],
+                      ["H",   fmtNum(mlbVsTeamData.seasonStats.hits),   Number(mlbVsTeamData.seasonStats.hits) >= 5],
+                      ["2B",  fmtNum(mlbVsTeamData.seasonStats.doubles)],
+                      ["HR",  fmtNum(mlbVsTeamData.seasonStats.hr),     Number(mlbVsTeamData.seasonStats.hr) >= 2],
+                      ["RBI", fmtNum(mlbVsTeamData.seasonStats.rbi)],
+                      ["R",   fmtNum(mlbVsTeamData.seasonStats.runs)],
+                      ["BB",  fmtNum(mlbVsTeamData.seasonStats.walks)],
+                      ["K",   fmtNum(mlbVsTeamData.seasonStats.strikeOuts)],
+                      ["SB",  fmtNum(mlbVsTeamData.seasonStats.stolenBases)],
+                      ["AVG", fmtAvg(mlbVsTeamData.seasonStats.avg),   parseFloat(String(mlbVsTeamData.seasonStats.avg ?? 0)) >= 0.3],
+                      ["OBP", fmtAvg(mlbVsTeamData.seasonStats.obp)],
+                      ["SLG", fmtAvg(mlbVsTeamData.seasonStats.slg)],
+                      ["OPS", fmtAvg(mlbVsTeamData.seasonStats.ops),   parseFloat(String(mlbVsTeamData.seasonStats.ops ?? 0)) >= 0.8],
+                    ] as [string, string, boolean?][]).filter(([, v]) => v !== "—").map(([label, value, hi]) => (
+                      <StatChip key={label} label={label} value={value} highlight={!!hi} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-game vs team table */}
+              {mlbVsTeamData.recentGames && mlbVsTeamData.recentGames.length > 0 && (
+                <div style={CARD_STYLE}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+                    Game Log vs {selectedOpponent.teamAbbr} ({mlbVsTeamData.recentGames.length} games)
+                  </p>
+                  <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 340 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid rgba(19,35,58,0.12)" }}>
+                          {["Date", "H", "AB", "HR", "RBI", "BB", "K", "AVG"].map(h => (
+                            <th key={h} style={{ padding: "4px 6px", textAlign: h === "Date" ? "left" : "center", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mlbVsTeamData.recentGames.map((g, i) => {
+                          const dateStr = String(g.date ?? g.date_game ?? "").slice(5, 10);
+                          const isHit = Number(g.H ?? 0) >= 1;
+                          return (
+                            <tr key={i} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)", background: i % 2 === 0 ? "transparent" : "rgba(19,35,58,0.015)" }}>
+                              <td style={{ padding: "5px 6px", color: "#3D4B58", fontSize: 10 }}>{dateStr || "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 800, color: isHit ? "#22c55e" : "#131A24" }}>{g.H ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{g.AB ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: Number(g.HR ?? 0) >= 1 ? 800 : 500, color: Number(g.HR ?? 0) >= 1 ? "#22c55e" : "#131A24" }}>{g.HR ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center" }}>{g.RBI ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{g.BB ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{g.K ?? "—"}</td>
+                              <td style={{ padding: "5px 6px", textAlign: "center", fontSize: 10, color: "#3D4B58" }}>{g.AVG != null ? fmtAvg(g.AVG) : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </>

@@ -531,23 +531,9 @@ export function registerPlayerIntelRoutes(app: Express): void {
       console.log(`${LOG_PREFIX} BvP batter=${batterId} pitcher=${pitcherId}`);
       const bvp: BvpResult = await getBvpExtended(batterId, pitcherId);
 
-      // Normalize to client BvPData shape:
-      // { seasonBvP, careerBvP, signal }
-      // "source" from getBvpExtended tells us if it's season or career data
-      const statBlock = {
-        AB:  bvp.ab,
-        H:   bvp.hits,
-        HR:  bvp.hr,
-        RBI: bvp.rbi,
-        TB:  bvp.tb,
-        AVG: bvp.avg ?? (bvp.ab > 0 ? +(bvp.hits / bvp.ab).toFixed(3) : null),
-        OBP: bvp.obp,
-        SLG: bvp.slg,
-      };
-
       const result = {
-        seasonBvP: bvp.source === "season" ? statBlock : (bvp.ab > 0 ? statBlock : null),
-        careerBvP: bvp.source === "career" ? statBlock : null,
+        seasonBvP: bvp.seasonData ? { ...bvp.seasonData, doubles: bvp.seasonData.doubles, BB: bvp.seasonData.walks, K: bvp.seasonData.strikeOuts, R: bvp.seasonData.runs } : null,
+        careerBvP: bvp.careerData ? { ...bvp.careerData, doubles: bvp.careerData.doubles, BB: bvp.careerData.walks, K: bvp.careerData.strikeOuts, R: bvp.careerData.runs } : null,
         signal:    bvp.signal === "strong" ? "strong" : bvp.signal === "weak" ? "struggles" : "neutral",
         rawBvp:    bvp,
       };
@@ -587,20 +573,51 @@ export function registerPlayerIntelRoutes(app: Express): void {
 
       const bvp: BvpResult = await getBvpExtended(Number(batterId), Number(pitcherId));
 
-      const statBlock = {
-        AB:  bvp.ab,
-        H:   bvp.hits,
-        HR:  bvp.hr,
-        RBI: bvp.rbi,
-        TB:  bvp.tb,
-        AVG: bvp.avg ?? (bvp.ab > 0 ? +(bvp.hits / bvp.ab).toFixed(3) : null),
-        OBP: bvp.obp,
-        SLG: bvp.slg,
-      };
+      // Try FanGraphs as second source if MLB Stats API returned nothing
+      let seasonBvP = bvp.seasonData ? { ...bvp.seasonData, BB: bvp.seasonData.walks, K: bvp.seasonData.strikeOuts, R: bvp.seasonData.runs } : null;
+      let careerBvP = bvp.careerData ? { ...bvp.careerData, BB: bvp.careerData.walks, K: bvp.careerData.strikeOuts, R: bvp.careerData.runs } : null;
+
+      if (!seasonBvP && !careerBvP) {
+        // Second source: Retrosheet/Baseball Reference game-finder style via MLB Stats API career splits
+        // Try fetching with no season filter (all-time) as a deeper fallback
+        try {
+          const careerFallback = await axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&group=hitting&opposingPlayerId=${pitcherId}`,
+            { timeout: 8000 }
+          );
+          const allTimeSplits = careerFallback.data?.stats?.[0]?.splits ?? [];
+          if (allTimeSplits.length > 0) {
+            // Aggregate all splits
+            let ab = 0, hits = 0, hr = 0, rbi = 0, tb = 0, doubles = 0, walks = 0, strikeOuts = 0, runs = 0;
+            for (const sp of allTimeSplits) {
+              const s = sp.stat ?? {};
+              ab          += parseInt(s.atBats       ?? "0");
+              hits        += parseInt(s.hits         ?? "0");
+              hr          += parseInt(s.homeRuns     ?? "0");
+              rbi         += parseInt(s.rbi          ?? "0");
+              tb          += parseInt(s.totalBases   ?? "0");
+              doubles     += parseInt(s.doubles      ?? "0");
+              walks       += parseInt(s.baseOnBalls  ?? "0");
+              strikeOuts  += parseInt(s.strikeOuts   ?? "0");
+              runs        += parseInt(s.runs         ?? "0");
+            }
+            if (ab > 0) {
+              const avgFb  = parseFloat((hits / ab).toFixed(3));
+              const obpFb  = walks + hits > 0 ? parseFloat(((hits + walks) / (ab + walks)).toFixed(3)) : null;
+              const slgFb  = parseFloat((tb / ab).toFixed(3));
+              const opsFb  = (obpFb != null) ? parseFloat((obpFb + slgFb).toFixed(3)) : null;
+              careerBvP = { AB: ab, H: hits, HR: hr, RBI: rbi, TB: tb, doubles, BB: walks, K: strikeOuts, R: runs, AVG: avgFb, OBP: obpFb, SLG: slgFb, OPS: opsFb };
+              console.log(`${LOG_PREFIX} BvP fallback (all-time): batter=${batterId} vs pitcher=${pitcherId}, AB=${ab}`);
+            }
+          }
+        } catch (e2: any) {
+          console.warn(`${LOG_PREFIX} BvP fallback error:`, e2.message);
+        }
+      }
 
       const result = {
-        seasonBvP: bvp.source === "season" ? statBlock : (bvp.ab > 0 ? statBlock : null),
-        careerBvP: bvp.source === "career" ? statBlock : null,
+        seasonBvP,
+        careerBvP,
         signal:    bvp.signal === "strong" ? "strong" : bvp.signal === "weak" ? "struggles" : "neutral",
         rawBvp:    bvp,
         batterId,
@@ -729,15 +746,58 @@ async function fetchMLBVsTeam(playerId: string, teamAbbr: string): Promise<any> 
     axios.get(`https://statsapi.mlb.com/api/v1/people/${playerIdNum}/stats?stats=vsTeamTotal&group=hitting&opposingTeamId=${teamId}`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
   ]);
 
-  const seasonStats = seasonRes.status === "fulfilled" ? flattenMLBStats(seasonRes.value.data?.stats?.[0]?.splits?.[0]?.stat) : {};
+  // vsTeamTotal gives the season aggregate; vsTeam gives individual game splits
   const careerStats = careerRes.status === "fulfilled" ? flattenMLBStats(careerRes.value.data?.stats?.[0]?.splits?.[0]?.stat) : {};
 
-  const recentGames: any[] = [];
-  if (seasonRes.status === "fulfilled") {
-    for (const sp of (seasonRes.value.data?.stats?.[0]?.splits ?? []).slice(0, 5)) {
-      recentGames.push({ date: sp.date ?? null, team: teamAbbr, stats: flattenMLBStats(sp.stat) });
+  // Aggregate ALL per-game splits from vsTeam for season totals (more accurate than first split)
+  const allGameSplits = seasonRes.status === "fulfilled" ? (seasonRes.value.data?.stats?.[0]?.splits ?? []) : [];
+
+  let seasonStats: Record<string, any> = {};
+  if (allGameSplits.length > 0) {
+    // Sum counting stats, compute rate stats
+    let ab = 0, hits = 0, hr = 0, rbi = 0, tb = 0, doubles = 0, triples = 0, walks = 0, strikeOuts = 0, runs = 0, stolenBases = 0, gamesPlayed = allGameSplits.length;
+    for (const sp of allGameSplits) {
+      const s = sp.stat ?? {};
+      ab          += parseInt(s.atBats       ?? "0");
+      hits        += parseInt(s.hits         ?? "0");
+      hr          += parseInt(s.homeRuns     ?? "0");
+      rbi         += parseInt(s.rbi          ?? "0");
+      tb          += parseInt(s.totalBases   ?? "0");
+      doubles     += parseInt(s.doubles      ?? "0");
+      triples     += parseInt(s.triples      ?? "0");
+      walks       += parseInt(s.baseOnBalls  ?? "0");
+      strikeOuts  += parseInt(s.strikeOuts   ?? "0");
+      runs        += parseInt(s.runs         ?? "0");
+      stolenBases += parseInt(s.stolenBases  ?? "0");
     }
+    const avg = ab > 0 ? parseFloat((hits / ab).toFixed(3)) : null;
+    const obp = (ab + walks) > 0 ? parseFloat(((hits + walks) / (ab + walks)).toFixed(3)) : null;
+    const slg = ab > 0 ? parseFloat((tb / ab).toFixed(3)) : null;
+    const ops = (obp != null && slg != null) ? parseFloat((obp + slg).toFixed(3)) : null;
+    seasonStats = { avg, obp, slg, ops, hr, rbi, hits, atBats: ab, walks, strikeOuts, doubles, triples, runs, stolenBases, gamesPlayed };
   }
+
+  // Build per-game table: flatten nested stats to top-level keys
+  const recentGames = allGameSplits.slice().reverse().slice(0, 10).map((sp: any) => {
+    const flat = flattenMLBStats(sp.stat);
+    return {
+      date:   sp.date   ?? sp.stat?.date ?? null,
+      opp:    teamAbbr,
+      result: sp.isWin ? "W" : "L",
+      H:      flat.hits        ?? null,
+      AB:     flat.atBats      ?? null,
+      HR:     flat.hr          ?? null,
+      RBI:    flat.rbi         ?? null,
+      BB:     flat.walks       ?? null,
+      K:      flat.strikeOuts  ?? null,
+      "2B":   flat.doubles     ?? null,
+      TB:     sp.stat?.totalBases ?? null,
+      R:      flat.runs        ?? null,
+      AVG:    flat.avg         ?? null,
+      OBP:    flat.obp         ?? null,
+      SLG:    flat.slg         ?? null,
+    };
+  });
 
   return { seasonStats, careerStats, recentGames };
 }

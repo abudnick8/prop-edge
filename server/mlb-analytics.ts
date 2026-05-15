@@ -142,16 +142,39 @@ export interface ParkFactorRow {
 }
 
 export interface BvpResult {
-  avg:       number | null;
-  hits:      number;
-  ab:        number;
-  hr:        number;
-  rbi:       number;
-  tb:        number;
-  obp:       number | null;
-  slg:       number | null;
-  signal:    "strong" | "weak" | "none";
-  source:    "season" | "career" | "none";
+  avg:        number | null;
+  hits:       number;
+  ab:         number;
+  hr:         number;
+  rbi:        number;
+  tb:         number;
+  doubles:    number;
+  walks:      number;
+  strikeOuts: number;
+  runs:       number;
+  obp:        number | null;
+  slg:        number | null;
+  ops:        number | null;
+  signal:     "strong" | "weak" | "none";
+  source:     "season" | "career" | "none";
+  seasonData?: BvpStatBlock | null;
+  careerData?: BvpStatBlock | null;
+}
+
+export interface BvpStatBlock {
+  AB:         number;
+  H:          number;
+  HR:         number;
+  RBI:        number;
+  TB:         number;
+  doubles:    number;
+  walks:      number;
+  strikeOuts: number;
+  runs:       number;
+  AVG:        number | null;
+  OBP:        number | null;
+  SLG:        number | null;
+  OPS:        number | null;
 }
 
 export interface WeatherResult {
@@ -548,7 +571,7 @@ export async function getBvpExtended(batterId: number, pitcherId: number): Promi
   const cached = _bvpCache.get(key);
   if (cached && Date.now() - cached.ts < TTL_BVP) return cached.data;
 
-  const empty: BvpResult = { avg: null, hits: 0, ab: 0, hr: 0, rbi: 0, tb: 0, obp: null, slg: null, signal: "none", source: "none" };
+  const empty: BvpResult = { avg: null, hits: 0, ab: 0, hr: 0, rbi: 0, tb: 0, doubles: 0, walks: 0, strikeOuts: 0, runs: 0, obp: null, slg: null, ops: null, signal: "none", source: "none", seasonData: null, careerData: null };
   try {
     const [rSeason, rCareer] = await Promise.allSettled([
       axios.get(
@@ -564,37 +587,70 @@ export async function getBvpExtended(batterId: number, pitcherId: number): Promi
     const extractSplit = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? (r.value.data?.stats?.[0]?.splits?.[0]?.stat ?? null) : null;
 
-    const season = extractSplit(rSeason);
-    const career = extractSplit(rCareer);
+    const seasonRaw = extractSplit(rSeason);
+    const careerRaw = extractSplit(rCareer);
 
-    let stat: any = null;
-    let source: "season" | "career" | "none" = "none";
-    if (season && parseInt(season.atBats ?? "0") >= 5) {
-      stat = season; source = "season";
-    } else if (career && parseInt(career.atBats ?? "0") >= 10) {
-      stat = career; source = "career";
+    function buildStatBlock(stat: any): BvpStatBlock | null {
+      if (!stat) return null;
+      const ab = parseInt(stat.atBats ?? "0");
+      if (ab === 0) return null;
+      const avg = parseFloat(stat.avg ?? "0") || null;
+      const obp = parseFloat(stat.obp ?? "0") || null;
+      const slg = parseFloat(stat.slg ?? "0") || null;
+      const ops = (obp != null && slg != null) ? parseFloat((obp + slg).toFixed(3)) : null;
+      return {
+        AB:         ab,
+        H:          parseInt(stat.hits       ?? "0"),
+        HR:         parseInt(stat.homeRuns   ?? "0"),
+        RBI:        parseInt(stat.rbi        ?? "0"),
+        TB:         parseInt(stat.totalBases ?? "0"),
+        doubles:    parseInt(stat.doubles    ?? "0"),
+        walks:      parseInt(stat.baseOnBalls ?? stat.walks ?? "0"),
+        strikeOuts: parseInt(stat.strikeOuts ?? "0"),
+        runs:       parseInt(stat.runs       ?? "0"),
+        AVG: avg,
+        OBP: obp,
+        SLG: slg,
+        OPS: ops,
+      };
     }
 
-    if (!stat) {
+    const seasonData = buildStatBlock(seasonRaw);
+    const careerData = buildStatBlock(careerRaw);
+
+    // Use season as primary if any AB exist; career as fallback
+    const primaryStat = seasonData ?? careerData;
+    const source: "season" | "career" | "none" = seasonData ? "season" : careerData ? "career" : "none";
+
+    if (!primaryStat) {
       _bvpCache.set(key, { data: empty, ts: Date.now() });
       saveDiskCache();
       return empty;
     }
 
-    const ab   = parseInt(stat.atBats ?? "0");
-    const hits = parseInt(stat.hits ?? "0");
-    const hr   = parseInt(stat.homeRuns ?? "0");
-    const rbi  = parseInt(stat.rbi ?? "0");
-    const tb   = parseInt(stat.totalBases ?? "0");
-    const avg  = parseFloat(stat.avg ?? "0") || null;
-    const obp  = parseFloat(stat.obp ?? "0") || null;
-    const slg  = parseFloat(stat.slg ?? "0") || null;
-
     const signal: BvpResult["signal"] =
-      ab >= 20 && avg !== null && avg >= 0.300 ? "strong" :
-      ab >= 20 && avg !== null && avg <  0.150 ? "weak"   : "none";
+      primaryStat.AB >= 15 && primaryStat.AVG !== null && primaryStat.AVG >= 0.300 ? "strong" :
+      primaryStat.AB >= 15 && primaryStat.AVG !== null && primaryStat.AVG <  0.150 ? "weak"   : "none";
 
-    const result: BvpResult = { avg, hits, ab, hr, rbi, tb, obp, slg, signal, source };
+    const result: BvpResult = {
+      avg:        primaryStat.AVG,
+      hits:       primaryStat.H,
+      ab:         primaryStat.AB,
+      hr:         primaryStat.HR,
+      rbi:        primaryStat.RBI,
+      tb:         primaryStat.TB,
+      doubles:    primaryStat.doubles,
+      walks:      primaryStat.walks,
+      strikeOuts: primaryStat.strikeOuts,
+      runs:       primaryStat.runs,
+      obp:        primaryStat.OBP,
+      slg:        primaryStat.SLG,
+      ops:        primaryStat.OPS,
+      signal,
+      source,
+      seasonData,
+      careerData,
+    };
     _bvpCache.set(key, { data: result, ts: Date.now() });
     saveDiskCache();
     return result;
