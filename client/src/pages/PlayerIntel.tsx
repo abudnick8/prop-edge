@@ -1225,7 +1225,7 @@ const ALL_MLB_STADIUMS: { venue: string; team: string; abbr: string; div: string
   { venue: "Oriole Park at Camden Yards", team: "Orioles",      abbr: "BAL", div: "AL East",    dome: false },
   { venue: "Tropicana Field",           team: "Rays",         abbr: "TB",  div: "AL East",    dome: true  },
   // AL Central
-  { venue: "Rate Field",               team: "White Sox",    abbr: "CWS", div: "AL Central", dome: false },
+  { venue: "Guaranteed Rate Field",    team: "White Sox",    abbr: "CWS", div: "AL Central", dome: false },
   { venue: "Progressive Field",         team: "Guardians",    abbr: "CLE", div: "AL Central", dome: false },
   { venue: "Comerica Park",             team: "Tigers",       abbr: "DET", div: "AL Central", dome: false },
   { venue: "Kauffman Stadium",          team: "Royals",       abbr: "KC",  div: "AL Central", dome: false },
@@ -1235,6 +1235,8 @@ const ALL_MLB_STADIUMS: { venue: string; team: string; abbr: string; div: string
   { venue: "Minute Maid Park",          team: "Astros",       abbr: "HOU", div: "AL West",    dome: true  },
   { venue: "T-Mobile Park",             team: "Mariners",     abbr: "SEA", div: "AL West",    dome: false },
   { venue: "Oakland Coliseum",          team: "Athletics",    abbr: "OAK", div: "AL West",    dome: false },
+  { venue: "Journey Bank Ballpark",     team: "Athletics",    abbr: "OAK", div: "AL West",    dome: false },
+  { venue: "Estadio Alfredo Harp Helu", team: "International", abbr: "INT", div: "NL West",    dome: false },
   { venue: "Angel Stadium",             team: "Angels",       abbr: "LAA", div: "AL West",    dome: false },
 ];
 

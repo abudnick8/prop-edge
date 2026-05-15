@@ -16,6 +16,28 @@ const ONE_HOUR_MS  = 60 * 60 * 1000;
 const ONE_DAY_MS   = 24 * ONE_HOUR_MS;
 const LOG_PREFIX   = "[PlayerIntel]";
 
+// ─── Venue name aliases ─────────────────────────────────────────────────────
+// Maps old/alternate MLB API venue names → canonical names used in the client's
+// ALL_MLB_STADIUMS list so spray chart and park splits always match correctly.
+const VENUE_ALIASES: Record<string, string> = {
+  // White Sox — renamed from "Guaranteed Rate Field" to "Rate Field" in 2025, then back
+  "rate field":                      "Guaranteed Rate Field",
+  // A's — old Oakland park still referenced in older game logs
+  // New Sacramento park uses its own entry, no alias needed
+  // Neutral-site / international series
+  "estadio alfredo harp helu":       "Estadio Alfredo Harp Helu",  // already in client list
+  // Any other common variations
+  "seatgeek stadium":                "Guaranteed Rate Field",
+  "comiskey park":                   "Guaranteed Rate Field",
+};
+
+/** Normalize a venue name from the MLB schedule API to match ALL_MLB_STADIUMS. */
+function normalizeVenueName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const key = name.toLowerCase().trim();
+  return VENUE_ALIASES[key] ?? name;
+}
+
 // ─── Cache ────────────────────────────────────────────────────────────────────
 
 const searchCache:  Map<string, { data: any; ts: number }> = new Map();
@@ -845,7 +867,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
             for (const date of (schedRes.data?.dates ?? [])) {
               for (const g of (date.games ?? [])) {
                 if (g.gamePk && g.venue?.name) {
-                  pkToVenue[g.gamePk] = g.venue.name;
+                  pkToVenue[g.gamePk] = normalizeVenueName(g.venue.name) ?? g.venue.name;
                 }
               }
             }
@@ -996,7 +1018,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
           );
           for (const d of (schedRes.data?.dates ?? [])) {
             for (const g of (d.games ?? [])) {
-              if (g.gamePk && g.venue?.name) pkToVenueSpray[g.gamePk] = g.venue.name;
+              if (g.gamePk && g.venue?.name) pkToVenueSpray[g.gamePk] = normalizeVenueName(g.venue.name) ?? g.venue.name;
             }
           }
         } catch { /* non-fatal — venue stays undefined */ }
