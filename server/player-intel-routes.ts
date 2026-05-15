@@ -264,6 +264,15 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
       const [m] = raw["3PT"].split("-");
       raw["3PTM"] = m ?? "0";
     }
+    // Derive MLB Total Bases per game (1B + 2×2B + 3×3B + 4×HR)
+    if (raw["H"] != null) {
+      const h  = parseFloat(raw["H"]  ?? "0") || 0;
+      const d  = parseFloat(raw["2B"] ?? "0") || 0;
+      const t  = parseFloat(raw["3B"] ?? "0") || 0;
+      const hr = parseFloat(raw["HR"] ?? "0") || 0;
+      const singles = Math.max(0, h - d - t - hr);
+      raw["TB"] = String(singles + 2 * d + 3 * t + 4 * hr);
+    }
 
     const opp      = eventInfo.opponent?.abbreviation ?? "?";
     const atVs     = eventInfo.atVs ?? "vs";
@@ -392,6 +401,7 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
         SO:  s.SO  ?? null,  so:  s.SO  ?? null,
         K:   s.K  ?? s.SO ?? null,  // pitchers use K label, batters use SO
         SB:  s.SB  ?? null,  sb:  s.SB  ?? null,
+        TB:  s.TB  ?? null,  tb:  s.TB  ?? null,
         "2B": s["2B"] ?? null,
         "3B": s["3B"] ?? null,
         AB:  s.AB  ?? null,
