@@ -9661,6 +9661,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         vsTeamAvg: number | null,        // Season AVG vs today's opponent team
         vsTeamAB: number,                // AB vs team this season
         goAoRatio: number,               // Ground-outs to Air-outs ratio (batted-ball profile)
+        venueCareerSlg: number | null,   // Career SLG at venue (extra-base hit tendency)
+        venueCareerHrRate: number | null,// Career HR/AB at venue
+        venueCareerIso: number | null,   // Career ISO (SLG-AVG) at venue — power indicator
       ): number {
         const bats = hitter.bats;
         const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
@@ -9868,11 +9871,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           : bvpPitcherScore * 0.75 + vsTeamScore * 0.25;
 
         // ══ COMPONENT 7: Venue Career History (4%) ══
-        // Career AVG at today's specific ballpark (last 5 seasons).
+        // Blends career AVG, SLG, and ISO at this specific ballpark.
+        // AVG = hit frequency, SLG = hit quality, ISO = extra-base power at this park.
         // Requires 20+ career AB at the venue to weight meaningfully.
-        const venueScore = venueCareerAvg !== null && venueCareerAB >= 20
-          ? norm(venueCareerAvg, 0.180, 0.380)
-          : 0.50; // neutral when no sample
+        let venueScore = 0.50; // neutral default
+        if (venueCareerAvg !== null && venueCareerAB >= 20) {
+          const avgScore = norm(venueCareerAvg, 0.180, 0.380);
+          const slgScore = venueCareerSlg !== null
+            ? norm(venueCareerSlg, 0.280, 0.600)
+            : avgScore; // fall back to AVG signal if no SLG
+          const isoScore = venueCareerIso !== null
+            ? norm(venueCareerIso, 0.050, 0.250)
+            : 0.50; // neutral if no ISO
+          // Weighted blend: AVG 60%, SLG 25%, ISO 15%
+          // AVG is the primary signal (hit probability), SLG/ISO add context
+          venueScore = avgScore * 0.60 + slgScore * 0.25 + isoScore * 0.15;
+        }
 
         // ══ COMPONENT 8: Batted-Ball Profile vs Pitcher Type (3%) ══
         // GO/AO ratio interaction with pitcher's groundball tendency.
@@ -10194,8 +10208,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
               // ── PlayerIntel data: career venue splits + vs-team stats ─────
               // Fetch career park splits for today's venue (last 5 seasons)
-              let venueCareerAvg: number | null = null;
-              let venueCareerAB  = 0;
+              let venueCareerAvg:    number | null = null;
+              let venueCareerAB      = 0;
+              let venueCareerSlg:    number | null = null;
+              let venueCareerHrRate: number | null = null;
+              let venueCareerIso:    number | null = null;
               try {
                 const parkResp = await axios.get(
                   `http://localhost:${process.env.PORT ?? 5000}/api/intel/park-splits/${pid}`,
@@ -10205,9 +10222,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   (v: any) => (v.venue ?? "").toLowerCase() === (venue ?? "").toLowerCase()
                 );
                 if (venueEntry && venueEntry.AB >= 10) {
-                  venueCareerAvg = typeof venueEntry.avg === "number" ? venueEntry.avg
+                  const vAB = venueEntry.AB ?? venueEntry.atBats ?? 0;
+                  const vAVG = typeof venueEntry.avg === "number" ? venueEntry.avg
                     : parseFloat(String(venueEntry.avg ?? "0")) || null;
-                  venueCareerAB  = venueEntry.AB ?? venueEntry.atBats ?? 0;
+                  const vSLG = typeof venueEntry.slg === "number" ? venueEntry.slg
+                    : parseFloat(String(venueEntry.slg ?? "0")) || null;
+                  const vHR  = venueEntry.HR ?? venueEntry.homeRuns ?? venueEntry.hr ?? 0;
+                  const vTB  = venueEntry.totalBases ?? 0;
+                  venueCareerAvg    = vAVG;
+                  venueCareerAB     = vAB;
+                  venueCareerSlg    = vSLG ?? (vAB > 0 ? vTB / vAB : null);
+                  venueCareerHrRate = vAB > 0 ? vHR / vAB : null;
+                  venueCareerIso    = (venueCareerSlg !== null && vAVG !== null)
+                    ? Math.max(0, venueCareerSlg - vAVG) : null;
                 }
               } catch { /* non-blocking */ }
 
@@ -10258,6 +10285,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 vsTeamAvg,
                 vsTeamAB,
                 goAoRatio,
+                venueCareerSlg,
+                venueCareerHrRate,
+                venueCareerIso,
               );
 
               // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
@@ -10294,7 +10324,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 const noteParts: string[] = note ? [note] : [];
                 if (venueCareerAvg !== null && venueCareerAB >= 10) {
                   const venueAvgStr = venueCareerAvg.toFixed(3).replace("0.", ".");
-                  noteParts.push(`Career .${venueAvgStr.replace(".","")} at ${venue} (${venueCareerAB} AB)`);
+                  let venueNote = `Career .${venueAvgStr.replace(".","")} at ${venue} (${venueCareerAB} AB)`;
+                  if (venueCareerSlg !== null) {
+                    const slgStr = venueCareerSlg.toFixed(3).replace("0.", ".");
+                    venueNote += ` / .${slgStr.replace(".","")} SLG`;
+                  }
+                  if (venueCareerIso !== null && venueCareerIso >= 0.120) {
+                    venueNote += ` ⚡ Power park`;
+                  } else if (venueCareerIso !== null && venueCareerIso < 0.080) {
+                    venueNote += ` 🟡 Singles park`;
+                  }
+                  noteParts.push(venueNote);
                 }
                 if (vsTeamAvg !== null && vsTeamAB >= 5) {
                   const oppName = side === "home" ? (awayTeam.team?.name ?? "opponent") : (homeTeam.team?.name ?? "opponent");
@@ -10405,11 +10445,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   // Phase 2: pitch-type matchup score
                   pitchTypeMatchup: pitchMatchup !== null ? Math.round(pitchMatchup * 100) : null,
                   // PlayerIntel signals
-                  venueCareerAvg:   venueCareerAvg !== null ? parseFloat(venueCareerAvg.toFixed(3)) : null,
+                  venueCareerAvg:    venueCareerAvg    !== null ? parseFloat(venueCareerAvg.toFixed(3))    : null,
                   venueCareerAB,
-                  vsTeamAvg:        vsTeamAvg !== null ? parseFloat(vsTeamAvg.toFixed(3)) : null,
+                  venueCareerSlg:    venueCareerSlg    !== null ? parseFloat(venueCareerSlg.toFixed(3))    : null,
+                  venueCareerHrRate: venueCareerHrRate !== null ? parseFloat(venueCareerHrRate.toFixed(4))  : null,
+                  venueCareerIso:    venueCareerIso    !== null ? parseFloat(venueCareerIso.toFixed(3))    : null,
+                  vsTeamAvg:         vsTeamAvg         !== null ? parseFloat(vsTeamAvg.toFixed(3))         : null,
                   vsTeamAB,
-                  goAoRatio:        parseFloat(goAoRatio.toFixed(2)),
+                  goAoRatio:         parseFloat(goAoRatio.toFixed(2)),
                 },
                 gamelog: stats.gamelog,
                 game: {
