@@ -1145,8 +1145,61 @@ function MatchupsTab({ player }: { player: PlayerData }) {
 
 // ─── Park / Venue Tab ─────────────────────────────────────────────────────────
 
+// All 30 MLB stadiums with team abbreviations and division
+const ALL_MLB_STADIUMS: { venue: string; team: string; abbr: string; div: string; dome: boolean }[] = [
+  // NL East
+  { venue: "Truist Park",               team: "Braves",       abbr: "ATL", div: "NL East",    dome: false },
+  { venue: "Citi Field",                team: "Mets",         abbr: "NYM", div: "NL East",    dome: false },
+  { venue: "Citizens Bank Park",        team: "Phillies",     abbr: "PHI", div: "NL East",    dome: false },
+  { venue: "Nationals Park",            team: "Nationals",    abbr: "WSH", div: "NL East",    dome: false },
+  { venue: "loanDepot park",            team: "Marlins",      abbr: "MIA", div: "NL East",    dome: true  },
+  // NL Central
+  { venue: "Wrigley Field",             team: "Cubs",         abbr: "CHC", div: "NL Central", dome: false },
+  { venue: "Great American Ball Park",  team: "Reds",         abbr: "CIN", div: "NL Central", dome: false },
+  { venue: "American Family Field",     team: "Brewers",      abbr: "MIL", div: "NL Central", dome: false },
+  { venue: "Busch Stadium",             team: "Cardinals",    abbr: "STL", div: "NL Central", dome: false },
+  { venue: "PNC Park",                  team: "Pirates",      abbr: "PIT", div: "NL Central", dome: false },
+  // NL West
+  { venue: "Dodger Stadium",            team: "Dodgers",      abbr: "LAD", div: "NL West",    dome: false },
+  { venue: "Oracle Park",               team: "Giants",       abbr: "SF",  div: "NL West",    dome: false },
+  { venue: "Petco Park",                team: "Padres",       abbr: "SD",  div: "NL West",    dome: false },
+  { venue: "Chase Field",               team: "Diamondbacks", abbr: "ARI", div: "NL West",    dome: true  },
+  { venue: "Coors Field",               team: "Rockies",      abbr: "COL", div: "NL West",    dome: false },
+  // AL East
+  { venue: "Fenway Park",               team: "Red Sox",      abbr: "BOS", div: "AL East",    dome: false },
+  { venue: "Yankee Stadium",            team: "Yankees",      abbr: "NYY", div: "AL East",    dome: false },
+  { venue: "Rogers Centre",             team: "Blue Jays",    abbr: "TOR", div: "AL East",    dome: true  },
+  { venue: "Camden Yards",              team: "Orioles",      abbr: "BAL", div: "AL East",    dome: false },
+  { venue: "Tropicana Field",           team: "Rays",         abbr: "TB",  div: "AL East",    dome: true  },
+  // AL Central
+  { venue: "Guaranteed Rate Field",     team: "White Sox",    abbr: "CWS", div: "AL Central", dome: false },
+  { venue: "Progressive Field",         team: "Guardians",    abbr: "CLE", div: "AL Central", dome: false },
+  { venue: "Comerica Park",             team: "Tigers",       abbr: "DET", div: "AL Central", dome: false },
+  { venue: "Kauffman Stadium",          team: "Royals",       abbr: "KC",  div: "AL Central", dome: false },
+  { venue: "Target Field",              team: "Twins",        abbr: "MIN", div: "AL Central", dome: false },
+  // AL West
+  { venue: "Globe Life Field",          team: "Rangers",      abbr: "TEX", div: "AL West",    dome: true  },
+  { venue: "Minute Maid Park",          team: "Astros",       abbr: "HOU", div: "AL West",    dome: true  },
+  { venue: "T-Mobile Park",             team: "Mariners",     abbr: "SEA", div: "AL West",    dome: false },
+  { venue: "Oakland Coliseum",          team: "Athletics",    abbr: "OAK", div: "AL West",    dome: false },
+  { venue: "Angel Stadium",             team: "Angels",       abbr: "LAA", div: "AL West",    dome: false },
+];
+
+const STAT_OPTIONS = [
+  { key: "avg",         label: "AVG",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 0.5,  isRate: true  },
+  { key: "ops",         label: "OPS",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 1.2,  isRate: true  },
+  { key: "obp",         label: "OBP",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 0.6,  isRate: true  },
+  { key: "slg",         label: "SLG",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 0.8,  isRate: true  },
+  { key: "hr",          label: "HR",   fmt: (v: any) => v != null ? fmtNum(v) : null,               max: 10,   isRate: false },
+  { key: "hits",        label: "H",    fmt: (v: any) => v != null ? fmtNum(v) : null,               max: 30,   isRate: false },
+  { key: "rbi",         label: "RBI",  fmt: (v: any) => v != null ? fmtNum(v) : null,               max: 20,   isRate: false },
+];
+
 function ParkTab({ player }: { player: PlayerData }) {
   const isMlb = player.sport === "MLB";
+  const [selectedStat, setSelectedStat] = useState("avg");
+  const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
+  const [filterDiv, setFilterDiv] = useState<string>("All");
 
   const parkUrl = isMlb && player.mlbamId
     ? `/api/intel/park-splits/${player.mlbamId}`
@@ -1162,11 +1215,9 @@ function ParkTab({ player }: { player: PlayerData }) {
     enabled: !!parkUrl,
   });
 
-  // Prefer parkData splits (MLB Stats API) over player.splits (ESPN gamelog)
   const home = parkData?.home ?? player.splits?.home;
   const away = parkData?.away ?? player.splits?.away;
 
-  // MLB split rows config
   const MLB_SPLIT_ROWS = [
     { key: "avg",         label: "AVG",   fmt: fmtAvg },
     { key: "obp",         label: "OBP",   fmt: fmtAvg },
@@ -1185,7 +1236,7 @@ function ParkTab({ player }: { player: PlayerData }) {
     { key: "gamesPlayed", label: "G",     fmt: (v: any) => fmtNum(v) },
   ];
 
-  function SplitRow({ label, homeVal, awayVal, isRate }: { label: string; homeVal: any; awayVal: any; isRate?: boolean }) {
+  function SplitRow({ label, homeVal, awayVal }: { label: string; homeVal: any; awayVal: any }) {
     const h = parseFloat(String(homeVal ?? 0)) || 0;
     const a = parseFloat(String(awayVal ?? 0)) || 0;
     const homeWins = h > a;
@@ -1194,13 +1245,9 @@ function ParkTab({ player }: { player: PlayerData }) {
     const awayStr = awayVal != null && awayVal !== "" ? String(awayVal) : "—";
     return (
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "0.4rem 0", borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
-        <span style={{ textAlign: "right", fontWeight: homeWins ? 800 : 500, color: homeWins ? "#22c55e" : "#131A24", fontSize: 13 }}>
-          {homeStr}
-        </span>
+        <span style={{ textAlign: "right", fontWeight: homeWins ? 800 : 500, color: homeWins ? "#22c55e" : "#131A24", fontSize: 13 }}>{homeStr}</span>
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", minWidth: 36, textAlign: "center" }}>{label}</span>
-        <span style={{ textAlign: "left", fontWeight: awayWins ? 800 : 500, color: awayWins ? "#22c55e" : "#131A24", fontSize: 13 }}>
-          {awayStr}
-        </span>
+        <span style={{ textAlign: "left", fontWeight: awayWins ? 800 : 500, color: awayWins ? "#22c55e" : "#131A24", fontSize: 13 }}>{awayStr}</span>
       </div>
     );
   }
@@ -1225,8 +1272,8 @@ function ParkTab({ player }: { player: PlayerData }) {
     );
   }
 
+  // Non-MLB: simple home/away
   if (!isMlb) {
-    // Non-MLB: show venue/home-away from ESPN gamelog splits
     const splits = player.splits;
     if (!splits) {
       return (
@@ -1250,12 +1297,45 @@ function ParkTab({ player }: { player: PlayerData }) {
     );
   }
 
+  // Build venue data map: merge API data with all 30 stadiums
+  const venueMap = new Map<string, any>();
+  if (parkData?.venues) {
+    for (const v of parkData.venues) {
+      venueMap.set(String(v.venue ?? ""), v);
+    }
+  }
+
+  const selectedStatCfg = STAT_OPTIONS.find(s => s.key === selectedStat) ?? STAT_OPTIONS[0];
+
+  // Get values for chart bars — only venues with data
+  const venuesWithData = ALL_MLB_STADIUMS
+    .map(s => ({ ...s, apiData: venueMap.get(s.venue) ?? null }))
+    .filter(s => s.apiData != null);
+
+  const chartVals = venuesWithData.map(s => {
+    const raw = s.apiData?.[selectedStatCfg.key];
+    return parseFloat(String(raw ?? 0)) || 0;
+  });
+  const chartMax = Math.max(...chartVals, selectedStatCfg.isRate ? 0.1 : 1);
+
+  // Active venue detail
+  const activeVenueRow = selectedVenue
+    ? ALL_MLB_STADIUMS.find(s => s.venue === selectedVenue)
+    : null;
+  const activeVenueData = selectedVenue ? venueMap.get(selectedVenue) : null;
+
+  const divisions = ["All", "NL East", "NL Central", "NL West", "AL East", "AL Central", "AL West"];
+
+  const filteredStadiums = ALL_MLB_STADIUMS.filter(s =>
+    filterDiv === "All" || s.div === filterDiv
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {parkLoading && <Spinner />}
       {parkError && <ErrorCard message="Failed to load park split data." onRetry={() => refetchPark()} />}
 
-      {/* Home / Away full splits */}
+      {/* ── Home / Away full splits ── */}
       {(home || away) && !parkLoading && (
         <div style={CARD_STYLE}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", marginBottom: "0.75rem" }}>
@@ -1277,89 +1357,328 @@ function ParkTab({ player }: { player: PlayerData }) {
         </div>
       )}
 
-      {/* Venue-by-Venue breakdown */}
-      {parkData?.venues && parkData.venues.length > 0 && (
+      {/* ── Interactive Ballpark Chart ── */}
+      {!parkLoading && (
         <div style={CARD_STYLE}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "0.75rem" }}>
-            <MapPin size={12} color="#3D4B58" />
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
-              Venue-by-Venue Performance
-            </p>
+          {/* Header + stat selector */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <MapPin size={13} color="#D4A843" />
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+                Ballpark Performance
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {STAT_OPTIONS.map(opt => (
+                <button key={opt.key} onClick={() => setSelectedStat(opt.key)}
+                  style={{
+                    padding: "3px 8px", borderRadius: "0.5rem", fontSize: 10, fontWeight: 700,
+                    cursor: "pointer", border: "none",
+                    background: selectedStat === opt.key ? "#13233A" : "rgba(19,35,58,0.07)",
+                    color: selectedStat === opt.key ? "#F6F1E7" : "#3D4B58",
+                    transition: "all 0.15s",
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
           </div>
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 380 }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid rgba(19,35,58,0.12)" }}>
-                  <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, color: "#3D4B58", fontSize: 10, textTransform: "uppercase", minWidth: 100 }}>Venue</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>G</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>AB</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>H</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>HR</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>RBI</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>AVG</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>OBP</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>SLG</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#3D4B58", fontSize: 10 }}>OPS</th>
-                  <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, color: "#D4A843", fontSize: 10 }}>PF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parkData.venues.map((v, i) => {
-                  const avg = parseFloat(String(v.avg ?? 0)) || 0;
-                  const pf = v.parkFactor as any;
-                  const pfHit = typeof pf === "object" && pf !== null ? pf.hit : (typeof pf === "number" ? pf : null);
-                  const isHot = avg >= 0.3;
-                  const venueName = String(v.venue ?? "Unknown");
-                  return (
-                    <tr key={i} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)", background: i % 2 === 0 ? "transparent" : "rgba(19,35,58,0.015)" }}>
-                      <td style={{ padding: "5px 6px", fontWeight: 600, fontSize: 11, color: "#131A24", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                        title={venueName}>{venueName}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{v.gamesPlayed ?? "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", color: "#3D4B58" }}>{v.atBats ?? "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600 }}>{v.hits ?? "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 600, color: Number(v.hr) >= 1 ? "#22c55e" : "#131A24" }}>{v.hr ?? "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.rbi ?? "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 800, color: isHot ? "#22c55e" : avg < 0.22 ? "#ef4444" : "#131A24" }}>
-                        {avg > 0 ? fmtAvg(avg) : "—"}
-                      </td>
-                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.obp != null ? fmtAvg(v.obp) : "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center" }}>{v.slg != null ? fmtAvg(v.slg) : "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700 }}>{v.ops != null ? fmtAvg(v.ops) : "—"}</td>
-                      <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, color: pfHit != null ? (pfHit > 1.05 ? "#22c55e" : pfHit < 0.95 ? "#ef4444" : "#3D4B58") : "#3D4B58" }}>
-                        {pfHit != null ? pfHit.toFixed(2) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+          {/* Division filter */}
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: "0.75rem" }}>
+            {divisions.map(d => (
+              <button key={d} onClick={() => setFilterDiv(d)}
+                style={{
+                  padding: "2px 7px", borderRadius: "0.4rem", fontSize: 9, fontWeight: 700,
+                  cursor: "pointer", border: "none",
+                  background: filterDiv === d ? "#D4A843" : "rgba(19,35,58,0.06)",
+                  color: filterDiv === d ? "#131A24" : "#3D4B58",
+                  transition: "all 0.15s",
+                }}
+              >{d}</button>
+            ))}
           </div>
-          <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0", textAlign: "right" }}>PF = Park Factor (hit). &gt;1.05 hitter-friendly · &lt;0.95 pitcher-friendly</p>
+
+          {/* Chart area */}
+          {venuesWithData.length === 0 ? (
+            <div style={{ padding: "2rem", textAlign: "center" }}>
+              <p style={{ fontSize: 13, color: "#3D4B58", margin: 0 }}>No ballpark performance data available for {player.name} yet this season.</p>
+              <p style={{ fontSize: 11, color: "#3D4B58", margin: "0.5rem 0 0" }}>Data populates as the player appears at each stadium during the season.</p>
+            </div>
+          ) : (
+            <>
+              {/* Bar chart */}
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 6, minWidth: filteredStadiums.length * 44, height: 110, paddingBottom: 24, position: "relative" }}>
+                  {/* Baseline */}
+                  <div style={{ position: "absolute", bottom: 24, left: 0, right: 0, height: 1, background: "rgba(19,35,58,0.10)" }} />
+                  {filteredStadiums.map(s => {
+                    const vData = venueMap.get(s.venue);
+                    const rawVal = vData ? parseFloat(String(vData[selectedStatCfg.key] ?? 0)) || 0 : 0;
+                    const hasData = vData != null && rawVal > 0;
+                    const barPct = hasData ? Math.min(100, (rawVal / chartMax) * 100) : 0;
+                    const BAR_MAX_H = 72;
+                    const barH = hasData ? Math.max(4, (barPct / 100) * BAR_MAX_H) : 0;
+                    const isSelected = selectedVenue === s.venue;
+                    const color = !hasData
+                      ? "rgba(19,35,58,0.10)"
+                      : selectedStatCfg.isRate
+                        ? (rawVal >= chartMax * 0.7 ? "#22c55e" : rawVal >= chartMax * 0.4 ? "#D4A843" : "#ef4444")
+                        : (rawVal >= chartMax * 0.6 ? "#22c55e" : rawVal >= chartMax * 0.3 ? "#D4A843" : "rgba(19,35,58,0.25)");
+                    const displayVal = hasData ? selectedStatCfg.fmt(rawVal) : null;
+
+                    return (
+                      <div key={s.venue}
+                        onClick={() => setSelectedVenue(isSelected ? null : s.venue)}
+                        style={{
+                          flex: "0 0 38px",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          cursor: "pointer",
+                          gap: 2,
+                          paddingBottom: 2,
+                          position: "relative",
+                        }}
+                        title={`${s.venue} (${s.abbr})`}
+                      >
+                        {/* Value label above bar */}
+                        {hasData && (
+                          <span style={{ fontSize: 7.5, fontWeight: 800, color: isSelected ? "#131A24" : color, whiteSpace: "nowrap", marginBottom: 1 }}>
+                            {displayVal}
+                          </span>
+                        )}
+                        {!hasData && (
+                          <span style={{ fontSize: 7, color: "rgba(19,35,58,0.25)", marginBottom: 1 }}>—</span>
+                        )}
+                        {/* Bar */}
+                        <div style={{
+                          width: "100%",
+                          height: hasData ? barH : 4,
+                          background: isSelected ? "#13233A" : color,
+                          borderRadius: "3px 3px 0 0",
+                          transition: "all 0.25s ease",
+                          border: isSelected ? "2px solid #D4A843" : "none",
+                          boxSizing: "border-box",
+                          alignSelf: "flex-end",
+                        }} />
+                        {/* Team abbr label */}
+                        <span style={{
+                          position: "absolute",
+                          bottom: 2,
+                          fontSize: 7.5,
+                          fontWeight: isSelected ? 900 : 600,
+                          color: isSelected ? "#131A24" : hasData ? "#3D4B58" : "rgba(19,35,58,0.30)",
+                          textAlign: "center",
+                          lineHeight: 1,
+                        }}>
+                          {s.abbr}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div style={{ display: "flex", gap: 10, marginTop: "0.25rem", flexWrap: "wrap" }}>
+                {selectedStatCfg.isRate ? (
+                  <>
+                    <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 700 }}>■ Elite (&gt;70% of best)</span>
+                    <span style={{ fontSize: 9, color: "#D4A843", fontWeight: 700 }}>■ Good (&gt;40%)</span>
+                    <span style={{ fontSize: 9, color: "#ef4444", fontWeight: 700 }}>■ Below avg</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 700 }}>■ High production</span>
+                    <span style={{ fontSize: 9, color: "#D4A843", fontWeight: 700 }}>■ Mid production</span>
+                  </>
+                )}
+                <span style={{ fontSize: 9, color: "rgba(19,35,58,0.30)", fontWeight: 700 }}>■ No data</span>
+                <span style={{ fontSize: 9, color: "#3D4B58" }}>· Tap a bar for details</span>
+              </div>
+            </>
+          )}
+
+          {/* ── Selected Venue Detail Panel ── */}
+          {selectedVenue && (
+            <div style={{
+              marginTop: "0.75rem",
+              background: "rgba(19,35,58,0.04)",
+              border: "1px solid rgba(19,35,58,0.12)",
+              borderRadius: "0.75rem",
+              padding: "0.9rem",
+            }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 900, fontSize: 14, color: "#131A24" }}>{selectedVenue}</p>
+                  {activeVenueRow && (
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#3D4B58" }}>
+                      {activeVenueRow.team} · {activeVenueRow.div}
+                      {activeVenueRow.dome ? " · 🏟 Dome" : ""}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => setSelectedVenue(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#3D4B58", padding: 4 }}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              {activeVenueData ? (
+                <>
+                  {/* Stat grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+                    {[
+                      ["G",   fmtNum(activeVenueData.gamesPlayed)],
+                      ["AB",  fmtNum(activeVenueData.atBats)],
+                      ["H",   fmtNum(activeVenueData.hits)],
+                      ["2B",  fmtNum(activeVenueData.doubles)],
+                      ["HR",  fmtNum(activeVenueData.hr),],
+                      ["RBI", fmtNum(activeVenueData.rbi)],
+                      ["R",   fmtNum(activeVenueData.runs)],
+                      ["BB",  fmtNum(activeVenueData.walks)],
+                      ["K",   fmtNum(activeVenueData.strikeOuts)],
+                      ["SB",  fmtNum(activeVenueData.stolenBases)],
+                      ["AVG", fmtAvg(activeVenueData.avg)],
+                      ["OBP", fmtAvg(activeVenueData.obp)],
+                      ["SLG", fmtAvg(activeVenueData.slg)],
+                      ["OPS", fmtAvg(activeVenueData.ops)],
+                    ].filter(([, v]) => v !== "—" && v !== null).map(([label, value]) => {
+                      const isAvg = label === "AVG";
+                      const isOps = label === "OPS";
+                      const numV = parseFloat(String(value));
+                      const hi = (isAvg && numV >= 0.3) || (isOps && numV >= 0.8);
+                      return (
+                        <StatChip key={String(label)} label={String(label)} value={String(value ?? "—")} highlight={hi} />
+                      );
+                    })}
+                  </div>
+
+                  {/* Stat bars for all rate stats */}
+                  {STAT_OPTIONS.filter(o => o.isRate).map(opt => {
+                    const raw = parseFloat(String(activeVenueData[opt.key] ?? 0)) || 0;
+                    if (raw === 0) return null;
+                    const pct = Math.min(100, (raw / opt.max) * 100);
+                    const color = raw >= opt.max * 0.65 ? "#22c55e" : raw >= opt.max * 0.45 ? "#D4A843" : "#ef4444";
+                    return (
+                      <div key={opt.key} style={{ marginBottom: "0.5rem" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>{opt.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 900, color }}>{opt.fmt(raw)}</span>
+                        </div>
+                        <div style={{ height: 6, background: "rgba(19,35,58,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Park Factor */}
+                  {(() => {
+                    const pf = activeVenueData.parkFactor as any;
+                    const pfHit = typeof pf === "object" && pf !== null ? pf.hit ?? pf.hitFactor : (typeof pf === "number" ? pf : null);
+                    const pfHr  = typeof pf === "object" && pf !== null ? pf.hr  ?? pf.hrFactor  : null;
+                    if (pfHit == null) return null;
+                    return (
+                      <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Park Factor</p>
+                        <ParkFactorBar value={pfHit} label="Hit Factor" />
+                        {pfHr != null && <ParkFactorBar value={pfHr} label="HR Factor" />}
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "0.75rem 0" }}>
+                  <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>{player.name} has not played at {selectedVenue} this season.</p>
+                  <p style={{ margin: "0.4rem 0 0", fontSize: 11, color: "#3D4B58" }}>No stats available yet.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Park Factor summary */}
+      {/* ── All Stadiums Grid (data status at a glance) ── */}
+      {!parkLoading && (
+        <div style={CARD_STYLE}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" }}>
+            All 30 Stadiums
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.4rem" }}>
+            {ALL_MLB_STADIUMS.map(s => {
+              const vData = venueMap.get(s.venue);
+              const hasData = vData != null;
+              const avg = hasData ? parseFloat(String(vData.avg ?? 0)) || 0 : 0;
+              const isSelected = selectedVenue === s.venue;
+              const bgColor = !hasData
+                ? "rgba(19,35,58,0.04)"
+                : avg >= 0.3
+                  ? "rgba(34,197,94,0.10)"
+                  : avg >= 0.22
+                    ? "rgba(212,168,67,0.10)"
+                    : "rgba(239,68,68,0.07)";
+              const borderColor = !hasData
+                ? "rgba(19,35,58,0.10)"
+                : avg >= 0.3
+                  ? "rgba(34,197,94,0.30)"
+                  : avg >= 0.22
+                    ? "rgba(212,168,67,0.30)"
+                    : "rgba(239,68,68,0.25)";
+              return (
+                <button
+                  key={s.venue}
+                  onClick={() => setSelectedVenue(isSelected ? null : s.venue)}
+                  style={{
+                    background: isSelected ? "#13233A" : bgColor,
+                    border: `1px solid ${isSelected ? "#D4A843" : borderColor}`,
+                    borderRadius: "0.6rem",
+                    padding: "0.4rem 0.3rem",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: isSelected ? "#F6F1E7" : "#131A24" }}>{s.abbr}</p>
+                  {hasData ? (
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: isSelected ? "#D4A843" : avg >= 0.3 ? "#22c55e" : avg >= 0.22 ? "#D4A843" : "#ef4444" }}>
+                      {fmtAvg(avg)}
+                    </p>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 9, color: "rgba(19,35,58,0.30)" }}>No data</p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0" }}>
+            Color = season AVG at that park. Tap any stadium for details. {venuesWithData.length}/30 stadiums visited.
+          </p>
+        </div>
+      )}
+
+      {/* ── Park Factor summary (home park) ── */}
       {parkData?.parkFactor && (
         <div style={CARD_STYLE}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "0.75rem" }}>
             <MapPin size={12} color="#3D4B58" />
             <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
-              Home Park Factor {parkData.parkFactor.name ? `· ${parkData.parkFactor.name}` : ""}
+              Home Park Factor{parkData.parkFactor.name ? ` · ${parkData.parkFactor.name}` : ""}
             </p>
           </div>
           <ParkFactorBar value={parkData.parkFactor.hit} label="Hit Factor" />
           <ParkFactorBar value={parkData.parkFactor.hr} label="HR Factor" />
           <p style={{ fontSize: 11, color: "#3D4B58", margin: "0.75rem 0 0", lineHeight: 1.5 }}>
             {parkData.parkFactor.hit > 1.05
-              ? `This park inflates offensive production — batters hit at a higher rate here than league average.`
+              ? "This park inflates offensive production — batters hit at a higher rate here than league average."
               : parkData.parkFactor.hit < 0.95
-              ? `This is a pitcher-friendly park — expect suppressed offensive numbers relative to league average.`
-              : `This park is relatively neutral — stats should reflect true player ability without significant park bias.`}
+              ? "This is a pitcher-friendly park — expect suppressed offensive numbers relative to league average."
+              : "This park is relatively neutral — stats should reflect true player ability without significant park bias."}
           </p>
         </div>
       )}
 
-      {/* No data message */}
+      {/* ── No data at all ── */}
       {!parkLoading && !parkError && !home && !away && !parkData?.venues && (
         <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
           <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No park split data available. MLBAM ID may not be resolved for this player.</p>
