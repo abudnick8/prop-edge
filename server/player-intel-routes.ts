@@ -798,7 +798,97 @@ export function registerPlayerIntelRoutes(app: Express): void {
     }
   });
 
-  // ── 5. Vs-Team — /api/intel/vs-team/:sport/:playerId/:teamAbbr ───────────
+  // ── 5. Spray Chart — /api/intel/spray-chart/:mlbamId ──────────────────────
+  // Fetches play-by-play for all games in the last 3 seasons, extracts hit
+  // coordinates (coordX, coordY) from playEvents.hitData for the given batter.
+  app.get("/api/intel/spray-chart/:mlbamId", async (req, res) => {
+    try {
+      const mlbamId = parseInt(req.params.mlbamId, 10);
+      if (isNaN(mlbamId)) return res.status(400).json({ error: "mlbamId must be numeric" });
+
+      const cacheKey = `spray-chart:${mlbamId}`;
+      const cached = getCache(parkCache, cacheKey, ONE_DAY_MS);
+      if (cached) return res.json(cached);
+
+      console.log(`${LOG_PREFIX} spray chart mlbamId=${mlbamId}`);
+
+      const currentYear = new Date().getFullYear();
+      const seasons = [currentYear, currentYear - 1, currentYear - 2];
+
+      // 1. Fetch gamelogs for last 3 seasons to get gamePks
+      const gamelogResults = await Promise.allSettled(
+        seasons.map(yr =>
+          axios.get(
+            `https://statsapi.mlb.com/api/v1/people/${mlbamId}/stats?stats=gameLog&group=hitting&season=${yr}&gameType=R`,
+            { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }
+          )
+        )
+      );
+
+      const gamePks: number[] = [];
+      for (const res of gamelogResults) {
+        if (res.status !== "fulfilled") continue;
+        for (const sp of (res.value.data?.stats?.[0]?.splits ?? [])) {
+          const pk = sp.game?.gamePk;
+          if (pk) gamePks.push(pk);
+        }
+      }
+
+      if (gamePks.length === 0) {
+        return res.json({ hits: [], total: 0 });
+      }
+
+      // 2. Fetch play-by-play for each game — cap at 200 most recent games
+      const recentPks = gamePks.slice(-200);
+      const PBP_CONCURRENCY = 10;
+      const hits: any[] = [];
+
+      for (let i = 0; i < recentPks.length; i += PBP_CONCURRENCY) {
+        const chunk = recentPks.slice(i, i + PBP_CONCURRENCY);
+        const pbpResults = await Promise.allSettled(
+          chunk.map(pk =>
+            axios.get(
+              `https://statsapi.mlb.com/api/v1.1/game/${pk}/feed/live?fields=liveData,plays,allPlays,result,matchup,playEvents,hitData,event,batter,id,coordX,coordY,launchSpeed,launchAngle,totalDistance,trajectory`,
+              { timeout: 8000, headers: AXIOS_HEADERS }
+            )
+          )
+        );
+
+        for (const r of pbpResults) {
+          if (r.status !== "fulfilled") continue;
+          const allPlays = r.value.data?.liveData?.plays?.allPlays ?? [];
+          for (const play of allPlays) {
+            // Must be this batter
+            if (play.matchup?.batter?.id !== mlbamId) continue;
+            const event = play.result?.event ?? "";
+            // Scan playEvents for hitData
+            for (const ev of (play.playEvents ?? [])) {
+              const hd = ev.hitData;
+              if (!hd?.coordinates?.coordX) continue;
+              hits.push({
+                x:          hd.coordinates.coordX,
+                y:          hd.coordinates.coordY,
+                event:      event,
+                trajectory: hd.trajectory ?? "",
+                speed:      hd.launchSpeed ?? null,
+                angle:      hd.launchAngle ?? null,
+                distance:   hd.totalDistance ?? null,
+              });
+            }
+          }
+        }
+      }
+
+      const result = { hits, total: hits.length };
+      setCache(parkCache, cacheKey, result);
+      return res.json(result);
+    } catch (e: any) {
+      console.warn(`${LOG_PREFIX} spray-chart error:`, e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── 6. Vs-Team — /api/intel/vs-team/:sport/:playerId/:teamAbbr ───────────
   app.get("/api/intel/vs-team/:sport/:playerId/:teamAbbr", async (req, res) => {
     try {
       const { sport, playerId, teamAbbr } = req.params;

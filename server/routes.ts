@@ -9606,6 +9606,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           ghp14,
           avgHome,
           avgAway,
+          // Batted-ball profile: GO/AO ratio from season stats
+          // < 0.8 = fly ball hitter; > 1.3 = ground ball hitter; ~1.0 = balanced
+          goAoRatio: parseFloat(sSeason.groundOutsToAirouts ?? "0") || 1.0,
           gamelog: last14Games.slice(0, 5).map((g: any) => ({
             date: g.date,
             hits: parseInt(g.stat?.hits ?? "0"),
@@ -9653,6 +9656,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         oppPitcherSeasonStats: any,
         isHomeGame: boolean,
         pitchTypeMatchup: number | null, // Phase 2: weighted wOBA vs pitcher arsenal (0-1)
+        venueCareerAvg: number | null,   // Career AVG at today's specific ballpark (last 5 seasons)
+        venueCareerAB: number,           // AB sample size at this venue
+        vsTeamAvg: number | null,        // Season AVG vs today's opponent team
+        vsTeamAB: number,                // AB vs team this season
+        goAoRatio: number,               // Ground-outs to Air-outs ratio (batted-ball profile)
       ): number {
         const bats = hitter.bats;
         const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
@@ -9845,28 +9853,63 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           rawSlotScore + impliedBoost + splitAdj - epaGatePenalty + leashBonus
         ));
 
-        // ══ COMPONENT 6: BvP — requires 20+ AB (reduced noise vs v2's 8 AB) (8%) ══
-        const bvpScore = bvp.signal === "strong" ? 0.80
-                       : bvp.signal === "weak"   ? 0.20
-                       : 0.50; // neutral — no signal without sample
+        // ══ COMPONENT 6: BvP + Vs-Team ── (6%) ══
+        // Pitcher BvP is primary; supplement with season vs-team avg when BvP is neutral.
+        // Vs-team is blended in at 30% weight when BvP has no signal (neutral).
+        const bvpPitcherScore = bvp.signal === "strong" ? 0.80
+                              : bvp.signal === "weak"   ? 0.20
+                              : 0.50;
+        const vsTeamScore = vsTeamAB >= 10 && vsTeamAvg !== null
+          ? norm(vsTeamAvg, 0.180, 0.380)  // scale to 0-1
+          : 0.50;
+        // If BvP is neutral (no signal), blend in vs-team; if BvP has signal, trust it more
+        const bvpScore = bvp.signal === "none" || bvp.ab < 10
+          ? bvpPitcherScore * 0.55 + vsTeamScore * 0.45
+          : bvpPitcherScore * 0.75 + vsTeamScore * 0.25;
 
-        // ══ STABILITY ANCHOR (8%) ══ — small residual to prevent runaway scores
-        // Rewards hitters with consistent playing time (stable lineup slot proxy)
+        // ══ COMPONENT 7: Venue Career History (4%) ══
+        // Career AVG at today's specific ballpark (last 5 seasons).
+        // Requires 20+ career AB at the venue to weight meaningfully.
+        const venueScore = venueCareerAvg !== null && venueCareerAB >= 20
+          ? norm(venueCareerAvg, 0.180, 0.380)
+          : 0.50; // neutral when no sample
+
+        // ══ COMPONENT 8: Batted-Ball Profile vs Pitcher Type (3%) ══
+        // GO/AO ratio interaction with pitcher's groundball tendency.
+        // GB pitcher (pitcherGbPct >= 0.52) + FB hitter (goAoRatio < 0.80) = disadvantage.
+        // GB pitcher + GB hitter = slight advantage (more put-in-play, less K).
+        const pitcherGbPctScore = parseFloat(pitcherSavant?.groundballs_percent ?? "0") / 100 || 0.43;
+        let battedBallBonus = 0.50;
+        if (goAoRatio < 0.80) {
+          // Fly-ball hitter: bonus vs FB pitchers, penalty vs GB pitchers
+          battedBallBonus = pitcherGbPctScore >= 0.52 ? 0.35 : 0.60;
+        } else if (goAoRatio > 1.30) {
+          // Ground-ball hitter: slight bonus vs anyone (more contact, fewer Ks)
+          battedBallBonus = pitcherGbPctScore >= 0.52 ? 0.55 : 0.50;
+        }
+
+        // ══ STABILITY ANCHOR (7%) ══ — small residual to prevent runaway scores
         const stabilityScore = lineupSlot <= 5
           ? 0.60 + (hitter.ghp14 ?? 0.5) * 0.20
           : 0.40;
 
-        // ── Final weighted composite (Phase 1 rebalanced) ─────────────
-        // Form 13% | Contact 19% | Hard 10% | Matchup 24% | Opp 20% | BvP 5% | Stability 9%
-        const raw = (
-          form           * 0.13 +
-          contact        * 0.19 +
-          hardContact    * 0.10 +
-          matchup        * 0.24 +
-          opportunity    * 0.20 +
-          bvpScore       * 0.05 +
-          stabilityScore * 0.09
+        // ── Final weighted composite ──────────────────────────────────────────
+        // Form 13% | Contact 18% | Hard 10% | Matchup 24% | Opp 20% |
+        // BvP+Team 6% | Venue 4% | Batted-Ball 3% | Stability 7% (= 1.05 → rescale → 1.00)
+        // Note: intentionally sums to 1.05; normalize with /1.05 to keep 0-1 range
+        const rawNom = (
+          form            * 0.13 +
+          contact         * 0.18 +
+          hardContact     * 0.10 +
+          matchup         * 0.24 +
+          opportunity     * 0.20 +
+          bvpScore        * 0.06 +
+          venueScore      * 0.04 +
+          battedBallBonus * 0.03 +
+          stabilityScore  * 0.07
         );
+        // Weights sum to 1.05 — normalize
+        const raw = rawNom / 1.05;
         return Math.max(0, Math.min(1, raw));
       }
 
@@ -10149,7 +10192,51 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 ? await getPitchArsenalMatchup(opponentPitcherId, pid, bats)
                 : null; } catch { pitchMatchup = null; }
 
+              // ── PlayerIntel data: career venue splits + vs-team stats ─────
+              // Fetch career park splits for today's venue (last 5 seasons)
+              let venueCareerAvg: number | null = null;
+              let venueCareerAB  = 0;
+              try {
+                const parkResp = await axios.get(
+                  `http://localhost:${process.env.PORT ?? 5000}/api/intel/park-splits/${pid}`,
+                  { timeout: 6000 }
+                );
+                const venueEntry = (parkResp.data?.venues ?? []).find(
+                  (v: any) => (v.venue ?? "").toLowerCase() === (venue ?? "").toLowerCase()
+                );
+                if (venueEntry && venueEntry.AB >= 10) {
+                  venueCareerAvg = typeof venueEntry.avg === "number" ? venueEntry.avg
+                    : parseFloat(String(venueEntry.avg ?? "0")) || null;
+                  venueCareerAB  = venueEntry.AB ?? venueEntry.atBats ?? 0;
+                }
+              } catch { /* non-blocking */ }
+
+              // Vs-team season stats (opponent team name)
+              let vsTeamAvg: number | null = null;
+              let vsTeamAB  = 0;
+              try {
+                const oppTeamId = side === "home" ? awayTeam.team?.id : homeTeam.team?.id;
+                if (oppTeamId) {
+                  const vsResp = await axios.get(
+                    `https://statsapi.mlb.com/api/v1/people/${pid}/stats?stats=vsTeam&group=hitting&season=2026&opposingTeamId=${oppTeamId}&gameType=R`,
+                    { timeout: 6000 }
+                  );
+                  const vsSplits = vsResp.data?.stats?.[0]?.splits ?? [];
+                  // Aggregate all per-game splits into totals
+                  let totalH = 0, totalAB = 0, totalTB = 0;
+                  for (const sp of vsSplits) {
+                    totalH  += parseInt(sp.stat?.hits      ?? "0") || 0;
+                    totalAB += parseInt(sp.stat?.atBats    ?? "0") || 0;
+                  }
+                  if (totalAB >= 5) {
+                    vsTeamAvg = totalH / totalAB;
+                    vsTeamAB  = totalAB;
+                  }
+                }
+              } catch { /* non-blocking */ }
+
               const lineupSlot = p.medianSlot ?? (slotIdx + 1);
+              const goAoRatio  = stats.goAoRatio ?? 1.0;
 
               const rawScore = scoreHitter(
                 { ...stats, bats },
@@ -10166,6 +10253,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 oppPitcherSeasonStats,
                 side === "home",
                 pitchMatchup,
+                venueCareerAvg,
+                venueCareerAB,
+                vsTeamAvg,
+                vsTeamAB,
+                goAoRatio,
               );
 
               // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
@@ -10198,7 +10290,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 steamerProj = steamerBatter;
                 const { boost, note } = computeAnalyticsBoost(steamerBatter, pkFactor, bvpExt, wxData, pitcherAn);
                 analyticsBoostMult = boost;
-                analyticsNote      = note;
+                // Extend the note with venue career avg + vs-team avg
+                const noteParts: string[] = note ? [note] : [];
+                if (venueCareerAvg !== null && venueCareerAB >= 10) {
+                  const venueAvgStr = venueCareerAvg.toFixed(3).replace("0.", ".");
+                  noteParts.push(`Career .${venueAvgStr.replace(".","")} at ${venue} (${venueCareerAB} AB)`);
+                }
+                if (vsTeamAvg !== null && vsTeamAB >= 5) {
+                  const oppName = side === "home" ? (awayTeam.team?.name ?? "opponent") : (homeTeam.team?.name ?? "opponent");
+                  const vsStr = vsTeamAvg.toFixed(3).replace("0.", ".");
+                  noteParts.push(`${vsTeamAB} AB vs ${oppName} this season (.${vsStr.replace(".","")})`);
+                }
+                if (goAoRatio < 0.80) noteParts.push(`Fly-ball hitter (GO/AO ${goAoRatio.toFixed(2)})`);
+                else if (goAoRatio > 1.30) noteParts.push(`Ground-ball hitter (GO/AO ${goAoRatio.toFixed(2)})`);
+                analyticsNote = noteParts.join(" · ") || "Standard conditions";
                 // Projected per-game stats for explanation drawer
                 projectedStats = getProjectedGameStats(String(pid), venue, opponentPidForAnalytics ? String(opponentPidForAnalytics) : undefined);
               } catch (analyticsErr: any) {
@@ -10299,6 +10404,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   hardHit30d: parseFloat(sav30d?.hard_hit_percent  ?? "0") || null,
                   // Phase 2: pitch-type matchup score
                   pitchTypeMatchup: pitchMatchup !== null ? Math.round(pitchMatchup * 100) : null,
+                  // PlayerIntel signals
+                  venueCareerAvg:   venueCareerAvg !== null ? parseFloat(venueCareerAvg.toFixed(3)) : null,
+                  venueCareerAB,
+                  vsTeamAvg:        vsTeamAvg !== null ? parseFloat(vsTeamAvg.toFixed(3)) : null,
+                  vsTeamAB,
+                  goAoRatio:        parseFloat(goAoRatio.toFixed(2)),
                 },
                 gamelog: stats.gamelog,
                 game: {

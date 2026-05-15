@@ -1169,10 +1169,10 @@ const ALL_MLB_STADIUMS: { venue: string; team: string; abbr: string; div: string
   { venue: "Fenway Park",               team: "Red Sox",      abbr: "BOS", div: "AL East",    dome: false },
   { venue: "Yankee Stadium",            team: "Yankees",      abbr: "NYY", div: "AL East",    dome: false },
   { venue: "Rogers Centre",             team: "Blue Jays",    abbr: "TOR", div: "AL East",    dome: true  },
-  { venue: "Camden Yards",              team: "Orioles",      abbr: "BAL", div: "AL East",    dome: false },
+  { venue: "Oriole Park at Camden Yards", team: "Orioles",      abbr: "BAL", div: "AL East",    dome: false },
   { venue: "Tropicana Field",           team: "Rays",         abbr: "TB",  div: "AL East",    dome: true  },
   // AL Central
-  { venue: "Guaranteed Rate Field",     team: "White Sox",    abbr: "CWS", div: "AL Central", dome: false },
+  { venue: "Rate Field",               team: "White Sox",    abbr: "CWS", div: "AL Central", dome: false },
   { venue: "Progressive Field",         team: "Guardians",    abbr: "CLE", div: "AL Central", dome: false },
   { venue: "Comerica Park",             team: "Tigers",       abbr: "DET", div: "AL Central", dome: false },
   { venue: "Kauffman Stadium",          team: "Royals",       abbr: "KC",  div: "AL Central", dome: false },
@@ -1194,6 +1194,261 @@ const STAT_OPTIONS = [
   { key: "hits",        label: "H",    fmt: (v: any) => v != null ? fmtNum(v) : null,               max: 30,   isRate: false },
   { key: "rbi",         label: "RBI",  fmt: (v: any) => v != null ? fmtNum(v) : null,               max: 20,   isRate: false },
 ];
+
+// ─── Spray Chart Component ─────────────────────────────────────────────────────
+// MLB Statcast coordX/coordY: home plate is approx (125.42, 204.5) in a
+// 250×250 coordinate space. We map to an SVG viewBox of 0 0 250 250.
+
+interface HitPoint {
+  x: number; y: number;
+  event: string; trajectory: string;
+  speed: number | null; angle: number | null; distance: number | null;
+}
+
+interface SprayData { hits: HitPoint[]; total: number; }
+
+type SprayFilter = "all" | "hits" | "hr" | "gb" | "fb" | "ld";
+
+const HIT_EVENT_COLOR: Record<string, string> = {
+  "Single":           "#22c55e",
+  "Double":           "#3b82f6",
+  "Triple":           "#a855f7",
+  "Home Run":         "#D4A843",
+  "Field Out":        "rgba(100,100,100,0.45)",
+  "Flyout":           "rgba(100,100,100,0.45)",
+  "Groundout":        "rgba(100,100,100,0.45)",
+  "Lineout":          "rgba(100,100,100,0.45)",
+  "Pop Out":          "rgba(100,100,100,0.45)",
+  "Double Play":      "rgba(100,100,100,0.45)",
+  "Triple Play":      "rgba(100,100,100,0.45)",
+  "Grounded Into DP": "rgba(100,100,100,0.45)",
+  "Forceout":         "rgba(100,100,100,0.45)",
+  "Sac Fly":          "rgba(100,100,100,0.45)",
+};
+
+function hitColor(event: string): string {
+  return HIT_EVENT_COLOR[event] ?? "rgba(100,100,100,0.4)";
+}
+
+function isHitEvent(event: string): boolean {
+  return ["Single","Double","Triple","Home Run"].includes(event);
+}
+
+function SprayChart({ player }: { player: PlayerData }) {
+  const [filter, setFilter] = useState<SprayFilter>("hits");
+  const [selected, setSelected] = useState<HitPoint | null>(null);
+
+  const enabled = player.sport === "MLB" && !!player.mlbamId;
+  const { data, isFetching, error } = useQuery<SprayData>({
+    queryKey: ["spray-chart", player.mlbamId],
+    queryFn: () =>
+      fetch(`/api/intel/spray-chart/${player.mlbamId}`).then(r => r.json()),
+    enabled,
+    staleTime: 1000 * 60 * 60,
+  });
+
+  if (!enabled) return null;
+  if (isFetching) return <Spinner />;
+  if (error || !data) return <ErrorCard message="Could not load spray chart." onRetry={() => {}} />;
+  if (!data.hits?.length) {
+    return (
+      <div style={{ ...CARD_STYLE, textAlign: "center", padding: "1.5rem" }}>
+        <p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No spray chart data available for {player.name}.</p>
+      </div>
+    );
+  }
+
+  const filterFn = (h: HitPoint): boolean => {
+    if (filter === "all") return true;
+    if (filter === "hits") return isHitEvent(h.event);
+    if (filter === "hr") return h.event === "Home Run";
+    if (filter === "gb") return h.trajectory === "ground_ball" || h.trajectory === "bunt_grounder";
+    if (filter === "fb") return h.trajectory === "fly_ball" || h.trajectory === "popup";
+    if (filter === "ld") return h.trajectory === "line_drive";
+    return true;
+  };
+
+  const filtered = data.hits.filter(filterFn);
+
+  // Count each type
+  const singles = data.hits.filter(h => h.event === "Single").length;
+  const doubles = data.hits.filter(h => h.event === "Double").length;
+  const triples = data.hits.filter(h => h.event === "Triple").length;
+  const hrs = data.hits.filter(h => h.event === "Home Run").length;
+  const outs = data.hits.filter(h => !isHitEvent(h.event)).length;
+
+  // Filter buttons
+  const FILTERS: { key: SprayFilter; label: string }[] = [
+    { key: "hits", label: "Hits Only" },
+    { key: "all",  label: "All" },
+    { key: "hr",   label: "HR" },
+    { key: "gb",   label: "Ground Balls" },
+    { key: "fb",   label: "Fly Balls" },
+    { key: "ld",   label: "Line Drives" },
+  ];
+
+  return (
+    <div style={CARD_STYLE}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "0.75rem" }}>
+        <MapPin size={13} color="#D4A843" />
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+          Spray Chart
+        </p>
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#3D4B58" }}>
+          {data.total} balls in play (last 3 seasons)
+        </span>
+      </div>
+
+      {/* Filter buttons */}
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: "0.75rem" }}>
+        {FILTERS.map(f => (
+          <button key={f.key} onClick={() => { setFilter(f.key); setSelected(null); }}
+            style={{
+              padding: "3px 8px", borderRadius: "0.5rem", fontSize: 10, fontWeight: 700,
+              cursor: "pointer", border: "none",
+              background: filter === f.key ? "#13233A" : "rgba(19,35,58,0.07)",
+              color: filter === f.key ? "#F6F1E7" : "#3D4B58",
+              transition: "all 0.15s",
+            }}
+          >{f.label}</button>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        {[
+          { label: `1B (${singles})`,  color: "#22c55e" },
+          { label: `2B (${doubles})`,  color: "#3b82f6" },
+          { label: `3B (${triples})`,  color: "#a855f7" },
+          { label: `HR (${hrs})`,      color: "#D4A843" },
+          { label: `Out (${outs})`,    color: "rgba(100,100,100,0.5)" },
+        ].map(({ label, color }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, border: "1px solid rgba(0,0,0,0.15)" }} />
+            <span style={{ fontSize: 9, color: "#3D4B58", fontWeight: 600 }}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* SVG Baseball Field */}
+      <div style={{ position: "relative", width: "100%", touchAction: "manipulation" }}>
+        <svg
+          viewBox="0 0 250 250"
+          style={{ width: "100%", height: "auto", display: "block" }}
+          onClick={() => setSelected(null)}
+        >
+          {/* Sky / outfield background */}
+          <rect x="0" y="0" width="250" height="250" fill="#4a7c3f" />
+
+          {/* Outfield warning track arc */}
+          <path
+            d="M 20 230 A 150 150 0 0 1 230 230"
+            fill="none" stroke="#8B7355" strokeWidth="8" opacity="0.6"
+          />
+
+          {/* Outfield grass (full arc fill) */}
+          <path
+            d="M 20 230 A 150 150 0 0 1 230 230 L 125 230 Z"
+            fill="#4a7c3f"
+          />
+          {/* Fair territory fill - lighter grass */}
+          <path
+            d="M 125 204 L 20 230 A 150 150 0 0 1 230 230 Z"
+            fill="#5a9c4f"
+          />
+
+          {/* Foul lines */}
+          <line x1="125.42" y1="204.5" x2="20" y2="50" stroke="white" strokeWidth="1.2" opacity="0.8" />
+          <line x1="125.42" y1="204.5" x2="230" y2="50" stroke="white" strokeWidth="1.2" opacity="0.8" />
+
+          {/* Infield dirt circle */}
+          <circle cx="125.42" cy="155" r="55" fill="#c4a875" opacity="0.7" />
+
+          {/* Base paths */}
+          <polygon points="125,120 90,155 125,190 160,155" fill="#5a9c4f" opacity="0.9" />
+
+          {/* Bases */}
+          {/* 2nd base (top) */}
+          <rect x="119" y="114" width="12" height="12" fill="white" transform="rotate(45 125 120)" />
+          {/* 1st base (right) */}
+          <rect x="154" y="149" width="12" height="12" fill="white" transform="rotate(45 160 155)" />
+          {/* 3rd base (left) */}
+          <rect x="84" y="149" width="12" height="12" fill="white" transform="rotate(45 90 155)" />
+          {/* Home plate */}
+          <polygon points="125,208 120,213 120,220 130,220 130,213" fill="white" />
+
+          {/* Pitcher's mound */}
+          <circle cx="125.42" cy="152" r="5" fill="#c4a875" stroke="#a08050" strokeWidth="1" />
+
+          {/* Hit dots */}
+          {filtered.map((h, i) => {
+            const isSelected = selected === h;
+            const color = hitColor(h.event);
+            const isHit = isHitEvent(h.event);
+            return (
+              <g key={i} onClick={e => { e.stopPropagation(); setSelected(isSelected ? null : h); }}>
+                <circle
+                  cx={h.x}
+                  cy={h.y}
+                  r={isSelected ? 6 : isHit ? 4.5 : 3.5}
+                  fill={color}
+                  stroke={isSelected ? "#131A24" : "rgba(0,0,0,0.3)"}
+                  strokeWidth={isSelected ? 1.5 : 0.5}
+                  opacity={isSelected ? 1 : 0.82}
+                  style={{ cursor: "pointer", transition: "r 0.15s" }}
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Selected hit detail tooltip */}
+        {selected && (
+          <div style={{
+            position: "absolute", bottom: 8, left: 8, right: 8,
+            background: "rgba(19,35,58,0.92)", borderRadius: "0.75rem",
+            padding: "0.6rem 0.75rem",
+            backdropFilter: "blur(4px)",
+            border: `1.5px solid ${hitColor(selected.event)}`,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: hitColor(selected.event), flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#F6F1E7" }}>{selected.event}</span>
+              {selected.trajectory && (
+                <span style={{ fontSize: 10, color: "#D4A843", textTransform: "capitalize" }}>
+                  · {selected.trajectory.replace(/_/g, " ")}
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {selected.speed != null && (
+                <span style={{ fontSize: 10, color: "#F6F1E7" }}>
+                  <span style={{ color: "#D4A843", fontWeight: 700 }}>{selected.speed}</span> mph EV
+                </span>
+              )}
+              {selected.angle != null && (
+                <span style={{ fontSize: 10, color: "#F6F1E7" }}>
+                  <span style={{ color: "#D4A843", fontWeight: 700 }}>{selected.angle}°</span> LA
+                </span>
+              )}
+              {selected.distance != null && (
+                <span style={{ fontSize: 10, color: "#F6F1E7" }}>
+                  <span style={{ color: "#D4A843", fontWeight: 700 }}>{selected.distance}</span> ft
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Tap hint */}
+      <p style={{ fontSize: 9, color: "#3D4B58", textAlign: "center", margin: "0.4rem 0 0" }}>
+        Tap any dot for exit velocity, launch angle &amp; distance
+      </p>
+    </div>
+  );
+}
 
 function ParkTab({ player }: { player: PlayerData }) {
   const isMlb = player.sport === "MLB";
@@ -1656,6 +1911,9 @@ function ParkTab({ player }: { player: PlayerData }) {
           </p>
         </div>
       )}
+
+      {/* ── Spray Chart ── */}
+      <SprayChart player={player} />
 
       {/* ── Park Factor summary (home park) ── */}
       {parkData?.parkFactor && (
