@@ -253,27 +253,85 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
   const allGames: any[] = allGameEntries.map(({ entry, eventInfo, labels }) => {
     const stats = entry.stats ?? [];
     const raw: Record<string, string> = {};
-    labels.forEach((lbl, i) => { if (stats[i] != null) raw[lbl] = String(stats[i]); });
 
-    // Handle FG "made-att" splits for NBA
+    // ── NFL has duplicate label names (passing YDS vs rushing YDS, etc.)
+    // Must use positional index to disambiguate.
+    if (sport === "NFL") {
+      // QB layout:  CMP ATT YDS CMP% AVG TD INT LNG SACK RTG QBR | CAR YDS AVG TD LNG
+      // RB layout:  CAR YDS AVG TD LNG | REC TGTS YDS AVG TD LNG | FUM LST FF KB
+      // WR/TE layout: REC TGTS YDS AVG TD LNG | CAR YDS AVG LNG TD | FUM LST FF KB
+      const s = (i: number) => stats[i] != null ? String(stats[i]) : undefined;
+      if (labels[0] === "CMP" && labels[1] === "ATT") {
+        // QB
+        raw["CMP"]      = s(0) ?? "0";
+        raw["ATT"]      = s(1) ?? "0";
+        raw["YDS"]      = s(2) ?? "0";   // passing yards
+        raw["CMP%"]     = s(3) ?? "0";
+        raw["AVG"]      = s(4) ?? "0";   // yards/attempt
+        raw["TD"]       = s(5) ?? "0";
+        raw["INT"]      = s(6) ?? "0";
+        raw["LNG"]      = s(7) ?? "0";
+        raw["SACK"]     = s(8) ?? "0";
+        raw["RTG"]      = s(9) ?? "0";
+        raw["rating"]   = s(9) ?? "0";   // passer rating alias
+        raw["QBR"]      = s(10) ?? "0";
+        raw["RUSH_CAR"] = s(11) ?? "0";  // QB rushing carries
+        raw["RUSH_YDS"] = s(12) ?? "0";  // QB rushing yards
+      } else if (labels[0] === "CAR") {
+        // RB
+        raw["CAR"]      = s(0) ?? "0";
+        raw["YDS"]      = s(1) ?? "0";   // rush yards
+        raw["AVG"]      = s(2) ?? "0";   // ypc
+        raw["TD"]       = s(3) ?? "0";
+        raw["LNG"]      = s(4) ?? "0";
+        raw["REC"]      = s(5) ?? "0";
+        raw["TGTS"]     = s(6) ?? "0";
+        raw["RecYDS"]   = s(7) ?? "0";   // receiving yards
+        raw["RecAVG"]   = s(8) ?? "0";
+        raw["RecTD"]    = s(9) ?? "0";
+        raw["FUM"]      = s(11) ?? "0";
+      } else if (labels[0] === "REC") {
+        // WR / TE
+        raw["REC"]      = s(0) ?? "0";
+        raw["TGTS"]     = s(1) ?? "0";
+        raw["YDS"]      = s(2) ?? "0";   // receiving yards
+        raw["AVG"]      = s(3) ?? "0";   // ypr
+        raw["TD"]       = s(4) ?? "0";
+        raw["LNG"]      = s(5) ?? "0";
+        raw["CAR"]      = s(6) ?? "0";   // rush attempts (if any)
+        raw["RUSH_YDS"] = s(7) ?? "0";
+        raw["FUM"]      = s(11) ?? "0";
+      } else {
+        // Generic fallback
+        labels.forEach((lbl, i) => { if (stats[i] != null) raw[lbl] = String(stats[i]); });
+      }
+    } else {
+      // All other sports: label → value (no duplicate issues)
+      labels.forEach((lbl, i) => { if (stats[i] != null) raw[lbl] = String(stats[i]); });
+    }
+
+    // ── NBA: split "made-att" strings ──
+    // ESPN sends FG/3PT/FT as "8-18", "2-6", "6-8" — split into made+att
     if (raw["FG"]) {
       const [m, a] = raw["FG"].split("-");
       raw["FGM"] = m ?? "0"; raw["FGA"] = a ?? "0";
+      if (a && parseFloat(a) > 0) raw["FG%"] = (parseFloat(m ?? "0") / parseFloat(a) * 100).toFixed(1);
     }
     if (raw["3PT"]) {
       const [m, a] = raw["3PT"].split("-");
-      raw["3PTM"] = m ?? "0";
-      if (a) raw["3PTA"] = a;
+      raw["3PTM"] = m ?? "0"; raw["3PTA"] = a ?? "0";
+      // ESPN also sends 3P% directly as a label (e.g. "33.3") — keep it if present, derive if not
+      if (!raw["3P%"] && a && parseFloat(a) > 0)
+        raw["3P%"] = (parseFloat(m ?? "0") / parseFloat(a) * 100).toFixed(1);
     }
     if (raw["FT"]) {
       const [m, a] = raw["FT"].split("-");
-      raw["FTM"] = m ?? "0";
-      if (a) { raw["FTA"] = a;
-        const fta = parseFloat(a) || 0;
-        if (fta > 0) raw["FT%"] = (parseFloat(m ?? "0") / fta * 100).toFixed(1);
-      }
+      raw["FTM"] = m ?? "0"; raw["FTA"] = a ?? "0";
+      if (!raw["FT%"] && a && parseFloat(a) > 0)
+        raw["FT%"] = (parseFloat(m ?? "0") / parseFloat(a) * 100).toFixed(1);
     }
-    // Derive MLB Total Bases per game (1B + 2×2B + 3×3B + 4×HR)
+
+    // ── MLB: derive Total Bases per game ──
     if (raw["H"] != null) {
       const h  = parseFloat(raw["H"]  ?? "0") || 0;
       const d  = parseFloat(raw["2B"] ?? "0") || 0;
@@ -282,26 +340,9 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
       const singles = Math.max(0, h - d - t - hr);
       raw["TB"] = String(singles + 2 * d + 3 * t + 4 * hr);
     }
-    // NBA: derive shooting pcts from per-game FGM/FGA/FTM/FTA
-    if (raw["FGM"] != null && raw["FGA"] != null) {
-      const fga = parseFloat(raw["FGA"]) || 0;
-      if (fga > 0) raw["FG%"] = (parseFloat(raw["FGM"]) / fga * 100).toFixed(1);
-    }
-    if (raw["3PTM"] != null) {
-      // ESPN sends 3PT as "made-att"; FGA includes 3PA so derive 3P% from 3PTM only when 3PTA available
-      // 3PTA is not always available separately; skip for now (season agg handles it)
-    }
-    // NFL: derive QB rating key aliases + per-game computed stats
-    if (raw["RTG"] != null)   raw["rating"] = raw["RTG"];
-    if (raw["QBR"] != null)   raw["rating"] = raw["QBR"];
-    if (raw["RATE"] != null)  raw["rating"] = raw["RATE"];
-    // NFL receiving yards aliases
-    if (raw["RECYDS"] != null) raw["RecYDS"] = raw["RECYDS"];
-    if (raw["RYDS"]   != null) raw["RecYDS"] = raw["RYDS"];
-    // NFL targets aliases
-    if (raw["TGT"]  != null)  raw["TGTS"] = raw["TGT"];
-    // NHL shots alias
-    if (raw["S"]    != null)  raw["SOG"]  = raw["S"];
+
+    // ── NHL: shots alias (ESPN label "S") ──
+    if (raw["S"] != null) raw["SOG"] = raw["S"];
 
     const opp      = eventInfo.opponent?.abbreviation ?? "?";
     const atVs     = eventInfo.atVs ?? "vs";
@@ -390,11 +431,21 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
   if (games.length === 0) return {};
   const sums: Record<string, number> = {};
   const counts: Record<string, number> = {};
-  const rateKeys = new Set(["AVG", "OBP", "SLG", "OPS", "ERA", "WHIP", "FG%", "3P%", "FT%", "FG%", "RTG", "QBR", "RATE", "TOI/G", "TOI"]);
+  const rateKeys = new Set([
+    // MLB rates
+    "AVG", "OBP", "SLG", "OPS", "ERA", "WHIP",
+    // NBA rates (ESPN sends these already as per-game averages)
+    "FG%", "3P%", "FT%", "MIN",
+    // NFL rates
+    "CMP%", "RTG", "QBR", "AVG",
+    // NHL rates (ESPN sends TOI/G as per-game, SPCT as pct)
+    "TOI/G", "TOI", "SPCT",
+  ]);
 
   for (const g of games) {
     for (const [k, v] of Object.entries(g)) {
-      if (["date_game", "opp", "result", "FG", "3PT"].includes(k)) continue;
+      // Skip raw made-att strings, non-stat fields, and LONG/LNG (not useful for averages)
+      if (["date_game", "opp", "result", "FG", "3PT", "FT", "LNG", "LONG", "LNG"].includes(k)) continue;
       if (String(v).includes("-") && String(v).split("-").length === 2) continue;
       const n = parseFloat(String(v));
       if (!isNaN(n)) {
@@ -441,93 +492,86 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
     }
     case "NBA": {
       const gp = agg.gamesPlayed || 1;
-      // FG% from raw made/att totals (ESPN sends FG as "made-att" split into FGM/FGA)
-      const fgPct  = agg.FGA  > 0 ? +(agg.FGM  / agg.FGA  * 100).toFixed(1) : null;
-      const tpPct  = agg["3PTA"] > 0 ? +(agg["3PTM"] / agg["3PTA"] * 100).toFixed(1)
-                   : agg["3PTM"] > 0 && agg.FGA > 0 ? null : null; // ESPN may not send 3PTA separately
-      const ftPct  = agg.FTA  > 0 ? +(agg.FTM  / agg.FTA  * 100).toFixed(1) : null;
+      // FG%/3P%/FT% — ESPN sends these as rate labels directly (e.g. "FG%" = "44.4")
+      // They get averaged via rateKeys above. Also derive from FGM/FGA totals as fallback.
+      const fgPct = agg["FG%"] ?? (agg.FGA > 0 ? +(agg.FGM / agg.FGA * 100).toFixed(1) : null);
+      const tpPct = agg["3P%"] ?? (agg["3PTA"] > 0 ? +(agg["3PTM"] / agg["3PTA"] * 100).toFixed(1) : null);
+      const ftPct = agg["FT%"] ?? (agg.FTA > 0 ? +(agg.FTM / agg.FTA * 100).toFixed(1) : null);
+      // MIN comes in per-game from ESPN (not a season total) — already averaged via rateKeys
+      const minPerGame = agg.MIN ?? null;
       return {
         gamesPlayed: agg.gamesPlayed,
-        // Season totals
         PTS: agg.PTS ?? null,
         REB: agg.REB ?? null,
         AST: agg.AST ?? null,
         BLK: agg.BLK ?? null,
         STL: agg.STL ?? null,
         TO:  agg.TO  ?? null,
-        // Per-game averages (what client looks for: ppg, rpg, etc.)
+        // Per-game averages
         ppg: agg.PTS != null ? +(agg.PTS / gp).toFixed(1) : null,
         rpg: agg.REB != null ? +(agg.REB / gp).toFixed(1) : null,
         apg: agg.AST != null ? +(agg.AST / gp).toFixed(1) : null,
         bpg: agg.BLK != null ? +(agg.BLK / gp).toFixed(1) : null,
         spg: agg.STL != null ? +(agg.STL / gp).toFixed(1) : null,
-        // Shooting pcts
+        // Shooting pcts (both cases for client key lookup)
         "fg%": fgPct,  "FG%": fgPct,
         "3p%": tpPct,  "3P%": tpPct,
         "ft%": ftPct,  "FT%": ftPct,
-        // Minutes per game
-        MIN: agg.MIN != null ? +(agg.MIN / gp).toFixed(1) : null,
-        min: agg.MIN != null ? +(agg.MIN / gp).toFixed(1) : null,
+        MIN: minPerGame,  min: minPerGame,
       };
     }
     case "NHL": {
       const gp = agg.gamesPlayed || 1;
-      // TOI comes in as total seconds or "MM:SS" — ESPN v3 sends TOI/G as a label
-      // If we got "TOI/G" label it's already per-game; otherwise derive from total
-      const toiRaw = agg["TOI/G"] ?? agg.TOI ?? null;
-      // PIM ESPN label is "PIM"
+      // TOI/G comes in as per-game string "20:52" — keep as-is (averaged via rateKeys)
+      const toiPerGame = agg["TOI/G"] ?? agg.TOI ?? null;
       const pim = agg.PIM ?? null;
-      // Shots on goal — ESPN label "S"
       const shots = agg.S ?? null;
       const sogPerGame = shots != null ? +(shots / gp).toFixed(1) : null;
       return {
         gamesPlayed: agg.gamesPlayed,
-        G:    agg.G    ?? null,
-        A:    agg.A    ?? null,
-        PTS:  agg.PTS  ?? null,
+        G:   agg.G   ?? null,
+        A:   agg.A   ?? null,
+        PTS: agg.PTS ?? null,
         "+/-": agg["+/-"] ?? null,
-        S:    shots,
-        PIM:  pim,  pim: pim,
-        // Per-game shots (client looks for sog_per_game)
-        sog_per_game: sogPerGame, SOG_G: sogPerGame,
-        // TOI per game (client looks for toi / TOI)
-        TOI:  toiRaw,  toi: toiRaw,
+        S:   shots,
+        PIM: pim,  pim: pim,
+        sog_per_game: sogPerGame,  SOG_G: sogPerGame,
+        TOI: toiPerGame,  toi: toiPerGame,
+        // Bonus labels available
+        PPG: agg.PPG ?? null,
+        SPCT: agg.SPCT ?? null,
       };
     }
     case "NFL": {
-      const gp = agg.gamesPlayed || 1;
-      // ESPN sends QB rating as "RTG" or "QBR"; passing yards as "YDS"; completions as "CMP"; attempts as "ATT"
-      // RB: rush yards as "YDS", carries as "CAR"; receiving as "REC" with rec yards as "RECYDS" or "RYDS"
-      // WR/TE: receptions "REC", rec yards "YDS", targets "TGTS" or "TGT"
-      const rating  = agg.RTG ?? agg.QBR ?? agg.RATE ?? null;
-      const cmpPct  = agg.ATT > 0 ? +(agg.CMP / agg.ATT * 100).toFixed(1) : null;
-      // Receiving yards — ESPN may label as RECYDS, RYDS, or YDS depending on position
-      const recYds  = agg.RECYDS ?? agg.RYDS ?? null;
-      // Targets — ESPN label TGT or TGTS
-      const tgts    = agg.TGTS ?? agg.TGT ?? null;
-      // Yards per carry
-      const ypc     = agg.CAR > 0 ? +(agg.YDS / agg.CAR).toFixed(1) : null;
-      // Yards per reception
-      const ypr     = agg.REC > 0 ? +((recYds ?? agg.YDS ?? 0) / agg.REC).toFixed(1) : null;
+      // After positional parsing, keys are unambiguous:
+      // QB: YDS=pass yds, RUSH_YDS=rush yds, CMP, ATT, TD, INT, RTG=rating
+      // RB: YDS=rush yds, RecYDS=rec yds, CAR, REC, TGTS, AVG=ypc
+      // WR/TE: YDS=rec yds, REC, TGTS, AVG=ypr, RUSH_YDS=rush yds
+      const rating = agg.RTG ?? agg.QBR ?? null;
+      const cmpPct = agg.ATT > 0 ? +(agg.CMP / agg.ATT * 100).toFixed(1) : null;
+      const ypc    = agg.CAR > 0 && agg["YDS"] ? +(agg["YDS"] / agg.CAR).toFixed(1) : null;
+      const ypr    = agg.REC > 0 && agg.RecYDS ? +(agg.RecYDS / agg.REC).toFixed(1)
+                   : agg.REC > 0 && agg["YDS"]  ? +(agg["YDS"]  / agg.REC).toFixed(1) : null;
       return {
         gamesPlayed: agg.gamesPlayed,
-        // Passing
-        YDS: agg.YDS ?? null,  yds: agg.YDS ?? null,
-        ATT: agg.ATT ?? null,
-        CMP: agg.CMP ?? null,
-        TD:  agg.TD  ?? null,  td:  agg.TD  ?? null,
-        INT: agg.INT ?? null,  int: agg.INT ?? null,
-        RATING: rating,        rating: rating,
-        CMP_PCT: cmpPct,       cmp_pct: cmpPct,
-        // Rushing
-        CAR: agg.CAR ?? null,
-        RUSH_YDS: agg.YDS ?? null,  rush_yds: agg.YDS ?? null,
-        YPC: ypc,              ypc: ypc,
-        // Receiving
-        REC: agg.REC ?? null,  rec: agg.REC ?? null,
-        REC_YDS: recYds,       rec_yds: recYds,  RecYDS: recYds,
-        TGTS: tgts,            tgts: tgts,
-        YPR: ypr,              ypr: ypr,
+        // Passing (QB)
+        YDS:     agg.YDS   ?? null,  yds: agg.YDS ?? null,
+        ATT:     agg.ATT   ?? null,
+        CMP:     agg.CMP   ?? null,
+        TD:      agg.TD    ?? null,  td:  agg.TD  ?? null,
+        INT:     agg.INT   ?? null,  int: agg.INT ?? null,
+        RATING:  rating,             rating: rating,
+        CMP_PCT: cmpPct,             cmp_pct: cmpPct,
+        // Rushing (QB/RB share YDS; RB also has RUSH_YDS alias)
+        CAR:      agg.CAR      ?? null,
+        RUSH_YDS: agg.RUSH_YDS ?? agg.YDS ?? null,
+        rush_yds: agg.RUSH_YDS ?? agg.YDS ?? null,
+        YPC: ypc,  ypc: ypc,
+        // Receiving (RB/WR/TE)
+        REC:     agg.REC    ?? null,  rec: agg.REC ?? null,
+        RecYDS:  agg.RecYDS ?? null,  rec_yds: agg.RecYDS ?? null,  REC_YDS: agg.RecYDS ?? null,
+        TGTS:    agg.TGTS   ?? null,  tgts: agg.TGTS ?? null,
+        YPR: ypr,  ypr: ypr,
       };
     }
     default: return agg;
