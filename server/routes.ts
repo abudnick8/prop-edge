@@ -8560,6 +8560,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     hits:            number | null; // actual hits recorded
     ab:              number | null; // at-bats
     gradedAt:        string | null; // ISO when grade was set
+    gradedFinal:     boolean;        // true once graded from a Final box score (full game stats)
     // snapshot of the full pick object for display
     snapshot:        any;
   }
@@ -8736,6 +8737,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             hits:           r.hits,
             ab:             r.ab,
             gradedAt:       r.graded_at,
+            // Treat existing DB entries as NOT finally graded so the grader
+            // can do one more pass to confirm full-game stats are correct
+            gradedFinal:    r.result !== "pending" && r.ab != null && r.ab > 0,
             snapshot:       r.snapshot ?? {},
           } as BtsPickEntry);
         }
@@ -8831,10 +8835,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     if (!entries?.length) return;
     let changed = false;
     for (const entry of entries) {
-      // Re-grade: pending, OR any non-win result (loss could flip to win as game progresses)
-      // Skip confirmed wins — a hit doesn't un-happen
-      const needsRegrade = entry.result !== "win";
-      if (!needsRegrade) continue;
+      // Re-grade until the game is Final so we always capture the full AB count.
+      // A win that came in mid-game (early-win shortcut) will still have a partial
+      // AB count — keep updating until isFinal so the stat line is correct.
+      const isFinallyGraded = entry.result !== "pending" && entry.gradedFinal === true;
+      if (isFinallyGraded) continue;
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
       if (gameStartMs && Date.now() < gameStartMs) continue;
@@ -8843,14 +8848,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Require at least 1 AB to update (ab=0 mid-game = hasn't batted yet)
       if (result.ab === 0) continue;
       const newResult = result.hits > 0 ? "win" : "loss";
-      // Only write if something actually changed
-      if (entry.hits === result.hits && entry.ab === result.ab && entry.result === newResult) continue;
+      // Update if stats changed OR if we can now mark it as final
+      const alreadyFinal = (entry as any).gradedFinal === true;
+      const statsChanged = entry.hits !== result.hits || entry.ab !== result.ab || entry.result !== newResult;
+      if (!statsChanged && (alreadyFinal || !result.isFinal)) continue;
       entry.hits     = result.hits;
       entry.ab       = result.ab;
       entry.result   = newResult;
       entry.gradedAt = new Date().toISOString();
+      // Mark as final only when the game itself is Final — prevents locking on mid-game stats
+      if (result.isFinal) (entry as any).gradedFinal = true;
       changed = true;
-      console.log(`[BTS Regrader] ${entry.name} → ${newResult} (${result.hits}/${result.ab})`);
+      console.log(`[BTS Regrader] ${entry.name} → ${newResult} (${result.hits}/${result.ab}) final=${result.isFinal}`);
 
       // ── Back-fill outcome into daily candidate log ─────────────────
       try {
@@ -10659,6 +10668,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           hits:           null,
           ab:             null,
           gradedAt:       null,
+          gradedFinal:    false,
           snapshot:       pick,
         } as BtsPickEntry);
         saveBtsPicksCache(); // persist new pick immediately
@@ -10715,6 +10725,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           hits:           null,
           ab:             null,
           gradedAt:       null,
+          gradedFinal:    false,
           snapshot:       { ...replacement, swappedFrom: snap.name, swapReason: "scratched_from_lineup" },
         } as BtsPickEntry;
       }
@@ -10963,6 +10974,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           hits:           null,
           ab:             null,
           gradedAt:       null,
+          gradedFinal:    false,
           snapshot:       { playerId: p.playerId, name: p.name, team: p.team, hitProbability: p.hitProbability, manuallyAdded: true },
         } as BtsPickEntry);
         existingIds.add(p.playerId);
