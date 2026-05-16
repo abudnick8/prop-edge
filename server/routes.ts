@@ -11459,6 +11459,87 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/regrade-ciq-streak — owner only
+  // Rebuilds the entire CIQ streak from scratch using the corrected
+  // btsPicksCache. Re-syncs pick results, then replays the streak
+  // counters chronologically so streakBefore/After/totals are accurate.
+  // ─────────────────────────────────────────────────────────────────────
+  app.post("/api/bts/regrade-ciq-streak", requireOwner, async (_req, res) => {
+    try {
+      // Step 1: Re-sync pick results from corrected btsPicksCache
+      for (const dayEntry of ciqStreakState.history) {
+        const cachedEntries = btsPicksCache[dayEntry.date] ?? [];
+        for (const pick of dayEntry.picks) {
+          const cached = cachedEntries.find(e => e.playerId === pick.playerId);
+          if (cached && (cached.result === "win" || cached.result === "loss")) {
+            pick.result   = cached.result;
+            pick.hits     = cached.hits   ?? null;
+            pick.ab       = cached.ab     ?? null;
+            pick.gradedAt = cached.gradedAt ?? null;
+          }
+        }
+      }
+
+      // Step 2: Sort history chronologically and replay streak counters
+      const sorted = [...ciqStreakState.history].sort((a, b) => a.date.localeCompare(b.date));
+      let streak    = 0;
+      let best      = 0;
+      let totalWins = 0;
+      let totalLosses = 0;
+      let totalDays = 0;
+
+      for (const dayEntry of sorted) {
+        const anyPending = dayEntry.picks.some(p => p.result === "pending");
+        if (anyPending) {
+          // Not yet gradeable — keep as pending, carry streak forward unchanged
+          dayEntry.streakBefore = streak;
+          dayEntry.streakAfter  = null;
+          dayEntry.result       = "pending";
+          continue;
+        }
+        const allWon = dayEntry.picks.every(p => p.result === "win");
+        dayEntry.streakBefore = streak;
+        if (allWon) {
+          streak += dayEntry.picks.length;
+          dayEntry.streakAfter = streak;
+          dayEntry.result      = "win";
+          totalWins++;
+        } else {
+          streak = 0;
+          dayEntry.streakAfter = 0;
+          dayEntry.result      = "loss";
+          totalLosses++;
+        }
+        totalDays++;
+        if (streak > best) best = streak;
+      }
+
+      // Step 3: Commit rebuilt state
+      ciqStreakState.history      = sorted;
+      ciqStreakState.currentStreak = streak;
+      ciqStreakState.bestStreak    = best;
+      ciqStreakState.totalWins     = totalWins;
+      ciqStreakState.totalLosses   = totalLosses;
+      ciqStreakState.totalDays     = totalDays;
+      saveCiqStreak();
+
+      console.log(`[CIQ Streak Regrade] Complete. streak=${streak} best=${best} wins=${totalWins} losses=${totalLosses}`);
+      res.json({
+        ok: true,
+        currentStreak: streak,
+        bestStreak:    best,
+        totalWins,
+        totalLosses,
+        totalDays,
+        history: sorted.slice(-10).reverse(),
+      });
+    } catch (e: any) {
+      console.error("[CIQ Streak Regrade] error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ════════════════════════════════════════════════════════════════════
   // GET /api/fantasy-intel  — Live fantasy intelligence across all sports
   // Sources: ESPN rosters/news/transactions, Sleeper player DB + trending
