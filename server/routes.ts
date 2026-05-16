@@ -219,6 +219,36 @@ function mlExtractCombo(comboKey: string, labels: string[], stats: string[]): nu
   }
   return found ? total : null;
 }
+/**
+ * Returns true if the player appears anywhere in the ESPN box score —
+ * regardless of whether a specific stat column exists for them.
+ * A DNP / scratched / inactive player will NOT appear in any stats group.
+ * This is used to distinguish "player not found" (DNP → void)
+ * from "player found but stat column missing" (data gap → don't void).
+ */
+function mlPlayerInBoxScore(summary: any, playerName: string): boolean {
+  const teamsData = summary?.boxscore?.players || [];
+  for (const teamData of teamsData) {
+    for (const group of (teamData.statistics || [])) {
+      for (const ae of (group.athletes || [])) {
+        const name = ae?.athlete?.displayName || "";
+        if (mlPlayerMatch(name, playerName)) return true;
+      }
+    }
+  }
+  // Also check lineScore / inactive lists if ESPN includes them
+  const inactive = summary?.boxscore?.teams
+    ?.flatMap((t: any) => t.roster ?? []) ?? [];
+  for (const p of inactive) {
+    const name = p?.athlete?.displayName || p?.displayName || "";
+    if (mlPlayerMatch(name, playerName)) {
+      // Player is on the roster/inactive list but has NO stats → confirmed DNP
+      return false;
+    }
+  }
+  return false;
+}
+
 function mlExtractPlayerStat(summary: any, sport: string, playerName: string, statCategory: string): number|null {
   const catKey = statCategory.toUpperCase().replace(/[\s-]/g, "_");
   const sportMap = STAT_MAP[sport] || {};
@@ -12643,14 +12673,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const summary = await mlFetchGameSummary(espnSport, matchedEvent.id);
             if (!summary) continue;
 
-            const stat = mlExtractPlayerStat(summary, espnSport, leg.player_name ?? "", statCat);
-            if (stat === null) {
-              // Player not found in completed box score — they did not play (DNP/scratch/injury)
-              // Auto-void this leg so the slip can settle
+            const playerName = leg.player_name ?? "";
+
+            // Step 1 — confirm the player actually appeared in the box score
+            const playedInGame = mlPlayerInBoxScore(summary, playerName);
+
+            if (!playedInGame) {
+              // Player absent from completed box score → DNP/scratch/injury → void
               result = "void";
               actualValue = null;
             } else {
+              // Step 2 — player confirmed in game, extract their stat
+              const stat = mlExtractPlayerStat(summary, espnSport, playerName, statCat);
+              if (stat === null) {
+                // Player was in the game but the specific stat column is missing
+                // (data gap, wrong stat key, etc.) — do NOT void, skip and retry later
+                continue;
+              }
               actualValue = stat;
+              // stat = 0 is a valid result (e.g. 0 hits, 0 RBI) — grade it normally
               if (actualValue === leg.line) result = "push";
               else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
               else result = actualValue < leg.line ? "win" : "loss";
