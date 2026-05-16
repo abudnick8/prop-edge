@@ -8831,7 +8831,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // ── Run grader for all pending picks on a given date ─────────────────
-  async function runBtsGrader(dateStr: string) {
+  // forceRegrade=true bypasses all locks and re-grades every pick from the MLB game log.
+  // Used by the /api/bts/regrade-all endpoint to correct bad historical grades.
+  async function runBtsGrader(dateStr: string, forceRegrade = false) {
     const entries = btsPicksCache[dateStr];
     if (!entries?.length) return;
     let changed = false;
@@ -8839,11 +8841,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const isToday   = dateStr === todayStr;
 
     for (const entry of entries) {
-      // Historical picks (past dates): once graded, never touch again.
-      // Today's picks: keep re-grading until game log confirms isFinal.
-      const alreadyGraded = entry.result !== "pending";
-      if (alreadyGraded && !isToday) continue;
-      if (alreadyGraded && isToday && (entry as any).gradedFinal === true) continue;
+      if (!forceRegrade) {
+        // Normal mode: historical picks once graded are never touched.
+        // Today's picks re-grade until game log marks isFinal.
+        const alreadyGraded = entry.result !== "pending";
+        if (alreadyGraded && !isToday) continue;
+        if (alreadyGraded && isToday && (entry as any).gradedFinal === true) continue;
+      }
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
       if (gameStartMs && Date.now() < gameStartMs) continue;
@@ -8863,7 +8867,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Mark as final only when the game itself is Final — prevents locking on mid-game stats
       if (result.isFinal) (entry as any).gradedFinal = true;
       changed = true;
-      console.log(`[BTS Regrader] ${entry.name} → ${newResult} (${result.hits}/${result.ab}) final=${result.isFinal}`);
+      console.log(`[BTS Regrader] ${entry.name} -> ${newResult} (${result.hits}/${result.ab}) final=${result.isFinal}`);
+
+      // forceRegrade: bypass ON CONFLICT guard with a direct UPDATE
+      if (forceRegrade && result.isFinal) {
+        db.query(
+          `UPDATE bts_picks SET result=$1, hits=$2, ab=$3, graded_at=$4
+           WHERE pick_date=$5 AND player_id=$6`,
+          [newResult, result.hits, result.ab, entry.gradedAt, dateStr, entry.playerId]
+        ).catch(() => { /* non-fatal */ });
+      }
 
       // ── Back-fill outcome into daily candidate log ─────────────────
       try {
@@ -11187,6 +11200,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       });
     } catch (e: any) {
       console.error("[BTS] reanalyze error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/regrade-all — owner only
+  // Forces a full re-grade of every historical BTS pick from the MLB
+  // game log API. Bypasses the alreadyGraded guard and the ON CONFLICT
+  // guard so wrong results (e.g. premature 0-for-1 losses) are corrected.
+  // Only writes when gradePickForDate returns isFinal=true.
+  // ─────────────────────────────────────────────────────────────────────
+  app.post("/api/bts/regrade-all", requireOwner, async (_req, res) => {
+    try {
+      const dates = Object.keys(btsPicksCache).sort();
+      if (dates.length === 0) {
+        return res.json({ ok: true, message: "No picks in cache to regrade.", dates: [] });
+      }
+      console.log(`[BTS Regrade-All] Starting regrade for ${dates.length} date(s): ${dates.join(", ")}`);
+      const results: Record<string, string> = {};
+      for (const dateStr of dates) {
+        const before = (btsPicksCache[dateStr] ?? []).map((e: BtsPickEntry) => ({
+          name: e.name, result: e.result, hits: e.hits, ab: e.ab,
+        }));
+        await runBtsGrader(dateStr, true);
+        const after = (btsPicksCache[dateStr] ?? []).map((e: BtsPickEntry) => ({
+          name: e.name, result: e.result, hits: e.hits, ab: e.ab,
+        }));
+        const changed = JSON.stringify(before) !== JSON.stringify(after);
+        results[dateStr] = changed ? "updated" : "no_change";
+        console.log(`[BTS Regrade-All] ${dateStr}: ${results[dateStr]}`);
+      }
+      reconcileSeasonRecord();
+      saveBtsPicksCache();
+      const updatedCount = Object.values(results).filter(v => v === "updated").length;
+      console.log(`[BTS Regrade-All] Complete. ${updatedCount}/${dates.length} dates had corrections.`);
+      res.json({
+        ok: true,
+        message: `Regrade complete. ${updatedCount} of ${dates.length} date(s) had corrections.`,
+        results,
+      });
+    } catch (e: any) {
+      console.error("[BTS] regrade-all error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });
