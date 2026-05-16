@@ -8737,9 +8737,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             hits:           r.hits,
             ab:             r.ab,
             gradedAt:       r.graded_at,
-            // Treat existing DB entries as NOT finally graded so the grader
-            // can do one more pass to confirm full-game stats are correct
-            gradedFinal:    r.result !== "pending" && r.ab != null && r.ab > 0,
+            // gradedFinal starts false for all DB entries; the grader sets it
+            // to true once the game log (authoritative) returns isFinal=true
+            gradedFinal:    false,
             snapshot:       r.snapshot ?? {},
           } as BtsPickEntry);
         }
@@ -8770,7 +8770,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   //   1. MLB game log API (primary) — pinned to exact date
   //   2. MLB schedule → boxscore API (fallback when game log lags by hours)
   //   3. Return null only if genuinely no data available yet
-  async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number } | null> {
+  async function gradePickForDate(playerId: number, dateStr: string): Promise<{ hits: number; ab: number; isFinal: boolean } | null> {
     const normalize = (d: string) => {
       if (!d) return "";
       const mmdd = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -8814,12 +8814,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const stats = p.stats?.batting ?? {};
               const ab    = parseInt(stats.atBats ?? "-1", 10);
               const hits  = parseInt(stats.hits   ?? "0",  10);
-              const isFinal = state === "Final";
-              // Only return live data if already has a hit (can't un-hit)
-              // For losses, wait until Final to avoid mid-game 0/1 being counted
-              if (isFinal && ab >= 0) return { hits, ab, isFinal: true };
-              if (!isFinal && hits > 0) return { hits, ab, isFinal: false }; // early win is safe
-              // mid-game 0 hits — don't grade yet, wait for Final
+              // Boxscore is ONLY used to detect a mid-game early hit.
+              // NEVER mark isFinal=true from boxscore — game log is the only
+              // authoritative Final source. A boxscore "Final" can lag or mismatch.
+              if (hits > 0 && ab >= 0) {
+                return { hits, ab, isFinal: false }; // keep re-grading until game log confirms
+              }
+              // 0 hits (live or final from boxscore) — return null, wait for game log
             }
           }
         } catch { /* skip this game */ }
@@ -8834,12 +8835,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const entries = btsPicksCache[dateStr];
     if (!entries?.length) return;
     let changed = false;
+    const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+    const isToday   = dateStr === todayStr;
+
     for (const entry of entries) {
-      // Re-grade until the game is Final so we always capture the full AB count.
-      // A win that came in mid-game (early-win shortcut) will still have a partial
-      // AB count — keep updating until isFinal so the stat line is correct.
-      const isFinallyGraded = entry.result !== "pending" && entry.gradedFinal === true;
-      if (isFinallyGraded) continue;
+      // Historical picks (past dates): once graded, never touch again.
+      // Today's picks: keep re-grading until game log confirms isFinal.
+      const alreadyGraded = entry.result !== "pending";
+      if (alreadyGraded && !isToday) continue;
+      if (alreadyGraded && isToday && (entry as any).gradedFinal === true) continue;
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
       if (gameStartMs && Date.now() < gameStartMs) continue;
