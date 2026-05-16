@@ -12644,12 +12644,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             if (!summary) continue;
 
             const stat = mlExtractPlayerStat(summary, espnSport, leg.player_name ?? "", statCat);
-            if (stat === null) continue;
-            actualValue = stat;
-
-            if (actualValue === leg.line) result = "push";
-            else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
-            else result = actualValue < leg.line ? "win" : "loss";
+            if (stat === null) {
+              // Player not found in completed box score — they did not play (DNP/scratch/injury)
+              // Auto-void this leg so the slip can settle
+              result = "void";
+              actualValue = null;
+            } else {
+              actualValue = stat;
+              if (actualValue === leg.line) result = "push";
+              else if (leg.over_under === "over") result = actualValue > leg.line ? "win" : "loss";
+              else result = actualValue < leg.line ? "win" : "loss";
+            }
 
           } else if (leg.bet_type === "moneyline" || leg.bet_type === "spread" || leg.bet_type === "total") {
             // Use ESPN for all sports (supports MLB, NBA, NHL, NFL)
@@ -12721,33 +12726,39 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (legResults.includes("pending")) continue; // still waiting on other legs
 
         // Determine slip outcome
+        // Parlay rules:
+        //   void / push legs are REMOVED from the parlay (reduced-odds payout)
+        //   remaining win legs = won at adjusted odds
+        //   any loss = lost
+        //   all void/push = push (stake returned)
+        //   all void = void (stake returned)
         let slipStatus: string;
+        const nonVoidResults  = legResults.filter((r: string) => r !== "void");
+        const activeResults   = nonVoidResults.filter((r: string) => r !== "push"); // wins & losses only
+
         if (legResults.every((r: string) => r === "void")) {
-          slipStatus = "void";
+          slipStatus = "void";                                                   // all voided
+        } else if (nonVoidResults.length === 0 || nonVoidResults.every((r: string) => r === "push")) {
+          slipStatus = "push";                                                   // all push (or only pushes remain)
+        } else if (activeResults.some((r: string) => r === "loss")) {
+          slipStatus = "lost";                                                   // any loss kills the parlay
+        } else if (activeResults.every((r: string) => r === "win") && activeResults.length > 0) {
+          slipStatus = "won";                                                    // all active legs won (push/void removed)
         } else {
-          const activeLegResults = legResults.filter((r: string) => r !== "void");
-          if (activeLegResults.length === 0) {
-            slipStatus = "void";
-          } else if (activeLegResults.every((r: string) => r === "win")) {
-            slipStatus = "won";
-          } else if (activeLegResults.some((r: string) => r === "loss")) {
-            slipStatus = "lost";
-          } else {
-            slipStatus = "push"; // all push
-          }
+          slipStatus = "push";                                                   // fallback
         }
 
-        // Recalculate payout for void legs (parlay: void leg removed, recalc odds)
+        // Payout: win legs only (push and void legs removed from odds)
         let finalPayout = 0;
         if (slipStatus === "won") {
           const activeLeg = await db.query(
-            `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result != 'void'`, [leg.slip_id]
+            `SELECT odds_american FROM book_legs WHERE slip_id=$1 AND result = 'win'`, [leg.slip_id]
           );
           const activeOdds = activeLeg.rows.map((r: any) => r.odds_american);
           const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [leg.slip_id]);
           if (activeOdds.length === 1) {
             finalPayout = parseFloat((slip.stake * americanToDecimal(activeOdds[0])).toFixed(2));
-          } else {
+          } else if (activeOdds.length > 1) {
             finalPayout = calcParlayPayout(slip.stake, activeOdds);
           }
         } else if (slipStatus === "push" || slipStatus === "void") {
@@ -12826,15 +12837,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const legsQ = await db.query(`SELECT result, odds_american FROM book_legs WHERE slip_id=$1`, [slip.id]);
         const legResults = legsQ.rows.map((r: any) => r.result);
         if (legResults.length === 0 || legResults.includes("pending")) continue;
-        const active = legResults.filter((r: string) => r !== "void");
+        const fssNonVoid   = legResults.filter((r: string) => r !== "void");
+        const fssActive    = fssNonVoid.filter((r: string) => r !== "push");
         let slipStatus: string;
-        if (active.length === 0) slipStatus = "void";
-        else if (active.every((r: string) => r === "win")) slipStatus = "won";
-        else if (active.some((r: string) => r === "loss")) slipStatus = "lost";
-        else slipStatus = "push";
+        if (legResults.every((r: string) => r === "void"))                                        slipStatus = "void";
+        else if (fssNonVoid.length === 0 || fssNonVoid.every((r: string) => r === "push"))        slipStatus = "push";
+        else if (fssActive.some((r: string) => r === "loss"))                                     slipStatus = "lost";
+        else if (fssActive.every((r: string) => r === "win") && fssActive.length > 0)             slipStatus = "won";
+        else                                                                                       slipStatus = "push";
         let finalPayout = 0;
         if (slipStatus === "won") {
-          const winOdds = legsQ.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
+          const winOdds = legsQ.rows.filter((r: any) => r.result === "win").map((r: any) => r.odds_american);
           finalPayout = winOdds.length === 1
             ? parseFloat((slip.stake * americanToDecimal(winOdds[0])).toFixed(2))
             : calcParlayPayout(slip.stake, winOdds);
@@ -13410,34 +13423,39 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // All legs graded — determine slip outcome
+      // Parlay rules: push/void legs are removed; remaining wins = won at adjusted odds
       const slip = await db.queryOne(`SELECT * FROM book_slips WHERE id=$1`, [slipId]);
-      const active = legResults.filter((r: string) => r !== "void");
+      const msNonVoid  = legResults.filter((r: string) => r !== "void");
+      const msActive   = msNonVoid.filter((r: string) => r !== "push");
       let slipStatus: string;
-      if (active.length === 0) slipStatus = "void";
-      else if (active.every((r: string) => r === "win")) slipStatus = "won";
-      else if (active.some((r: string) => r === "loss")) slipStatus = "lost";
-      else slipStatus = "push";
+      if (legResults.every((r: string) => r === "void"))                                   slipStatus = "void";
+      else if (msNonVoid.length === 0 || msNonVoid.every((r: string) => r === "push"))     slipStatus = "push";
+      else if (msActive.some((r: string) => r === "loss"))                                 slipStatus = "lost";
+      else if (msActive.every((r: string) => r === "win") && msActive.length > 0)          slipStatus = "won";
+      else                                                                                  slipStatus = "push";
 
       let finalPayout = 0;
       if (slipStatus === "won") {
-        const winOdds = slipLegs.rows.filter((r: any) => r.result !== "void").map((r: any) => r.odds_american);
+        // Payout calculated on win legs only (push/void removed)
+        const winOdds = slipLegs.rows.filter((r: any) => r.result === "win").map((r: any) => r.odds_american);
         finalPayout = winOdds.length === 1
           ? parseFloat((slip.stake * americanToDecimal(winOdds[0])).toFixed(2))
           : calcParlayPayout(slip.stake, winOdds);
       } else if (slipStatus === "push" || slipStatus === "void") {
-        finalPayout = parseFloat(slip.stake);
+        finalPayout = parseFloat(slip.stake); // stake returned
       }
 
       await db.query(
         `UPDATE book_slips SET status=$1, settled_at=NOW(), payout_received=$2 WHERE id=$3`,
-        [slipStatus, finalPayout || null, slipId]
+        [slipStatus, slipStatus === "lost" ? 0 : (finalPayout || null), slipId]
       );
 
       if (finalPayout > 0) {
         await db.query(`UPDATE book_accounts SET balance = balance + $1 WHERE id=$2`, [finalPayout, slip.account_id]);
+        const txType = slipStatus === "won" ? "win" : slipStatus === "push" ? "push" : "void_refund";
         await db.query(
           `INSERT INTO book_transactions (account_id, amount, tx_type, slip_id, note) VALUES ($1,$2,$3,$4,$5)`,
-          [slip.account_id, finalPayout, slipStatus === "won" ? "win" : "push", slipId, `Leg #${legId} settled as ${result} → slip ${slipStatus}`]
+          [slip.account_id, finalPayout, txType, slipId, `Leg #${legId} settled as ${result} → slip ${slipStatus}`]
         );
       }
 
