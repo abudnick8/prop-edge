@@ -8778,7 +8778,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       return d.slice(0, 10);
     };
 
-    // ── Attempt 1: Game log API ───────────────────────────────────────
+    // ── Attempt 1: Game log API + game-state cross-check ─────────────
+    // The MLB stats game log can return partial mid-game stats as soon as
+    // the player has their first PA. We MUST confirm the game is Final
+    // before trusting the result — otherwise a player who goes 0-for-1
+    // in the 2nd inning gets incorrectly locked as a loss.
     try {
       const url = `https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&group=hitting&season=2026&startDate=${dateStr}&endDate=${dateStr}&limit=5`;
       const r = await axios.get(url, { timeout: 8000 });
@@ -8786,10 +8790,31 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const todaySplit = splits.find((s: any) => normalize(s.date) === dateStr)
                       ?? (splits.length === 1 ? splits[0] : null);
       if (todaySplit) {
-        const hits = parseInt(todaySplit.stat?.hits   ?? "0", 10);
-        const ab   = parseInt(todaySplit.stat?.atBats ?? "0", 10);
-        // Game log only populates after game is Final — safe to trust
-        if (ab > 0) return { hits, ab, isFinal: true };
+        const hits  = parseInt(todaySplit.stat?.hits   ?? "0", 10);
+        const ab    = parseInt(todaySplit.stat?.atBats ?? "0", 10);
+        const gamePk: number | undefined = todaySplit.game?.gamePk;
+        if (ab > 0) {
+          // Cross-check: confirm the game is actually Final before locking
+          let gameIsFinal = false;
+          try {
+            if (gamePk) {
+              // Schedule API is the most reliable source of game state
+              const schedR2 = await axios.get(
+                `https://statsapi.mlb.com/api/v1/schedule?sportId=1&gamePk=${gamePk}`,
+                { timeout: 6000 }
+              );
+              const gameEntry = schedR2.data?.dates?.[0]?.games?.[0];
+              if (gameEntry?.status?.abstractGameState === "Final") {
+                gameIsFinal = true;
+              }
+            }
+          } catch { /* if check fails, fall through to boxscore */ }
+          if (gameIsFinal) {
+            return { hits, ab, isFinal: true };
+          }
+          // Game not yet Final — return current stats as non-final so we keep re-grading
+          return { hits, ab, isFinal: false };
+        }
       }
     } catch { /* fall through to boxscore */ }
 
