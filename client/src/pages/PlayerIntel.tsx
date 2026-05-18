@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import StadiumIntel from "./StadiumIntel";
 import {
   Search, User, BarChart2, TrendingUp, ChevronDown, ChevronUp,
   RefreshCw, Target, Zap, Activity, Filter, X, MapPin, Users,
@@ -2391,6 +2392,7 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PlayerIntel() {
+  const [showStadium, setShowStadium] = useState(false);
   const [activeSport, setActiveSport] = useState<Sport>("All");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [searchQuery, setSearchQuery] = useState("");
@@ -2476,6 +2478,11 @@ export default function PlayerIntel() {
     setPlayerError(null);
     setActiveTab("overview");
   }, []);
+
+  // Stadium Intel sub-page
+  if (showStadium) {
+    return <StadiumIntel onBack={() => setShowStadium(false)} />;
+  }
 
   return (
     <div
@@ -2703,46 +2710,68 @@ export default function PlayerIntel() {
 
         {/* ── Empty state ── */}
         {!selectedPlayer && !fetchingPlayer && !playerError && (
-          <div
-            style={{
-              ...CARD_STYLE,
-              textAlign: "center",
-              padding: "3rem 1.5rem",
-            }}
-          >
+          <>
             <div
               style={{
-                width: 56,
-                height: 56,
-                background: "rgba(19,35,58,0.06)",
-                borderRadius: "50%",
+                ...CARD_STYLE,
+                textAlign: "center",
+                padding: "2.5rem 1.5rem 1.5rem",
+              }}
+            >
+              <div
+                style={{
+                  width: 56, height: 56,
+                  background: "rgba(19,35,58,0.06)",
+                  borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  margin: "0 auto 1rem",
+                }}
+              >
+                <Search size={24} color="#3D4B58" />
+              </div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "#131A24", margin: "0 0 0.5rem" }}>
+                Search for any player
+              </p>
+              <p style={{ fontSize: 13, color: "#3D4B58", margin: "0 0 1.5rem" }}>
+                Get their full analytics profile — stats, matchups, park factors, and projections.
+              </p>
+              <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                {(["MLB", "NBA", "NFL", "NHL"] as const).map((s) => (
+                  <SportBadge key={s} sport={s} />
+                ))}
+              </div>
+            </div>
+
+            {/* Stadium Intel entry card */}
+            <button
+              onClick={() => setShowStadium(true)}
+              style={{
+                ...CARD_STYLE,
+                width: "100%",
+                textAlign: "left",
+                border: "none",
+                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 1rem",
+                gap: "1rem",
+                padding: "1rem 1.1rem",
               }}
             >
-              <Search size={24} color="#3D4B58" />
-            </div>
-            <p
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#131A24",
-                margin: "0 0 0.5rem",
-              }}
-            >
-              Search for any player
-            </p>
-            <p style={{ fontSize: 13, color: "#3D4B58", margin: "0 0 1.5rem" }}>
-              Get their full analytics profile — stats, matchups, park factors, and projections.
-            </p>
-            <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              {(["MLB", "NBA", "NFL", "NHL"] as const).map((s) => (
-                <SportBadge key={s} sport={s} />
-              ))}
-            </div>
-          </div>
+              <div style={{
+                width: 44, height: 44, borderRadius: "0.65rem",
+                background: "#13233A",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}>
+                <MapPin size={20} color="#D4A843" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "#131A24" }}>Stadium Intel</div>
+                <div style={{ fontSize: 12, color: "#3D4B58", marginTop: 2 }}>MLB park factors, dimensions, elevation &amp; NFL weather impact</div>
+              </div>
+              <ChevronDown size={16} color="#3D4B58" style={{ transform: "rotate(-90deg)" }} />
+            </button>
+          </>
         )}
 
         {/* ── Loading state ── */}
