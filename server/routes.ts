@@ -4272,8 +4272,13 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const needsCheck = (entries as BtsPickEntry[]).filter(
           (e: BtsPickEntry) => {
             if (!e.result || e.result === "pending") return true; // always retry pending
-            if (e.result === "loss" && dateStr >= threeDaysAgo) return true; // retry recent losses
-            return false; // confirmed win, or old loss — skip
+            if (e.result === "win" && (e as any).gradedFinal) return false; // locked win — skip
+            // Retry ANY loss that hasn't been confirmed final by the schedule API.
+            // This catches mid-game premature losses (0-for-1 after 1st AB, etc.)
+            // gradedFinal=false means the game wasn't confirmed Final when graded.
+            if (e.result === "loss" && !(e as any).gradedFinal) return true;
+            if (e.result === "loss" && dateStr >= threeDaysAgo) return true; // safety net for recent dates
+            return false; // confirmed-final win, or old confirmed-final loss — skip
           }
         );
         if (needsCheck.length === 0) continue;
@@ -8865,13 +8870,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
     const isToday   = dateStr === todayStr;
 
+    // Dates within 2 days of today that may still have unresolved picks
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+      .toLocaleDateString("en-CA");
+    const isRecent = dateStr >= twoDaysAgo;
+
     for (const entry of entries) {
       if (!forceRegrade) {
-        // Normal mode: historical picks once graded are never touched.
-        // Today's picks re-grade until game log marks isFinal.
         const alreadyGraded = entry.result !== "pending";
-        if (alreadyGraded && !isToday) continue;
-        if (alreadyGraded && isToday && (entry as any).gradedFinal === true) continue;
+        const lockedFinal   = (entry as any).gradedFinal === true;
+
+        if (alreadyGraded) {
+          // Wins locked as final — never touch again
+          if (entry.result === "win" && lockedFinal) continue;
+          // Historical non-recent dates — only re-check if not yet locked
+          if (!isRecent && lockedFinal) continue;
+          // Recent loss that was graded non-final — ALWAYS re-check.
+          // A player graded mid-game as 0-for-1 must keep re-grading until
+          // the game is confirmed Final by the schedule API.
+          if (entry.result === "loss" && !lockedFinal) { /* fall through to re-grade */ }
+          // Fully locked historical pick — skip
+          else if (!isToday && lockedFinal) continue;
+          // Today — skip only wins already locked final
+          else if (isToday && entry.result === "win" && lockedFinal) continue;
+        }
       }
       // Only try grading if the game start time has passed
       const gameStartMs = entry.snapshot?.game?.gameStartMs;
@@ -8881,7 +8903,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Require at least 1 AB to update (ab=0 mid-game = hasn't batted yet)
       if (result.ab === 0) continue;
       const newResult = result.hits > 0 ? "win" : "loss";
-      // Update if stats changed OR if we can now mark it as final
+      // Update if stats changed OR if we can now lock it as final
       const alreadyFinal = (entry as any).gradedFinal === true;
       const statsChanged = entry.hits !== result.hits || entry.ab !== result.ab || entry.result !== newResult;
       if (!statsChanged && (alreadyFinal || !result.isFinal)) continue;
@@ -8889,7 +8911,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       entry.ab       = result.ab;
       entry.result   = newResult;
       entry.gradedAt = new Date().toISOString();
-      // Mark as final only when the game itself is Final — prevents locking on mid-game stats
+      // KEY RULE: only lock gradedFinal=true when:
+      //   - it is a WIN (a hit can only go up — safe to lock early), OR
+      //   - it is a loss AND the schedule API confirmed the game is Final
+      // Never lock a loss from a non-Final game — player may still get a hit.
       if (result.isFinal) (entry as any).gradedFinal = true;
       changed = true;
       console.log(`[BTS Regrader] ${entry.name} -> ${newResult} (${result.hits}/${result.ab}) final=${result.isFinal}`);
