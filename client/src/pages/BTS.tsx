@@ -848,11 +848,27 @@ function HowToReadBTS() {
 // ─────────────────────────────────────────────────────────────────────────────
 function CiqStreakPanel() {
   const [open, setOpen] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const { isOwner } = useAuth();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["/api/bts/ciq-streak"],
     // Refresh every 30s while games may be live (daytime), otherwise every 3 min
     refetchInterval: 30_000,
     staleTime: 20_000,
+  });
+
+  const resetCiqMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/bts/reset-ciq-today").then(r => r.json()),
+    onSuccess: (result: any) => {
+      setResetMsg(result.message ?? "CIQ pick reset.");
+      queryClient.invalidateQueries({ queryKey: ["/api/bts/ciq-streak"] });
+      setTimeout(() => setResetMsg(null), 6000);
+    },
+    onError: () => {
+      setResetMsg("Reset failed — try again.");
+      setTimeout(() => setResetMsg(null), 4000);
+    },
   });
   const d = data as any;
 
@@ -1011,7 +1027,30 @@ function CiqStreakPanel() {
         <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(19,35,58,0.08)" }}>
           {/* Today's pick */}
           <div className="pt-3">
-            <p className="text-[11px] font-black uppercase tracking-wide mb-2" style={{ color: MUTED }}>Today's CIQ Pick</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-black uppercase tracking-wide" style={{ color: MUTED }}>Today's CIQ Pick</p>
+              {isOwner && (
+                <button
+                  onClick={() => {
+                    if (!confirm("Reset today's CIQ pick and repick the best available player?")) return;
+                    resetCiqMutation.mutate();
+                  }}
+                  disabled={resetCiqMutation.isPending}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold"
+                  style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.20)" }}
+                  title="Reset today's CIQ pick"
+                >
+                  <RotateCcw size={10} className={resetCiqMutation.isPending ? "animate-spin" : ""} />
+                  Reset & Repick
+                </button>
+              )}
+            </div>
+            {resetMsg && (
+              <div className="rounded-xl p-2 mb-2 text-[11px] font-medium text-center"
+                style={{ background: "rgba(34,197,94,0.08)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.20)" }}>
+                {resetMsg}
+              </div>
+            )}
             {isLoading ? (
               <div className="rounded-xl p-3 text-center text-xs" style={{ color: MUTED }}>Loading…</div>
             ) : today ? (

@@ -10968,15 +10968,27 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Source priority: snapshot (full pick object) > BtsPickEntry.hitProbability (DB integer).
         // Guard: if value is a strict decimal (has fractional part and < 2), multiply by 100.
         // Values of 1 or 2 from a corrupted DB store are treated as whole-number 1% or 2%.
-        // hitProbabilityPct is stored as the already-computed whole-number pct (e.g. 62, 68)
-        // hitProbability in the snapshot is the raw decimal BEFORE capping (e.g. 0.82 cap)
-        // Always prefer hitProbabilityPct — it's the true per-player value
+        // Compute correct hitProbability pct from rawScore when available.
+        // rawScore → logistic → probability. This is always accurate per-player.
+        // Fallback chain: recompute from rawScore > hitProbabilityPct > hitProbability.
+        // The stored snap.hitProbability may be the cap value (0.82) for old picks.
+        const snapRawScore = snap.rawScore ?? null;
+        const logisticFromRaw = (r: number) => {
+          const logit = 5.0 * (r - 0.50);
+          const sig   = 1 / (1 + Math.exp(-logit));
+          return Math.round((0.45 + sig * 0.37) * 100); // whole-number pct
+        };
+        const recomputedProb = snapRawScore != null ? logisticFromRaw(snapRawScore) : null;
         const rawProb = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
-        const normProb = rawProb != null
+        const storedNorm = rawProb != null
           ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
-              ? Math.round(rawProb * 100)   // true decimal like 0.82
-              : Math.round(rawProb))         // already whole number (62, 68, etc.)
+              ? Math.round(rawProb * 100)
+              : Math.round(rawProb))
           : null;
+        // If stored value is the cap (82) and we have rawScore, prefer recomputed
+        const normProb = (storedNorm === 82 && recomputedProb != null && recomputedProb !== 82)
+          ? recomputedProb
+          : (storedNorm ?? recomputedProb);
         return {
           ...snap,
           hitProbability: normProb,
@@ -11486,13 +11498,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const winPct  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : null;
           const normalizedPicks = (entries as BtsPickEntry[]).map(e => {
             const snap = (e as any).snapshot ?? {};
-            // Prefer hitProbabilityPct (true per-player whole number) over hitProbability (capped decimal)
+            // Recompute from rawScore when stored value is the cap (0.82 → 82 for everyone)
+            const snapRawScore2 = snap.rawScore ?? null;
+            const logisticFromRaw2 = (r: number) => {
+              const logit = 5.0 * (r - 0.50);
+              const sig   = 1 / (1 + Math.exp(-logit));
+              return Math.round((0.45 + sig * 0.37) * 100);
+            };
+            const recomputedProb2 = snapRawScore2 != null ? logisticFromRaw2(snapRawScore2) : null;
             const rawProb = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
-            const normProb = rawProb != null
+            const storedNorm2 = rawProb != null
               ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
                   ? Math.round(rawProb * 100)
                   : Math.round(rawProb))
               : null;
+            const normProb = (storedNorm2 === 82 && recomputedProb2 != null && recomputedProb2 !== 82)
+              ? recomputedProb2
+              : (storedNorm2 ?? recomputedProb2);
             return { ...e, hitProbability: normProb };
           });
           return { date, picks: normalizedPicks, wins, losses, pending, winPct };
@@ -11567,6 +11589,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Select today's CIQ picks from the top scored BTS candidates already in btsPicksCache.
   // Double-down (2 picks) when top 2 are both high confidence (score ≥ 82 / 78).
   // Single pick otherwise.
+  // Helper: compute display probability from a BtsPickEntry (uses rawScore when available)
+  function computeEntryProb(e: BtsPickEntry): number {
+    const snap = e.snapshot ?? {};
+    const rawScore = snap.rawScore ?? null;
+    if (rawScore != null) {
+      const logit = 5.0 * (rawScore - 0.50);
+      const sig   = 1 / (1 + Math.exp(-logit));
+      return Math.round((0.45 + sig * 0.37) * 100);
+    }
+    // Fallback: use stored value
+    const stored = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
+    if (stored == null) return 0;
+    if (stored > 0 && stored < 2 && !Number.isInteger(stored)) return Math.round(stored * 100);
+    return Math.round(stored);
+  }
+
   async function selectCiqStreakPicksForDate(dateStr: string) {
     const existing = ciqStreakState.history.find(d => d.date === dateStr);
     if (existing) return existing;
@@ -11574,24 +11612,29 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const cachedEntries = btsPicksCache[dateStr];
     if (!cachedEntries?.length) return null;
 
+    // Sort by rawScore (most accurate) — avoids the 0.82-cap tie problem
     const scored = [...cachedEntries]
-      .filter(e => e.snapshot?.hitProbability != null)
-      .sort((a, b) => (b.snapshot.hitProbability ?? 0) - (a.snapshot.hitProbability ?? 0));
+      .filter(e => e.snapshot != null)
+      .sort((a, b) => {
+        const aScore = (a.snapshot?.rawScore ?? 0);
+        const bScore = (b.snapshot?.rawScore ?? 0);
+        return bScore - aScore;
+      });
 
     if (scored.length === 0) return null;
 
     const top1 = scored[0];
     const top2 = scored[1];
-    const score1 = top1.snapshot?.hitProbability ?? 0;
-    const score2 = top2?.snapshot?.hitProbability ?? 0;
-    const isDouble = score1 >= 82 && score2 >= 78 && top2 != null;
+    const prob1 = computeEntryProb(top1);
+    const prob2 = top2 ? computeEntryProb(top2) : 0;
+    const isDouble = prob1 >= 75 && prob2 >= 72 && top2 != null;
     const chosen = isDouble ? [top1, top2] : [top1];
 
     const picks: CiqStreakPick[] = chosen.map(e => ({
       playerId: e.playerId,
       name:     e.name,
       team:     e.snapshot?.team ?? "",
-      score:    Math.round(e.snapshot?.hitProbability ?? 0),
+      score:    computeEntryProb(e),
       result:   e.result === "win" ? "win" : e.result === "loss" ? "loss" : "pending",
       hits:     e.hits ?? null,
       ab:       e.ab ?? null,
@@ -11796,6 +11839,45 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bts/reset-ciq-today — owner only
+  // Removes today's CIQ streak pick so it can be repicked fresh.
+  // Resets lastPickDate so selectCiqStreakPicksForDate will run again.
+  // Does NOT affect streak history for prior days.
+  app.post("/api/bts/reset-ciq-today", requireOwner, async (_req, res) => {
+    try {
+      const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
+
+      // Remove today's entry from history
+      const before = ciqStreakState.history.length;
+      ciqStreakState.history = ciqStreakState.history.filter(d => d.date !== todayStr);
+      const removed = before - ciqStreakState.history.length;
+
+      // Reset lastPickDate so it re-selects today
+      if (ciqStreakState.lastPickDate === todayStr) {
+        ciqStreakState.lastPickDate = null;
+      }
+
+      saveCiqStreak();
+
+      // Immediately re-select today's pick
+      await selectCiqStreakPicksForDate(todayStr).catch(() => {});
+
+      const newToday = ciqStreakState.history.find(d => d.date === todayStr);
+      res.json({
+        ok: true,
+        removed,
+        todayStr,
+        newPick: newToday ?? null,
+        message: removed > 0
+          ? `Today's CIQ pick reset. New pick: ${newToday?.picks?.map((p: any) => p.name).join(" + ") ?? "none yet"}`
+          : "No today entry found to remove.",
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // POST /api/bts/regrade-ciq-streak — owner only
   // Rebuilds the entire CIQ streak from scratch using the corrected
   // btsPicksCache. Re-syncs pick results, then replays the streak
