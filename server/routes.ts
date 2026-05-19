@@ -8949,15 +8949,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       reconcileSeasonRecord();
       saveBtsPicksCache();
       // Keep CIQ streak in sync — deferred so hoisted functions are available
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
           const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
           if (dateStr === todayStr && ciqStreakState.lastPickDate !== todayStr) {
-            selectCiqStreakPicksForDate(todayStr).catch(() => {});
-          } else {
-            gradeCiqStreakForDate(dateStr);
+            await selectCiqStreakPicksForDate(todayStr).catch(() => {});
           }
+          // Always try to grade — handles carry-over players not in btsPicksCache
+          await gradeCiqStreakForDate(dateStr);
         } catch { /* non-fatal */ }
       }, 0);
     }
@@ -11544,25 +11544,87 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return dayEntry;
   }
 
-  // Grade CIQ streak picks by syncing from btsPicksCache after runBtsGrader runs
-  function gradeCiqStreakForDate(dateStr: string) {
+  // Grade CIQ streak picks by syncing from btsPicksCache after runBtsGrader runs.
+  // If a CIQ pick player isn't in btsPicksCache for that date (e.g. carry-over from prior day),
+  // falls back to MLB game-log API to get their hit result directly.
+  async function gradeCiqStreakForDate(dateStr: string) {
     const dayEntry = ciqStreakState.history.find(d => d.date === dateStr);
     if (!dayEntry || dayEntry.result !== "pending") return;
 
     const cachedEntries = btsPicksCache[dateStr] ?? [];
     let anyPending = false;
+
     for (const pick of dayEntry.picks) {
+      if (pick.result === "win" || pick.result === "loss") continue; // already resolved
+
+      // First try btsPicksCache
       const cached = cachedEntries.find(e => e.playerId === pick.playerId);
-      if (!cached) { anyPending = true; continue; }
-      if (cached.result === "win" || cached.result === "loss") {
-        pick.result   = cached.result;
-        pick.hits     = cached.hits ?? null;
-        pick.ab       = cached.ab ?? null;
-        pick.gradedAt = cached.gradedAt ?? null;
-      } else {
+      if (cached) {
+        if (cached.result === "win" || cached.result === "loss") {
+          pick.result   = cached.result;
+          pick.hits     = cached.hits ?? null;
+          pick.ab       = cached.ab ?? null;
+          pick.gradedAt = cached.gradedAt ?? null;
+        } else {
+          anyPending = true;
+        }
+        continue;
+      }
+
+      // Not in btsPicksCache — look up via MLB game-log API directly
+      try {
+        const glRes = await fetch(
+          `https://statsapi.mlb.com/api/v1/people/${pick.playerId}/stats?stats=gameLog&season=${dateStr.slice(0,4)}&sportId=1`
+        );
+        const glData: any = await glRes.json();
+        const splits: any[] = glData?.stats?.[0]?.splits ?? [];
+        const gameSplit = splits.find((s: any) => s.date === dateStr);
+
+        if (!gameSplit) {
+          // No game on this date for this player — treat as loss (DNP)
+          pick.result   = "loss";
+          pick.hits     = 0;
+          pick.ab       = 0;
+          pick.gradedAt = new Date().toISOString();
+          console.log(`[CIQ Streak] ${pick.name} had no game on ${dateStr} (DNP) → loss`);
+          continue;
+        }
+
+        const hits = gameSplit.stat?.hits ?? 0;
+        const ab   = gameSplit.stat?.atBats ?? 0;
+
+        // Check if the game is Final before locking
+        // Get gamePk from the split if available, then verify state
+        const gamePk = gameSplit.game?.gamePk;
+        let isFinal = false;
+        if (gamePk) {
+          try {
+            const schRes = await fetch(
+              `https://statsapi.mlb.com/api/v1/schedule?sportId=1&gamePk=${gamePk}`
+            );
+            const schData: any = await schRes.json();
+            const gameInfo = schData?.dates?.[0]?.games?.[0];
+            isFinal = gameInfo?.status?.abstractGameState === "Final";
+          } catch { isFinal = false; }
+        }
+
+        if (!isFinal) {
+          // Game not over yet — keep pending
+          anyPending = true;
+          continue;
+        }
+
+        pick.result   = hits >= 1 ? "win" : "loss";
+        pick.hits     = hits;
+        pick.ab       = ab;
+        pick.gradedAt = new Date().toISOString();
+        console.log(`[CIQ Streak] MLB API fallback: ${pick.name} on ${dateStr} → ${hits}-for-${ab} → ${pick.result}`);
+      } catch (e: any) {
+        console.warn(`[CIQ Streak] MLB API fallback failed for ${pick.name}: ${e.message}`);
         anyPending = true;
       }
     }
+
     if (anyPending) return;
 
     const allWon = dayEntry.picks.every(p => p.result === "win");
@@ -11586,10 +11648,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // Kick off CIQ streak load on server init
-  loadCiqStreak().then(() => {
+  loadCiqStreak().then(async () => {
     // After loading, grade any pending history entries using current btsPicksCache
     for (const entry of ciqStreakState.history) {
-      if (entry.result === "pending") gradeCiqStreakForDate(entry.date);
+      if (entry.result === "pending") await gradeCiqStreakForDate(entry.date);
     }
   });
 
@@ -11601,9 +11663,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (ciqStreakState.lastPickDate !== todayStr) {
         await selectCiqStreakPicksForDate(todayStr);
       }
-      // Re-grade any pending days
+      // Re-grade any pending days (async — uses MLB API fallback for players not in btsPicksCache)
       for (const entry of ciqStreakState.history) {
-        if (entry.result === "pending") gradeCiqStreakForDate(entry.date);
+        if (entry.result === "pending") await gradeCiqStreakForDate(entry.date);
       }
       const recentHistory = [...ciqStreakState.history]
         .sort((a, b) => b.date.localeCompare(a.date))
@@ -11631,18 +11693,29 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─────────────────────────────────────────────────────────────────────
   app.post("/api/bts/regrade-ciq-streak", requireOwner, async (_req, res) => {
     try {
-      // Step 1: Re-sync pick results from corrected btsPicksCache
+      // Step 1: Re-sync pick results — btsPicksCache first, MLB API fallback for carry-over players
+      // Reset all non-resolved picks so gradeCiqStreakForDate can reprocess them
       for (const dayEntry of ciqStreakState.history) {
-        const cachedEntries = btsPicksCache[dayEntry.date] ?? [];
-        for (const pick of dayEntry.picks) {
-          const cached = cachedEntries.find(e => e.playerId === pick.playerId);
-          if (cached && (cached.result === "win" || cached.result === "loss")) {
-            pick.result   = cached.result;
-            pick.hits     = cached.hits   ?? null;
-            pick.ab       = cached.ab     ?? null;
-            pick.gradedAt = cached.gradedAt ?? null;
+        if (dayEntry.result !== "pending") {
+          // Force reset to pending so gradeCiqStreakForDate will re-run the sync
+          dayEntry.result = "pending";
+          for (const pick of dayEntry.picks) {
+            if (pick.result !== "win" && pick.result !== "loss") continue;
+            // Re-check from cache; if cache has it confirmed keep it
+            const cached = (btsPicksCache[dayEntry.date] ?? []).find(e => e.playerId === pick.playerId);
+            if (!cached) {
+              // Will be re-fetched from MLB API by gradeCiqStreakForDate
+              pick.result   = "pending";
+              pick.hits     = null;
+              pick.ab       = null;
+              pick.gradedAt = null;
+            }
           }
         }
+      }
+      // Now run gradeCiqStreakForDate for every entry — this uses btsPicksCache + MLB API fallback
+      for (const dayEntry of ciqStreakState.history) {
+        await gradeCiqStreakForDate(dayEntry.date);
       }
 
       // Step 2: Sort history chronologically and replay streak counters
