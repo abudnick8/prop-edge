@@ -11477,7 +11477,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const losses  = (entries as BtsPickEntry[]).filter(e => e.result === "loss").length;
           const pending = (entries as BtsPickEntry[]).filter(e => e.result === "pending").length;
           const winPct  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : null;
-          return { date, picks: entries, wins, losses, pending, winPct };
+          const normalizedPicks = (entries as BtsPickEntry[]).map(e => {
+            const snap = (e as any).snapshot ?? {};
+            const rawProb = snap.hitProbability ?? e.hitProbability ?? null;
+            const normProb = rawProb != null
+              ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
+                  ? Math.round(rawProb * 100)
+                  : Math.round(rawProb))
+              : null;
+            return { ...e, hitProbability: normProb };
+          });
+          return { date, picks: normalizedPicks, wins, losses, pending, winPct };
         });
 
       const totalWins   = btsSeasonRecord.wins;
