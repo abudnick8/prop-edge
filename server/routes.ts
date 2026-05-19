@@ -10832,8 +10832,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (avg14 !== null && avg14 <= seasonAvg - 0.040) formMult -= 0.020; // cold last 14
         // Repeat-day penalty: yesterday's players start at a disadvantage
         if (yesterdayIds.has(p.playerId)) formMult -= 0.06;
-        p.hitProbability = Math.min(0.82, Math.max(0.45, p.hitProbability * formMult));
-        p.hitProbabilityPct = Math.round(p.hitProbability * 100);
+        // p.hitProbability here is hitProbabilityPct (whole number like 62, 68)
+        // Convert to decimal, apply formMult, cap, then convert back
+        const hpDecimal = p.hitProbability / 100;
+        const hpAdjusted = Math.min(0.82, Math.max(0.45, hpDecimal * formMult));
+        p.hitProbability = hpAdjusted;
+        p.hitProbabilityPct = Math.round(hpAdjusted * 100);
         p._repeatYesterday = yesterdayIds.has(p.playerId);
       }
 
