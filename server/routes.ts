@@ -11599,9 +11599,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Grade CIQ streak picks by syncing from btsPicksCache after runBtsGrader runs.
   // If a CIQ pick player isn't in btsPicksCache for that date (e.g. carry-over from prior day),
   // falls back to MLB game-log API to get their hit result directly.
-  async function gradeCiqStreakForDate(dateStr: string) {
+  async function gradeCiqStreakForDate(dateStr: string, force = false) {
     const dayEntry = ciqStreakState.history.find(d => d.date === dateStr);
-    if (!dayEntry || dayEntry.result !== "pending") return;
+    if (!dayEntry) return;
+    // Skip already-graded entries unless forced (e.g. from regrade endpoint)
+    if (!force && dayEntry.result !== "pending") return;
 
     const cachedEntries = btsPicksCache[dateStr] ?? [];
     let anyPending = false;
@@ -11798,9 +11800,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
         }
       }
-      // Now run gradeCiqStreakForDate for every entry — this uses btsPicksCache + MLB API fallback
+      // Now run gradeCiqStreakForDate for every entry with force=true
+      // so already-graded entries are re-evaluated after the reset above
       for (const dayEntry of ciqStreakState.history) {
-        await gradeCiqStreakForDate(dayEntry.date);
+        await gradeCiqStreakForDate(dayEntry.date, true);
       }
 
       // Step 2: Sort history chronologically and replay streak counters
