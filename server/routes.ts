@@ -9789,10 +9789,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (babip14 !== null && xbabipV !== null && babip14 - xbabipV > 0.055) {
           adj14 = adj14 * 0.60 + xbaForBabip * 0.40; // regress 40% toward xBA
         }
+        // Form weights: L7 and L14 weighted heavily — current hot/cold streaks
+        // matter more than season averages for daily hit probability.
+        // L7 avg: 30%, L14 avg: 35%, L30 avg: 20%, GHP14: 15%
         const form = (
-          norm(adj14,               0.150, 0.400) * 0.40 +
-          norm(hitter.avg30 ?? 0,   0.150, 0.380) * 0.30 +
-          norm(hitter.avg7  ?? 0,   0.150, 0.380) * 0.15 +
+          norm(adj14,               0.150, 0.400) * 0.35 +
+          norm(hitter.avg30 ?? 0,   0.150, 0.380) * 0.20 +
+          norm(hitter.avg7  ?? 0,   0.150, 0.380) * 0.30 +
           norm(hitter.ghp14 ?? 0.5, 0.300, 0.900) * 0.15
         );
 
@@ -10254,7 +10257,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
           console.log(`[BTS] buildCandidates team=${teamName} side=${side} players=${players.length} src=${lineupSrc}`);
           const candidates: any[] = [];
-          for (let slotIdx = 0; slotIdx < Math.min(players.length, 5); slotIdx++) {
+          for (let slotIdx = 0; slotIdx < Math.min(players.length, 8); slotIdx++) {
             const p = players[slotIdx];
             const pid = p.id ?? p.person?.id;
             if (!pid) continue;
@@ -10692,17 +10695,59 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (!startMs) return true; // no start time known — include
         return nowMsForCandidates < startMs; // only future games
       });
-      // Sort override picks to the BOTTOM (show normal picks first)
+      // ── Repeat-appearance penalty + form re-weighting ─────────────────────
+      // Build a set of player IDs who appeared in yesterday's picks.
+      // Players who appeared yesterday take a 6% probability penalty so
+      // in-form newcomers can compete on equal footing with superstars.
+      const yesterdayStr = (() => {
+        const d = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return d.toLocaleDateString("en-CA");
+      })();
+      const yesterdayIds = new Set<number>(
+        (btsPicksCache[yesterdayStr] ?? []).map((e: BtsPickEntry) => e.playerId)
+      );
+
+      for (const p of candidatePicks) {
+        // Recent-form reweight: boost L5 hot streak, penalise cold streaks.
+        // avg7 and avg14 are already in scoreHitter but the final hitProbability
+        // is post-logistic so we apply a small multiplicative tweak here.
+        const avg7   = p.snapshot?.stats?.avg7   ?? p.avg7   ?? null;
+        const avg14  = p.snapshot?.stats?.avg14  ?? p.avg14  ?? null;
+        const ghp14  = p.snapshot?.stats?.ghp14  ?? p.ghp14  ?? null;
+        // Hot: hitting well recently vs season average
+        const seasonAvg = p.snapshot?.stats?.avgSeason ?? p.avgSeason ?? 0.260;
+        let formMult = 1.0;
+        if (avg7  !== null && avg7  >= seasonAvg + 0.060) formMult += 0.025; // on a hot streak
+        if (avg14 !== null && avg14 >= seasonAvg + 0.040) formMult += 0.020;
+        if (ghp14 !== null && ghp14 >= 0.70)              formMult += 0.015; // getting on base at high clip
+        // Cold: significantly below season average
+        if (avg7  !== null && avg7  <= seasonAvg - 0.060) formMult -= 0.030; // cold last 7
+        if (avg14 !== null && avg14 <= seasonAvg - 0.040) formMult -= 0.020; // cold last 14
+        // Repeat-day penalty: yesterday's players start at a disadvantage
+        if (yesterdayIds.has(p.playerId)) formMult -= 0.06;
+        p.hitProbability = Math.min(0.82, Math.max(0.45, p.hitProbability * formMult));
+        p.hitProbabilityPct = Math.round(p.hitProbability * 100);
+        p._repeatYesterday = yesterdayIds.has(p.playerId);
+      }
+
+      // Sort: override picks last, then by adjusted probability
       candidatePicks.sort((a, b) => {
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
         return b.hitProbability - a.hitProbability;
       });
-      const seenTeams = new Set<string>();
+
+      // ── Carry-over cap: no more than 3 players from yesterday ─────────────
+      const seenTeams  = new Set<string>();
       const freshPicks: any[] = [];
+      let repeatCount = 0;
+      const MAX_REPEATS = 3; // max carry-overs from previous day
       for (const p of candidatePicks) {
         if (seenTeams.has(p.team)) continue;
+        // Enforce carry-over cap: once 3 yesterday players are in, skip the rest
+        if (p._repeatYesterday && repeatCount >= MAX_REPEATS) continue;
         seenTeams.add(p.team);
         freshPicks.push(p);
+        if (p._repeatYesterday) repeatCount++;
         if (freshPicks.length >= 10) break; // hard 10-pick ceiling for auto-analysis (manual adds can go to 15)
       }
 
