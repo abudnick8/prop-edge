@@ -10964,11 +10964,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Source priority: snapshot (full pick object) > BtsPickEntry.hitProbability (DB integer).
         // Guard: if value is a strict decimal (has fractional part and < 2), multiply by 100.
         // Values of 1 or 2 from a corrupted DB store are treated as whole-number 1% or 2%.
-        const rawProb = snap.hitProbability ?? e.hitProbability ?? null;
+        // hitProbabilityPct is stored as the already-computed whole-number pct (e.g. 62, 68)
+        // hitProbability in the snapshot is the raw decimal BEFORE capping (e.g. 0.82 cap)
+        // Always prefer hitProbabilityPct — it's the true per-player value
+        const rawProb = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
         const normProb = rawProb != null
           ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
               ? Math.round(rawProb * 100)   // true decimal like 0.82
-              : Math.round(rawProb))         // already whole number
+              : Math.round(rawProb))         // already whole number (62, 68, etc.)
           : null;
         return {
           ...snap,
@@ -11479,7 +11482,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const winPct  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : null;
           const normalizedPicks = (entries as BtsPickEntry[]).map(e => {
             const snap = (e as any).snapshot ?? {};
-            const rawProb = snap.hitProbability ?? e.hitProbability ?? null;
+            // Prefer hitProbabilityPct (true per-player whole number) over hitProbability (capped decimal)
+            const rawProb = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
             const normProb = rawProb != null
               ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
                   ? Math.round(rawProb * 100)
