@@ -11786,20 +11786,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Step 1: Re-sync pick results — btsPicksCache first, MLB API fallback for carry-over players
       // Reset all non-resolved picks so gradeCiqStreakForDate can reprocess them
       for (const dayEntry of ciqStreakState.history) {
-        if (dayEntry.result !== "pending") {
-          // Force reset to pending so gradeCiqStreakForDate will re-run the sync
-          dayEntry.result = "pending";
-          for (const pick of dayEntry.picks) {
-            if (pick.result !== "win" && pick.result !== "loss") continue;
-            // Re-check from cache; if cache has it confirmed keep it
-            const cached = (btsPicksCache[dayEntry.date] ?? []).find(e => e.playerId === pick.playerId);
-            if (!cached) {
-              // Will be re-fetched from MLB API by gradeCiqStreakForDate
-              pick.result   = "pending";
-              pick.hits     = null;
-              pick.ab       = null;
-              pick.gradedAt = null;
-            }
+        // Always reset every day so gradeCiqStreakForDate can reprocess cleanly
+        dayEntry.result = "pending";
+        for (const pick of dayEntry.picks) {
+          // Only reset picks that were graded (win or loss) — re-verify from cache / MLB API
+          if (pick.result === "win" || pick.result === "loss") {
+            pick.result   = "pending";
+            pick.hits     = null;
+            pick.ab       = null;
+            pick.gradedAt = null;
           }
         }
       }
