@@ -9592,7 +9592,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // ── 4b. Helper: Batter vs Pitcher career history ────────────────
       const bvpCache: Record<string, any> = {};
-      async function getBvP(hitterId: number, pitcherId: number): Promise<{ avg: number | null; hits: number; ab: number; signal: "strong" | "weak" | "none" }> {
+      async function getBvP(hitterId: number, pitcherId: number): Promise<{
+        avg: number | null; hits: number; ab: number;
+        obp: number | null; slg: number | null; ops: number | null;
+        signal: "elite" | "strong" | "weak" | "none";
+      }> {
         const cacheKey = `${hitterId}_${pitcherId}`;
         if (bvpCache[cacheKey]) return bvpCache[cacheKey];
         try {
@@ -9608,27 +9612,44 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const careerSplit = rCareer?.data?.stats?.[0]?.splits?.[0]?.stat;
 
           // Prefer season if >=5 AB, else career if >=10 AB, else null
-          let hits = 0, ab = 0, avg: number | null = null;
+          let hits = 0, ab = 0;
+          let avg: number | null = null;
+          let obp: number | null = null;
+          let slg: number | null = null;
+          let ops: number | null = null;
+          const parseSplit = (sp: any) => ({
+            ab:   parseInt(sp.atBats      ?? "0") || 0,
+            hits: parseInt(sp.hits        ?? "0") || 0,
+            avg:  parseFloat(sp.avg       ?? "0") || null,
+            obp:  parseFloat(sp.obp       ?? "0") || null,
+            slg:  parseFloat(sp.slg       ?? "0") || null,
+            ops:  parseFloat(sp.ops       ?? "0") || null,
+          });
           if (seasonSplit && parseInt(seasonSplit.atBats ?? "0") >= 5) {
-            ab   = parseInt(seasonSplit.atBats ?? "0");
-            hits = parseInt(seasonSplit.hits ?? "0");
-            avg  = parseFloat(seasonSplit.avg ?? "0") || null;
+            const s = parseSplit(seasonSplit);
+            ({ ab, hits, avg, obp, slg, ops } = s);
           } else if (careerSplit && parseInt(careerSplit.atBats ?? "0") >= 10) {
-            ab   = parseInt(careerSplit.atBats ?? "0");
-            hits = parseInt(careerSplit.hits ?? "0");
-            avg  = parseFloat(careerSplit.avg ?? "0") || null;
+            const s = parseSplit(careerSplit);
+            ({ ab, hits, avg, obp, slg, ops } = s);
           }
 
-          // Signal: strong if avg >=.300 w/ >=20 AB (meaningful sample), weak if avg <.150 w/ >=20 AB, otherwise none
-          // Raised threshold from 8 AB to 20 AB to reduce noise from small samples
-          const signal: "strong" | "weak" | "none" =
-            (ab >= 20 && avg !== null && avg >= 0.300) ? "strong" :
-            (ab >= 20 && avg !== null && avg <  0.150) ? "weak"   : "none";
+          // Compute OPS manually if API returns it null but we have OBP+SLG
+          if (ops === null && obp !== null && slg !== null) ops = obp + slg;
 
-          const result = { avg, hits, ab, signal };
+          // Signal tiers — now uses BOTH avg AND ops for more accuracy:
+          // elite:  avg >= .500 OR (avg >= .400 AND ops >= .950) with >= 10 AB
+          // strong: avg >= .300 with >= 20 AB OR avg >= .350 with >= 10 AB
+          // weak:   avg <  .150 with >= 15 AB
+          const signal: "elite" | "strong" | "weak" | "none" =
+            (ab >= 10 && avg !== null && (avg >= 0.500 || (avg >= 0.400 && (ops ?? 0) >= 0.950))) ? "elite" :
+            (ab >= 10 && avg !== null && avg >= 0.350) ? "strong" :
+            (ab >= 20 && avg !== null && avg >= 0.300) ? "strong" :
+            (ab >= 15 && avg !== null && avg <  0.150) ? "weak"   : "none";
+
+          const result = { avg, hits, ab, obp, slg, ops, signal };
           bvpCache[cacheKey] = result;
           return result;
-        } catch { return { avg: null, hits: 0, ab: 0, signal: "none" }; }
+        } catch { return { avg: null, hits: 0, ab: 0, obp: null, slg: null, ops: null, signal: "none" }; }
       }
 
       // ── 5. Helper: fetch hitter stats (30d, 14d, 7d, season, gamelog) ─
@@ -9965,19 +9986,36 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           rawSlotScore + impliedBoost + splitAdj - epaGatePenalty + leashBonus
         ));
 
-        // ══ COMPONENT 6: BvP + Vs-Team ── (6%) ══
-        // Pitcher BvP is primary; supplement with season vs-team avg when BvP is neutral.
-        // Vs-team is blended in at 30% weight when BvP has no signal (neutral).
-        const bvpPitcherScore = bvp.signal === "strong" ? 0.80
+        // ══ COMPONENT 6: BvP + Vs-Team ── (dynamic 6–18%) ══
+        // BvP is now tiered: elite / strong / weak / none.
+        // Elite tier (.500+ avg OR .400+ avg with .950+ OPS vs this pitcher)
+        // triggers a significant score boost that can override mediocre season numbers.
+        // OPS is used alongside avg to confirm quality of the BvP edge:
+        //   - High avg + high OPS (extra bases) = true dominance of this pitcher
+        //   - High avg + low OPS = singles hitter, still good but weighted less
+        const bvpOps = (bvp as any).ops as number | null ?? null;
+        const bvpSlg = (bvp as any).slg as number | null ?? null;
+        const bvpObp = (bvp as any).obp as number | null ?? null;
+        // Base score from signal tier
+        const bvpPitcherScore = bvp.signal === "elite"  ? 0.95
+                              : bvp.signal === "strong" ? 0.80
                               : bvp.signal === "weak"   ? 0.20
                               : 0.50;
+        // OPS modifier: if elite/strong BvP, scale up further based on actual OPS quality
+        // .950+ OPS vs pitcher is exceptional; 1.000+ is rare dominance
+        const bvpOpsBoost = (bvp.signal === "elite" || bvp.signal === "strong") && bvpOps !== null
+          ? Math.min(0.08, Math.max(0, (bvpOps - 0.800) * 0.15)) // +0 at .800, +0.08 at 1.333
+          : 0;
+        const adjustedBvpScore = Math.min(1.0, bvpPitcherScore + bvpOpsBoost);
         const vsTeamScore = vsTeamAB >= 10 && vsTeamAvg !== null
-          ? norm(vsTeamAvg, 0.180, 0.380)  // scale to 0-1
+          ? norm(vsTeamAvg, 0.180, 0.380)
           : 0.50;
-        // If BvP is neutral (no signal), blend in vs-team; if BvP has signal, trust it more
+        // Blend: trust BvP more when signal is strong/elite
         const bvpScore = bvp.signal === "none" || bvp.ab < 10
-          ? bvpPitcherScore * 0.55 + vsTeamScore * 0.45
-          : bvpPitcherScore * 0.75 + vsTeamScore * 0.25;
+          ? adjustedBvpScore * 0.50 + vsTeamScore * 0.50
+          : bvp.signal === "elite"
+            ? adjustedBvpScore * 0.90 + vsTeamScore * 0.10  // elite BvP dominates
+            : adjustedBvpScore * 0.75 + vsTeamScore * 0.25;
 
         // ══ COMPONENT 7: Venue Career History (4%) ══
         // Blends career AVG, SLG, and ISO at this specific ballpark.
@@ -10020,19 +10058,33 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Form 13% | Contact 18% | Hard 10% | Matchup 24% | Opp 20% |
         // BvP+Team 6% | Venue 4% | Batted-Ball 3% | Stability 7% (= 1.05 → rescale → 1.00)
         // Note: intentionally sums to 1.05; normalize with /1.05 to keep 0-1 range
+        // BvP weight scales with signal quality:
+        //   elite (.500+ avg OR .400+ avg with .950+ OPS vs this pitcher) -> 18%
+        //   strong (.350+ avg with 10+ AB OR .300+ avg with 20+ AB)       -> 11%
+        //   none / neutral                                                  ->  6%
+        // Extra weight is taken proportionally from matchup + form.
+        // A batter who owns a specific pitcher gets a decisive score boost
+        // that can vault a .250 hitter above a star with a poor BvP record.
+        const bvpWeight = bvp.signal === "elite"  ? 0.18
+                        : bvp.signal === "strong" ? 0.11
+                        : 0.06;
+        const extraBvp  = bvpWeight - 0.06;
+        const formW     = Math.max(0.08, 0.13 - extraBvp * 0.40);
+        const matchupW  = Math.max(0.18, 0.24 - extraBvp * 0.60);
         const rawNom = (
-          form            * 0.13 +
-          contact         * 0.18 +
-          hardContact     * 0.10 +
-          matchup         * 0.24 +
-          opportunity     * 0.20 +
-          bvpScore        * 0.06 +
-          venueScore      * 0.04 +
-          battedBallBonus * 0.03 +
+          form            * formW     +
+          contact         * 0.18      +
+          hardContact     * 0.10      +
+          matchup         * matchupW  +
+          opportunity     * 0.20      +
+          bvpScore        * bvpWeight +
+          venueScore      * 0.04      +
+          battedBallBonus * 0.03      +
           stabilityScore  * 0.07
         );
-        // Weights sum to 1.05 — normalize
-        const raw = rawNom / 1.05;
+        // Normalize by actual weight sum so output stays in 0-1 range
+        const totalW = formW + 0.18 + 0.10 + matchupW + 0.20 + bvpWeight + 0.04 + 0.03 + 0.07;
+        const raw = rawNom / totalW;
         return Math.max(0, Math.min(1, raw));
       }
 
@@ -10452,6 +10504,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 }
                 if (goAoRatio < 0.80) noteParts.push(`Fly-ball hitter (GO/AO ${goAoRatio.toFixed(2)})`);
                 else if (goAoRatio > 1.30) noteParts.push(`Ground-ball hitter (GO/AO ${goAoRatio.toFixed(2)})`);
+                // BvP note: show avg + OPS vs today's starter when signal is meaningful
+                if (bvp.avg !== null && bvp.ab >= 10) {
+                  const bvpAvgStr = bvp.avg.toFixed(3).replace("0.", ".");
+                  const bvpOpsVal = (bvp as any).ops as number | null ?? null;
+                  let bvpNote = `${bvp.hits}-for-${bvp.ab} (.${bvpAvgStr.replace(".","")}) vs today's starter`;
+                  if (bvpOpsVal !== null) {
+                    bvpNote += ` | OPS ${bvpOpsVal.toFixed(3)}`;
+                  }
+                  if (bvp.signal === "elite") {
+                    bvpNote = `ELITE MATCHUP: ` + bvpNote;
+                  } else if (bvp.signal === "strong") {
+                    bvpNote = `Strong BvP: ` + bvpNote;
+                  } else if (bvp.signal === "weak") {
+                    bvpNote = `Weak BvP: ` + bvpNote;
+                  }
+                  noteParts.unshift(bvpNote); // put BvP first in the note
+                }
                 analyticsNote = noteParts.join(" · ") || "Standard conditions";
                 // Projected per-game stats for explanation drawer
                 projectedStats = getProjectedGameStats(String(pid), venue, opponentPidForAnalytics ? String(opponentPidForAnalytics) : undefined);
