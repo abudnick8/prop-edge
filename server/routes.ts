@@ -8902,22 +8902,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (result === null) continue; // no data yet — stay pending
       // Require at least 1 AB to update (ab=0 mid-game = hasn't batted yet)
       if (result.ab === 0) continue;
-      const newResult = result.hits > 0 ? "win" : "loss";
-      // Update if stats changed OR if we can now lock it as final
+
+      // KEY RULE:
+      //   WIN  → lock immediately (a hit can only stay or go up, never removed)
+      //   LOSS → ONLY write when game is confirmed Final.
+      //          While game is Live with 0 hits, keep result=pending but
+      //          still update hits/ab so the live stat line shows correctly.
+      const wouldBeWin = result.hits > 0;
+      const newResult = wouldBeWin ? "win" : (result.isFinal ? "loss" : "pending");
+
+      // Determine what changed
       const alreadyFinal = (entry as any).gradedFinal === true;
-      const statsChanged = entry.hits !== result.hits || entry.ab !== result.ab || entry.result !== newResult;
-      if (!statsChanged && (alreadyFinal || !result.isFinal)) continue;
-      entry.hits     = result.hits;
-      entry.ab       = result.ab;
-      entry.result   = newResult;
+      const hitsChanged   = entry.hits !== result.hits || entry.ab !== result.ab;
+      const resultChanged = entry.result !== newResult;
+      if (!hitsChanged && !resultChanged && (alreadyFinal || !result.isFinal)) continue;
+
+      // Always update live hit/ab counters so the card shows current stats
+      entry.hits  = result.hits;
+      entry.ab    = result.ab;
       entry.gradedAt = new Date().toISOString();
-      // KEY RULE: only lock gradedFinal=true when:
-      //   - it is a WIN (a hit can only go up — safe to lock early), OR
-      //   - it is a loss AND the schedule API confirmed the game is Final
-      // Never lock a loss from a non-Final game — player may still get a hit.
+
+      // Only overwrite result if it actually changes to something meaningful
+      if (resultChanged) entry.result = newResult;
+
+      // Lock gradedFinal=true only when confirmed final
       if (result.isFinal) (entry as any).gradedFinal = true;
+
       changed = true;
-      console.log(`[BTS Regrader] ${entry.name} -> ${newResult} (${result.hits}/${result.ab}) final=${result.isFinal}`);
+      console.log(`[BTS Regrader] ${entry.name} -> ${newResult} (${result.hits}/${result.ab}) isFinal=${result.isFinal}`);
 
       // forceRegrade: bypass ON CONFLICT guard with a direct UPDATE
       if (forceRegrade && result.isFinal) {
@@ -11608,15 +11620,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           } catch { isFinal = false; }
         }
 
+        // Always update live hit/ab so the card shows current stats even mid-game
+        if (ab > 0 || hits > 0) {
+          pick.hits = hits;
+          pick.ab   = ab;
+        }
+
         if (!isFinal) {
-          // Game not over yet — keep pending
-          anyPending = true;
+          // Game not over yet — keep pending, but only a win can be locked early
+          if (hits >= 1) {
+            // Has a hit already — lock as win immediately
+            pick.result   = "win";
+            pick.gradedAt = new Date().toISOString();
+            console.log(`[CIQ Streak] MLB API: ${pick.name} on ${dateStr} → ${hits}-for-${ab} mid-game WIN (locked)`);
+          } else {
+            anyPending = true;
+          }
           continue;
         }
 
         pick.result   = hits >= 1 ? "win" : "loss";
-        pick.hits     = hits;
-        pick.ab       = ab;
         pick.gradedAt = new Date().toISOString();
         console.log(`[CIQ Streak] MLB API fallback: ${pick.name} on ${dateStr} → ${hits}-for-${ab} → ${pick.result}`);
       } catch (e: any) {
