@@ -76,7 +76,9 @@ function GradeBadge({ result, hits, ab }: { result?: string; hits?: number | nul
 }
 
 // ─── Score ring ─────────────────────────────────────────────────────────────
-function ProbRing({ pct }: { pct: number }) {
+function ProbRing({ pct: rawPct }: { pct: number }) {
+  // Guard: if pct is a decimal (0.82), convert to whole number (82)
+  const pct = rawPct != null ? (rawPct <= 1 ? Math.round(rawPct * 100) : Math.round(rawPct)) : 0;
   const r = 22;
   const circ = 2 * Math.PI * r;
   const fill = circ * (pct / 100);

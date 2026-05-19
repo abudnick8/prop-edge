@@ -10958,14 +10958,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       await runBtsGrader(targetDate);
 
       // Rebuild topPicks from cache so display order = entry order (pick added first = rank 1)
-      const topPicks: any[] = cachedEntries.map((e: BtsPickEntry) => ({
-        ...e.snapshot,
-        result:    e.result,
-        hits:      e.hits,
-        ab:        e.ab,
-        gradedAt:  e.gradedAt,
-        lockedAt:  e.lockedAt,
-      }));
+      const topPicks: any[] = cachedEntries.map((e: BtsPickEntry) => {
+        const snap = e.snapshot ?? {};
+        // Normalise hitProbability — always a whole number (0–100).
+        // Snapshots stored before the *100 fix may contain decimal (e.g. 0.82).
+        const rawProb = snap.hitProbability ?? e.hitProbability ?? null;
+        const normProb = rawProb != null
+          ? (rawProb <= 1 ? Math.round(rawProb * 100) : Math.round(rawProb))
+          : null;
+        return {
+          ...snap,
+          hitProbability: normProb,
+          result:    e.result,
+          hits:      e.hits,
+          ab:        e.ab,
+          gradedAt:  e.gradedAt,
+          lockedAt:  e.lockedAt,
+        };
+      });
 
 
       // ── 9. Generate AI-style summary per pick (2–4 sentences + bullets) ────────
