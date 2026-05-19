@@ -10961,10 +10961,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const topPicks: any[] = cachedEntries.map((e: BtsPickEntry) => {
         const snap = e.snapshot ?? {};
         // Normalise hitProbability — always a whole number (0–100).
-        // Snapshots stored before the *100 fix may contain decimal (e.g. 0.82).
+        // Source priority: snapshot (full pick object) > BtsPickEntry.hitProbability (DB integer).
+        // Guard: if value is a strict decimal (has fractional part and < 2), multiply by 100.
+        // Values of 1 or 2 from a corrupted DB store are treated as whole-number 1% or 2%.
         const rawProb = snap.hitProbability ?? e.hitProbability ?? null;
         const normProb = rawProb != null
-          ? (rawProb <= 1 ? Math.round(rawProb * 100) : Math.round(rawProb))
+          ? (rawProb > 0 && rawProb < 2 && !Number.isInteger(rawProb)
+              ? Math.round(rawProb * 100)   // true decimal like 0.82
+              : Math.round(rawProb))         // already whole number
           : null;
         return {
           ...snap,
@@ -11629,7 +11633,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const gameSplit = splits.find((s: any) => s.date === dateStr);
 
         if (!gameSplit) {
-          // No game on this date for this player — treat as loss (DNP)
+          // No game log entry — could mean:
+          //   a) game hasn't started yet (Preview/Pre-Game) → keep pending
+          //   b) true DNP / off-day → loss
+          // Check schedule for this player's team to distinguish.
+          try {
+            // Use the season-long game log to find the player's team, then check today's schedule
+            const teamRes = await fetch(`https://statsapi.mlb.com/api/v1/people/${pick.playerId}?hydrate=currentTeam`);
+            const teamData: any = await teamRes.json();
+            const teamId = teamData?.people?.[0]?.currentTeam?.id;
+            if (teamId) {
+              const schRes = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&teamId=${teamId}`);
+              const schData: any = await schRes.json();
+              const todayGame = schData?.dates?.[0]?.games?.[0];
+              if (todayGame) {
+                const state = todayGame.status?.abstractGameState ?? "";
+                if (state !== "Final") {
+                  // Game exists but hasn't finished (Preview or Live) — keep pending
+                  console.log(`[CIQ Streak] ${pick.name} game is ${state} on ${dateStr} — keeping pending`);
+                  anyPending = true;
+                  continue;
+                }
+                // Game is Final and no hits logged — true 0-for-something
+                // The game log API may lag; treat as 0-for-0 loss
+              }
+              // No game at all for team today → true DNP → loss
+            }
+          } catch { /* non-fatal — fall through to loss */ }
+
           pick.result   = "loss";
           pick.hits     = 0;
           pick.ab       = 0;
