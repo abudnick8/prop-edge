@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useHashLocation, navigate as wouterNavigate } from "wouter/use-hash-location";
 import ShareCard from "@/components/ShareCard";
 import { useAuth } from "@/context/AuthContext";
@@ -20,6 +20,29 @@ function fmtPct(v: number | null | undefined) {
 // ─── Grade badge ─────────────────────────────────────────────────────
 function GradeBadge({ result, hits, ab }: { result?: string; hits?: number | null; ab?: number | null }) {
   if (!result || result === "pending") {
+    // Game is live and player has at-bats — show pulsing LIVE stat
+    const hasLiveAb = ab != null && ab > 0;
+    const hasHit    = hits != null && hits > 0;
+    if (hasLiveAb || hasHit) {
+      // Player is mid-game
+      return (
+        <span
+          className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-1"
+          style={{
+            background: hasHit ? "rgba(34,197,94,0.12)" : "rgba(251,146,60,0.10)",
+            color:      hasHit ? "#16a34a"               : "#f97316",
+            border:     `1px solid ${hasHit ? "rgba(34,197,94,0.30)" : "rgba(251,146,60,0.30)"}`,
+          }}
+        >
+          {/* Pulsing live dot */}
+          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+            background: hasHit ? "#22c55e" : "#f97316",
+            animation: "bts-pulse 1.4s ease-in-out infinite" }} />
+          LIVE {hits ?? 0}-for-{ab}
+        </span>
+      );
+    }
+    // No AB yet — waiting for game to start or player hasn't batted
     return (
       <span
         className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
@@ -820,8 +843,9 @@ function CiqStreakPanel() {
   const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["/api/bts/ciq-streak"],
-    refetchInterval: 5 * 60_000,
-    staleTime: 3 * 60_000,
+    // Refresh every 30s while games may be live (daytime), otherwise every 3 min
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
   const d = data as any;
 
@@ -862,7 +886,17 @@ function CiqStreakPanel() {
           </div>
           <div className="flex items-center gap-1.5">
             {entry.result === "pending" ? (
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}>PENDING</span>
+              // Check if any pick has live AB data
+              entry.picks?.some((p: any) => p.ab != null && p.ab > 0) ? (
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1"
+                  style={{ background: "rgba(251,146,60,0.10)", color: "#f97316", border: "1px solid rgba(251,146,60,0.30)" }}>
+                  <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                    background: "#f97316", animation: "bts-pulse 1.4s ease-in-out infinite" }} />
+                  LIVE
+                </span>
+              ) : (
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}>PENDING</span>
+              )
             ) : won ? (
               <span className="text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "rgba(22,163,74,0.15)", color: GREEN }}>
                 <CheckCircle size={8} /> WIN +{entry.picks.length}
@@ -1037,6 +1071,24 @@ export default function BTS() {
     refetchOnWindowFocus: false,
   });
 
+  // Lightweight live-stats poll — updates hits/ab/result every 30s without
+  // triggering a full heavy bts-picks refetch. Merges into picks data.
+  const [liveStats, setLiveStats] = useState<Record<number, { hits: number | null; ab: number | null; result: string }>>({});
+  useEffect(() => {
+    async function fetchLiveStats() {
+      try {
+        const r = await apiRequest("GET", "/api/bts/live-stats");
+        const d = await r.json();
+        const map: Record<number, any> = {};
+        for (const p of d.picks ?? []) map[p.playerId] = { hits: p.hits, ab: p.ab, result: p.result };
+        setLiveStats(map);
+      } catch { /* non-fatal */ }
+    }
+    fetchLiveStats();
+    const id = setInterval(fetchLiveStats, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Historical picks — loaded once, refreshed every 5 min
   const { data: historyData } = useQuery({
     queryKey: ["/api/bts-history"],
@@ -1054,7 +1106,18 @@ export default function BTS() {
   const todayRecord = data?.todayRecord ?? { wins: 0, losses: 0, pending: 0, winPct: null };
   const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
-  const visiblePicks = showAllPicks ? picks : picks.slice(0, 5);
+  // Merge live stats into picks so badges update every 30s without full refetch
+  const picksWithLive = picks.map((p: any) => {
+    const live = liveStats[p.playerId];
+    if (!live) return p;
+    return {
+      ...p,
+      hits:   live.hits   ?? p.hits,
+      ab:     live.ab     ?? p.ab,
+      result: live.result ?? p.result,
+    };
+  });
+  const visiblePicks = showAllPicks ? picksWithLive : picksWithLive.slice(0, 5);
 
   // History data — use history endpoint as source of truth for records
   const historyDays: any[]       = historyData?.days ?? [];

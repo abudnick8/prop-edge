@@ -9260,6 +9260,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts/live-stats  — Lightweight endpoint: returns only result/hits/ab
+  // from the in-memory cache. No MLB API calls. Safe to poll every 30s.
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/bts/live-stats", async (_req, res) => {
+    try {
+      const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
+      const entries = btsPicksCache[todayStr] ?? [];
+      res.json({
+        date: todayStr,
+        picks: entries.map(e => ({
+          playerId: e.playerId,
+          name:     e.name,
+          result:   e.result,
+          hits:     e.hits  ?? null,
+          ab:       e.ab    ?? null,
+          gradedAt: e.gradedAt ?? null,
+          gradedFinal: (e as any).gradedFinal ?? null,
+        })),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /api/bts-picks  — Beat‑the‑Streak daily hitter recommendations
   // ─────────────────────────────────────────────────────────────────────
   app.get("/api/bts-picks", async (req, res) => {
