@@ -818,6 +818,12 @@ const BTS_GLOSSARY = [
   },
 ];
 
+// ── Module-level color constants (shared across all BTS sub-components) ──────
+const BG_COLOR   = "#F6F1E7";
+const NAVY_COLOR = "#13233A";
+const GOLD_COLOR = "#D4A843";
+const MUTED      = "#3D4B58";
+const NAVY       = NAVY_COLOR;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BTS ANALYTICS PANEL — Historical splits and performance data
@@ -856,14 +862,15 @@ function SplitSection({ title, rows }: { title: string; rows: { label: string; w
 
 function BtsAnalyticsPanel() {
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useQuery<any>({
+  const { data, isLoading, error } = useQuery<any>({
     queryKey: ["/api/bts-analytics"],
     enabled: open,
     staleTime: 5 * 60_000,
+    retry: 1,
   });
 
-  const totalW = data?.byDate?.reduce((s: number, d: any) => s + d.wins, 0) ?? 0;
-  const totalL = data?.byDate?.reduce((s: number, d: any) => s + d.losses, 0) ?? 0;
+  const totalW = (data?.byDate ?? []).reduce((s: number, d: any) => s + (d.wins ?? 0), 0);
+  const totalL = (data?.byDate ?? []).reduce((s: number, d: any) => s + (d.losses ?? 0), 0);
   const overallPct = (totalW + totalL) > 0 ? Math.round(totalW / (totalW + totalL) * 100) : null;
 
   return (
@@ -886,7 +893,7 @@ function BtsAnalyticsPanel() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {overallPct !== null && (
+          {data && overallPct !== null && (
             <span className="text-[11px] font-black" style={{ color: "#22c55e" }}>{overallPct}% overall</span>
           )}
           {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
@@ -897,6 +904,10 @@ function BtsAnalyticsPanel() {
         <div className="px-4 pb-4 border-t space-y-5" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
           {isLoading ? (
             <div className="py-6 text-center text-xs" style={{ color: MUTED }}>Loading analytics…</div>
+          ) : error ? (
+            <div className="py-6 text-center text-xs" style={{ color: "#ef4444" }}>
+              Failed to load analytics. Try closing and reopening.
+            </div>
           ) : !data ? (
             <div className="py-6 text-center text-xs" style={{ color: MUTED }}>No data yet.</div>
           ) : (
@@ -905,8 +916,8 @@ function BtsAnalyticsPanel() {
               <div className="pt-3 grid grid-cols-3 gap-2">
                 {[
                   { label: "Total Picks", value: String(totalW + totalL), color: NAVY },
-                  { label: "Overall Win %", value: overallPct !== null ? `${overallPct}%` : "—", color: overallPct && overallPct >= 70 ? "#22c55e" : "#eab308" },
-                  { label: "Best Day", value: (() => { const best = [...(data.byDow ?? [])].sort((a: any, b: any) => (b.pct ?? 0) - (a.pct ?? 0))[0]; return best ? `${best.label.slice(0,3)} ${best.pct}%` : "—"; })(), color: "#3b82f6" },
+                  { label: "Overall Win %", value: overallPct !== null ? `${overallPct}%` : "—", color: (overallPct ?? 0) >= 70 ? "#22c55e" : "#eab308" },
+                  { label: "Best Day", value: (() => { try { const best = [...(data?.byDow ?? [])].sort((a: any, b: any) => (b.pct ?? 0) - (a.pct ?? 0))[0]; return best ? `${best.label.slice(0,3)} ${best.pct}%` : "—"; } catch { return "—"; } })(), color: "#3b82f6" },
                 ].map(s => (
                   <div key={s.label} className="rounded-xl p-2.5 text-center"
                     style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.08)" }}>
@@ -1100,12 +1111,11 @@ function CiqStreakPanel() {
   const pct       = totalDays > 0 ? Math.round((totalWins / totalDays) * 100) : null;
   const progress  = Math.min(100, Math.round((current / (goal - 1)) * 100));
 
-  const BG    = "#F6F1E7";
-  const NAVY  = "#13233A";
-  const GOLD  = "#D4A843";
+  const BG    = BG_COLOR;
+  // NAVY, MUTED defined at module level
+  const GOLD  = GOLD_COLOR;
   const GREEN = "#16a34a";
   const RED   = "#ef4444";
-  const MUTED = "#3D4B58";
 
   function DayResult({ entry }: { entry: any }) {
     const won  = entry.result === "win";
