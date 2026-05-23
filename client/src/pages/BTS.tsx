@@ -697,70 +697,124 @@ function SlateCard({ game }: { game: any }) {
 // ─── How to Read Panel ──────────────────────────────────────────────────
 const BTS_GLOSSARY = [
   {
+    term: "Hit Prob %",
+    label: "Hit Probability",
+    emoji: "🔵",
+    def: "The model's calibrated probability that this player records at least 1 hit today. Built from 9 scoring components across form, contact quality, matchup, bullpen, ballpark, and more. Aim for picks ≥ 65%.",
+  },
+  {
+    term: "Hit Streak",
+    label: "Active Hit Streak",
+    emoji: "🔥",
+    def: "Consecutive games with at least 1 hit, counted from today backward. A player on a 5+ game streak gets a meaningful form boost. 3-game = +3%, 5-game = +6%, 7-game = +9%, 10+ game = +12%.",
+  },
+  {
     term: "GHP",
     label: "Games with Hit %",
     emoji: "💥",
-    def: "The % of the last 14 games where a player recorded at least 1 hit. GHP ≥ 70% = elite consistency; we look for players with high GHP to minimize cold-streak risk.",
-  },
-  {
-    term: "xBA",
-    label: "Expected Batting Average",
-    emoji: "📊",
-    def: "Statcast's model-predicted BA based on exit velocity and launch angle on contact. xBA ≥ .300 signals a player is hitting the ball well even if the raw numbers haven't caught up.",
-  },
-  {
-    term: "xwOBA",
-    label: "Expected Weighted On-Base",
-    emoji: "🎯",
-    def: "A quality-of-contact metric that weights hits by run value. High xwOBA (≥ .360) means a hitter is making hard, well-placed contact — good BTS indicator.",
-  },
-  {
-    term: "Hard Hit %",
-    label: "Hard Hit Rate",
-    emoji: "🔨",
-    def: "Percentage of batted balls hit at 95+ mph exit velocity (per Statcast). Hard Hit ≥ 40% means a hitter is squaring up regularly. Combined with a pitcher that allows hard contact = high-value target.",
+    def: "% of the last 14 games where a player recorded at least 1 hit. GHP ≥ 70% = elite consistency. Works alongside the active hit streak to capture both sustained form and current momentum.",
   },
   {
     term: "14d BA",
     label: "14-Day Batting Average",
     emoji: "📅",
-    def: "Rolling batting average over the last 14 days. This is our primary form indicator. ≥ .280 = hot, ≥ .250 = solid, < .230 = cold streak.",
+    def: "Rolling batting average over the last 14 days — the primary form indicator. ≥ .280 = hot, ≥ .250 = solid, < .230 = cold streak. BABIP luck is automatically detected: if recent BABIP far exceeds expected BABIP AND contact quality is poor, the average is regressed toward xBA.",
+  },
+  {
+    term: "Day/Night Split",
+    label: "Day vs Night Performance",
+    emoji: "🌙",
+    def: "Many hitters perform 20–40 points of BA differently in day vs night games. The model uses the player's actual day or night split AVG (min 30 PA) to adjust the form score based on today's game time.",
+  },
+  {
+    term: "xBA",
+    label: "Expected Batting Average",
+    emoji: "📊",
+    def: "Statcast's predicted BA based on exit velocity and launch angle. xBA ≥ .300 signals the player is hitting the ball well even if surface stats haven't caught up. Blended across season, last-30d, and last-15d windows.",
+  },
+  {
+    term: "xwOBA",
+    label: "Expected Weighted On-Base",
+    emoji: "🎯",
+    def: "Quality-of-contact metric weighting hits by run value. High xwOBA (≥ .360) = hard, well-placed contact. Blended across season/30d/15d Statcast windows. One of the strongest predictors of future hit rate.",
+  },
+  {
+    term: "Zone Contact %",
+    label: "In-Zone Contact Rate",
+    emoji: "🎯",
+    def: "How often a batter makes contact on pitches inside the strike zone. ≥ 85% = elite contact skill. Paired with Out-of-Zone Contact % to get a full picture of plate discipline.",
+  },
+  {
+    term: "OZ Contact %",
+    label: "Out-of-Zone Contact Rate",
+    emoji: "🪄",
+    def: "How often a batter makes contact on pitches outside the strike zone. High oz_contact (≥ 70%) = protects the plate well and sprays hits on tough pitches. Combined with zone contact for overall contact profile.",
+  },
+  {
+    term: "Hard Hit %",
+    label: "Hard Hit Rate",
+    emoji: "🔨",
+    def: "% of batted balls at 95+ mph exit velocity. ≥ 40% = consistently barreling the ball. Used to guard against false BABIP regression — if Hard Hit % is high, a hot streak is likely real, not luck.",
+  },
+  {
+    term: "Sprint Speed",
+    label: "Running Speed (ft/sec)",
+    emoji: "⚡",
+    def: "Savant sprint speed in feet per second. Fast runners (≥ 28.0 ft/sec) beat out more infield hits, directly raising their BABIP floor. ≥ 29.5 ft/sec = +8% contact boost. ≤ 26.5 ft/sec = -3% penalty.",
+  },
+  {
+    term: "BvP",
+    label: "Batter vs Pitcher",
+    emoji: "⚔️",
+    def: "Career stats vs today's specific starter. Tiered: Elite = .500+ AVG or .400+ AVG with .950+ OPS (≥10 AB) → 18% weight. Strong = .350+ AVG (10+ AB) → 12% weight. Good BvP can vault a .250 hitter above a star with a poor matchup.",
   },
   {
     term: "Platoon Adv",
     label: "Platoon Advantage",
-    emoji: "⚔️",
-    def: "Left-handed batters vs. right-handed pitchers (and vice versa) historically produce higher BA. The model checks the pitcher's BA allowed split vs. your batter's handedness.",
+    emoji: "↔️",
+    def: "LHB vs RHP and RHB vs LHP historically produce higher BA. The model weights the pitcher's actual platoon split toward league average at low sample sizes (< 100 PA) and trusts the real split fully at 100+ PA — preventing small-sample extremes from over-influencing picks.",
+  },
+  {
+    term: "Bullpen ERA",
+    label: "Opposing Bullpen Quality",
+    emoji: "🚒",
+    def: "The opposing team's bullpen ERA this season. ~30% of plate appearances in any game are against relievers. A weak bullpen (ERA > 4.60) gives top-order hitters 1–2 extra favorable PAs. Weighted at 8% inside the matchup component.",
+  },
+  {
+    term: "TTO",
+    label: "Times Through Order",
+    emoji: "🔄",
+    def: "How many times the lineup has faced the starter. Hitters improve significantly the 3rd time through the order. Bottom-of-order hitters vs a high-leash starter get a +6% bonus. Top-of-order vs a short-leash starter get +4% (they see soft relievers sooner).",
+  },
+  {
+    term: "Venue Splits",
+    label: "Career Park Performance",
+    emoji: "🏟️",
+    def: "Career AVG/SLG/ISO at today's specific ballpark over the last 5 seasons (min 20 AB). Blended 60% AVG, 25% SLG, 15% ISO. A player who consistently hits well at a given park gets a meaningful boost, regardless of league-average park factors.",
   },
   {
     term: "✓ Confirmed",
     label: "Lineup Confirmed",
     emoji: "✅",
-    def: "The player has been officially posted in the day's batting order by the team. Confirmed picks carry no lineup risk.",
+    def: "The player has been officially posted in today's batting order. Confirmed picks carry no lineup risk.",
   },
   {
     term: "PROJ",
     label: "Projected Lineup",
     emoji: "📡",
-    def: "The player is not yet officially listed but appears based on their typical batting slot from their last 3 games. Locks into the pick or gets swapped if scratched once lineup posts.",
+    def: "Not yet officially listed but projected based on typical batting slot. Gets swapped automatically if missing from the confirmed lineup when it posts.",
   },
   {
     term: "11:45 AM CT",
     label: "Daily Pick Deadline",
     emoji: "⏰",
-    def: "Picks are finalized by 11:45 AM Central Time each day. After this, picks can still be added up to 30 min before a game starts but cannot be removed. Exception: if a picked player is officially missing from the confirmed lineup before first pitch, they are automatically swapped with the best available confirmed starter from the same team.",
-  },
-  {
-    term: "Hit Prob %",
-    label: "Hit Probability",
-    emoji: "🔵",
-    def: "The model's final score converted to a probability (capped at 75%). Combines recent form (20%), season consistency (20%), Statcast quality (20%), matchup (20%), and market confluence (20%). Aim for picks ≥ 65%.",
+    def: "Picks are finalized by 11:45 AM CT. After this, picks can still be added up to 30 min before game time but cannot be removed for the day. Scratched players are auto-swapped with the best available confirmed starter.",
   },
   {
     term: "STATCAST OVERRIDE",
     label: "Override Pick",
     emoji: "⚠️",
-    def: "This player failed the normal eligibility gates (avg14 ≥ .220, GHP ≥ 50%, season avg ≥ .200) but was included because ALL extreme metrics fired simultaneously: xBA ≥ .310, Hard Hit % ≥ 45%, GHP ≥ 78%, and facing a pitcher allowing ≥ .290. These are higher risk — always verify before locking in.",
+    def: "Player passed on elite Statcast profile despite cold surface stats: 30+ batted balls, 15+ recent PA, and 4 of 6 signals firing (xBA ≥ .310, HH% ≥ 46%, barrel% ≥ 9%, GHP ≥ 70%, good matchup, whiff% ≤ 22%). Higher variance — verify before locking.",
   },
 ];
 
@@ -822,17 +876,21 @@ function HowToReadBTS() {
             <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color: "#b8930a" }}>Scoring Model Weights</p>
             <div className="space-y-1.5">
               {[
-                { label: "Recent Form", desc: "14d BA + GHP", pct: 20 },
-                { label: "Season Consistency", desc: "30d BA + season BA", pct: 20 },
-                { label: "Statcast Quality", desc: "xBA + xwOBA + Hard Hit %", pct: 20 },
-                { label: "Matchup & External", desc: "Pitcher splits + park + weather", pct: 20 },
-                { label: "Market Confluence", desc: "Game total + lineup availability", pct: 20 },
+                { label: "Pitcher Matchup", desc: "Starter + bullpen + TTO + park × weather", pct: 25, color: "#ef4444" },
+                { label: "Opportunity", desc: "Lineup slot + leash prob + home/away split", pct: 18, color: "#f97316" },
+                { label: "Contact Quality", desc: "xBA + xwOBA + zCon + ozCon + sprint + K%", pct: 16, color: "#eab308" },
+                { label: "Recent Form", desc: "L7/L14 BA + hit streak + day/night split", pct: 15, color: "#22c55e" },
+                { label: "BvP + Vs-Team", desc: "Career vs starter (6–18% based on tier)", pct: 12, color: "#3b82f6" },
+                { label: "Hard Contact", desc: "Hard Hit % + barrel % + launch angle", pct: 8, color: "#8b5cf6" },
+                { label: "Venue History", desc: "Career AVG/SLG/ISO at this ballpark", pct: 5, color: "#06b6d4" },
+                { label: "Stability Anchor", desc: "Prevents score runaway — slot × GHP14", pct: 5, color: "#64748b" },
+                { label: "Batted-Ball Profile", desc: "GB/FB hitter vs pitcher groundball %", pct: 3, color: "#94a3b8" },
               ].map(row => (
                 <div key={row.label} className="flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: "#facc15" }} />
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: (row as any).color ?? "#facc15" }} />
                   <p className="text-[11px] font-semibold text-foreground w-36 flex-shrink-0">{row.label}</p>
                   <p className="text-[10px] text-muted-foreground flex-1">{row.desc}</p>
-                  <p className="text-[10px] font-black" style={{ color: "#b8930a" }}>{row.pct}%</p>
+                  <p className="text-[10px] font-black" style={{ color: (row as any).color ?? "#b8930a" }}>{row.pct}%</p>
                 </div>
               ))}
             </div>
