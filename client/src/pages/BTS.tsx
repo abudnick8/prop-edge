@@ -818,6 +818,166 @@ const BTS_GLOSSARY = [
   },
 ];
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BTS ANALYTICS PANEL — Historical splits and performance data
+// ─────────────────────────────────────────────────────────────────────────────
+function WinBar({ pct, total }: { pct: number | null; total: number }) {
+  if (pct === null || total === 0) return <span className="text-[10px]" style={{ color: MUTED }}>—</span>;
+  const color = pct >= 75 ? "#22c55e" : pct >= 65 ? "#84cc16" : pct >= 55 ? "#eab308" : "#ef4444";
+  return (
+    <div className="flex items-center gap-2 flex-1">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.10)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-[11px] font-black w-8 text-right" style={{ color }}>{pct}%</span>
+      <span className="text-[10px] w-10 text-right" style={{ color: MUTED }}>({total})</span>
+    </div>
+  );
+}
+
+function SplitSection({ title, rows }: { title: string; rows: { label: string; wins: number; total: number; pct: number | null }[] }) {
+  const filtered = rows.filter(r => r.total > 0);
+  if (!filtered.length) return null;
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color: MUTED }}>{title}</p>
+      <div className="space-y-1.5">
+        {filtered.map(row => (
+          <div key={row.label} className="flex items-center gap-3">
+            <p className="text-[11px] font-semibold text-foreground w-20 flex-shrink-0">{row.label}</p>
+            <WinBar pct={row.pct} total={row.total} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BtsAnalyticsPanel() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/bts-analytics"],
+    enabled: open,
+    staleTime: 5 * 60_000,
+  });
+
+  const totalW = data?.byDate?.reduce((s: number, d: any) => s + d.wins, 0) ?? 0;
+  const totalL = data?.byDate?.reduce((s: number, d: any) => s + d.losses, 0) ?? 0;
+  const overallPct = (totalW + totalL) > 0 ? Math.round(totalW / (totalW + totalL) * 100) : null;
+
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: "rgba(19,35,58,0.03)", borderColor: "rgba(19,35,58,0.12)" }}
+    >
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <BarChart2 size={15} style={{ color: "#22c55e" }} />
+          <p className="text-sm font-bold text-foreground">Pick Analytics</p>
+          <span
+            className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+            style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+          >
+            SPLITS
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {overallPct !== null && (
+            <span className="text-[11px] font-black" style={{ color: "#22c55e" }}>{overallPct}% overall</span>
+          )}
+          {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t space-y-5" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+          {isLoading ? (
+            <div className="py-6 text-center text-xs" style={{ color: MUTED }}>Loading analytics…</div>
+          ) : !data ? (
+            <div className="py-6 text-center text-xs" style={{ color: MUTED }}>No data yet.</div>
+          ) : (
+            <>
+              {/* Overall summary */}
+              <div className="pt-3 grid grid-cols-3 gap-2">
+                {[
+                  { label: "Total Picks", value: String(totalW + totalL), color: NAVY },
+                  { label: "Overall Win %", value: overallPct !== null ? `${overallPct}%` : "—", color: overallPct && overallPct >= 70 ? "#22c55e" : "#eab308" },
+                  { label: "Best Day", value: (() => { const best = [...(data.byDow ?? [])].sort((a: any, b: any) => (b.pct ?? 0) - (a.pct ?? 0))[0]; return best ? `${best.label.slice(0,3)} ${best.pct}%` : "—"; })(), color: "#3b82f6" },
+                ].map(s => (
+                  <div key={s.label} className="rounded-xl p-2.5 text-center"
+                    style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                    <p className="text-base font-black" style={{ color: s.color }}>{s.value}</p>
+                    <p className="text-[9px] font-semibold mt-0.5" style={{ color: MUTED }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Day of week */}
+              <SplitSection title="Win % by Day of Week" rows={data.byDow ?? []} />
+
+              {/* Day vs Night */}
+              {(data.byDay ?? []).length > 0 && (
+                <SplitSection title="Day vs Night Games" rows={data.byDay ?? []} />
+              )}
+
+              {/* Home vs Away */}
+              {(data.bySide ?? []).filter((r: any) => r.total > 0).length > 0 && (
+                <SplitSection title="Home vs Away" rows={data.bySide ?? []} />
+              )}
+
+              {/* Lineup slot */}
+              <SplitSection title="Win % by Lineup Slot" rows={(data.bySlot ?? []).filter((r: any) => r.total > 0)} />
+
+              {/* BvP signal */}
+              <SplitSection title="Win % by BvP Signal" rows={(data.byBvp ?? []).map((r: any) => ({
+                ...r,
+                label: r.label === "elite" ? "Elite BvP" : r.label === "strong" ? "Strong BvP" : "No BvP",
+              }))} />
+
+              {/* Handedness */}
+              <SplitSection title="Win % by Batter Handedness" rows={data.byBats ?? []} />
+
+              {/* Confidence tier */}
+              {(data.byTier ?? []).filter((r: any) => r.total > 0).length > 0 && (
+                <SplitSection title="Win % by Confidence Tier" rows={(data.byTier ?? []).map((r: any) => ({ ...r, label: `Tier ${r.label}` }))} />
+              )}
+
+              {/* Hit probability bands */}
+              {(data.byProb ?? []).filter((r: any) => r.total > 0).length > 0 && (
+                <SplitSection title="Win % by Hit Probability" rows={data.byProb ?? []} />
+              )}
+
+              {/* Per-day history */}
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color: MUTED }}>Daily Record (most recent first)</p>
+                <div className="space-y-1">
+                  {(data.byDate ?? []).slice(0, 21).map((d: any) => {
+                    const color = d.pct >= 75 ? "#22c55e" : d.pct >= 60 ? "#eab308" : "#ef4444";
+                    return (
+                      <div key={d.date} className="flex items-center gap-3">
+                        <p className="text-[10px] font-semibold text-foreground w-20 flex-shrink-0">{d.date.slice(5)}</p>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(19,35,58,0.10)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${d.pct}%`, background: color }} />
+                        </div>
+                        <p className="text-[10px] font-black w-8 text-right" style={{ color }}>{d.pct}%</p>
+                        <p className="text-[10px] w-14 text-right" style={{ color: MUTED }}>{d.wins}W-{d.losses}L</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HowToReadBTS() {
   const [open, setOpen] = useState(false);
   return (
@@ -1616,6 +1776,9 @@ export default function BTS() {
           </div>
         </div>
       )}
+      {/* Pick Analytics */}
+      <BtsAnalyticsPanel />
+
       {/* How to Read Glossary */}
       <HowToReadBTS />
 

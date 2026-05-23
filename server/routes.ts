@@ -11691,6 +11691,140 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // GET /api/bts-analytics — aggregated win-rate splits across all historical picks
+  // Used by the BTS Analytics panel on the client.
+  app.get("/api/bts-analytics", async (_req, res) => {
+    try {
+      const allDays = Object.entries(btsPicksCache)
+        .filter(([, entries]) => Array.isArray(entries) && entries.length > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+
+      type Split = { wins: number; total: number };
+      const mk = (): Split => ({ wins: 0, total: 0 });
+      const add = (s: Split, result: string) => { s.total++; if (result === "win") s.wins++; };
+      const pct = (s: Split) => s.total ? Math.round(s.wins / s.total * 100) : null;
+
+      // Grouped splits
+      const byDow:  Record<string, Split> = {};
+      const bySlot: Record<string, Split> = {};
+      const byBvp:  Record<string, Split> = {};
+      const byTier: Record<string, Split> = {};
+      const byBats: Record<string, Split> = {};
+      const bySide: Record<string, Split> = {};
+      const byProb: Record<string, Split> = {};
+      const byDay:  Record<string, Split> = {};
+      const byDate: { date: string; wins: number; losses: number; pct: number }[] = [];
+      const probBands = ["60-64%","65-69%","70-74%","75-79%","80-84%","85%+"];
+
+      for (const [date, entries] of allDays) {
+        const dt = new Date(date + "T12:00:00Z");
+        const dow = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dt.getUTCDay()];
+        let dayW = 0, dayL = 0;
+
+        for (const e of (entries as BtsPickEntry[])) {
+          const r = e.result;
+          if (r !== "win" && r !== "loss") continue;
+          const snap: any = (e as any).snapshot ?? {};
+          const stats: any = snap.stats ?? {};
+
+          // Day of week
+          if (!byDow[dow]) byDow[dow] = mk();
+          add(byDow[dow], r);
+
+          // Lineup slot
+          const slot = snap.lineupSlot ?? null;
+          if (slot) {
+            const key = `Slot ${slot}`;
+            if (!bySlot[key]) bySlot[key] = mk();
+            add(bySlot[key], r);
+          }
+
+          // BvP signal
+          const bvpSig = snap.bvp?.signal ?? "none";
+          if (!byBvp[bvpSig]) byBvp[bvpSig] = mk();
+          add(byBvp[bvpSig], r);
+
+          // Confidence tier
+          const tier = snap.confidenceTier ?? null;
+          if (tier) {
+            if (!byTier[tier]) byTier[tier] = mk();
+            add(byTier[tier], r);
+          }
+
+          // Bats handedness
+          const bats = snap.bats ?? null;
+          if (bats) {
+            const bKey = bats === "L" ? "Left" : bats === "R" ? "Right" : "Switch";
+            if (!byBats[bKey]) byBats[bKey] = mk();
+            add(byBats[bKey], r);
+          }
+
+          // Home vs Away
+          const side = snap.side ?? null;
+          if (side) {
+            const sKey = side === "home" ? "Home" : "Away";
+            if (!bySide[sKey]) bySide[sKey] = mk();
+            add(bySide[sKey], r);
+          }
+
+          // Day vs Night (Phase 3 — may be null for older picks)
+          const isDayGame = snap.isDay ?? null;
+          if (isDayGame !== null) {
+            const dnKey = isDayGame ? "Day" : "Night";
+            if (!byDay[dnKey]) byDay[dnKey] = mk();
+            add(byDay[dnKey], r);
+          }
+
+          // Probability bands
+          const prob = snap.hitProbabilityPct ?? null;
+          if (prob !== null) {
+            const band = prob >= 85 ? "85%+" : prob >= 80 ? "80-84%" : prob >= 75 ? "75-79%"
+                       : prob >= 70 ? "70-74%" : prob >= 65 ? "65-69%" : "60-64%";
+            if (!byProb[band]) byProb[band] = mk();
+            add(byProb[band], r);
+          }
+
+          if (r === "win") dayW++; else dayL++;
+        }
+
+        if (dayW + dayL > 0) {
+          byDate.push({ date, wins: dayW, losses: dayL, pct: Math.round(dayW / (dayW + dayL) * 100) });
+        }
+      }
+
+      // Format splits as sorted arrays
+      const fmt = (map: Record<string, Split>, order?: string[]) => {
+        const keys = order ?? Object.keys(map).sort();
+        return keys.filter(k => map[k]).map(k => ({
+          label: k,
+          wins:  map[k].wins,
+          total: map[k].total,
+          pct:   pct(map[k]),
+        }));
+      };
+
+      const DOW_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      const SLOT_ORDER = Array.from({length:9},(_,i)=>`Slot ${i+1}`);
+      const BVP_ORDER  = ["elite","strong","none"];
+      const TIER_ORDER = ["A+","A","B","C"];
+
+      res.json({
+        total: allDays.reduce((s,[,e]) => s + (e as BtsPickEntry[]).filter(p => p.result==="win"||p.result==="loss").length, 0),
+        byDow:  fmt(byDow, DOW_ORDER),
+        bySlot: fmt(bySlot, SLOT_ORDER),
+        byBvp:  fmt(byBvp, BVP_ORDER),
+        byTier: fmt(byTier, TIER_ORDER),
+        byBats: fmt(byBats, ["Left","Right","Switch"]),
+        bySide: fmt(bySide, ["Home","Away"]),
+        byDay:  fmt(byDay,  ["Day","Night"]),
+        byProb: fmt(byProb, probBands),
+        byDate: byDate.reverse(), // most recent first
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // GET /api/bts-history — all historical BTS picks grouped by date
   // Survives redeployments via bts_picks.json persisted to GitHub.
   // ─────────────────────────────────────────────────────────────────────
