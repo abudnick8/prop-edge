@@ -10803,9 +10803,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return nowMsForCandidates < startMs; // only future games
       });
       // ── Repeat-appearance penalty + form re-weighting ─────────────────────
-      // Build a set of player IDs who appeared in yesterday's picks.
-      // Players who appeared yesterday take a 6% probability penalty so
-      // in-form newcomers can compete on equal footing with superstars.
+      // Rule: A player cannot appear 2 days in a row UNLESS their analysis
+      // is "near-perfect" — meaning ALL key signals strongly align.
+      // Near-perfect = rawScore >= 0.68 AND all of these hold:
+      //   1. L7 avg >= season avg + 0.050 (hot last 7)
+      //   2. L14 avg >= season avg + 0.030 (sustained form)
+      //   3. BvP signal is "Elite" or "Strong" (good matchup vs this pitcher)
+      //   4. rawScore >= 0.68 (top-tier composite score)
+      //   5. ghp14 >= 0.65 (getting on base at a strong clip recently)
+      // If NOT near-perfect, repeat players are blocked entirely (not just penalized).
+      // MAX_REPEATS cap still applies even for near-perfect players (max 3).
+
       const yesterdayStr = (() => {
         const d = new Date(Date.now() - 24 * 60 * 60 * 1000);
         return d.toLocaleDateString("en-CA");
@@ -10814,31 +10822,65 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         (btsPicksCache[yesterdayStr] ?? []).map((e: BtsPickEntry) => e.playerId)
       );
 
+      // Helper: determine if a repeat player qualifies as "near-perfect"
+      function isNearPerfectRepeat(p: any): boolean {
+        const snap       = p.snapshot ?? {};
+        const stats      = snap.stats ?? {};
+        const rawScore   = snap.rawScore ?? p.rawScore ?? 0;
+        const avg7       = stats.avg7   ?? p.avg7   ?? null;
+        const avg14      = stats.avg14  ?? p.avg14  ?? null;
+        const ghp14      = stats.ghp14  ?? p.ghp14  ?? null;
+        const seasonAvg  = stats.avgSeason ?? p.avgSeason ?? 0.260;
+        // bvp.signal stored as lowercase ("elite","strong","weak","none")
+        // at p.bvp.signal or snap.bvp.signal
+        const bvpSignal  = (snap.bvp?.signal ?? p.bvp?.signal ?? "").toLowerCase();
+
+        // Must have a high composite score
+        if (rawScore < 0.68) return false;
+        // Must be hot recently (L7 above season pace)
+        if (avg7 === null || avg7 < seasonAvg + 0.050) return false;
+        // Must have sustained form (L14 also above season pace)
+        if (avg14 === null || avg14 < seasonAvg + 0.030) return false;
+        // Must be getting on base consistently
+        if (ghp14 === null || ghp14 < 0.65) return false;
+        // Must have a favorable BvP matchup (elite or strong vs this specific pitcher)
+        const goodBvp = bvpSignal === "elite" || bvpSignal === "strong";
+        if (!goodBvp) return false;
+        // All criteria met — this is a genuine near-perfect pick
+        return true;
+      }
+
       for (const p of candidatePicks) {
-        // Recent-form reweight: boost L5 hot streak, penalise cold streaks.
-        // avg7 and avg14 are already in scoreHitter but the final hitProbability
-        // is post-logistic so we apply a small multiplicative tweak here.
-        const avg7   = p.snapshot?.stats?.avg7   ?? p.avg7   ?? null;
-        const avg14  = p.snapshot?.stats?.avg14  ?? p.avg14  ?? null;
-        const ghp14  = p.snapshot?.stats?.ghp14  ?? p.ghp14  ?? null;
-        // Hot: hitting well recently vs season average
+        const avg7      = p.snapshot?.stats?.avg7   ?? p.avg7   ?? null;
+        const avg14     = p.snapshot?.stats?.avg14  ?? p.avg14  ?? null;
+        const ghp14     = p.snapshot?.stats?.ghp14  ?? p.ghp14  ?? null;
         const seasonAvg = p.snapshot?.stats?.avgSeason ?? p.avgSeason ?? 0.260;
+
         let formMult = 1.0;
-        if (avg7  !== null && avg7  >= seasonAvg + 0.060) formMult += 0.025; // on a hot streak
+        if (avg7  !== null && avg7  >= seasonAvg + 0.060) formMult += 0.025;
         if (avg14 !== null && avg14 >= seasonAvg + 0.040) formMult += 0.020;
-        if (ghp14 !== null && ghp14 >= 0.70)              formMult += 0.015; // getting on base at high clip
-        // Cold: significantly below season average
-        if (avg7  !== null && avg7  <= seasonAvg - 0.060) formMult -= 0.030; // cold last 7
-        if (avg14 !== null && avg14 <= seasonAvg - 0.040) formMult -= 0.020; // cold last 14
-        // Repeat-day penalty: yesterday's players start at a disadvantage
-        if (yesterdayIds.has(p.playerId)) formMult -= 0.06;
-        // p.hitProbability here is hitProbabilityPct (whole number like 62, 68)
-        // Convert to decimal, apply formMult, cap, then convert back
-        const hpDecimal = p.hitProbability / 100;
+        if (ghp14 !== null && ghp14 >= 0.70)              formMult += 0.015;
+        if (avg7  !== null && avg7  <= seasonAvg - 0.060) formMult -= 0.030;
+        if (avg14 !== null && avg14 <= seasonAvg - 0.040) formMult -= 0.020;
+
+        const isRepeat      = yesterdayIds.has(p.playerId);
+        const nearPerfect   = isRepeat ? isNearPerfectRepeat(p) : false;
+
+        if (isRepeat && !nearPerfect) {
+          // Block outright — will be filtered in the carry-over cap below
+          formMult -= 0.25; // heavy penalty ensures they fall below any real candidate
+        } else if (isRepeat && nearPerfect) {
+          // Near-perfect repeat: still apply a small penalty so they don't crowd out
+          // genuinely fresh picks, but allow them through if they truly stand out
+          formMult -= 0.02;
+          p._nearPerfectRepeat = true;
+        }
+
+        const hpDecimal  = p.hitProbability / 100;
         const hpAdjusted = Math.min(0.82, Math.max(0.45, hpDecimal * formMult));
-        p.hitProbability = hpAdjusted;
-        p.hitProbabilityPct = Math.round(hpAdjusted * 100);
-        p._repeatYesterday = yesterdayIds.has(p.playerId);
+        p.hitProbability     = hpAdjusted;
+        p.hitProbabilityPct  = Math.round(hpAdjusted * 100);
+        p._repeatYesterday   = isRepeat;
       }
 
       // Sort: override picks last, then by adjusted probability
@@ -10847,19 +10889,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return b.hitProbability - a.hitProbability;
       });
 
-      // ── Carry-over cap: no more than 3 players from yesterday ─────────────
+      // ── Carry-over cap ──────────────────────────────────────────────────────
+      // Non-near-perfect repeat players are blocked outright (heavy formMult penalty
+      // pushes them to the bottom, and this gate hard-blocks them as a safety net).
+      // Near-perfect repeats are allowed through but capped at MAX_REPEATS (3).
       const seenTeams  = new Set<string>();
       const freshPicks: any[] = [];
       let repeatCount = 0;
-      const MAX_REPEATS = 3; // max carry-overs from previous day
+      const MAX_REPEATS = 3; // absolute max carry-overs even for near-perfect repeats
       for (const p of candidatePicks) {
         if (seenTeams.has(p.team)) continue;
-        // Enforce carry-over cap: once 3 yesterday players are in, skip the rest
+        // Hard block: repeat player who did NOT qualify as near-perfect
+        if (p._repeatYesterday && !p._nearPerfectRepeat) continue;
+        // Cap near-perfect repeats at 3 total
         if (p._repeatYesterday && repeatCount >= MAX_REPEATS) continue;
         seenTeams.add(p.team);
         freshPicks.push(p);
         if (p._repeatYesterday) repeatCount++;
-        if (freshPicks.length >= 10) break; // hard 10-pick ceiling for auto-analysis (manual adds can go to 15)
+        if (freshPicks.length >= 10) break;
       }
 
       // ── Merge into the daily persistent cache ──────────────────────────
