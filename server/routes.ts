@@ -12053,7 +12053,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const schData: any = await schRes.json();
               const todayGame = schData?.dates?.[0]?.games?.[0];
               if (todayGame) {
-                const state = todayGame.status?.abstractGameState ?? "";
+                const state      = todayGame.status?.abstractGameState ?? "";
+                const detailState = (todayGame.status?.detailedState ?? "").toLowerCase();
+                // Postponed/Suspended/Cancelled → void pick (no streak change)
+                if (detailState.includes("postpone") || detailState.includes("suspend") || detailState.includes("cancel")) {
+                  console.log(`[CIQ Streak] ${pick.name} game POSTPONED/CANCELLED on ${dateStr} — voiding pick`);
+                  pick.result = "void";
+                  continue;
+                }
                 if (state !== "Final") {
                   // Game exists but hasn't finished (Preview or Live) — keep pending
                   console.log(`[CIQ Streak] ${pick.name} game is ${state} on ${dateStr} — keeping pending`);
@@ -12123,15 +12130,28 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
     if (anyPending) return;
 
-    const allWon = dayEntry.picks.every(p => p.result === "win");
+    // Exclude voided picks (postponed/cancelled) from win/loss determination
+    const gradedPicks = dayEntry.picks.filter(p => p.result !== "void");
+    const allVoid     = gradedPicks.length === 0;
+
+    // All picks voided (postponed) → no streak change, no win/loss counted
+    if (allVoid) {
+      dayEntry.result      = "void";
+      dayEntry.streakAfter = dayEntry.streakBefore;
+      saveCiqStreak();
+      console.log(`[CIQ Streak] ${dateStr}: ALL picks POSTPONED — streak unchanged at ${dayEntry.streakBefore}`);
+      return;
+    }
+
+    const allWon = gradedPicks.every(p => p.result === "win");
     dayEntry.result = allWon ? "win" : "loss";
 
     if (allWon) {
-      dayEntry.streakAfter     = dayEntry.streakBefore + dayEntry.picks.length;
+      dayEntry.streakAfter         = dayEntry.streakBefore + gradedPicks.length;
       ciqStreakState.currentStreak = dayEntry.streakAfter;
       ciqStreakState.totalWins++;
     } else {
-      dayEntry.streakAfter     = 0;
+      dayEntry.streakAfter         = 0;
       ciqStreakState.currentStreak = 0;
       ciqStreakState.totalLosses++;
     }
@@ -12196,6 +12216,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       ciqStreakState.history = ciqStreakState.history.filter(d => d.date !== todayStr);
       const removed = before - ciqStreakState.history.length;
 
+      // Restore currentStreak to what it was before today's entry
+      const priorResolved = [...ciqStreakState.history]
+        .filter(d => d.date < todayStr && d.result !== "pending" && d.result !== "void")
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (priorResolved.length > 0) {
+        ciqStreakState.currentStreak = priorResolved[0].streakAfter ?? ciqStreakState.currentStreak;
+      }
+
       // Reset lastPickDate so it re-selects today
       if (ciqStreakState.lastPickDate === todayStr) {
         ciqStreakState.lastPickDate = null;
@@ -12203,7 +12231,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       saveCiqStreak();
 
-      // Immediately re-select today's pick
+      // Re-select today — only eligible picks with unstarted games
       await selectCiqStreakPicksForDate(todayStr).catch(() => {});
 
       const newToday = ciqStreakState.history.find(d => d.date === todayStr);
@@ -12266,10 +12294,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           dayEntry.result       = "pending";
           continue;
         }
-        const allWon = dayEntry.picks.every(p => p.result === "win");
+        // Exclude voided (postponed) picks from win/loss
+        const gradedR = dayEntry.picks.filter(p => p.result !== "void");
+        const allVoidR = gradedR.length === 0;
         dayEntry.streakBefore = streak;
+
+        if (allVoidR) {
+          dayEntry.streakAfter = streak; // no change
+          dayEntry.result      = "void";
+          continue; // don't count toward totalDays/wins/losses
+        }
+
+        const allWon = gradedR.every(p => p.result === "win");
         if (allWon) {
-          streak += dayEntry.picks.length;
+          streak += gradedR.length;
           dayEntry.streakAfter = streak;
           dayEntry.result      = "win";
           totalWins++;
