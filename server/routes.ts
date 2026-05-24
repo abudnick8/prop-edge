@@ -12204,10 +12204,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ─────────────────────────────────────────────────────────────────────
   // POST /api/bts/reset-ciq-today — owner only
   // Removes today's CIQ streak pick so it can be repicked fresh.
-  // Resets lastPickDate so selectCiqStreakPicksForDate will run again.
+  // Pass { "purge": true } in body to wipe today completely without repicking
+  // (use when all games are done and you want to treat today as no-pick / void).
   // Does NOT affect streak history for prior days.
-  app.post("/api/bts/reset-ciq-today", requireOwner, async (_req, res) => {
+  app.post("/api/bts/reset-ciq-today", requireOwner, async (req, res) => {
     try {
+      const purgeOnly = req.body?.purge === true;
       const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
       const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
 
@@ -12224,12 +12226,61 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         ciqStreakState.currentStreak = priorResolved[0].streakAfter ?? ciqStreakState.currentStreak;
       }
 
-      // Reset lastPickDate so it re-selects today
+      // Reset lastPickDate so it re-selects today (unless purging)
       if (ciqStreakState.lastPickDate === todayStr) {
-        ciqStreakState.lastPickDate = null;
+        ciqStreakState.lastPickDate = purgeOnly ? todayStr : null; // keep null only if repicking
       }
 
       saveCiqStreak();
+
+      if (purgeOnly) {
+        // Purge mode: wipe today completely, do NOT repick. Streak stays at prior day's streakAfter.
+        return res.json({
+          ok: true,
+          removed,
+          todayStr,
+          newPick: null,
+          currentStreak: ciqStreakState.currentStreak,
+          message: removed > 0
+            ? `Today's CIQ pick (${todayStr}) wiped completely. Streak restored to ${ciqStreakState.currentStreak}. No repick.`
+            : "No today entry found to remove.",
+        });
+      }
+
+      // Re-select today — check MLB schedule to only pick games that haven't started yet
+      let mlbTodayGames: any[] = [];
+      try {
+        const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=game(content(editorial(recap)))&fields=dates,games,gamePk,status,abstractGameState,detailedState`;
+        const schedResp = await fetch(schedUrl);
+        const schedJson = await schedResp.json();
+        mlbTodayGames = (schedJson.dates?.[0]?.games ?? []);
+      } catch (_) {}
+
+      const startedGamePks = new Set<number>(
+        mlbTodayGames
+          .filter((g: any) => g.status?.abstractGameState !== "Preview")
+          .map((g: any) => g.gamePk)
+      );
+
+      // Filter btsPicksCache for today to only unstarted players
+      const todayCache = (btsPicksCache[todayStr] ?? []).filter((e: any) => {
+        const gamePk = e.snapshot?.game?.gamePk ?? e.gamePk ?? null;
+        if (gamePk != null && startedGamePks.has(gamePk)) return false; // game already started/done
+        return true;
+      });
+
+      if (todayCache.length === 0) {
+        // No unstarted games left — don't add a new entry, just leave today as blank
+        saveCiqStreak();
+        return res.json({
+          ok: true,
+          removed,
+          todayStr,
+          newPick: null,
+          currentStreak: ciqStreakState.currentStreak,
+          message: `Today's CIQ pick removed. No unstarted games remain to repick from — use purge mode or wait until tomorrow.`,
+        });
+      }
 
       // Re-select today — only eligible picks with unstarted games
       await selectCiqStreakPicksForDate(todayStr).catch(() => {});
@@ -12240,6 +12291,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         removed,
         todayStr,
         newPick: newToday ?? null,
+        currentStreak: ciqStreakState.currentStreak,
         message: removed > 0
           ? `Today's CIQ pick reset. New pick: ${newToday?.picks?.map((p: any) => p.name).join(" + ") ?? "none yet"}`
           : "No today entry found to remove.",

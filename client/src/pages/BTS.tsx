@@ -1088,7 +1088,7 @@ function CiqStreakPanel() {
   });
 
   const resetCiqMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/bts/reset-ciq-today").then(r => r.json()),
+    mutationFn: (purge = false) => apiRequest("POST", "/api/bts/reset-ciq-today", purge ? { purge: true } : {}).then(r => r.json()),
     onSuccess: (result: any) => {
       setResetMsg(result.message ?? "CIQ pick reset.");
       queryClient.invalidateQueries({ queryKey: ["/api/bts/ciq-streak"] });
@@ -1258,19 +1258,34 @@ function CiqStreakPanel() {
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] font-black uppercase tracking-wide" style={{ color: MUTED }}>Today's CIQ Pick</p>
               {isOwner && (
-                <button
-                  onClick={() => {
-                    if (!confirm("Reset today's CIQ pick and repick the best available player?")) return;
-                    resetCiqMutation.mutate();
-                  }}
-                  disabled={resetCiqMutation.isPending}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold"
-                  style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.20)" }}
-                  title="Reset today's CIQ pick"
-                >
-                  <RotateCcw size={10} className={resetCiqMutation.isPending ? "animate-spin" : ""} />
-                  Reset & Repick
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      if (!confirm("Reset today's CIQ pick and repick the best available player?")) return;
+                      resetCiqMutation.mutate(false);
+                    }}
+                    disabled={resetCiqMutation.isPending}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold"
+                    style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.20)" }}
+                    title="Reset today's CIQ pick and repick from unstarted games"
+                  >
+                    <RotateCcw size={10} className={resetCiqMutation.isPending ? "animate-spin" : ""} />
+                    Reset & Repick
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!confirm("Wipe today's CIQ pick completely? The streak goes back to 1 and no new pick is made today.")) return;
+                      resetCiqMutation.mutate(true);
+                    }}
+                    disabled={resetCiqMutation.isPending}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold"
+                    style={{ background: "rgba(239,68,68,0.06)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.15)" }}
+                    title="Wipe today completely — streak goes back to prior day, no repick"
+                  >
+                    <X size={10} />
+                    Wipe Today
+                  </button>
+                </div>
               )}
             </div>
             {resetMsg && (
