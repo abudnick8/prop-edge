@@ -11955,16 +11955,57 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     const cachedEntries = btsPicksCache[dateStr];
     if (!cachedEntries?.length) return null;
 
+    // Fetch MLB schedule to determine which games haven't started yet
+    // We match by team name since gamePk is not stored in btsPicksCache snapshots
+    const startedTeams = new Set<string>();
+    try {
+      const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr}&fields=dates,games,gamePk,status,abstractGameState,detailedState,teams,away,home,team,name`;
+      const schedResp = await fetch(schedUrl);
+      const schedJson = await schedResp.json();
+      const games: any[] = schedJson.dates?.[0]?.games ?? [];
+      for (const g of games) {
+        const state: string = g.status?.abstractGameState ?? "";
+        // Mark teams as "started" if game is Live or Final (not Preview / Pre-Game)
+        if (state !== "Preview") {
+          const awayName: string = g.teams?.away?.team?.name ?? "";
+          const homeName: string = g.teams?.home?.team?.name ?? "";
+          if (awayName) startedTeams.add(awayName.toLowerCase());
+          if (homeName) startedTeams.add(homeName.toLowerCase());
+        }
+      }
+      console.log(`[CIQ Select] ${dateStr}: started teams = [${[...startedTeams].join(", ")}]`);
+    } catch (err: any) {
+      console.warn(`[CIQ Select] Failed to fetch MLB schedule for ${dateStr}: ${err.message}`);
+      // If schedule fetch fails, fall through and pick without filtering (safe fallback)
+    }
+
     // Sort by rawScore (most accurate) — avoids the 0.82-cap tie problem
+    // Filter out players whose team's game has already started or finished
     const scored = [...cachedEntries]
-      .filter(e => e.snapshot != null)
+      .filter(e => {
+        if (e.snapshot == null) return false;
+        if (startedTeams.size === 0) return true; // no schedule data — include all
+        const teamName: string = (e.snapshot?.team ?? e.team ?? "").toLowerCase();
+        // Also check matchup string in case team name format differs
+        const matchup: string = (e.snapshot?.game?.matchup ?? "").toLowerCase();
+        // If team name is found in started teams, exclude this player
+        if (startedTeams.has(teamName)) return false;
+        // Fuzzy fallback: check if any started team name appears in this entry's matchup
+        for (const st of startedTeams) {
+          if (matchup.includes(st)) return false;
+        }
+        return true;
+      })
       .sort((a, b) => {
         const aScore = (a.snapshot?.rawScore ?? 0);
         const bScore = (b.snapshot?.rawScore ?? 0);
         return bScore - aScore;
       });
 
-    if (scored.length === 0) return null;
+    if (scored.length === 0) {
+      console.log(`[CIQ Select] ${dateStr}: no unstarted-game players available — skipping pick`);
+      return null;
+    }
 
     const top1 = scored[0];
     const top2 = scored[1];
@@ -12247,30 +12288,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         });
       }
 
-      // Re-select today — check MLB schedule to only pick games that haven't started yet
-      let mlbTodayGames: any[] = [];
-      try {
-        const schedUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=game(content(editorial(recap)))&fields=dates,games,gamePk,status,abstractGameState,detailedState`;
-        const schedResp = await fetch(schedUrl);
-        const schedJson = await schedResp.json();
-        mlbTodayGames = (schedJson.dates?.[0]?.games ?? []);
-      } catch (_) {}
+      // Re-select today — selectCiqStreakPicksForDate now fetches MLB schedule internally
+      // and filters to only players whose games haven't started yet (not Live or Final).
+      const newEntry = await selectCiqStreakPicksForDate(todayStr).catch(() => null);
 
-      const startedGamePks = new Set<number>(
-        mlbTodayGames
-          .filter((g: any) => g.status?.abstractGameState !== "Preview")
-          .map((g: any) => g.gamePk)
-      );
-
-      // Filter btsPicksCache for today to only unstarted players
-      const todayCache = (btsPicksCache[todayStr] ?? []).filter((e: any) => {
-        const gamePk = e.snapshot?.game?.gamePk ?? e.gamePk ?? null;
-        if (gamePk != null && startedGamePks.has(gamePk)) return false; // game already started/done
-        return true;
-      });
-
-      if (todayCache.length === 0) {
-        // No unstarted games left — don't add a new entry, just leave today as blank
+      if (!newEntry) {
+        // No unstarted games left — leave today as blank, streak already restored
         saveCiqStreak();
         return res.json({
           ok: true,
@@ -12278,12 +12301,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           todayStr,
           newPick: null,
           currentStreak: ciqStreakState.currentStreak,
-          message: `Today's CIQ pick removed. No unstarted games remain to repick from — use purge mode or wait until tomorrow.`,
+          message: `Today's CIQ pick removed. No unstarted games remain — use "Wipe Today" or wait until tomorrow.`,
         });
       }
-
-      // Re-select today — only eligible picks with unstarted games
-      await selectCiqStreakPicksForDate(todayStr).catch(() => {});
 
       const newToday = ciqStreakState.history.find(d => d.date === todayStr);
       res.json({
