@@ -183,6 +183,26 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                 🏆 BEST PICK
               </span>
             )}
+            {/* Confidence tier badge */}
+            {(() => {
+              const ct = pick.confidenceTier ?? pick.snapshot?.confidenceTier;
+              if (!ct) return null;
+              const tierColors: Record<string, { bg: string; text: string; border: string }> = {
+                "A+": { bg: "rgba(74,222,128,0.15)",  text: "#16a34a", border: "rgba(74,222,128,0.40)" },
+                "A":  { bg: "rgba(250,204,21,0.15)",  text: "#b8930a", border: "rgba(250,204,21,0.40)" },
+                "B":  { bg: "rgba(147,197,253,0.15)", text: "#3b82f6", border: "rgba(147,197,253,0.40)" },
+                "C":  { bg: "rgba(61,75,88,0.10)",    text: "#3D4B58", border: "rgba(61,75,88,0.25)" },
+              };
+              const c = tierColors[ct] ?? tierColors["C"];
+              return (
+                <span
+                  className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                  style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+                >
+                  {ct} Tier
+                </span>
+              );
+            })()}
             {/* Lineup source badge */}
             {pick.lineupSource === "confirmed" ? (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>
