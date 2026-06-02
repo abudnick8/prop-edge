@@ -15087,13 +15087,27 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   let _sleeperRosterCache: { players: Record<string, SleeperPlayer>; ts: number; week: number } | null = null;
 
   function getCurrentNFLWeek(): number {
-    // NFL 2025 season starts Sep 4 2025 (Thu). Returns current week 1-18, or 0 off-season.
-    const SEASON_START = new Date("2025-09-04T00:00:00Z").getTime();
-    const SEASON_END   = new Date("2026-01-05T23:59:59Z").getTime();
+    // NFL 2026 season: Sep 3 2026 (Thu) – Jan 4 2027.
+    // During off-season returns 0 — callers should still serve data,
+    // just skip the week-boundary cache-bust logic.
+    const SEASON_START = new Date("2026-09-03T00:00:00Z").getTime();
+    const SEASON_END   = new Date("2027-01-04T23:59:59Z").getTime();
     const now = Date.now();
-    if (now < SEASON_START || now > SEASON_END) return 0;
+    if (now < SEASON_START || now > SEASON_END) return 0; // off-season
     const weekNum = Math.floor((now - SEASON_START) / (7 * 24 * 60 * 60 * 1000)) + 1;
     return Math.min(18, Math.max(1, weekNum));
+  }
+
+  function getNFLSeasonYear(): number {
+    // Returns the year the current/upcoming season starts.
+    // If we are past Jan of the following year, bump to next season.
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-indexed
+    // Before July: we are in the off-season of the season that just ended
+    // July onwards: approaching or in the new season
+    if (month >= 7) return year;
+    return year - 1; // Jan-June still points to prior season year for stats
   }
 
   async function getSleeperRoster(): Promise<Record<string, SleeperPlayer>> {
@@ -15274,12 +15288,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     LAC: { qb: "Justin Herbert",    rb1: "J.K. Dobbins",     wr1: "Ladd McConkey",    wr2: "Joshua Palmer",    te1: "Will Dissly" },
     NYJ: { qb: "Aaron Rodgers",     rb1: "Breece Hall",      wr1: "Garrett Wilson",   wr2: "Allen Lazard",     te1: "Tyler Conklin" },
     JAX: { qb: "Trevor Lawrence",   rb1: "Travis Etienne",   wr1: "Brian Thomas Jr.", wr2: "Gabe Davis",       te1: "Evan Engram" },
-    TEN: { qb: "Will Levis",        rb1: "Tony Pollard",     wr1: "Calvin Ridley",    wr2: "DeAndre Hopkins",  te1: "Chig Okonkwo" },
+    TEN: { qb: "Will Levis",        rb1: "Tony Pollard",     wr1: "Calvin Ridley",    wr2: "Treylon Burks",    te1: "Chig Okonkwo" },
     IND: { qb: "Anthony Richardson",rb1: "Jonathan Taylor",  wr1: "Michael Pittman Jr.",wr2: "Josh Downs",     te1: "Mo Alie-Cox" },
-    CLE: { qb: "Deshaun Watson",    rb1: "Nick Chubb",       wr1: "Jerry Jeudy",      wr2: "Elijah Moore",     te1: "David Njoku" },
+    CLE: { qb: "Deshaun Watson",    rb1: "Jerome Ford",      wr1: "Jerry Jeudy",      wr2: "Cedric Tillman",   te1: "David Njoku" },
     PIT: { qb: "Russell Wilson",    rb1: "Najee Harris",     wr1: "George Pickens",   wr2: "Van Jefferson",    te1: "Pat Freiermuth" },
     DEN: { qb: "Bo Nix",            rb1: "Javonte Williams", wr1: "Courtland Sutton", wr2: "Josh Reynolds",    te1: "Adam Trautman" },
-    LV:  { qb: "Gardner Minshew",   rb1: "Zamir White",      wr1: "Davante Adams",    wr2: "Jakobi Meyers",    te1: "Brock Bowers" },
+    LV:  { qb: "Aidan O'Connell",  rb1: "Zamir White",      wr1: "Jakobi Meyers",    wr2: "Michael Gallup",   te1: "Brock Bowers" },
     LAR: { qb: "Matthew Stafford",  rb1: "Kyren Williams",   wr1: "Puka Nacua",       wr2: "Demarcus Robinson",te1: "Tyler Higbee" },
     SEA: { qb: "Geno Smith",        rb1: "Zach Charbonnet",  wr1: "DK Metcalf",       wr2: "Tyler Lockett",    te1: "Noah Fant" },
     ARI: { qb: "Kyler Murray",      rb1: "James Conner",     wr1: "Marvin Harrison Jr.",wr2: "Michael Wilson", te1: "Trey McBride" },
@@ -16011,7 +16025,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const espnOwnership: Record<string, number> = {};
       try {
         // ESPN FFL players endpoint — returns ownership/rostered data
-        const espnUrl = "https://fantasy.espn.com/apis/v3/games/ffl/seasons/2024/players?scoringPeriodId=1&view=players_wl";
+        const espnSeasonYear = getNFLSeasonYear();
+        const espnUrl = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${espnSeasonYear}/players?scoringPeriodId=1&view=players_wl`;
         const espnResp = await fetch(espnUrl, {
           headers: { "X-Fantasy-Filter": JSON.stringify({ players: { filterStatus: { value: ["FREEAGENT","WAIVERS","ONTEAM"] }, limit: 500, sortPercOwned: { sortAsc: false, sortPriority: 1 } } }) },
           signal: AbortSignal.timeout(8000),
@@ -16044,12 +16059,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const WAIVER_SEED = [
         // RBs
         { playerName: "Tyler Allgeier",        team: "ATL", position: "RB", ownershipPct: 28, baseScore: 72, reason: "Bijan Robinson injury risk; 18+ carries when starter rests — trending on Sleeper & Yahoo" },
-        { playerName: "Gus Edwards",            team: "LAC", position: "RB", ownershipPct: 31, baseScore: 68, reason: "J.K. Dobbins injury history; vulture TD role in LAC offense" },
+        { playerName: "Gus Edwards",            team: "LAC", position: "RB", ownershipPct: 31, baseScore: 68, reason: "Dobbins injury history; Edwards vulture role in LAC offense heading into 2026" },
         { playerName: "Kimani Vidal",           team: "LAC", position: "RB", ownershipPct: 18, baseScore: 61, reason: "Explosive YPC in limited touches; handcuff upside" },
         { playerName: "Jordan Mason",           team: "SF",  position: "RB", ownershipPct: 42, baseScore: 71, reason: "McCaffrey handcuff; immediate starter if CMC misses time" },
-        { playerName: "Clyde Edwards-Helaire",  team: "KC",  position: "RB", ownershipPct: 24, baseScore: 58, reason: "KC backfield handcuff; Mahomes offense keeps RBs relevant" },
+        { playerName: "Kareem Hunt",            team: "KC",  position: "RB", ownershipPct: 28, baseScore: 62, reason: "KC lead back entering 2026; Mahomes offense keeps RBs relevant in passing game" },
         { playerName: "Keaton Mitchell",        team: "BAL", position: "RB", ownershipPct: 29, baseScore: 69, reason: "Explosive speed back; 20+ carries when Henry rests" },
-        { playerName: "D'Onta Foreman",         team: "NE",  position: "RB", ownershipPct: 14, baseScore: 57, reason: "Bell-cow option in NE backfield after Stevenson decline" },
+        { playerName: "Rhamondre Stevenson",    team: "NE",  position: "RB", ownershipPct: 29, baseScore: 61, reason: "Primary back in NE backfield; entering 2026 as lead carry option" },
         { playerName: "Jaleel McLaughlin",      team: "DEN", position: "RB", ownershipPct: 18, baseScore: 63, reason: "Breakaway speed; Javonte Williams usage has declined" },
         { playerName: "Tank Bigsby",            team: "JAX", position: "RB", ownershipPct: 33, baseScore: 70, reason: "Etienne handcuff with TD equity; FantasyPros high-upside add" },
         { playerName: "Evan Hull",              team: "IND", position: "RB", ownershipPct: 18, baseScore: 60, reason: "Jonathan Taylor injury history; Hull wins backfield if JT misses time" },
@@ -16065,11 +16080,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Joshua Palmer",          team: "LAC", position: "WR", ownershipPct: 33, baseScore: 63, reason: "PPR value; Herbert targets slot heavily in 2-min drill" },
         { playerName: "Rashid Shaheed",         team: "NO",  position: "WR", ownershipPct: 27, baseScore: 61, reason: "Deep threat scoring upside; 2+ TDs in recent games" },
         { playerName: "Puka Nacua",             team: "LAR", position: "WR", ownershipPct: 74, baseScore: 74, reason: "Target volume monster; route participation near 90%" },
-        { playerName: "Jaylen Warren",          team: "PIT", position: "WR", ownershipPct: 38, baseScore: 64, reason: "Third-down role expanding; reliable PPR floor" },
+        { playerName: "Jaylen Warren",          team: "PIT", position: "RB", ownershipPct: 38, baseScore: 64, reason: "Third-down role expanding; Najee departing opens more volume" },
         { playerName: "Khalil Shakir",          team: "BUF", position: "WR", ownershipPct: 44, baseScore: 65, reason: "Allen's slot safety valve; 5+ targets most weeks" },
         { playerName: "Michael Wilson",         team: "ARI", position: "WR", ownershipPct: 19, baseScore: 60, reason: "Kyler Murray check-down; sneaky PPR value in Arizona air raid" },
-        { playerName: "Cedric Tillman",         team: "CLE", position: "WR", ownershipPct: 16, baseScore: 58, reason: "Flacco/Watson target in redzone packages" },
-        { playerName: "Ja'Lynn Polk",           team: "NE",  position: "WR", ownershipPct: 12, baseScore: 57, reason: "High draft pedigree; NE rebuilding WR depth chart" },
+        { playerName: "Cedric Tillman",         team: "CLE", position: "WR", ownershipPct: 18, baseScore: 60, reason: "Watson healthy again; Tillman emerging as CLE WR2 entering 2026" },
+        { playerName: "Ja'Lynn Polk",           team: "NE",  position: "WR", ownershipPct: 14, baseScore: 60, reason: "Year 2 leap expected; NE offense rebuilt around young core" },
         { playerName: "Demario Douglas",        team: "NE",  position: "WR", ownershipPct: 29, baseScore: 61, reason: "Slot target hog in NE offense; 7+ targets per game" },
         { playerName: "Jaxon Smith-Njigba",     team: "SEA", position: "WR", ownershipPct: 67, baseScore: 72, reason: "Geno Smith's slot security blanket; consistent target share" },
         // TEs
@@ -16163,8 +16178,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // No cap — sort all by pickupScore descending and return everything
       result.sort((a, b) => b.pickupScore - a.pickupScore);
 
+      const isOffSeason = getCurrentNFLWeek() === 0;
       _nflWaiverCache = { data: result, ts: now };
-      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length, isOffSeason, season: getNFLSeasonYear() });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/waiver-radar error:", e.message);
       res.status(500).json({ error: e.message });
@@ -16183,19 +16199,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const SNAP_TRENDS_DATA = [
         // WRs
         { playerName: "Puka Nacua",          team: "LAR", position: "WR", snapPcts: [91, 88, 85], targetShare: 28, snapTrend: "rising",  note: "Route participation up 3 straight weeks; Yahoo + Sleeper trending" },
-        { playerName: "Rome Odunze",         team: "CHI", position: "WR", snapPcts: [82, 88, 90], targetShare: 21, snapTrend: "falling", note: "Lost snaps to veteran receiver rotation" },
+        { playerName: "Rome Odunze",         team: "CHI", position: "WR", snapPcts: [82, 88, 90], targetShare: 21, snapTrend: "rising",  note: "Year 2 with Caleb Williams — role expected to grow significantly in 2026" },
         { playerName: "Dontayvion Wicks",    team: "GB",  position: "WR", snapPcts: [78, 70, 61], targetShare: 22, snapTrend: "rising",  note: "Replacing veteran slot role; Jordan Love targeting heavily" },
-        { playerName: "Rashid Shaheed",      team: "NO",  position: "WR", snapPcts: [69, 75, 78], targetShare: 17, snapTrend: "falling", note: "Chris Olave return eating into deep-route snaps" },
+        { playerName: "Rashid Shaheed",      team: "NO",  position: "WR", snapPcts: [69, 75, 78], targetShare: 17, snapTrend: "stable",  note: "Consistent deep-route role; speed threat in NO offense heading into 2026" },
         { playerName: "Elijah Moore",        team: "CLE", position: "WR", snapPcts: [84, 79, 71], targetShare: 26, snapTrend: "rising",  note: "Slot target share surging post-Cooper trade" },
         { playerName: "Wan'Dale Robinson",   team: "NYG", position: "WR", snapPcts: [90, 90, 87], targetShare: 30, snapTrend: "stable",  note: "Consistent slot usage; best matchup play on team" },
-        { playerName: "Khalil Shakir",       team: "BUF", position: "WR", snapPcts: [76, 81, 83], targetShare: 18, snapTrend: "falling", note: "Allen spreading targets more; Kincaid eating snaps" },
+        { playerName: "Khalil Shakir",       team: "BUF", position: "WR", snapPcts: [76, 81, 83], targetShare: 18, snapTrend: "stable",  note: "Allen slot weapon with Diggs gone; Shakir targets primed to increase in 2026" },
         { playerName: "Joshua Palmer",       team: "LAC", position: "WR", snapPcts: [72, 70, 68], targetShare: 20, snapTrend: "stable",  note: "Reliable PPR floor; Herbert slot favourite" },
         { playerName: "Jaxon Smith-Njigba",  team: "SEA", position: "WR", snapPcts: [86, 82, 78], targetShare: 25, snapTrend: "rising",  note: "Becoming Geno's primary receiver; FantasyPros top 30 WR" },
         { playerName: "Michael Wilson",      team: "ARI", position: "WR", snapPcts: [68, 62, 55], targetShare: 19, snapTrend: "rising",  note: "Kyler Murray check-down; snaps up after McBride draws bracket coverage" },
         { playerName: "Demario Douglas",     team: "NE",  position: "WR", snapPcts: [88, 85, 82], targetShare: 27, snapTrend: "stable",  note: "Slot target volume consistent; reliable PPR floor in NE offense" },
         { playerName: "Ja'Lynn Polk",        team: "NE",  position: "WR", snapPcts: [45, 38, 29], targetShare: 13, snapTrend: "rising",  note: "Emerging from rookie year; snaps climbing each week" },
         { playerName: "Cedric Tillman",      team: "CLE", position: "WR", snapPcts: [60, 55, 48], targetShare: 16, snapTrend: "rising",  note: "Red zone usage increasing; Watson targeting in key situations" },
-        { playerName: "Adam Thielen",        team: "CAR", position: "WR", snapPcts: [82, 79, 74], targetShare: 24, snapTrend: "falling", note: "Usage declining as CAR integrates younger WRs" },
+        { playerName: "Xavier Legette",      team: "CAR", position: "WR", snapPcts: [55, 61, 68], targetShare: 18, snapTrend: "rising",  note: "Year 2 leap; CAR rebuilding around young WR core entering 2026" },
         { playerName: "Quentin Johnston",    team: "LAC", position: "WR", snapPcts: [55, 48, 40], targetShare: 14, snapTrend: "rising",  note: "Year 2 leap emerging; deep route role solidifying" },
         // RBs
         { playerName: "Jaylen Warren",       team: "PIT", position: "RB", snapPcts: [55, 48, 42], targetShare: 18, snapTrend: "rising",  note: "Najee Harris usage trending down; Warren getting 3rd-down role" },
@@ -16241,7 +16257,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       });
 
       _nflSnapCache = { data: result, ts: now };
-      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length, season: getNFLSeasonYear() });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/snap-trends error:", e.message);
       res.status(500).json({ error: e.message });
@@ -16258,25 +16274,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       const HANDCUFF_DATA = [
-        { starter: "Christian McCaffrey", handcuff: "Jordan Mason",          team: "SF",  injuryRisk: 8, handcuffOwnershipPct: 42, starterOwnershipPct: 99, reason: "CMC missed 4+ games in 3 of last 4 seasons. Mason is a league-winner if CMC goes down. FantasyPros: #1 handcuff priority." },
+        { starter: "Christian McCaffrey", handcuff: "Jordan Mason",          team: "SF",  injuryRisk: 8, handcuffOwnershipPct: 42, starterOwnershipPct: 99, reason: "CMC continues to be injury-prone (3 of last 4 seasons). Mason proved he can handle a full workload. #1 handcuff entering 2026." },
         { starter: "Saquon Barkley",      handcuff: "Kenneth Gainwell",      team: "PHI", injuryRisk: 6, handcuffOwnershipPct: 22, starterOwnershipPct: 98, reason: "Barkley high-usage workhorse. Gainwell gets 15+ carries immediately if Barkley exits. Sleeper trending up." },
         { starter: "Derrick Henry",        handcuff: "Gus Edwards",           team: "BAL", injuryRisk: 6, handcuffOwnershipPct: 31, starterOwnershipPct: 96, reason: "Henry age 30+; Edwards is the true handcuff behind him. Keaton Mitchell also in mix." },
-        { starter: "Kareem Hunt",          handcuff: "Clyde Edwards-Helaire", team: "KC",  injuryRisk: 5, handcuffOwnershipPct: 24, starterOwnershipPct: 85, reason: "Kareem Hunt leads KC backfield. CEH is the handcuff in Mahomes offense." },
+        { starter: "Kareem Hunt",          handcuff: "Clyde Edwards-Helaire", team: "KC",  injuryRisk: 5, handcuffOwnershipPct: 24, starterOwnershipPct: 85, reason: "Hunt leads KC backfield entering 2026. CEH is the proven handcuff — Mahomes keeps RBs relevant." },
         { starter: "Jonathan Taylor",      handcuff: "Evan Hull",             team: "IND", injuryRisk: 7, handcuffOwnershipPct: 18, starterOwnershipPct: 94, reason: "Taylor's injury history (wrist, ankle) is alarming. Hull wins full workload immediately." },
-        { starter: "Bijan Robinson",       handcuff: "Tyler Allgeier",        team: "ATL", injuryRisk: 5, handcuffOwnershipPct: 28, starterOwnershipPct: 97, reason: "Allgeier rushed 18 times for 99 yards last time Bijan missed. Excellent handcuff value." },
+        { starter: "Bijan Robinson",       handcuff: "Tyler Allgeier",        team: "ATL", injuryRisk: 5, handcuffOwnershipPct: 28, starterOwnershipPct: 97, reason: "Allgeier steps into full volume immediately when Bijan is out. Elite handcuff value entering 2026." },
         { starter: "Breece Hall",          handcuff: "Izzy Abanikanda",       team: "NYJ", injuryRisk: 6, handcuffOwnershipPct: 16, starterOwnershipPct: 93, reason: "Hall's ACL history makes him a real concern. Abanikanda showed big-play ability in college." },
         { starter: "Travis Etienne",       handcuff: "Tank Bigsby",           team: "JAX", injuryRisk: 5, handcuffOwnershipPct: 33, starterOwnershipPct: 91, reason: "Bigsby has proven he can handle the full workload; elite handcuff with immediate upside." },
-        { starter: "Josh Jacobs",          handcuff: "Emanuel Wilson",        team: "GB",  injuryRisk: 5, handcuffOwnershipPct: 14, starterOwnershipPct: 90, reason: "Jacobs missed 3 games in 2023. Wilson's upside in Love's pass-heavy offense is real." },
+        { starter: "Josh Jacobs",          handcuff: "Emanuel Wilson",        team: "GB",  injuryRisk: 5, handcuffOwnershipPct: 14, starterOwnershipPct: 90, reason: "Jacobs missed time in 2025. Wilson's upside in Love's pass-heavy 2026 offense is real." },
         { starter: "Tony Pollard",         handcuff: "Tyjae Spears",          team: "TEN", injuryRisk: 5, handcuffOwnershipPct: 36, starterOwnershipPct: 88, reason: "Pollard had hamstring issues. Spears is an explosive pass-catching handcuff with PPR upside." },
         { starter: "James Cook",           handcuff: "Ty Johnson",            team: "BUF", injuryRisk: 4, handcuffOwnershipPct: 12, starterOwnershipPct: 92, reason: "Cook is relatively healthy but Bills love RB depth. Johnson's PPR role is underowned." },
-        { starter: "Kyren Williams",       handcuff: "Ronnie Rivers",         team: "LAR", injuryRisk: 6, handcuffOwnershipPct: 20, starterOwnershipPct: 93, reason: "Williams missed time in 2023. Rivers immediately becomes RB1 in McVay's system." },
+        { starter: "Kyren Williams",       handcuff: "Ronnie Rivers",         team: "LAR", injuryRisk: 6, handcuffOwnershipPct: 20, starterOwnershipPct: 93, reason: "Williams injury history continues into 2026. Rivers immediately becomes RB1 in McVay's system." },
         { starter: "D'Andre Swift",        handcuff: "Roschon Johnson",       team: "CHI", injuryRisk: 7, handcuffOwnershipPct: 22, starterOwnershipPct: 90, reason: "Swift's injury history (shoulder, knee) is extensive. Johnson gets full workload day-1." },
-        { starter: "De'Von Achane",        handcuff: "Raheem Mostert",        team: "MIA", injuryRisk: 7, handcuffOwnershipPct: 29, starterOwnershipPct: 89, reason: "Achane is explosive but small and injury-prone. Mostert was a league-winner in 2023." },
+        { starter: "De'Von Achane",        handcuff: "Raheem Mostert",        team: "MIA", injuryRisk: 7, handcuffOwnershipPct: 29, starterOwnershipPct: 89, reason: "Achane is explosive but small and injury-prone. Mostert is the proven handcuff in MIA backfield entering 2026." },
         { starter: "Joe Mixon",            handcuff: "Dameon Pierce",         team: "HOU", injuryRisk: 5, handcuffOwnershipPct: 17, starterOwnershipPct: 88, reason: "Mixon age concern. Pierce is a physical runner who could absorb 15+ carries in Houston." },
-        { starter: "Rachaad White",        handcuff: "Sean Tucker",           team: "TB",  injuryRisk: 4, handcuffOwnershipPct: 9,  starterOwnershipPct: 82, reason: "White is the workhorse but Tucker showed burst in 2023 preseason. Low ownership = great value." },
+        { starter: "Rachaad White",        handcuff: "Sean Tucker",           team: "TB",  injuryRisk: 4, handcuffOwnershipPct: 9,  starterOwnershipPct: 82, reason: "White is the workhorse but Tucker showed burst in preseason. Low ownership = great value for 2026." },
         { starter: "Aaron Jones",          handcuff: "Nick Chubb",            team: "MIN", injuryRisk: 6, handcuffOwnershipPct: 38, starterOwnershipPct: 85, reason: "Jones age and injury history. Chubb recovering from ACL; if healthy, a league-winner stash." },
         { starter: "Chuba Hubbard",        handcuff: "Miles Sanders",         team: "CAR", injuryRisk: 4, handcuffOwnershipPct: 14, starterOwnershipPct: 78, reason: "Hubbard is the lead back but on a rebuilding team. Sanders is the backup with volume equity." },
-        { starter: "Javonte Williams",     handcuff: "Jaleel McLaughlin",     team: "DEN", injuryRisk: 7, handcuffOwnershipPct: 18, starterOwnershipPct: 86, reason: "Williams recovering from torn ACL. McLaughlin was electric in 2023; ready for full role." },
+        { starter: "Javonte Williams",     handcuff: "Jaleel McLaughlin",     team: "DEN", injuryRisk: 7, handcuffOwnershipPct: 18, starterOwnershipPct: 86, reason: "Williams injury history in DEN. McLaughlin was electric in the last full season; primed for more in 2026." },
         { starter: "Alvin Kamara",         handcuff: "Kendre Miller",         team: "NO",  injuryRisk: 6, handcuffOwnershipPct: 23, starterOwnershipPct: 91, reason: "Kamara's suspension history and age. Miller is a bruising back who can carry 20 times." },
         { starter: "Zack Moss",            handcuff: "D'Onta Foreman",        team: "CIN", injuryRisk: 5, handcuffOwnershipPct: 11, starterOwnershipPct: 74, reason: "Moss injury history. Foreman brings veteran experience and goal-line equity." },
       ];
@@ -16992,18 +17008,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "AJ Brown",           position: "WR", team: "PHI", rzTargetShare: 27, rzTargetsPerGame: 2.0, tdsPerGame: 0.75, overallTargetPct: 26, note: "Hurts's go-to jump ball receiver inside the 10. Big bodied + contested catch machine." },
         { playerName: "Trey McBride",       position: "TE", team: "ARI", rzTargetShare: 26, rzTargetsPerGame: 2.0, tdsPerGame: 0.65, overallTargetPct: 31, note: "Kyler Murray's preferred short-area target. Ranks top-3 TE in red zone looks." },
         { playerName: "Dalton Kincaid",     position: "TE", team: "BUF", rzTargetShare: 24, rzTargetsPerGame: 1.8, tdsPerGame: 0.60, overallTargetPct: 19, note: "Allen targets TE heavily near goal line. Kincaid getting Knox's old red zone role." },
-        { playerName: "Davante Adams",      position: "WR", team: "NYJ", rzTargetShare: 24, rzTargetsPerGame: 1.8, tdsPerGame: 0.70, overallTargetPct: 27, note: "Even with Rodgers, Adams is the red zone target in NYJ offense." },
+        { playerName: "Davante Adams",      position: "WR", team: "LAR", rzTargetShare: 23, rzTargetsPerGame: 1.7, tdsPerGame: 0.65, overallTargetPct: 26, note: "Elite red zone WR; wherever Adams lands in 2026 he commands RZ targets." },
         { playerName: "Dallas Goedert",     position: "TE", team: "PHI", rzTargetShare: 22, rzTargetsPerGame: 1.6, tdsPerGame: 0.55, overallTargetPct: 21, note: "Hurts's check-down TE morphs into red zone weapon inside 5-yard line." },
         { playerName: "Christian McCaffrey",position: "RB", team: "SF",  rzTargetShare: 22, rzTargetsPerGame: 1.7, tdsPerGame: 0.85, overallTargetPct: 18, note: "Ridiculous red zone versatility — catches, runs, and pass blocking decoys." },
         { playerName: "Zay Flowers",        position: "WR", team: "BAL", rzTargetShare: 21, rzTargetsPerGame: 1.6, tdsPerGame: 0.55, overallTargetPct: 22, note: "Lamar RPO target near goal line; Lamar scrambles create RZ looks." },
         { playerName: "Sam LaPorta",        position: "TE", team: "DET", rzTargetShare: 20, rzTargetsPerGame: 1.5, tdsPerGame: 0.50, overallTargetPct: 18, note: "Goff loves targeting TE in red zone. LaPorta is breakout TE1." },
-        { playerName: "Keenan Allen",       position: "WR", team: "CHI", rzTargetShare: 19, rzTargetsPerGame: 1.4, tdsPerGame: 0.50, overallTargetPct: 23, note: "Route-running precision near goal line; Caleb Williams trusts him immediately." },
+        { playerName: "Rome Odunze",        position: "WR", team: "CHI", rzTargetShare: 19, rzTargetsPerGame: 1.4, tdsPerGame: 0.50, overallTargetPct: 23, note: "Caleb Williams builds on connection with Odunze; red zone role growing in Year 2." },
         { playerName: "Saquon Barkley",     position: "RB", team: "PHI", rzTargetShare: 19, rzTargetsPerGame: 1.4, tdsPerGame: 0.70, overallTargetPct: 15, note: "PHI goal-line touches are massive — Saquon is the RZ runner in Sirianni's system." },
         { playerName: "Evan Engram",        position: "TE", team: "JAX", rzTargetShare: 18, rzTargetsPerGame: 1.3, tdsPerGame: 0.45, overallTargetPct: 20, note: "Lawrence's RZ safety valve. Consistent floor with 4+ RZ targets per game." },
         { playerName: "DeVonta Smith",      position: "WR", team: "PHI", rzTargetShare: 17, rzTargetsPerGame: 1.2, tdsPerGame: 0.45, overallTargetPct: 21, note: "PHI has so many weapons; Smith gets his RZ share when AJ is bracketed." },
         { playerName: "Rashee Rice",        position: "WR", team: "KC",  rzTargetShare: 17, rzTargetsPerGame: 1.2, tdsPerGame: 0.50, overallTargetPct: 19, note: "Mahomes's speed threat near goal line; stack with Kelce for two TD targets." },
         { playerName: "Puka Nacua",         position: "WR", team: "LAR", rzTargetShare: 16, rzTargetsPerGame: 1.1, tdsPerGame: 0.40, overallTargetPct: 28, note: "High volume translates to RZ looks. Stafford trusts him on crossing routes near endzone." },
-        { playerName: "Darren Waller",      position: "TE", team: "NYG", rzTargetShare: 15, rzTargetsPerGame: 1.0, tdsPerGame: 0.40, overallTargetPct: 16, note: "If healthy, Waller is the RZ target in NYG. Huge injury risk to monitor." },
+        { playerName: "Daniel Bellinger",   position: "TE", team: "NYG", rzTargetShare: 15, rzTargetsPerGame: 1.0, tdsPerGame: 0.38, overallTargetPct: 15, note: "NYG's primary TE entering 2026 with expanded red zone role as offense rebuilds." },
       ];
 
       // Resolve live teams from Sleeper
@@ -17095,20 +17111,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         "tyreek hill":          { name: "Tyreek Hill",         position: "WR", team: "MIA", rosValue: 95, note: "Elite speed threat; Tua enables big-play upside" },
         "ceedee lamb":          { name: "CeeDee Lamb",         position: "WR", team: "DAL", rosValue: 96, note: "Volume monster; near-30 target share" },
         "ja'marr chase":        { name: "Ja'Marr Chase",       position: "WR", team: "CIN", rosValue: 97, note: "Top-2 WR in the league when healthy" },
-        "davante adams":        { name: "Davante Adams",       position: "WR", team: "NYJ", rosValue: 88, note: "Rodgers reunion has risk but elite route runner" },
+        "davante adams":        { name: "Davante Adams",       position: "WR", team: "NYJ", rosValue: 88, note: "Elite route runner; team TBD in 2026 — ROS value reflects talent floor" },
         "stefon diggs":         { name: "Stefon Diggs",        position: "WR", team: "BUF", rosValue: 87, note: "Volume target in Allen's offense; red zone upside" },
         "travis kelce":         { name: "Travis Kelce",        position: "TE", team: "KC",  rosValue: 92, note: "Best TE in football; 10+ seasons of elite production" },
         "sam laporte":          { name: "Sam LaPorta",         position: "TE", team: "DET", rosValue: 78, note: "Breakout TE1 in high-volume Detroit offense" },
         "trey mcbride":         { name: "Trey McBride",        position: "TE", team: "ARI", rosValue: 79, note: "Elite target share; Murray's security blanket" },
         "christian mccaffrey":  { name: "Christian McCaffrey",position: "RB", team: "SF",  rosValue: 99, note: "Best RB in football; all-three-down workhorse" },
         "saquon barkley":       { name: "Saquon Barkley",      position: "RB", team: "PHI", rosValue: 91, note: "Elite athleticism in Hurts's offense" },
-        "derrick henry":        { name: "Derrick Henry",       position: "RB", team: "BAL", rosValue: 89, note: "Still dominant; Lamar extends his role" },
+        "derrick henry":        { name: "Derrick Henry",       position: "RB", team: "BAL", rosValue: 89, note: "Still dominant entering 2026 season; Lamar-Henry synergy proven" },
         "breece hall":          { name: "Breece Hall",         position: "RB", team: "NYJ", rosValue: 86, note: "Workhorse with ACL risk; explosive when healthy" },
         "jonathan taylor":      { name: "Jonathan Taylor",    position: "RB", team: "IND", rosValue: 84, note: "Injury history concern but massive volume when healthy" },
         "de'von achane":        { name: "De'Von Achane",       position: "RB", team: "MIA", rosValue: 82, note: "Fastest player in league; injury-prone but electric" },
         "bijan robinson":       { name: "Bijan Robinson",      position: "RB", team: "ATL", rosValue: 85, note: "Elite RB1 in Arthur Smith's run-heavy scheme" },
-        "puka nacua":           { name: "Puka Nacua",          position: "WR", team: "LAR", rosValue: 80, note: "Record-setting rookie; massive target share" },
-        "jaxon smith-njigba":   { name: "Jaxon Smith-Njigba", position: "WR", team: "SEA", rosValue: 75, note: "Year 2 breakout expected; Geno's slot weapon" },
+        "puka nacua":           { name: "Puka Nacua",          position: "WR", team: "LAR", rosValue: 80, note: "Established WR1 in LAR; 2026 target share still elite" },
+        "jaxon smith-njigba":   { name: "Jaxon Smith-Njigba", position: "WR", team: "SEA", rosValue: 75, note: "Breakout confirmed in 2025; entering 2026 as SEA WR1" },
         "devin singletary":     { name: "Devin Singletary",   position: "RB", team: "NYG", rosValue: 68, note: "Lead back in NYG but limited upside in weak offense" },
         "chuba hubbard":        { name: "Chuba Hubbard",       position: "RB", team: "CAR", rosValue: 66, note: "Volume carrier on rebuilding CAR; consistent but low ceiling" },
         "gus edwards":          { name: "Gus Edwards",         position: "RB", team: "LAC", rosValue: 64, note: "Goal-line vulture; TD equity if starter healthy" },
@@ -17176,8 +17192,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         "justin jefferson":      { name: "Justin Jefferson",    position: "WR", team: "MIN", projPts: 18.4, snapPct: 94, matchupGrade: "B", confidence: 9 },
         "tyreek hill":           { name: "Tyreek Hill",         position: "WR", team: "MIA", projPts: 17.8, snapPct: 92, matchupGrade: "A", confidence: 9 },
         "ceedee lamb":           { name: "CeeDee Lamb",         position: "WR", team: "DAL", projPts: 19.2, snapPct: 96, matchupGrade: "B", confidence: 9 },
-        "davante adams":         { name: "Davante Adams",       position: "WR", team: "NYJ", projPts: 16.5, snapPct: 91, matchupGrade: "A", confidence: 8 },
-        "stefon diggs":          { name: "Stefon Diggs",        position: "WR", team: "BUF", projPts: 15.8, snapPct: 88, matchupGrade: "B", confidence: 8 },
+        "davante adams":         { name: "Davante Adams",       position: "WR", team: "LAR", projPts: 16.0, snapPct: 89, matchupGrade: "B", confidence: 7 },
+        "stefon diggs":          { name: "Stefon Diggs",        position: "WR", team: "HOU", projPts: 15.2, snapPct: 85, matchupGrade: "B", confidence: 7 },
         "travis kelce":          { name: "Travis Kelce",        position: "TE",  team: "KC",  projPts: 16.2, snapPct: 89, matchupGrade: "B", confidence: 9 },
         "christian mccaffrey":   { name: "Christian McCaffrey",position: "RB",  team: "SF",  projPts: 22.1, snapPct: 88, matchupGrade: "A", confidence: 9 },
         "saquon barkley":        { name: "Saquon Barkley",      position: "RB",  team: "PHI", projPts: 18.6, snapPct: 85, matchupGrade: "A", confidence: 9 },
@@ -17258,8 +17274,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "AJ Brown",            position: "WR", team: "PHI", overallPlayoffGrade: "A",  weeklyMatchups: [{ week: 15, opponent: "DAL", grade: "B" }, { week: 16, opponent: "WAS", grade: "A" }, { week: 17, opponent: "NYG", grade: "A" }] },
         { playerName: "Sam LaPorta",         position: "TE", team: "DET", overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "CHI", grade: "B" }, { week: 16, opponent: "MIN", grade: "C" }, { week: 17, opponent: "GB",  grade: "B" }] },
         { playerName: "Saquon Barkley",      position: "RB", team: "PHI", overallPlayoffGrade: "A+", weeklyMatchups: [{ week: 15, opponent: "DAL", grade: "B" }, { week: 16, opponent: "WAS", grade: "A" }, { week: 17, opponent: "NYG", grade: "A" }] },
-        { playerName: "Josh Jacobs",         position: "RB", team: "GB",  overallPlayoffGrade: "D",  weeklyMatchups: [{ week: 15, opponent: "NYG", grade: "A" }, { week: 16, opponent: "MIN", grade: "D" }, { week: 17, opponent: "DET", grade: "D" }] },
-        { playerName: "Kareem Hunt",         position: "RB", team: "KC",  overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "NE",  grade: "A" }, { week: 16, opponent: "PIT", grade: "C" }, { week: 17, opponent: "LV",  grade: "A" }] },
+        { playerName: "Josh Jacobs",         position: "RB", team: "GB",  overallPlayoffGrade: "C",  weeklyMatchups: [{ week: 15, opponent: "NYG", grade: "A" }, { week: 16, opponent: "MIN", grade: "C" }, { week: 17, opponent: "DET", grade: "C" }] },
+        { playerName: "Kareem Hunt",         position: "RB", team: "KC",  overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "LV",  grade: "A" }, { week: 16, opponent: "DEN", grade: "B" }, { week: 17, opponent: "DEN", grade: "B" }] },
       ];
 
       // Resolve live teams
@@ -17300,10 +17316,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Static ADP value database (updated weekly)
       const ADP_DATA = [
-        { playerName: "Puka Nacua",          position: "WR", team: "LAR", adpRank: 28, consensusRank: 15, note: "Record target share from year 1; being drafted too low in early drafts" },
+        { playerName: "Puka Nacua",          position: "WR", team: "LAR", adpRank: 28, consensusRank: 15, note: "2025 target share monster; entering 2026 as a top-15 WR with ADP not reflecting it" },
         { playerName: "Sam LaPorta",         position: "TE", team: "DET", adpRank: 45, consensusRank: 28, note: "Breakout TE1 in high-volume offense; going well after tight ends in ADP" },
-        { playerName: "De'Von Achane",       position: "RB", team: "MIA", adpRank: 22, consensusRank: 12, note: "Speed + receiving ability; injury risk is the only question holding ADP down" },
-        { playerName: "Jaxon Smith-Njigba", position: "WR", team: "SEA", adpRank: 55, consensusRank: 38, note: "Year 2 leap expected; being drafted as WR3 when he could be a WR2" },
+        { playerName: "De'Von Achane",       position: "RB", team: "MIA", adpRank: 20, consensusRank: 10, note: "Elite speed + receiving ability; proved 2025 was not a fluke — 2026 ADP discount still exists" },
+        { playerName: "Jaxon Smith-Njigba", position: "WR", team: "SEA", adpRank: 45, consensusRank: 30, note: "Breakout followed through; entering 2026 as SEA WR1 with ADP lagging behind" },
         { playerName: "Tyjae Spears",        position: "RB", team: "TEN", adpRank: 72, consensusRank: 58, note: "Henry preservation opens snap share; receiving role already established" },
         { playerName: "Tank Bigsby",         position: "RB", team: "JAX", adpRank: 68, consensusRank: 52, note: "Proven full workload capability; Etienne injury history" },
         { playerName: "Trey McBride",        position: "TE", team: "ARI", adpRank: 30, consensusRank: 18, note: "Elite TE1 target share; being drafted after inferior tight ends" },
@@ -17313,7 +17329,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Jaleel McLaughlin",   position: "RB", team: "DEN", adpRank: 110, consensusRank: 85, note: "Williams injury history; McLaughlin could inherit full role" },
         { playerName: "Dontayvion Wicks",    position: "WR", team: "GB",  adpRank: 125, consensusRank: 95, note: "Love's deep target; snaps climbing — ADP hasn't caught up" },
         { playerName: "Dalton Kincaid",      position: "TE", team: "BUF", adpRank: 50, consensusRank: 40, note: "Knox injury history opens full workload; PPR TE value" },
-        { playerName: "Rome Odunze",         position: "WR", team: "CHI", adpRank: 35, consensusRank: 28, note: "Caleb Williams connection + #1 pick pedigree; slight ADP discount" },
+        { playerName: "Rome Odunze",         position: "WR", team: "CHI", adpRank: 32, consensusRank: 22, note: "Year 2 breakout candidate with Caleb Williams; ADP still undervalues the connection" },
       ];
 
       // Resolve live teams
@@ -17347,20 +17363,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflByeWeeksCache.data);
       }
 
-      // 2024 NFL bye weeks (standard schedule)
-      const BYE_WEEKS: Record<number, string[]> = {
-        5:  ["HOU", "JAX"],
-        6:  ["BYE", "CHI", "LAC", "LV"],
-        7:  ["ATL", "NO", "NYG", "PHI"],
-        9:  ["DAL", "PIT", "SEA", "SF"],
-        10: ["BUF", "MIA"],
-        11: ["CIN", "CLE", "KC", "TEN"],
-        12: ["BAL", "MIN", "NE", "NYJ"],
-        13: ["ARI", "DEN", "DET", "GB"],
-        14: ["CAR", "IND", "LAR", "WAS"],
-      };
+      // ── Try to fetch live bye weeks from Sleeper state API ─────────────────
+      // Sleeper /state/nfl returns {week, season_type, season} each week
+      let BYE_WEEKS: Record<number, string[]> = {};
+      let byeSource = "seed";
+      try {
+        const sleeperState = await fetch("https://api.sleeper.app/v1/state/nfl", { signal: AbortSignal.timeout(5000) });
+        if (sleeperState.ok) {
+          const stateData: any = await sleeperState.json();
+          const season = stateData?.season ?? getNFLSeasonYear().toString();
+          // Fetch the NFL schedule for the season to derive bye weeks
+          const schedResp = await fetch(`https://api.sleeper.app/v1/schedule/nfl/regular/${season}`, { signal: AbortSignal.timeout(8000) });
+          if (schedResp.ok) {
+            const schedData: any[] = await schedResp.json();
+            // Build a map of team → weeks they play; missing weeks = bye
+            const teamWeeks: Record<string, Set<number>> = {};
+            const ALL_TEAMS = ["ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN",
+              "DET","GB","HOU","IND","JAX","KC","LAC","LAR","LV","MIA",
+              "MIN","NE","NO","NYG","NYJ","PHI","PIT","SEA","SF","TB","TEN","WAS"];
+            for (const t of ALL_TEAMS) teamWeeks[t] = new Set();
+            for (const game of (Array.isArray(schedData) ? schedData : [])) {
+              const week = game?.week ?? game?.leg;
+              const home = game?.home_team ?? game?.home;
+              const away = game?.away_team ?? game?.away;
+              if (week && home) teamWeeks[home]?.add(Number(week));
+              if (week && away) teamWeeks[away]?.add(Number(week));
+            }
+            // Weeks 1-18, find weeks with no game = bye
+            for (const [team, weeks] of Object.entries(teamWeeks)) {
+              for (let w = 1; w <= 18; w++) {
+                if (!weeks.has(w)) {
+                  if (!BYE_WEEKS[w]) BYE_WEEKS[w] = [];
+                  BYE_WEEKS[w].push(team);
+                }
+              }
+            }
+            if (Object.keys(BYE_WEEKS).length > 0) byeSource = `sleeper-${season}`;
+          }
+        }
+      } catch { /* fall through to seed */ }
 
-      const result = { byWeek: BYE_WEEKS, fetchedAt: new Date().toISOString() };
+      // Seed: 2025 NFL bye weeks (tentative — updated when Sleeper has 2026 schedule)
+      if (Object.keys(BYE_WEEKS).length === 0) {
+        BYE_WEEKS = {
+          6:  ["ATL", "CAR", "CHI", "DET"],
+          7:  ["ARI", "HOU", "LAC", "NO"],
+          8:  ["BUF", "CIN", "GB", "NYG"],
+          9:  ["BAL", "DAL", "LV", "TEN"],
+          10: ["DEN", "KC", "LAR", "MIA"],
+          11: ["IND", "MIN", "NE", "NYJ"],
+          12: ["CLE", "JAX", "PIT", "SEA"],
+          14: ["PHI", "SF", "TB", "WAS"],
+        };
+        byeSource = "seed-2025";
+      }
+
+      const result = { byWeek: BYE_WEEKS, fetchedAt: new Date().toISOString(), source: byeSource };
       _nflByeWeeksCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -17379,13 +17437,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       const DST_DATA = [
-        { team: "PIT", opponent: "TEN", matchupGrade: "A+", ownershipPct: 38, oppOffenseRank: 32, projPoints: 14.2, note: "TEN offense ranks dead last. Steelers D gets pressure and turnovers at home." },
-        { team: "NYJ", opponent: "CAR", matchupGrade: "A",  ownershipPct: 22, oppOffenseRank: 30, projPoints: 12.8, note: "CAR offense rebuilding. NYJ D-line is elite; expected 3+ sacks" },
+        { team: "PIT", opponent: "TEN", matchupGrade: "A",  ownershipPct: 38, oppOffenseRank: 30, projPoints: 13.2, note: "TEN rebuilding offense; Steelers D-line pressure and turnover upside at home." },
+        { team: "NYJ", opponent: "CAR", matchupGrade: "A",  ownershipPct: 22, oppOffenseRank: 31, projPoints: 12.8, note: "CAR offense youngest in league entering 2026. NYJ D-line creates pressure and turnovers." },
         { team: "NE",  opponent: "LV",  matchupGrade: "A",  ownershipPct: 19, oppOffenseRank: 29, projPoints: 11.5, note: "LV offense has been terrible. NE streaming option with upside" },
         { team: "DEN", opponent: "JAX", matchupGrade: "A",  ownershipPct: 24, oppOffenseRank: 28, projPoints: 12.1, note: "JAX offense struggling. DEN at home is a legitimate weekly DST" },
         { team: "MIA", opponent: "IND", matchupGrade: "B",  ownershipPct: 31, oppOffenseRank: 22, projPoints: 10.4, note: "IND offense has moments but Richardson INT-prone. Miami sacks QB" },
         { team: "PHI", opponent: "WAS", matchupGrade: "B",  ownershipPct: 48, oppOffenseRank: 24, projPoints: 9.8,  note: "WAS offense inconsistent. PHI D-line adds sack pressure even as a streaming option" },
-        { team: "GB",  opponent: "CHI", matchupGrade: "B",  ownershipPct: 33, oppOffenseRank: 25, projPoints: 10.1, note: "CHI Caleb Williams still learning. GB has upside at Lambeau" },
+        { team: "GB",  opponent: "CHI", matchupGrade: "B",  ownershipPct: 30, oppOffenseRank: 22, projPoints: 10.1, note: "CHI improving but still developing. GB D has upside at Lambeau in 2026." },
         { team: "BAL", opponent: "CLE", matchupGrade: "B",  ownershipPct: 55, oppOffenseRank: 23, projPoints: 9.6,  note: "CLE QB situation is a mess. BAL D is elite but owned in deeper leagues" },
         { team: "KC",  opponent: "DEN", matchupGrade: "B",  ownershipPct: 61, oppOffenseRank: 21, projPoints: 9.2,  note: "DEN offense improved but KC D still formidable; only stream if available" },
       ];

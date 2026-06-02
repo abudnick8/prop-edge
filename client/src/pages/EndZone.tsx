@@ -427,11 +427,11 @@ function OffSeasonCard() {
   return (
     <div style={{ background: NAVY, borderRadius: 16, padding: "32px 24px", textAlign: "center", margin: "24px 0" }}>
       <div style={{ fontSize: 48, marginBottom: 12 }}>🏈</div>
-      <p style={{ color: BG_COLOR, fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Off-Season Mode</p>
-      <p style={{ color: "rgba(246,241,231,0.65)", fontSize: 13, maxWidth: 320, margin: "0 auto 16px" }}>
-        The NFL regular season hasn't started yet. Projections will populate automatically once games are scheduled.
+      <p style={{ color: BG_COLOR, fontWeight: 900, fontSize: 18, marginBottom: 8 }}>2026 Pre-Season Mode</p>
+      <p style={{ color: "rgba(246,241,231,0.65)", fontSize: 13, maxWidth: 340, margin: "0 auto 16px" }}>
+        The 2026 NFL regular season hasn't kicked off yet. Player prop projections will auto-populate once Week 1 games are scheduled. All Radar, Fantasy Tools, and Betting Edge panels are running on 2026 outlook data.
       </p>
-      <p style={{ color: GOLD_COLOR, fontSize: 12, fontWeight: 700 }}>Next season kicks off September 2026 🗓</p>
+      <p style={{ color: GOLD_COLOR, fontSize: 12, fontWeight: 700 }}>2026 Season kicks off September 2026 🗓</p>
     </div>
   );
 }
@@ -1933,6 +1933,11 @@ export default function EndZone() {
         {/* ════ TAB 2: Fantasy News ════ */}
         {activeTab === "news" && (
           <div style={{ marginTop: 20 }}>
+            {/* Pre-season notice */}
+            <div style={{ background: "rgba(212,168,67,0.10)", border: "1px solid rgba(212,168,67,0.30)", borderRadius: 10, padding: "8px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13 }}>📰</span>
+              <span style={{ fontSize: 12, color: "#92680a", fontWeight: 600 }}>Showing NFL news relevant to the upcoming 2026 season — free agency, training camp, and depth chart updates.</span>
+            </div>
 
             {/* ── Search + Sort controls ── */}
             <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
@@ -2056,6 +2061,13 @@ export default function EndZone() {
         {/* ════ TAB 3: Radar ════ */}
         {activeTab === "radar" && (
           <div style={{ marginTop: 20 }}>
+            {/* Pre-season notice banner */}
+            <div style={{ background: "rgba(212,168,67,0.10)", border: "1px solid rgba(212,168,67,0.30)", borderRadius: 10, padding: "8px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14 }}>🏈</span>
+              <span style={{ fontSize: 12, color: "#92680a", fontWeight: 600 }}>
+                <b>2026 Pre-Season Outlook</b> — All panels show forward-looking analysis for the upcoming NFL season. Team assignments update live via Sleeper roster data. Betting Edge panels activate once Week 1 lines are posted.
+              </span>
+            </div>
             {/* Sub-panel selector */}
             <div style={{ display: "flex", gap: 6, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
               {([
