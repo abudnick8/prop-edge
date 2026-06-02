@@ -15065,6 +15065,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const nflPropsCache: Record<string, { data: any; ts: number }> = {};
   const nflNewsCache: { data: any; ts: number } | null = null as any;
   let _nflNewsCache: { data: any; ts: number } | null = null;
+  let _nflWaiverCache: { data: any; ts: number } | null = null;
+  let _nflSnapCache: { data: any; ts: number } | null = null;
+  let _nflHandcuffCache: { data: any; ts: number } | null = null;
+  let _nflMatchupCache: { data: any; ts: number } | null = null;
 
   // ── Projection engine helpers ──────────────────────────────────────────────
 
@@ -15826,6 +15830,267 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       res.json({ ok: true, pick: pickEntry, streak });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/lock-pick error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/nfl/waiver-radar ────────────────────────────────────────────
+  app.get("/api/nfl/waiver-radar", async (req: Request, res: Response) => {
+    try {
+      const TTL = 30 * 60 * 1000; // 30 min
+      const now = Date.now();
+      if (_nflWaiverCache && (now - _nflWaiverCache.ts) < TTL) {
+        return res.json({ data: _nflWaiverCache.data, cachedAt: new Date(_nflWaiverCache.ts).toISOString(), count: _nflWaiverCache.data.length });
+      }
+
+      const WAIVER_SEED = [
+        { playerName: "Tyler Allgeier",        team: "ATL", position: "RB", ownershipPct: 28, baseScore: 72, reason: "Bijan Robinson injury risk; 18+ carries when starter rests" },
+        { playerName: "Gus Edwards",            team: "LAC", position: "RB", ownershipPct: 31, baseScore: 68, reason: "J.K. Dobbins injury history; vulture TD role" },
+        { playerName: "Kimani Vidal",           team: "LAC", position: "RB", ownershipPct: 18, baseScore: 61, reason: "Explosive YPC in limited touches; upside handcuff" },
+        { playerName: "Elijah Moore",           team: "CLE", position: "WR", ownershipPct: 22, baseScore: 64, reason: "Target share rising after Amari Cooper departure" },
+        { playerName: "Wan'Dale Robinson",      team: "NYG", position: "WR", ownershipPct: 35, baseScore: 59, reason: "Slot target hog; 8+ targets in 3 of last 5 games" },
+        { playerName: "Chigoziem Okonkwo",      team: "TEN", position: "TE", ownershipPct: 19, baseScore: 67, reason: "TE1 in new offense; 6+ targets last 2 weeks" },
+        { playerName: "Cade Otton",             team: "TB",  position: "TE", ownershipPct: 25, baseScore: 62, reason: "Red zone target share increasing; Evans & Godwin age" },
+        { playerName: "Jordan Mason",           team: "SF",  position: "RB", ownershipPct: 42, baseScore: 71, reason: "McCaffrey handcuff; immediate starter if CMC misses time" },
+        { playerName: "Clyde Edwards-Helaire",  team: "KC",  position: "RB", ownershipPct: 24, baseScore: 58, reason: "Pacheco handcuff; Mahomes offense keeps RBs relevant" },
+        { playerName: "Joshua Palmer",          team: "LAC", position: "WR", ownershipPct: 33, baseScore: 63, reason: "PPR value; Herbert targets slot heavily in 2-min drill" },
+        { playerName: "Dontayvion Wicks",       team: "GB",  position: "WR", ownershipPct: 21, baseScore: 66, reason: "Love's redzone target; emerging Z-receiver role" },
+        { playerName: "Keaton Mitchell",        team: "BAL", position: "RB", ownershipPct: 29, baseScore: 69, reason: "Explosive speed back; 20+ carries when Henry rests" },
+      ];
+
+      // Cross-reference _nflNewsCache for injury bumps
+      const newsHeadlines: string[] = [];
+      if (_nflNewsCache && _nflNewsCache.data && Array.isArray(_nflNewsCache.data)) {
+        for (const article of _nflNewsCache.data) {
+          if (article.title) newsHeadlines.push((article.title as string).toLowerCase());
+          if (article.description) newsHeadlines.push((article.description as string).toLowerCase());
+        }
+      }
+
+      const positionScarcityBonus: Record<string, number> = { RB: 8, WR: 5, TE: 10, QB: 0 };
+
+      const result = WAIVER_SEED.map((p) => {
+        let pickupScore = p.baseScore;
+
+        // News bump: +20 if player name appears in recent headlines
+        const nameLower = p.playerName.toLowerCase();
+        const inNews = newsHeadlines.some((h) => h.includes(nameLower.split(" ")[0]) && h.includes(nameLower.split(" ").slice(-1)[0]));
+        if (inNews) pickupScore = Math.min(100, pickupScore + 20);
+
+        // Position scarcity bonus
+        pickupScore = Math.min(100, pickupScore + (positionScarcityBonus[p.position] ?? 0));
+
+        const ownershipTier = p.ownershipPct < 20 ? "low" : p.ownershipPct <= 50 ? "medium" : "high";
+
+        let trend: "rising" | "stable" | "hot";
+        if (pickupScore >= 85) trend = "hot";
+        else if (pickupScore >= 70) trend = "rising";
+        else trend = "stable";
+
+        let recommendedAction: "Add" | "Stash" | "Monitor";
+        if (pickupScore >= 75) recommendedAction = "Add";
+        else if (pickupScore >= 65) recommendedAction = "Stash";
+        else recommendedAction = "Monitor";
+
+        // Rough projected points by position
+        const basePts: Record<string, number> = { QB: 18, RB: 12, WR: 11, TE: 8 };
+        const weeklyProjectedPts = parseFloat((basePts[p.position] ?? 10 + (pickupScore - 60) * 0.15).toFixed(1));
+
+        return {
+          playerName: p.playerName,
+          team: p.team,
+          position: p.position,
+          ownershipPct: p.ownershipPct,
+          pickupScore,
+          reason: p.reason,
+          trend,
+          weeklyProjectedPts,
+          recommendedAction,
+          ownershipTier,
+          newsHighlighted: inNews,
+        };
+      });
+
+      // Sort by pickupScore descending
+      result.sort((a, b) => b.pickupScore - a.pickupScore);
+
+      _nflWaiverCache = { data: result, ts: now };
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+    } catch (e: any) {
+      console.error("[EndZone] /api/nfl/waiver-radar error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/nfl/snap-trends ──────────────────────────────────────────────
+  app.get("/api/nfl/snap-trends", async (req: Request, res: Response) => {
+    try {
+      const TTL = 30 * 60 * 1000; // 30 min
+      const now = Date.now();
+      if (_nflSnapCache && (now - _nflSnapCache.ts) < TTL) {
+        return res.json({ data: _nflSnapCache.data, cachedAt: new Date(_nflSnapCache.ts).toISOString(), count: _nflSnapCache.data.length });
+      }
+
+      const SNAP_TRENDS_DATA = [
+        { playerName: "Puka Nacua",        team: "LAR", position: "WR", snapPcts: [91, 88, 85], targetShare: 28, snapTrend: "rising",  note: "Route participation up 3 straight weeks" },
+        { playerName: "Rome Odunze",       team: "CHI", position: "WR", snapPcts: [82, 88, 90], targetShare: 21, snapTrend: "falling", note: "Lost snaps to veteran receiver rotation" },
+        { playerName: "Jaylen Warren",     team: "PIT", position: "RB", snapPcts: [55, 48, 42], targetShare: 18, snapTrend: "rising",  note: "Najee Harris usage trending down; Warren getting 3rd-down role" },
+        { playerName: "Jaleel McLaughlin", team: "DEN", position: "RB", snapPcts: [44, 36, 29], targetShare: 12, snapTrend: "rising",  note: "Explosive back taking over change-of-pace snaps" },
+        { playerName: "Dontayvion Wicks",  team: "GB",  position: "WR", snapPcts: [78, 70, 61], targetShare: 22, snapTrend: "rising",  note: "Replacing veteran slot role; Jordan Love targeting heavily" },
+        { playerName: "Rashid Shaheed",    team: "NO",  position: "WR", snapPcts: [69, 75, 78], targetShare: 17, snapTrend: "falling", note: "Chris Olave return eating into deep-route snaps" },
+        { playerName: "Keaton Mitchell",   team: "BAL", position: "RB", snapPcts: [62, 54, 45], targetShare: 10, snapTrend: "rising",  note: "Henry preservation strategy opening snaps" },
+        { playerName: "Chigoziem Okonkwo", team: "TEN", position: "TE", snapPcts: [88, 83, 80], targetShare: 24, snapTrend: "rising",  note: "New OC scheme features TE heavily in routes" },
+        { playerName: "Elijah Moore",      team: "CLE", position: "WR", snapPcts: [84, 79, 71], targetShare: 26, snapTrend: "rising",  note: "Slot target share surging post-Cooper trade" },
+        { playerName: "Wan'Dale Robinson", team: "NYG", position: "WR", snapPcts: [90, 90, 87], targetShare: 30, snapTrend: "stable",  note: "Consistent slot usage; best matchup play on team" },
+        { playerName: "Khalil Shakir",     team: "BUF", position: "WR", snapPcts: [76, 81, 83], targetShare: 18, snapTrend: "falling", note: "Allen spreading targets more; Kincaid eating TE snaps" },
+        { playerName: "Cade Otton",        team: "TB",  position: "TE", snapPcts: [85, 81, 77], targetShare: 22, snapTrend: "rising",  note: "Red zone target share up as Evans ages" },
+        { playerName: "Tyler Allgeier",    team: "ATL", position: "RB", snapPcts: [38, 32, 28], targetShare: 8,  snapTrend: "rising",  note: "Bijan injury concern; Allgeier getting meaningful backup snaps" },
+        { playerName: "Joshua Palmer",     team: "LAC", position: "WR", snapPcts: [72, 70, 68], targetShare: 20, snapTrend: "stable",  note: "Reliable PPR floor; Herbert slot favourite" },
+      ];
+
+      const basePtsByPos: Record<string, number> = { QB: 20, RB: 11, WR: 10, TE: 7 };
+
+      const result = SNAP_TRENDS_DATA.map((p) => {
+        const snapDelta = p.snapPcts[0] - p.snapPcts[2];
+        const ownershipTier = p.snapPcts[0] < 30 ? "low" : p.snapPcts[0] <= 50 ? "medium" : "high";
+        const weeklyProjectedPts = parseFloat(((basePtsByPos[p.position] ?? 10) + p.targetShare * 0.15 + snapDelta * 0.05).toFixed(1));
+        return {
+          playerName: p.playerName,
+          team: p.team,
+          position: p.position,
+          snapPcts: p.snapPcts,
+          snapDelta,
+          targetShare: p.targetShare,
+          snapTrend: p.snapTrend,
+          note: p.note,
+          weeklyProjectedPts,
+          ownershipTier,
+        };
+      });
+
+      _nflSnapCache = { data: result, ts: now };
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+    } catch (e: any) {
+      console.error("[EndZone] /api/nfl/snap-trends error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/nfl/handcuffs ────────────────────────────────────────────────
+  app.get("/api/nfl/handcuffs", async (req: Request, res: Response) => {
+    try {
+      const TTL = 60 * 60 * 1000; // 60 min
+      const now = Date.now();
+      if (_nflHandcuffCache && (now - _nflHandcuffCache.ts) < TTL) {
+        return res.json({ data: _nflHandcuffCache.data, cachedAt: new Date(_nflHandcuffCache.ts).toISOString(), count: _nflHandcuffCache.data.length });
+      }
+
+      const HANDCUFF_DATA = [
+        { starter: "Christian McCaffrey", handcuff: "Jordan Mason",          team: "SF",  injuryRisk: 8, handcuffOwnershipPct: 42, starterOwnershipPct: 99, reason: "CMC has missed 4+ games in 3 of last 4 seasons. Mason is a league-winner if CMC goes down." },
+        { starter: "Saquon Barkley",      handcuff: "Kenneth Gainwell",      team: "PHI", injuryRisk: 6, handcuffOwnershipPct: 22, starterOwnershipPct: 98, reason: "Barkley high-usage workhorse; Gainwell gets 15+ carries immediately if Barkley exits." },
+        { starter: "Derrick Henry",        handcuff: "Gus Edwards",           team: "BAL", injuryRisk: 5, handcuffOwnershipPct: 31, starterOwnershipPct: 96, reason: "Henry age 30+; Keaton Mitchell speed back but Edwards is the true handcuff." },
+        { starter: "Isiah Pacheco",        handcuff: "Clyde Edwards-Helaire", team: "KC",  injuryRisk: 6, handcuffOwnershipPct: 24, starterOwnershipPct: 91, reason: "Pacheco missed games in 2023. KC offense stays elite regardless of carrier." },
+        { starter: "Jonathan Taylor",      handcuff: "Evan Hull",             team: "IND", injuryRisk: 7, handcuffOwnershipPct: 18, starterOwnershipPct: 94, reason: "Taylor's injury history (wrist, ankle) is concerning. Hull has upside." },
+        { starter: "Bijan Robinson",       handcuff: "Tyler Allgeier",        team: "ATL", injuryRisk: 5, handcuffOwnershipPct: 28, starterOwnershipPct: 97, reason: "Allgeier rushed 18 times for 99 yards last time Bijan missed. Excellent handcuff value." },
+        { starter: "Breece Hall",          handcuff: "Izzy Abanikanda",       team: "NYJ", injuryRisk: 6, handcuffOwnershipPct: 16, starterOwnershipPct: 93, reason: "Hall's ACL history makes him a concern. Abanikanda showed big-play ability." },
+        { starter: "Travis Etienne",       handcuff: "Tank Bigsby",           team: "JAX", injuryRisk: 5, handcuffOwnershipPct: 33, starterOwnershipPct: 91, reason: "Bigsby has proven he can handle the full workload; elite handcuff." },
+        { starter: "Josh Jacobs",          handcuff: "Emanuel Wilson",        team: "GB",  injuryRisk: 5, handcuffOwnershipPct: 14, starterOwnershipPct: 90, reason: "Jacobs missed 3 games in 2023. Wilson's upside in Love's offense is real." },
+        { starter: "Tony Pollard",         handcuff: "Hassan Haskins",        team: "TEN", injuryRisk: 5, handcuffOwnershipPct: 11, starterOwnershipPct: 88, reason: "Pollard had hamstring issues. Haskins is a strong runner who can carry 20 times." },
+        { starter: "James Cook",           handcuff: "Ty Johnson",            team: "BUF", injuryRisk: 4, handcuffOwnershipPct: 12, starterOwnershipPct: 92, reason: "Cook is relatively healthy but Bills love RB depth. Johnson PPR value." },
+        { starter: "Kyren Williams",       handcuff: "Ronnie Rivers",         team: "LAR", injuryRisk: 6, handcuffOwnershipPct: 20, starterOwnershipPct: 93, reason: "Williams missed time in 2023. Rivers immediately becomes RB1 in McVay's system." },
+      ];
+
+      const result = HANDCUFF_DATA.map((p) => {
+        let handcuffPriority: "Must Own" | "High Value" | "Monitor";
+        if (p.injuryRisk >= 7 && p.handcuffOwnershipPct < 35) {
+          handcuffPriority = "Must Own";
+        } else if (p.injuryRisk >= 5 && p.handcuffOwnershipPct < 40) {
+          handcuffPriority = "High Value";
+        } else {
+          handcuffPriority = "Monitor";
+        }
+        return { ...p, handcuffPriority };
+      });
+
+      _nflHandcuffCache = { data: result, ts: now };
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+    } catch (e: any) {
+      console.error("[EndZone] /api/nfl/handcuffs error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/nfl/matchup-heatmap ──────────────────────────────────────────
+  app.get("/api/nfl/matchup-heatmap", async (req: Request, res: Response) => {
+    try {
+      const TTL = 60 * 60 * 1000; // 60 min
+      const now = Date.now();
+      if (_nflMatchupCache && (now - _nflMatchupCache.ts) < TTL) {
+        const cached = _nflMatchupCache.data;
+        return res.json({ data: cached, cachedAt: new Date(_nflMatchupCache.ts).toISOString(), count: cached.length });
+      }
+
+      const MATCHUP_DATA: Record<string, { QB: number; RB: number; WR: number; TE: number }> = {
+        "ARI": { QB: 28, RB: 24, WR: 26, TE: 22 },
+        "ATL": { QB: 18, RB: 14, WR: 16, TE: 20 },
+        "BAL": { QB: 5,  RB: 8,  WR: 4,  TE: 7  },
+        "BUF": { QB: 12, RB: 18, WR: 15, TE: 14 },
+        "CAR": { QB: 29, RB: 27, WR: 30, TE: 28 },
+        "CHI": { QB: 20, RB: 16, WR: 18, TE: 17 },
+        "CIN": { QB: 10, RB: 12, WR: 11, TE: 9  },
+        "CLE": { QB: 8,  RB: 6,  WR: 7,  TE: 11 },
+        "DAL": { QB: 14, RB: 10, WR: 13, TE: 16 },
+        "DEN": { QB: 6,  RB: 9,  WR: 5,  TE: 8  },
+        "DET": { QB: 22, RB: 20, WR: 21, TE: 19 },
+        "GB":  { QB: 16, RB: 19, WR: 17, TE: 15 },
+        "HOU": { QB: 11, RB: 7,  WR: 10, TE: 12 },
+        "IND": { QB: 25, RB: 22, WR: 24, TE: 26 },
+        "JAX": { QB: 27, RB: 25, WR: 28, TE: 24 },
+        "KC":  { QB: 3,  RB: 5,  WR: 2,  TE: 4  },
+        "LAC": { QB: 17, RB: 15, WR: 19, TE: 18 },
+        "LAR": { QB: 21, RB: 17, WR: 22, TE: 21 },
+        "LV":  { QB: 30, RB: 28, WR: 29, TE: 30 },
+        "MIA": { QB: 15, RB: 11, WR: 14, TE: 13 },
+        "MIN": { QB: 9,  RB: 13, WR: 8,  TE: 10 },
+        "NE":  { QB: 4,  RB: 3,  WR: 6,  TE: 3  },
+        "NO":  { QB: 13, RB: 21, WR: 12, TE: 23 },
+        "NYG": { QB: 26, RB: 30, WR: 27, TE: 29 },
+        "NYJ": { QB: 2,  RB: 4,  WR: 3,  TE: 2  },
+        "PHI": { QB: 7,  RB: 2,  WR: 9,  TE: 6  },
+        "PIT": { QB: 1,  RB: 1,  WR: 1,  TE: 1  },
+        "SEA": { QB: 23, RB: 23, WR: 23, TE: 25 },
+        "SF":  { QB: 19, RB: 26, WR: 20, TE: 27 },
+        "TB":  { QB: 24, RB: 29, WR: 25, TE: 31 },
+        "TEN": { QB: 31, RB: 31, WR: 31, TE: 32 },
+        "WAS": { QB: 32, RB: 32, WR: 32, TE: 20 },
+      };
+
+      const gradeRank = (rank: number): string => {
+        if (rank <= 8) return "A";
+        if (rank <= 16) return "B";
+        if (rank <= 24) return "C";
+        return "D";
+      };
+
+      const posParam = (req.query.position as string | undefined)?.toUpperCase();
+      const validPositions = ["QB", "RB", "WR", "TE"];
+      const sortPos: "QB" | "RB" | "WR" | "TE" = (posParam && validPositions.includes(posParam)) ? posParam as "QB" | "RB" | "WR" | "TE" : "QB";
+
+      const result = Object.entries(MATCHUP_DATA).map(([team, ranks]) => ({
+        team,
+        QB: { rank: ranks.QB, grade: gradeRank(ranks.QB) },
+        RB: { rank: ranks.RB, grade: gradeRank(ranks.RB) },
+        WR: { rank: ranks.WR, grade: gradeRank(ranks.WR) },
+        TE: { rank: ranks.TE, grade: gradeRank(ranks.TE) },
+      }));
+
+      // Sort by selected position rank descending (higher rank = better for offense)
+      result.sort((a, b) => b[sortPos].rank - a[sortPos].rank);
+
+      _nflMatchupCache = { data: result, ts: now };
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+    } catch (e: any) {
+      console.error("[EndZone] /api/nfl/matchup-heatmap error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });

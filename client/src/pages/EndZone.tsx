@@ -63,6 +63,28 @@ interface NewsItem {
   tags?: string[];
 }
 
+
+interface WaiverPlayer {
+  playerName: string; team: string; position: string;
+  ownershipPct: number; pickupScore: number; reason: string;
+  trend: "rising" | "stable" | "hot"; weeklyProjectedPts: number;
+  recommendedAction: "Add" | "Stash" | "Monitor";
+}
+interface SnapTrendPlayer {
+  playerName: string; team: string; position: string;
+  snapPcts: number[]; targetShare: number; snapTrend: "rising" | "falling" | "stable";
+  snapDelta: number; note: string; ownershipTier: string; weeklyProjectedPts: number;
+}
+interface HandcuffPair {
+  starter: string; handcuff: string; team: string;
+  injuryRisk: number; handcuffOwnershipPct: number; starterOwnershipPct: number;
+  reason: string; handcuffPriority: "Must Own" | "High Value" | "Monitor";
+}
+interface MatchupRow {
+  team: string; QB: number; RB: number; WR: number; TE: number;
+  gradeQB: string; gradeRB: string; gradeWR: string; gradeTE: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function relativeTime(ts: string): string {
   try {
@@ -529,12 +551,228 @@ function NewsCard({ item }: { item: NewsItem }) {
   );
 }
 
+// ─── Radar Panel Components ──────────────────────────────────────────────────
+function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
+  const [posFilter, setPosFilter] = useState("ALL");
+  const positions = ["ALL", "QB", "RB", "WR", "TE"];
+  const filtered = posFilter === "ALL" ? data : data.filter(p => p.position === posFilter);
+
+  const actionColor = (a: string) => a === "Add" ? "#16a34a" : a === "Stash" ? GOLD_COLOR : MUTED;
+  const trendEmoji = (t: string) => t === "rising" ? "📈" : t === "hot" ? "🔥" : "➡️";
+  const scoreColor = (s: number) => s >= 70 ? "#16a34a" : s >= 55 ? GOLD_COLOR : MUTED;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {positions.map(p => (
+          <button key={p} onClick={() => setPosFilter(p)}
+            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: posFilter === p ? NAVY : "rgba(19,35,58,0.07)", color: posFilter === p ? BG_COLOR : MUTED }}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map((p, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{p.playerName}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: "rgba(19,35,58,0.07)", color: MUTED }}>{p.position} · {p.team}</span>
+                  <span style={{ fontSize: 11 }}>{trendEmoji(p.trend)}</span>
+                </div>
+                <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.4 }}>{p.reason}</p>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: scoreColor(p.pickupScore), lineHeight: 1 }}>{p.pickupScore}</div>
+                <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>score</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                background: `${actionColor(p.recommendedAction)}18`, color: actionColor(p.recommendedAction),
+                border: `1px solid ${actionColor(p.recommendedAction)}40` }}>
+                {p.recommendedAction}
+              </span>
+              <span style={{ fontSize: 11, color: MUTED }}>Owned: <b style={{ color: NAVY }}>{p.ownershipPct}%</b></span>
+              <span style={{ fontSize: 11, color: MUTED }}>Proj: <b style={{ color: NAVY }}>{p.weeklyProjectedPts} pts</b></span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
+  const [filter, setFilter] = useState<"all" | "rising" | "falling">("all");
+  const filtered = filter === "all" ? data : data.filter(p => p.snapTrend === filter);
+
+  const trendColor = (t: string) => t === "rising" ? "#16a34a" : t === "falling" ? "#ef4444" : MUTED;
+  const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : "→";
+
+  const SnapSparkline = ({ vals }: { vals: number[] }) => {
+    const max = Math.max(...vals, 1);
+    const w = 48; const h = 24; const barW = 12; const gap = 4;
+    return (
+      <svg width={w} height={h} style={{ flexShrink: 0 }}>
+        {[...vals].reverse().map((v, i) => {
+          const barH = Math.max(3, (v / max) * (h - 4));
+          const x = i * (barW + gap);
+          const isLatest = i === vals.length - 1;
+          return (
+            <rect key={i} x={x} y={h - barH} width={barW} height={barH} rx={2}
+              fill={isLatest ? GOLD_COLOR : "rgba(19,35,58,0.18)"} />
+          );
+        })}
+      </svg>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {(["all", "rising", "falling"] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: filter === f ? NAVY : "rgba(19,35,58,0.07)", color: filter === f ? BG_COLOR : MUTED }}>
+            {f === "all" ? "All" : f === "rising" ? "▲ Rising" : "▼ Falling"}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {filtered.map((p, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <SnapSparkline vals={p.snapPcts} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, color: NAVY }}>{p.playerName}</span>
+                  <span style={{ fontSize: 10, color: MUTED }}>{p.position} · {p.team}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: trendColor(p.snapTrend) }}>
+                    {trendArrow(p.snapTrend)} {p.snapPcts[0]}%
+                  </span>
+                  {p.snapDelta !== 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: trendColor(p.snapTrend) }}>
+                      ({p.snapDelta > 0 ? "+" : ""}{p.snapDelta}% vs 3wk ago)
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.35 }}>{p.note}</p>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 11, color: MUTED }}>Tgt: <b style={{ color: NAVY }}>{p.targetShare}%</b></div>
+                <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{p.ownershipTier} own.</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HandcuffPanel({ data }: { data: HandcuffPair[] }) {
+  const priorityColor = (p: string) => p === "Must Own" ? "#ef4444" : p === "High Value" ? GOLD_COLOR : MUTED;
+  const riskBar = (r: number) => {
+    const pct = (r / 10) * 100;
+    const col = r >= 7 ? "#ef4444" : r >= 5 ? GOLD_COLOR : "#22c55e";
+    return (
+      <div style={{ width: 60, height: 6, borderRadius: 3, background: "rgba(19,35,58,0.10)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3 }} />
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {data.map((h, i) => (
+        <div key={i} style={{ background: "#fff", borderRadius: 12, border: `1px solid ${h.handcuffPriority === "Must Own" ? "rgba(239,68,68,0.25)" : "rgba(19,35,58,0.10)"}`, padding: "12px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+                  background: `${priorityColor(h.handcuffPriority)}15`, color: priorityColor(h.handcuffPriority),
+                  border: `1px solid ${priorityColor(h.handcuffPriority)}35` }}>
+                  {h.handcuffPriority}
+                </span>
+                <span style={{ fontSize: 10, color: MUTED }}>{h.team}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: MUTED }}>{h.starter}</span>
+                <span style={{ fontSize: 11, color: MUTED }}>→</span>
+                <span style={{ fontSize: 14, fontWeight: 900, color: NAVY }}>{h.handcuff}</span>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>Injury Risk</div>
+              {riskBar(h.injuryRisk)}
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{h.injuryRisk}/10</div>
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.4, marginBottom: 8 }}>{h.reason}</p>
+          <div style={{ display: "flex", gap: 12 }}>
+            <span style={{ fontSize: 11, color: MUTED }}>Handcuff owned: <b style={{ color: NAVY }}>{h.handcuffOwnershipPct}%</b></span>
+            <span style={{ fontSize: 11, color: MUTED }}>Starter owned: <b style={{ color: NAVY }}>{h.starterOwnershipPct}%</b></span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
+  const [posFilter, setPosFilter] = useState<"QB" | "RB" | "WR" | "TE">("WR");
+  const positions: Array<"QB" | "RB" | "WR" | "TE"> = ["QB", "RB", "WR", "TE"];
+
+  const gradeColor = (g: string) => {
+    if (g === "A") return { bg: "rgba(34,197,94,0.15)",  text: "#15803d",  border: "rgba(34,197,94,0.30)" };
+    if (g === "B") return { bg: "rgba(212,168,67,0.15)", text: "#92680a",  border: "rgba(212,168,67,0.30)" };
+    if (g === "C") return { bg: "rgba(251,146,60,0.15)", text: "#c2410c",  border: "rgba(251,146,60,0.30)" };
+    return            { bg: "rgba(239,68,68,0.12)",  text: "#dc2626",  border: "rgba(239,68,68,0.25)" };
+  };
+
+  const sorted = [...data].sort((a, b) => (a as any)[posFilter] - (b as any)[posFilter]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {positions.map(p => (
+          <button key={p} onClick={() => setPosFilter(p)}
+            style={{ padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: posFilter === p ? NAVY : "rgba(19,35,58,0.07)", color: posFilter === p ? BG_COLOR : MUTED }}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>Sorted best matchup first (rank 1 = easiest for offense). A=elite, B=good, C=average, D=tough.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+        {sorted.map((row, i) => {
+          const grade = (row as any)[`grade${posFilter}`] as string;
+          const rank = (row as any)[posFilter] as number;
+          const c = gradeColor(grade);
+          return (
+            <div key={i} style={{ background: c.bg, borderRadius: 10, border: `1px solid ${c.border}`, padding: "10px 12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 800, fontSize: 13, color: NAVY }}>{row.team}</span>
+                <span style={{ fontSize: 16, fontWeight: 900, color: c.text }}>{grade}</span>
+              </div>
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Rank #{rank} vs {posFilter}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function EndZone() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<"projections" | "news">("projections");
+  const [activeTab, setActiveTab] = useState<"projections" | "news" | "radar">("projections");
   const [slate, setSlate] = useState("week");
   const [market, setMarket] = useState("all");
   const [minEdge, setMinEdge] = useState(0);
@@ -544,6 +782,7 @@ export default function EndZone() {
   const [newsQueryDebounced, setNewsQueryDebounced] = useState("");
   const [newsSort, setNewsSort] = useState<"recent" | "popular">("recent");
   const [lockedPick, setLockedPick] = useState<any>(null);
+  const [radarPanel, setRadarPanel] = useState<"waiver" | "snaps" | "handcuffs" | "matchup">("waiver");
 
   // Debounce news query
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -574,6 +813,27 @@ export default function EndZone() {
       fetch(`/api/nfl/news?q=${encodeURIComponent(newsQueryDebounced)}&sort=${newsSort}&limit=30`).then(r => r.json()),
     // Always fetch — no query required; default feed shows fantasy-relevant news
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: waiverData, isLoading: waiverLoading } = useQuery({
+    queryKey: ["/api/nfl/waiver-radar"],
+    queryFn: () => fetch("/api/nfl/waiver-radar").then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: snapData, isLoading: snapLoading } = useQuery({
+    queryKey: ["/api/nfl/snap-trends"],
+    queryFn: () => fetch("/api/nfl/snap-trends").then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: handcuffData, isLoading: handcuffLoading } = useQuery({
+    queryKey: ["/api/nfl/handcuffs"],
+    queryFn: () => fetch("/api/nfl/handcuffs").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+  const { data: matchupData, isLoading: matchupLoading } = useQuery({
+    queryKey: ["/api/nfl/matchup-heatmap"],
+    queryFn: () => fetch("/api/nfl/matchup-heatmap").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
   });
 
   const lockPickMutation = useMutation({
@@ -623,7 +883,7 @@ export default function EndZone() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 2 }}>
-            {([["projections", "🏈 Projections"], ["news", "📰 Fantasy News"]] as const).map(([tab, label]) => (
+            {([["projections", "🏈 Projections"], ["news", "📰 Fantasy News"], ["radar", "🎯 Radar"]] as const).map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -850,6 +1110,91 @@ export default function EndZone() {
                 <Newspaper size={36} style={{ margin: "0 auto 12px", display: "block", opacity: 0.35 }} />
                 <p style={{ fontWeight: 700, fontSize: 14, color: NAVY, marginBottom: 4 }}>No news available</p>
                 <p style={{ fontSize: 13 }}>Tap refresh to try again.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ TAB 3: Radar ════ */}
+        {activeTab === "radar" && (
+          <div style={{ marginTop: 20 }}>
+            {/* Sub-panel selector */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
+              {([
+                ["waiver",    "📡 Waiver Wire"],
+                ["snaps",     "📊 Snap Trends"],
+                ["handcuffs", "🔗 Handcuffs"],
+                ["matchup",   "🗺️ Matchup Map"],
+              ] as const).map(([key, label]) => (
+                <button key={key} onClick={() => setRadarPanel(key)}
+                  style={{
+                    padding: "8px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    border: "none", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                    background: radarPanel === key ? GOLD_COLOR : "rgba(19,35,58,0.07)",
+                    color: radarPanel === key ? "#1a1000" : MUTED,
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Waiver Wire */}
+            {radarPanel === "waiver" && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: NAVY, marginBottom: 2 }}>📡 Waiver Wire Radar</p>
+                  <p style={{ fontSize: 12, color: MUTED }}>Low-ownership players (≤50%) with rising value. Pickup scores are based on snap trends, injury context, and usage.</p>
+                </div>
+                {waiverLoading ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: MUTED }}>Loading waiver data…</div>
+                ) : (
+                  <WaiverRadarPanel data={waiverData?.data ?? []} />
+                )}
+              </div>
+            )}
+
+            {/* Snap Trends */}
+            {radarPanel === "snaps" && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: NAVY, marginBottom: 2 }}>📊 Snap & Usage Trends</p>
+                  <p style={{ fontSize: 12, color: MUTED }}>Week-over-week snap% and target share movement. Rising players are gaining roles; falling players are losing them.</p>
+                </div>
+                {snapLoading ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: MUTED }}>Loading snap data…</div>
+                ) : (
+                  <SnapTrendsPanel data={snapData?.data ?? []} />
+                )}
+              </div>
+            )}
+
+            {/* Handcuffs */}
+            {radarPanel === "handcuffs" && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: NAVY, marginBottom: 2 }}>🔗 Handcuff Alert Board</p>
+                  <p style={{ fontSize: 12, color: MUTED }}>Backup RBs most likely to become startable if their starter misses time. Sorted by priority and injury risk.</p>
+                </div>
+                {handcuffLoading ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: MUTED }}>Loading handcuff data…</div>
+                ) : (
+                  <HandcuffPanel data={handcuffData?.data ?? []} />
+                )}
+              </div>
+            )}
+
+            {/* Matchup Heatmap */}
+            {radarPanel === "matchup" && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: NAVY, marginBottom: 2 }}>🗺️ Matchup Heat Map</p>
+                  <p style={{ fontSize: 12, color: MUTED }}>Defensive rankings vs each position. A = best matchup for fantasy, D = toughest. Select a position to sort.</p>
+                </div>
+                {matchupLoading ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: MUTED }}>Loading matchup data…</div>
+                ) : (
+                  <MatchupHeatmapPanel data={matchupData?.data ?? []} />
+                )}
               </div>
             )}
           </div>
