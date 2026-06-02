@@ -72,8 +72,21 @@ interface WaiverPlayer {
 }
 interface SnapTrendPlayer {
   playerName: string; team: string; position: string;
-  snapPcts: number[]; targetShare: number; snapTrend: "rising" | "falling" | "stable";
-  snapDelta: number; note: string; ownershipTier: string; weeklyProjectedPts: number;
+  snapPcts: number[];
+  weekLabels: string[];
+  targetShare: number;
+  touches: number | null;
+  routes: number | null;
+  snapTrend: "rising" | "falling" | "stable";
+  trendWindow: string;
+  delta1: number;
+  avg3: number; delta3: number; weekRange3: string;
+  avg5: number; delta5: number; weekRange5: string;
+  avg10: number; delta10: number; weekRange10: string;
+  snapDelta: number;
+  note: string;
+  ownershipTier: string;
+  weeklyProjectedPts: number;
 }
 interface HandcuffPair {
   starter: string; handcuff: string; team: string;
@@ -671,23 +684,64 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
 
 function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
   const [filter, setFilter] = useState<"all" | "rising" | "falling">("all");
-  const filtered = filter === "all" ? data : data.filter(p => p.snapTrend === filter);
+  const [window, setWindow] = useState<"1G" | "3G" | "5G" | "10G">("3G");
+  const [expanded, setExpanded] = useState<number | null>(null);
 
+  // Filter by trend relative to selected window
+  const getTrend = (p: SnapTrendPlayer) => {
+    if (window === "1G") return p.delta1 >= 3 ? "rising" : p.delta1 <= -3 ? "falling" : "stable";
+    if (window === "3G") return p.snapTrend; // pre-computed from delta3
+    if (window === "5G") return p.delta5 >= 4 ? "rising" : p.delta5 <= -4 ? "falling" : "stable";
+    return p.delta10 >= 10 ? "rising" : p.delta10 <= -10 ? "falling" : "stable";
+  };
+  const getDelta = (p: SnapTrendPlayer) => {
+    if (window === "1G") return p.delta1;
+    if (window === "3G") return p.delta3;
+    if (window === "5G") return p.delta5;
+    return p.delta10;
+  };
+  const getAvg = (p: SnapTrendPlayer) => {
+    if (window === "1G") return p.snapPcts[0];
+    if (window === "3G") return p.avg3;
+    if (window === "5G") return p.avg5;
+    return p.avg10;
+  };
+  const getRange = (p: SnapTrendPlayer) => {
+    if (window === "1G") return `${p.weekLabels[1]} vs ${p.weekLabels[0]}`;
+    if (window === "3G") return p.weekRange3;
+    if (window === "5G") return p.weekRange5;
+    return p.weekRange10;
+  };
+
+  const filtered = filter === "all" ? data : data.filter(p => getTrend(p) === filter);
   const trendColor = (t: string) => t === "rising" ? "#16a34a" : t === "falling" ? "#ef4444" : MUTED;
   const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : "→";
+  const deltaColor = (d: number) => d > 0 ? "#16a34a" : d < 0 ? "#ef4444" : MUTED;
 
-  const SnapSparkline = ({ vals }: { vals: number[] }) => {
-    const max = Math.max(...vals, 1);
-    const w = 48; const h = 24; const barW = 12; const gap = 4;
+  // 10-bar sparkline, colour-coded by direction, most-recent = rightmost
+  const SnapSparkline = ({ vals, wks }: { vals: number[]; wks: string[] }) => {
+    const reversed = [...vals].reverse(); // oldest left, newest right
+    const wksR = [...wks].reverse();
+    const max = Math.max(...reversed, 1);
+    const totalW = 140; const totalH = 36;
+    const n = reversed.length;
+    const barW = Math.floor((totalW - (n - 1) * 2) / n);
     return (
-      <svg width={w} height={h} style={{ flexShrink: 0 }}>
-        {[...vals].reverse().map((v, i) => {
-          const barH = Math.max(3, (v / max) * (h - 4));
-          const x = i * (barW + gap);
-          const isLatest = i === vals.length - 1;
+      <svg width={totalW} height={totalH + 12} style={{ flexShrink: 0, overflow: "visible" }}>
+        {reversed.map((v, i) => {
+          const barH = Math.max(3, (v / max) * (totalH - 4));
+          const x = i * (barW + 2);
+          const isLatest = i === n - 1;
+          const isRising = i > 0 && reversed[i] >= reversed[i - 1];
+          const fill = isLatest ? GOLD_COLOR : isRising ? "rgba(22,163,74,0.55)" : "rgba(239,68,68,0.45)";
           return (
-            <rect key={i} x={x} y={h - barH} width={barW} height={barH} rx={2}
-              fill={isLatest ? GOLD_COLOR : "rgba(19,35,58,0.18)"} />
+            <g key={i}>
+              <rect x={x} y={totalH - barH} width={barW} height={barH} rx={2} fill={fill} />
+              <text x={x + barW / 2} y={totalH + 10} textAnchor="middle"
+                style={{ fontSize: 7, fill: MUTED, fontWeight: isLatest ? 800 : 400 }}>
+                {wksR[i]?.replace("Wk ", "")}
+              </text>
+            </g>
           );
         })}
       </svg>
@@ -699,49 +753,151 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
       <AnalysisInfo
         title="How snap trends are analyzed"
         items={[
-          { label: "Snap %", desc: "Percentage of offensive snaps the player was on the field. Current week shown as the highlighted bar; bars show last 4 recorded weeks (right = most recent)." },
-          { label: "Delta", desc: "Change vs 3-week rolling average. +5% or more = Rising. −5% or more = Falling. Within ±4% = Stable." },
-          { label: "Target Share", desc: "% of team targets the player received this season. High snap % + high target share = must-start." },
-          { label: "Trending Up", desc: "Rising snap trend with a new role (starter injury, depth chart change, or scheme shift) gets extra weight in the waiver pickup score." },
-          { label: "Ownership tier", desc: "Low = under 30% owned · Medium = 30–60% · High = 60%+ owned in ESPN/Yahoo leagues." },
+          { label: "Snap %", desc: "Percentage of offensive snaps the player was on the field. The 10-bar chart shows weekly snap % from Wk 8 (left) to most recent (right, gold). Green bars = week-over-week increase; red bars = decrease." },
+          { label: "1G Delta", desc: "Single game difference: most recent week minus the week before. Captures immediate usage shifts — a +10 spike after a starter injury, or a -8 drop from a snap limit." },
+          { label: "3G MA", desc: "3-game moving average vs the prior 3 games. Core trend signal. +4% or more = Rising. -4% or more = Falling. Within ±3% = Stable. Smooths out outlier games." },
+          { label: "5G MA", desc: "5-game moving average vs weeks 6–10. Confirms whether a recent trend is actually sustained or just noise. Best for identifying established role changes." },
+          { label: "10G Baseline", desc: "Full 10-week window. Shows the player's snap trajectory over the entire visible period. Most recent vs oldest game gives the full directional story." },
+          { label: "Touches / Routes", desc: "Carries + targets per game (Touches) and route participation rate (Routes %). High routes + high target share = must-start regardless of snap % absolute level." },
+          { label: "Ownership tier", desc: "Low = under 30% · Medium = 30–60% · High = 60%+ in ESPN/Yahoo leagues." },
         ]}
       />
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+
+      {/* Window selector */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: MUTED, alignSelf: "center", marginRight: 2, fontWeight: 600 }}>Window:</span>
+        {(["1G", "3G", "5G", "10G"] as const).map(w => (
+          <button key={w} onClick={() => setWindow(w)}
+            style={{ padding: "4px 11px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: window === w ? NAVY_COLOR : "rgba(19,35,58,0.07)",
+              color: window === w ? BG_COLOR : MUTED }}>
+            {w}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        {/* Trend filter */}
         {(["all", "rising", "falling"] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
-            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
-              background: filter === f ? NAVY : "rgba(19,35,58,0.07)", color: filter === f ? BG_COLOR : MUTED }}>
+            style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: filter === f ? NAVY_COLOR : "rgba(19,35,58,0.07)",
+              color: filter === f ? BG_COLOR : MUTED }}>
             {f === "all" ? "All" : f === "rising" ? "▲ Rising" : "▼ Falling"}
           </button>
         ))}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {filtered.map((p, i) => (
-          <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "10px 14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <SnapSparkline vals={p.snapPcts} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontWeight: 800, fontSize: 13, color: NAVY }}>{p.playerName}</span>
-                  <span style={{ fontSize: 10, color: MUTED }}>{p.position} · {p.team}</span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: trendColor(p.snapTrend) }}>
-                    {trendArrow(p.snapTrend)} {p.snapPcts[0]}%
-                  </span>
-                  {p.snapDelta !== 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: trendColor(p.snapTrend) }}>
-                      ({p.snapDelta > 0 ? "+" : ""}{p.snapDelta}% vs 3wk ago)
-                    </span>
-                  )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map((p, i) => {
+          const trend = getTrend(p);
+          const delta = getDelta(p);
+          const avg = getAvg(p);
+          const range = getRange(p);
+          const isOpen = expanded === i;
+          return (
+            <div key={i}
+              style={{ background: "#fff", borderRadius: 12,
+                border: `1px solid ${trend === "rising" ? "rgba(22,163,74,0.20)" : trend === "falling" ? "rgba(239,68,68,0.20)" : "rgba(19,35,58,0.10)"}`,
+                padding: "10px 13px", cursor: "pointer" }}
+              onClick={() => setExpanded(isOpen ? null : i)}>
+
+              {/* Top row: sparkline + header */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ paddingTop: 2 }}>
+                  <SnapSparkline vals={p.snapPcts} wks={p.weekLabels} />
                 </div>
-                <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.35 }}>{p.note}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
+                    <span style={{ fontWeight: 800, fontSize: 13, color: NAVY_COLOR }}>{p.playerName}</span>
+                    <span style={{ fontSize: 10, color: MUTED, background: "rgba(19,35,58,0.07)", borderRadius: 10, padding: "1px 6px" }}>{p.position}</span>
+                    <span style={{ fontSize: 10, color: MUTED }}>{p.team}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: trendColor(trend),
+                      background: `${trendColor(trend)}12`, borderRadius: 10, padding: "1px 7px" }}>
+                      {trendArrow(trend)} {p.snapPcts[0]}%
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor(delta) }}>
+                      ({delta >= 0 ? "+" : ""}{delta}%{window !== "1G" ? " MA" : ""} · {range})
+                    </span>
+                  </div>
+
+                  {/* MA stat row */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    {([
+                      { label: "1G",  val: p.snapPcts[0], delta: p.delta1,  range: `${p.weekLabels[0]}` },
+                      { label: "3G",  val: p.avg3,        delta: p.delta3,  range: p.weekRange3 },
+                      { label: "5G",  val: p.avg5,        delta: p.delta5,  range: p.weekRange5 },
+                      { label: "10G", val: p.avg10,       delta: p.delta10, range: p.weekRange10 },
+                    ]).map(m => (
+                      <div key={m.label}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                          background: window === m.label ? `${GOLD_COLOR}18` : "rgba(19,35,58,0.04)",
+                          border: window === m.label ? `1px solid ${GOLD_COLOR}55` : "1px solid transparent",
+                          borderRadius: 8, padding: "3px 7px", minWidth: 44 }}>
+                        <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{m.label}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: NAVY_COLOR }}>{m.val}%</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: deltaColor(m.delta) }}>
+                          {m.delta >= 0 ? "+" : ""}{m.delta}%
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 2 }}>
+                      {p.touches !== null && (
+                        <span style={{ fontSize: 10, color: MUTED }}>Touch/g: <b style={{ color: NAVY_COLOR }}>{p.touches}</b></span>
+                      )}
+                      {p.routes !== null && (
+                        <span style={{ fontSize: 10, color: MUTED }}>Routes: <b style={{ color: NAVY_COLOR }}>{p.routes}%</b></span>
+                      )}
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.35, marginBottom: 2 }}>{p.note}</p>
+                </div>
+
+                {/* Right column */}
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: MUTED }}>Tgt: <b style={{ color: NAVY_COLOR }}>{p.targetShare}%</b></div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{p.ownershipTier} own.</div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+                    <b style={{ color: GOLD_COLOR }}>{p.weeklyProjectedPts}</b> pts proj.
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>{isOpen ? "▲" : "▼"}</div>
+                </div>
               </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 11, color: MUTED }}>Tgt: <b style={{ color: NAVY }}>{p.targetShare}%</b></div>
-                <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{p.ownershipTier} own.</div>
-              </div>
+
+              {/* Expanded: week-by-week breakdown */}
+              {isOpen && (
+                <div style={{ marginTop: 10, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 5 }}>Week-by-Week Snap %</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {p.snapPcts.map((v, idx) => {
+                      const prev = p.snapPcts[idx + 1];
+                      const wkDelta = prev !== undefined ? v - prev : null;
+                      const col = wkDelta === null ? MUTED : wkDelta > 0 ? "#16a34a" : wkDelta < 0 ? "#ef4444" : MUTED;
+                      return (
+                        <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                          background: idx === 0 ? `${GOLD_COLOR}18` : "rgba(19,35,58,0.04)",
+                          border: idx === 0 ? `1px solid ${GOLD_COLOR}55` : "1px solid rgba(19,35,58,0.08)",
+                          borderRadius: 8, padding: "4px 8px", minWidth: 42 }}>
+                          <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{p.weekLabels[idx]}</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: idx === 0 ? NAVY_COLOR : MUTED }}>{v}%</span>
+                          {wkDelta !== null && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: col }}>
+                              {wkDelta >= 0 ? "+" : ""}{wkDelta}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, color: MUTED }}>3G MA: <b style={{ color: NAVY_COLOR }}>{p.avg3}%</b> <span style={{ color: deltaColor(p.delta3) }}>({p.delta3 >= 0 ? "+" : ""}{p.delta3}% vs prior 3)</span></span>
+                    <span style={{ fontSize: 10, color: MUTED }}>5G MA: <b style={{ color: NAVY_COLOR }}>{p.avg5}%</b> <span style={{ color: deltaColor(p.delta5) }}>({p.delta5 >= 0 ? "+" : ""}{p.delta5}% vs prior 5)</span></span>
+                    <span style={{ fontSize: 10, color: MUTED }}>10G base: <b style={{ color: NAVY_COLOR }}>{p.avg10}%</b> <span style={{ color: deltaColor(p.delta10) }}>({p.delta10 >= 0 ? "+" : ""}{p.delta10}% full span)</span></span>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
