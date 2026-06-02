@@ -15889,6 +15889,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       } catch { /* ignore */ }
 
+      // ── Fetch ESPN Fantasy ownership % (free, no key needed) ──────────────
+      // ESPN Fantasy scoreboard endpoint returns rostered% for all NFL players
+      const espnOwnership: Record<string, number> = {};
+      try {
+        // ESPN FFL players endpoint — returns ownership/rostered data
+        const espnUrl = "https://fantasy.espn.com/apis/v3/games/ffl/seasons/2024/players?scoringPeriodId=1&view=players_wl";
+        const espnResp = await fetch(espnUrl, {
+          headers: { "X-Fantasy-Filter": JSON.stringify({ players: { filterStatus: { value: ["FREEAGENT","WAIVERS","ONTEAM"] }, limit: 500, sortPercOwned: { sortAsc: false, sortPriority: 1 } } }) },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (espnResp.ok) {
+          const espnData: any = await espnResp.json();
+          for (const player of (espnData?.players ?? [])) {
+            const name   = (player?.playerPoolEntry?.player?.fullName ?? "").toLowerCase();
+            const owned  = player?.playerPoolEntry?.percentOwned ?? player?.playerPoolEntry?.percentRostered ?? -1;
+            if (name && owned >= 0) espnOwnership[name] = Math.round(owned);
+          }
+        }
+      } catch { /* ESPN ownership gracefully degrades to seed values */ }
+      const espnOwnershipAvailable = Object.keys(espnOwnership).length > 10;
+      console.log(`[WaiverRadar] ESPN ownership data: ${espnOwnershipAvailable ? Object.keys(espnOwnership).length + ' players' : 'unavailable, using seed values'}`);
+
+      // Helper: look up ESPN ownership, fall back to seed value
+      const getOwnership = (playerName: string, seedPct: number): number => {
+        if (!espnOwnershipAvailable) return seedPct;
+        const nameLower = playerName.toLowerCase();
+        // Try exact match first
+        if (espnOwnership[nameLower] !== undefined) return espnOwnership[nameLower];
+        // Try partial first+last name match
+        const parts = nameLower.split(" ");
+        const firstName = parts[0]; const lastName = parts[parts.length - 1];
+        const matchKey = Object.keys(espnOwnership).find(k => k.includes(firstName) && k.includes(lastName));
+        return matchKey ? espnOwnership[matchKey] : seedPct;
+      };
+
       const WAIVER_SEED = [
         // RBs
         { playerName: "Tyler Allgeier",        team: "ATL", position: "RB", ownershipPct: 28, baseScore: 72, reason: "Bijan Robinson injury risk; 18+ carries when starter rests — trending on Sleeper & Yahoo" },
@@ -15942,7 +15977,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const positionScarcityBonus: Record<string, number> = { RB: 8, WR: 5, TE: 10, QB: 0 };
 
-      const result = WAIVER_SEED.map((p) => {
+      const result = WAIVER_SEED
+        .map((p) => ({ ...p, ownershipPct: getOwnership(p.playerName, p.ownershipPct) }))
+        // ── HARD FILTER: waiver wire = must be owned by ≤50% of leagues ──
+        .filter((p) => p.ownershipPct <= 50)
+        .map((p) => {
         let pickupScore = p.baseScore;
 
         // News bump: +20 if player name appears in recent headlines
