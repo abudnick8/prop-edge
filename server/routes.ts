@@ -15070,6 +15070,122 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   let _nflHandcuffCache: { data: any; ts: number } | null = null;
   let _nflMatchupCache: { data: any; ts: number } | null = null;
 
+  // ── Shared Sleeper/ESPN Roster Cache ─────────────────────────────────────
+  // Refreshes daily (or on NFL week change) — used by all End Zone panels
+  // to guarantee team assignments are always current.
+  interface SleeperPlayer {
+    player_id: string;
+    full_name: string;
+    first_name: string;
+    last_name: string;
+    team: string | null;
+    position: string | null;
+    status: string | null;        // "Active" | "Inactive" | "IR" | null
+    injury_status: string | null; // "Questionable" | "Doubtful" | "Out" | null
+    years_exp: number | null;
+  }
+  let _sleeperRosterCache: { players: Record<string, SleeperPlayer>; ts: number; week: number } | null = null;
+
+  function getCurrentNFLWeek(): number {
+    // NFL 2025 season starts Sep 4 2025 (Thu). Returns current week 1-18, or 0 off-season.
+    const SEASON_START = new Date("2025-09-04T00:00:00Z").getTime();
+    const SEASON_END   = new Date("2026-01-05T23:59:59Z").getTime();
+    const now = Date.now();
+    if (now < SEASON_START || now > SEASON_END) return 0;
+    const weekNum = Math.floor((now - SEASON_START) / (7 * 24 * 60 * 60 * 1000)) + 1;
+    return Math.min(18, Math.max(1, weekNum));
+  }
+
+  async function getSleeperRoster(): Promise<Record<string, SleeperPlayer>> {
+    const now      = Date.now();
+    const TTL      = 6 * 60 * 60 * 1000; // 6 hours
+    const curWeek  = getCurrentNFLWeek();
+    // Bust cache on week change OR TTL expiry
+    if (_sleeperRosterCache && (now - _sleeperRosterCache.ts) < TTL && _sleeperRosterCache.week === curWeek) {
+      return _sleeperRosterCache.players;
+    }
+    try {
+      const resp = await fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(12000) });
+      if (!resp.ok) throw new Error(`Sleeper HTTP ${resp.status}`);
+      const raw: Record<string, any> = await resp.json();
+      const players: Record<string, SleeperPlayer> = {};
+      for (const [id, p] of Object.entries(raw)) {
+        if (!p.full_name && !p.first_name) continue;
+        const fullName = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`).trim();
+        if (!fullName) continue;
+        players[id] = {
+          player_id:     id,
+          full_name:     fullName,
+          first_name:    p.first_name ?? "",
+          last_name:     p.last_name  ?? "",
+          team:          p.team       ?? null,
+          position:      p.position   ?? null,
+          status:        p.status     ?? null,
+          injury_status: p.injury_status ?? null,
+          years_exp:     p.years_exp  ?? null,
+        };
+      }
+      _sleeperRosterCache = { players, ts: now, week: curWeek };
+      console.log(`[SleeperRoster] Loaded ${Object.keys(players).length} players (week ${curWeek})`);
+      return players;
+    } catch (err: any) {
+      console.warn("[SleeperRoster] Fetch failed, using stale cache if available:", err.message);
+      return _sleeperRosterCache?.players ?? {};
+    }
+  }
+
+  /**
+   * Look up a player's CURRENT NFL team from Sleeper.
+   * Falls back to the seed value if not found.
+   */
+  async function resolveTeam(playerName: string, seedTeam: string, roster: Record<string, SleeperPlayer>): Promise<string> {
+    if (!playerName) return seedTeam;
+    const nameLower = playerName.toLowerCase();
+    const parts = nameLower.split(/\s+/);
+    const firstName = parts[0] ?? "";
+    const lastName  = parts[parts.length - 1] ?? "";
+    // Exact full name match
+    const exact = Object.values(roster).find(p => p.full_name.toLowerCase() === nameLower);
+    if (exact?.team) return exact.team;
+    // First + last name match (handles "Jr.", "III" etc.)
+    const partial = Object.values(roster).find(p => {
+      const n = p.full_name.toLowerCase();
+      return n.includes(firstName) && n.includes(lastName);
+    });
+    if (partial?.team) return partial.team;
+    return seedTeam; // graceful fallback
+  }
+
+  /**
+   * Bulk-resolve teams for a list of player objects in parallel.
+   * Modifies team in-place and also returns the updated list.
+   */
+  async function resolveTeams<T extends { playerName: string; team: string }>(
+    players: T[], roster: Record<string, SleeperPlayer>
+  ): Promise<T[]> {
+    return Promise.all(
+      players.map(async (p) => {
+        const resolved = await resolveTeam(p.playerName, p.team, roster);
+        return { ...p, team: resolved };
+      })
+    );
+  }
+
+  /**
+   * Invalidate all NFL End Zone caches — call when the Sleeper roster
+   * refreshes (week change) so all panels repopulate with fresh team data.
+   */
+  function invalidateEndZoneCaches() {
+    _nflWaiverCache    = null;
+    _nflSnapCache      = null;
+    _nflHandcuffCache  = null;
+    _nflGameScriptCache = null;
+    _nflRedZoneCache   = null;
+    _nflPlayoffGraderCache = null;
+    _nflAdpValueCache  = null;
+    console.log("[EndZone] All caches invalidated due to roster refresh");
+  }
+
   // ── Projection engine helpers ──────────────────────────────────────────────
 
   function poissonProb(lambda: number, k: number): number {
@@ -15138,13 +15254,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     notes: string;
   }
 
-  // Hardcoded player roster tiers (will be enriched by ESPN data if available)
+  // Hardcoded player roster tiers — SEED ONLY. At runtime all team assignments
+  // are overridden by getSleeperRoster() + resolveTeam() for live accuracy.
   // Format: { team: abbr, players: [...] }
   const NFL_ROSTER_TIERS: Record<string, {
     qb: string; rb1: string; rb2?: string;
     wr1: string; wr2: string; wr3?: string; te1: string;
   }> = {
-    KC:  { qb: "Patrick Mahomes",   rb1: "Isiah Pacheco",    wr1: "Rashee Rice",      wr2: "Hollywood Brown",  te1: "Travis Kelce" },
+    KC:  { qb: "Patrick Mahomes",   rb1: "Kareem Hunt",      wr1: "Rashee Rice",      wr2: "Hollywood Brown",  te1: "Travis Kelce" }, // Pacheco traded; overridden by Sleeper live data
     BUF: { qb: "Josh Allen",        rb1: "James Cook",       wr1: "Khalil Shakir",    wr2: "Curtis Samuel",    te1: "Dalton Kincaid" },
     BAL: { qb: "Lamar Jackson",     rb1: "Derrick Henry",    wr1: "Zay Flowers",      wr2: "Rashod Bateman",   te1: "Mark Andrews" },
     SF:  { qb: "Brock Purdy",       rb1: "Jordan Mason",     wr1: "Brandon Aiyuk",    wr2: "Deebo Samuel",     te1: "George Kittle" },
@@ -15930,7 +16047,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Gus Edwards",            team: "LAC", position: "RB", ownershipPct: 31, baseScore: 68, reason: "J.K. Dobbins injury history; vulture TD role in LAC offense" },
         { playerName: "Kimani Vidal",           team: "LAC", position: "RB", ownershipPct: 18, baseScore: 61, reason: "Explosive YPC in limited touches; handcuff upside" },
         { playerName: "Jordan Mason",           team: "SF",  position: "RB", ownershipPct: 42, baseScore: 71, reason: "McCaffrey handcuff; immediate starter if CMC misses time" },
-        { playerName: "Clyde Edwards-Helaire",  team: "KC",  position: "RB", ownershipPct: 24, baseScore: 58, reason: "Pacheco handcuff; Mahomes offense keeps RBs relevant" },
+        { playerName: "Clyde Edwards-Helaire",  team: "KC",  position: "RB", ownershipPct: 24, baseScore: 58, reason: "KC backfield handcuff; Mahomes offense keeps RBs relevant" },
         { playerName: "Keaton Mitchell",        team: "BAL", position: "RB", ownershipPct: 29, baseScore: 69, reason: "Explosive speed back; 20+ carries when Henry rests" },
         { playerName: "D'Onta Foreman",         team: "NE",  position: "RB", ownershipPct: 14, baseScore: 57, reason: "Bell-cow option in NE backfield after Stevenson decline" },
         { playerName: "Jaleel McLaughlin",      team: "DEN", position: "RB", ownershipPct: 18, baseScore: 63, reason: "Breakaway speed; Javonte Williams usage has declined" },
@@ -15966,6 +16083,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Trey McBride",           team: "ARI", position: "TE", ownershipPct: 71, baseScore: 75, reason: "Volume TE in Arizona; Kyler Murray's go-to middle-of-field target" },
       ];
 
+      // ── Live Sleeper roster team resolution ──────────────────────────────
+      const sleeperRoster = await getSleeperRoster();
+      const curWeek = getCurrentNFLWeek();
+      // Invalidate caches if week changed since last waiver fetch
+      if (_sleeperRosterCache && _sleeperRosterCache.week !== curWeek && curWeek > 0) {
+        invalidateEndZoneCaches();
+      }
+
       // Cross-reference _nflNewsCache for injury bumps
       const newsHeadlines: string[] = [];
       if (_nflNewsCache && _nflNewsCache.data && Array.isArray(_nflNewsCache.data)) {
@@ -15977,7 +16102,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const positionScarcityBonus: Record<string, number> = { RB: 8, WR: 5, TE: 10, QB: 0 };
 
-      const result = WAIVER_SEED
+      // Resolve live teams from Sleeper for every seed player
+      const waiverWithLiveTeams = await resolveTeams(WAIVER_SEED, sleeperRoster);
+      const result = waiverWithLiveTeams
         .map((p) => ({ ...p, ownershipPct: getOwnership(p.playerName, p.ownershipPct) }))
         // ── HARD FILTER: waiver wire = must be owned by ≤50% of leagues ──
         .filter((p) => p.ownershipPct <= 50)
@@ -16091,7 +16218,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const basePtsByPos: Record<string, number> = { QB: 20, RB: 11, WR: 10, TE: 7 };
 
-      const result = SNAP_TRENDS_DATA.map((p) => {
+      // Resolve live teams
+      const sleeperRosterSnap = await getSleeperRoster();
+      const snapWithLiveTeams = await resolveTeams(SNAP_TRENDS_DATA, sleeperRosterSnap);
+
+      const result = snapWithLiveTeams.map((p) => {
         const snapDelta = p.snapPcts[0] - p.snapPcts[2];
         const ownershipTier = p.snapPcts[0] < 30 ? "low" : p.snapPcts[0] <= 50 ? "medium" : "high";
         const weeklyProjectedPts = parseFloat(((basePtsByPos[p.position] ?? 10) + p.targetShare * 0.15 + snapDelta * 0.05).toFixed(1));
@@ -16130,7 +16261,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { starter: "Christian McCaffrey", handcuff: "Jordan Mason",          team: "SF",  injuryRisk: 8, handcuffOwnershipPct: 42, starterOwnershipPct: 99, reason: "CMC missed 4+ games in 3 of last 4 seasons. Mason is a league-winner if CMC goes down. FantasyPros: #1 handcuff priority." },
         { starter: "Saquon Barkley",      handcuff: "Kenneth Gainwell",      team: "PHI", injuryRisk: 6, handcuffOwnershipPct: 22, starterOwnershipPct: 98, reason: "Barkley high-usage workhorse. Gainwell gets 15+ carries immediately if Barkley exits. Sleeper trending up." },
         { starter: "Derrick Henry",        handcuff: "Gus Edwards",           team: "BAL", injuryRisk: 6, handcuffOwnershipPct: 31, starterOwnershipPct: 96, reason: "Henry age 30+; Edwards is the true handcuff behind him. Keaton Mitchell also in mix." },
-        { starter: "Isiah Pacheco",        handcuff: "Clyde Edwards-Helaire", team: "KC",  injuryRisk: 6, handcuffOwnershipPct: 24, starterOwnershipPct: 91, reason: "Pacheco missed games in 2023. KC offense stays elite regardless of carrier. Must own." },
+        { starter: "Kareem Hunt",          handcuff: "Clyde Edwards-Helaire", team: "KC",  injuryRisk: 5, handcuffOwnershipPct: 24, starterOwnershipPct: 85, reason: "Kareem Hunt leads KC backfield. CEH is the handcuff in Mahomes offense." },
         { starter: "Jonathan Taylor",      handcuff: "Evan Hull",             team: "IND", injuryRisk: 7, handcuffOwnershipPct: 18, starterOwnershipPct: 94, reason: "Taylor's injury history (wrist, ankle) is alarming. Hull wins full workload immediately." },
         { starter: "Bijan Robinson",       handcuff: "Tyler Allgeier",        team: "ATL", injuryRisk: 5, handcuffOwnershipPct: 28, starterOwnershipPct: 97, reason: "Allgeier rushed 18 times for 99 yards last time Bijan missed. Excellent handcuff value." },
         { starter: "Breece Hall",          handcuff: "Izzy Abanikanda",       team: "NYJ", injuryRisk: 6, handcuffOwnershipPct: 16, starterOwnershipPct: 93, reason: "Hall's ACL history makes him a real concern. Abanikanda showed big-play ability in college." },
@@ -16150,7 +16281,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { starter: "Zack Moss",            handcuff: "D'Onta Foreman",        team: "CIN", injuryRisk: 5, handcuffOwnershipPct: 11, starterOwnershipPct: 74, reason: "Moss injury history. Foreman brings veteran experience and goal-line equity." },
       ];
 
-      const result = HANDCUFF_DATA.map((p) => {
+      // Resolve live teams for starters and handcuffs
+      const sleeperRosterHC = await getSleeperRoster();
+      // Handcuff data has starter/handcuff fields (not playerName) — resolve both
+      const handcuffWithLiveTeams = await Promise.all(
+        HANDCUFF_DATA.map(async (pair) => {
+          // Resolve the team from the STARTER's current team
+          const resolvedTeam = await resolveTeam(pair.starter, pair.team, sleeperRosterHC);
+          // Also verify handcuff hasn't changed team
+          return { ...pair, team: resolvedTeam };
+        })
+      );
+
+      const result = handcuffWithLiveTeams.map((p) => {
         let handcuffPriority: "Must Own" | "High Value" | "Monitor";
         if (p.injuryRisk >= 7 && p.handcuffOwnershipPct < 35) {
           handcuffPriority = "Must Own";
@@ -16715,7 +16858,82 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflGameScriptCache.data);
       }
 
-      const GAME_SCRIPT_DATA = [
+      // ── Live game fetch via Odds API ───────────────────────────────────────
+      const sleeperRosterGS = await getSleeperRoster();
+      let liveGames: Array<{ home: string; away: string; total: number; spread: number }> = [];
+      try {
+        const oddsKey = process.env.ODDS_API_KEY ?? "";
+        if (oddsKey) {
+          const oddsResp = await fetch(
+            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (oddsResp.ok) {
+            const oddsData: any[] = await oddsResp.json();
+            for (const game of oddsData) {
+              const homeTeam = (game.home_team ?? "").replace(/^.*?\s/, "").slice(0, 3).toUpperCase();
+              const awayTeam = (game.away_team ?? "").replace(/^.*?\s/, "").slice(0, 3).toUpperCase();
+              let spread = 0, total = 45;
+              for (const bk of (game.bookmakers ?? [])) {
+                const spreadMkt = bk.markets?.find((m: any) => m.key === "spreads");
+                const totalMkt  = bk.markets?.find((m: any) => m.key === "totals");
+                if (spreadMkt?.outcomes?.length) {
+                  const homeOutcome = spreadMkt.outcomes.find((o: any) => o.name === game.home_team);
+                  if (homeOutcome) spread = homeOutcome.point ?? 0;
+                }
+                if (totalMkt?.outcomes?.length) {
+                  const overOutcome = totalMkt.outcomes.find((o: any) => o.name === "Over");
+                  if (overOutcome) total = overOutcome.point ?? 45;
+                }
+                break;
+              }
+              liveGames.push({ home: homeTeam, away: awayTeam, spread, total });
+            }
+          }
+        }
+      } catch { /* fall back to seed */ }
+
+      // Helper: get current roster players for a team from Sleeper
+      const teamRoster = (teamAbbr: string, pos: string): string[] => {
+        return Object.values(sleeperRosterGS)
+          .filter(p => p.team === teamAbbr && p.position === pos && p.status !== "Inactive" && p.injury_status !== "Out")
+          .sort((a, b) => (a.years_exp ?? 99) - (b.years_exp ?? 99))
+          .slice(0, 3)
+          .map(p => p.full_name);
+      };
+
+      // Build game script from live games if available, else use seed
+      const buildGameScript = (
+        away: string, home: string, spread: number, total: number
+      ) => {
+        const homeScript = spread <= -4 ? "Comfortable Lead" : spread >= 4 ? "Playing From Behind" : "Neutral / High Scoring";
+        const awayScript = spread >= 4  ? "Comfortable Lead" : spread <= -4 ? "Playing From Behind" : "Neutral / High Scoring";
+        const homePassRate = homeScript === "Playing From Behind" ? 66 : homeScript === "Comfortable Lead" ? 50 : 58;
+        const awayPassRate = awayScript === "Playing From Behind" ? 66 : awayScript === "Comfortable Lead" ? 50 : 58;
+        const homeWRs = teamRoster(home, "WR").slice(0, 2);
+        const homeTEs = teamRoster(home, "TE").slice(0, 1);
+        const homeRBs = teamRoster(home, "RB").slice(0, 1);
+        const awayWRs = teamRoster(away, "WR").slice(0, 2);
+        const awayTEs = teamRoster(away, "TE").slice(0, 1);
+        const awayRBs = teamRoster(away, "RB").slice(0, 1);
+        return {
+          away, home, total, spread,
+          homeScript: {
+            team: home, script: homeScript, passRatePct: homePassRate,
+            targetPlayers: homeScript === "Playing From Behind" ? [...homeWRs, ...homeTEs] : homeWRs,
+            fadePlayers:   homeScript === "Comfortable Lead"   ? homeRBs : [],
+          },
+          awayScript: {
+            team: away, script: awayScript, passRatePct: awayPassRate,
+            targetPlayers: awayScript === "Playing From Behind" ? [...awayWRs, ...awayTEs] : awayWRs,
+            fadePlayers:   awayScript === "Comfortable Lead"   ? awayRBs : [],
+          },
+        };
+      };
+
+      const GAME_SCRIPT_DATA = liveGames.length >= 3
+        ? liveGames.map(g => buildGameScript(g.away, g.home, g.spread, g.total))
+        : [
         {
           away: "DAL", home: "PHI", total: 46.5, spread: -4.5,
           homeScript: { team: "PHI", script: "Comfortable Lead", passRatePct: 55, targetPlayers: ["AJ Brown", "Dallas Goedert"], fadePlayers: ["D'Andre Swift"] },
@@ -16746,9 +16964,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           homeScript: { team: "NE",  script: "Playing From Behind", passRatePct: 64, targetPlayers: ["Demario Douglas", "Hunter Henry"], fadePlayers: ["Rhamondre Stevenson"] },
           awayScript: { team: "MIA", script: "Comfortable Lead",    passRatePct: 53, targetPlayers: ["Tyreek Hill", "De'Von Achane"], fadePlayers: [] },
         },
-      ];
+      ]; // end seed fallback
 
-      const result = { games: GAME_SCRIPT_DATA, fetchedAt: new Date().toISOString() };
+      // Close the seed fallback array if live data was unavailable
+      // (the ternary above opens the seed array — we need to close it)
+      const result = { games: GAME_SCRIPT_DATA, fetchedAt: new Date().toISOString(), liveData: liveGames.length >= 3 };
       _nflGameScriptCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -16786,9 +17006,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Darren Waller",      position: "TE", team: "NYG", rzTargetShare: 15, rzTargetsPerGame: 1.0, tdsPerGame: 0.40, overallTargetPct: 16, note: "If healthy, Waller is the RZ target in NYG. Huge injury risk to monitor." },
       ];
 
+      // Resolve live teams from Sleeper
+      const sleeperRosterRZ = await getSleeperRoster();
+      const rzWithLiveTeams = await resolveTeams(RED_ZONE_PLAYERS, sleeperRosterRZ);
+
       // Sort by RZ target share desc
-      RED_ZONE_PLAYERS.sort((a, b) => b.rzTargetShare - a.rzTargetShare);
-      const result = { players: RED_ZONE_PLAYERS, fetchedAt: new Date().toISOString() };
+      rzWithLiveTeams.sort((a, b) => b.rzTargetShare - a.rzTargetShare);
+      const result = { players: rzWithLiveTeams, fetchedAt: new Date().toISOString() };
       _nflRedZoneCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -16901,7 +17125,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return partial ? ROS_VALUES[partial] : null;
       };
 
-      const givePlayer    = findPlayer(give)    ?? { name: give.split(" ").map((w: string) => w[0].toUpperCase() + w.slice(1)).join(" "),    position: "?", team: "?", rosValue: 60, note: "Player not in database — using baseline estimate" };
+      const sleeperRosterTrade = await getSleeperRoster();
+      const resolvePlayerTeam = async (player: any, name: string) => {
+        if (!player) return null;
+        const resolved = await resolveTeam(player.name, player.team, sleeperRosterTrade);
+        return { ...player, team: resolved };
+      };
+
+      const rawGive    = findPlayer(give) ?? { name: give.split(" ").map((w: string) => w[0].toUpperCase() + w.slice(1)).join(" "), position: "?", team: "?", rosValue: 60, note: "Player not in database — using baseline estimate" };
       const receivePlayer = findPlayer(receive) ?? { name: receive.split(" ").map((w: string) => w[0].toUpperCase() + w.slice(1)).join(" "), position: "?", team: "?", rosValue: 60, note: "Player not in database — using baseline estimate" };
 
       const diff = receivePlayer.rosValue - givePlayer.rosValue;
@@ -16971,8 +17202,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return k ? PLAYER_DB[k] : { name: q.split(" ").map((w: string) => w[0].toUpperCase() + w.slice(1)).join(" "), position: "?", team: "?", projPts: 10.0, snapPct: 70, matchupGrade: "B", confidence: 5 };
       };
 
-      const player1 = findP(p1);
-      const player2 = findP(p2);
+      const sleeperRosterSS = await getSleeperRoster();
+      const rawP1 = findP(p1);
+      const rawP2 = findP(p2);
+      const [player1, player2] = await Promise.all([
+        resolveTeam(rawP1.name, rawP1.team, sleeperRosterSS).then(t => ({ ...rawP1, team: t })),
+        resolveTeam(rawP2.name, rawP2.team, sleeperRosterSS).then(t => ({ ...rawP2, team: t })),
+      ]);
 
       const score1 = player1.projPts * 0.5 + player1.confidence * 0.3 + (["A","B","C","D"].indexOf(player1.matchupGrade) === -1 ? 2 : (3 - ["A","B","C","D"].indexOf(player1.matchupGrade))) * 0.2;
       const score2 = player2.projPts * 0.5 + player2.confidence * 0.3 + (["A","B","C","D"].indexOf(player2.matchupGrade) === -1 ? 2 : (3 - ["A","B","C","D"].indexOf(player2.matchupGrade))) * 0.2;
@@ -17023,14 +17259,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Sam LaPorta",         position: "TE", team: "DET", overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "CHI", grade: "B" }, { week: 16, opponent: "MIN", grade: "C" }, { week: 17, opponent: "GB",  grade: "B" }] },
         { playerName: "Saquon Barkley",      position: "RB", team: "PHI", overallPlayoffGrade: "A+", weeklyMatchups: [{ week: 15, opponent: "DAL", grade: "B" }, { week: 16, opponent: "WAS", grade: "A" }, { week: 17, opponent: "NYG", grade: "A" }] },
         { playerName: "Josh Jacobs",         position: "RB", team: "GB",  overallPlayoffGrade: "D",  weeklyMatchups: [{ week: 15, opponent: "NYG", grade: "A" }, { week: 16, opponent: "MIN", grade: "D" }, { week: 17, opponent: "DET", grade: "D" }] },
-        { playerName: "Isiah Pacheco",       position: "RB", team: "KC",  overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "NE",  grade: "A" }, { week: 16, opponent: "PIT", grade: "C" }, { week: 17, opponent: "LV",  grade: "A" }] },
+        { playerName: "Kareem Hunt",         position: "RB", team: "KC",  overallPlayoffGrade: "B",  weeklyMatchups: [{ week: 15, opponent: "NE",  grade: "A" }, { week: 16, opponent: "PIT", grade: "C" }, { week: 17, opponent: "LV",  grade: "A" }] },
       ];
+
+      // Resolve live teams
+      const sleeperRosterPG = await getSleeperRoster();
+      const pgWithLiveTeams = await resolveTeams(PLAYOFF_DATA, sleeperRosterPG);
 
       // Sort by overall grade
       const gradeOrder = ["A+", "A", "B", "C", "D"];
-      PLAYOFF_DATA.sort((a, b) => gradeOrder.indexOf(a.overallPlayoffGrade) - gradeOrder.indexOf(b.overallPlayoffGrade));
+      pgWithLiveTeams.sort((a: any, b: any) => gradeOrder.indexOf(a.overallPlayoffGrade) - gradeOrder.indexOf(b.overallPlayoffGrade));
 
-      const result = { players: PLAYOFF_DATA, fetchedAt: new Date().toISOString() };
+      const result = { players: pgWithLiveTeams, fetchedAt: new Date().toISOString() };
       _nflPlayoffGraderCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -17076,8 +17316,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Rome Odunze",         position: "WR", team: "CHI", adpRank: 35, consensusRank: 28, note: "Caleb Williams connection + #1 pick pedigree; slight ADP discount" },
       ];
 
+      // Resolve live teams
+      const sleeperRosterADP = await getSleeperRoster();
+      const adpWithLiveTeams = await resolveTeams(ADP_DATA, sleeperRosterADP);
+
       // Boost with FP data if available
-      const players = ADP_DATA.map(p => {
+      const players = adpWithLiveTeams.map((p: any) => {
         const fp = fpAdpPlayers.find(f => f.name.includes(p.playerName.toLowerCase().split(" ")[0]));
         return { ...p, adpRank: fp ? Math.round((p.adpRank + fp.adpRank) / 2) : p.adpRank };
       });
