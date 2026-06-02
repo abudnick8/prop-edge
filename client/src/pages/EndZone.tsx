@@ -1428,14 +1428,13 @@ function BettingEdgePanel({
 function FantasyToolsPanel({
   gameScript, redZone, dvpSplits, playoffGrader, adpValue, byeWeeks, streamingDST,
   ssPlayer1, setSsPlayer1, ssPlayer2, setSsPlayer2, ssResult, setSsResult, ssLoading, setSsLoading,
-  tradeGive, setTradeGive, tradeReceive, setTradeReceive, tradeResult, setTradeResult, tradeLoading, setTradeLoading,
 }: any) {
-  const [section, setSection] = useState<"gamescript" | "redzone" | "dvp" | "trade" | "startsit" | "playoff" | "adp" | "bye" | "dst">("gamescript");
+  const [section, setSection] = useState<"gamescript" | "redzone" | "dvp" | "startsit" | "playoff" | "adp" | "bye" | "dst">("gamescript");
+  const [rzPositionFilter, setRzPositionFilter] = useState<"ALL" | "QB" | "RB" | "WR" | "TE">("ALL");
   const sections = [
     { key: "gamescript", label: "🎯 Game Script" },
     { key: "redzone",    label: "🔴 Red Zone" },
     { key: "dvp",        label: "📊 DvP Splits" },
-    { key: "trade",      label: "🔄 Trade Analyzer" },
     { key: "startsit",   label: "✅ Start/Sit" },
     { key: "playoff",    label: "🏆 Playoff Schedule" },
     { key: "adp",        label: "💎 ADP Value" },
@@ -1451,16 +1450,6 @@ function FantasyToolsPanel({
       setSsResult(await r.json());
     } catch { setSsResult({ error: "Failed to load" }); }
     setSsLoading(false);
-  };
-
-  const handleTrade = async () => {
-    if (!tradeGive || !tradeReceive) return;
-    setTradeLoading(true);
-    try {
-      const r = await fetch(`/api/nfl/trade-analyzer?give=${encodeURIComponent(tradeGive)}&receive=${encodeURIComponent(tradeReceive)}`);
-      setTradeResult(await r.json());
-    } catch { setTradeResult({ error: "Failed to load" }); }
-    setTradeLoading(false);
   };
 
   const gradeColor = (g: string) => {
@@ -1494,7 +1483,8 @@ function FantasyToolsPanel({
               { label: "Script", desc: "Positive = team expected to lead, run-heavy second half. Negative = team expected to trail, pass-heavy to catch up. Neutral = competitive game." },
               { label: "Target players", desc: "WRs and TEs benefit most from negative scripts (more attempts). Highlighted in green — prioritize these in DFS/fantasy." },
               { label: "Fade players", desc: "RBs on teams with negative scripts lose opportunity in pass-heavy situations. Highlighted in red — downgrade or bench." },
-              { label: "Inputs", desc: "Vegas spread, game total, team pace ranking, and current injury report to adjust starter availability." },
+              { label: "Snap Note", desc: "Per-team context line explaining projected pass rate and which role players benefit most from the game script." },
+              { label: "Inputs", desc: "Vegas spread + game total (Odds API), active roster from Sleeper, injury status from ESPN injury feed (Out/Doubtful filtered), and snap trend context to rank role importance." },
             ]}
           />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
@@ -1519,13 +1509,18 @@ function FantasyToolsPanel({
                           borderRadius: 10, background: "rgba(34,197,94,0.12)", color: "#15803d" }}>{p}</span>
                       ))}
                     </div>
-                    <div style={{ marginTop: 4 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 3 }}>FADE</div>
-                      {(team.fadePlayers ?? []).map((p: string, k: number) => (
-                        <span key={k} style={{ fontSize: 10, fontWeight: 700, marginRight: 4, padding: "1px 6px",
-                          borderRadius: 10, background: "rgba(239,68,68,0.10)", color: "#ef4444" }}>{p}</span>
-                      ))}
-                    </div>
+                    {(team.fadePlayers ?? []).length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 3 }}>FADE</div>
+                        {(team.fadePlayers ?? []).map((p: string, k: number) => (
+                          <span key={k} style={{ fontSize: 10, fontWeight: 700, marginRight: 4, padding: "1px 6px",
+                            borderRadius: 10, background: "rgba(239,68,68,0.10)", color: "#ef4444" }}>{p}</span>
+                        ))}
+                      </div>
+                    )}
+                    {team.snapNote && (
+                      <div style={{ marginTop: 6, fontSize: 9, color: MUTED, fontStyle: "italic", lineHeight: 1.4 }}>{team.snapNote}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1550,7 +1545,21 @@ function FantasyToolsPanel({
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Red zone target share is the strongest predictor of TD upside. Players with 25%+ RZ share are must-starts regardless of general target volume.
           </p>
-          {(redZone?.players ?? []).map((p: any, i: number) => (
+          {/* Position filter */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
+            {(["ALL", "QB", "RB", "WR", "TE"] as const).map(pos => (
+              <button key={pos} onClick={() => setRzPositionFilter(pos)}
+                style={{ padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+                  background: rzPositionFilter === pos ? NAVY : "rgba(19,35,58,0.07)",
+                  color: rzPositionFilter === pos ? BG_COLOR : MUTED }}>
+                {pos}
+              </button>
+            ))}
+            <span style={{ marginLeft: "auto", fontSize: 10, color: MUTED, alignSelf: "center" }}>
+              {(redZone?.players ?? []).filter((p: any) => rzPositionFilter === "ALL" || p.position === rzPositionFilter).length} players
+            </span>
+          </div>
+          {(redZone?.players ?? []).filter((p: any) => rzPositionFilter === "ALL" || p.position === rzPositionFilter).map((p: any, i: number) => (
             <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                 <div>
@@ -1619,72 +1628,6 @@ function FantasyToolsPanel({
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* TRADE ANALYZER */}
-      {section === "trade" && (
-        <div>
-          <AnalysisInfo
-            title="How trade value is calculated"
-            items={[
-              { label: "ROS Value", desc: "Rest-of-season projected value on a 0–100 scale. Accounts for remaining schedule, bye weeks, injury risk, playoff matchups (Wks 15–17), and current role." },
-              { label: "ACCEPT", desc: "The player you receive has a ROS value ≥5 points higher than the player you give. Clear win for your roster." },
-              { label: "DECLINE", desc: "The player you give has a ROS value ≥5 points higher than what you receive. You'd be giving up too much." },
-              { label: "FAIR", desc: "Values within 4 points of each other. Decision comes down to positional need and roster construction." },
-              { label: "Inputs", desc: "Season stats, snap trend, target/touch share, age curve, injury history, upcoming matchup grades, and playoff schedule quality." },
-            ]}
-          />
-          <p style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
-            Enter two players to get a projected ROS value comparison and trade verdict.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 4 }}>YOU GIVE</label>
-              <input value={tradeGive} onChange={e => setTradeGive(e.target.value)}
-                placeholder="e.g. Justin Jefferson"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(19,35,58,0.20)",
-                  fontSize: 13, color: NAVY, background: "#fff", boxSizing: "border-box" as const }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 4 }}>YOU RECEIVE</label>
-              <input value={tradeReceive} onChange={e => setTradeReceive(e.target.value)}
-                placeholder="e.g. Breece Hall"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(19,35,58,0.20)",
-                  fontSize: 13, color: NAVY, background: "#fff", boxSizing: "border-box" as const }} />
-            </div>
-          </div>
-          <button onClick={handleTrade} disabled={tradeLoading || !tradeGive || !tradeReceive}
-            style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", cursor: "pointer",
-              background: NAVY, color: BG_COLOR, fontWeight: 800, fontSize: 14, opacity: tradeLoading ? 0.6 : 1 }}>
-            {tradeLoading ? "Analyzing..." : "Analyze Trade"}
-          </button>
-          {tradeResult && !tradeResult.error && (
-            <div style={{ marginTop: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center", marginBottom: 12 }}>
-                {[tradeResult.give, tradeResult.receive].map((p: any, j: number) => (
-                  <div key={j} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px", textAlign: "center" }}>
-                    <div style={{ fontWeight: 800, fontSize: 13, color: NAVY, marginBottom: 2 }}>{p.name}</div>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: GOLD_COLOR }}>{p.rosValue}</div>
-                    <div style={{ fontSize: 9, color: MUTED }}>ROS Value</div>
-                    <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>{p.position} · {p.team}</div>
-                  </div>
-                ))}
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 22 }}>⇄</div>
-                </div>
-              </div>
-              <div style={{ textAlign: "center", padding: "10px", borderRadius: 10,
-                background: tradeResult.verdict === "ACCEPT" ? "rgba(34,197,94,0.12)" : tradeResult.verdict === "DECLINE" ? "rgba(239,68,68,0.10)" : "rgba(212,168,67,0.10)",
-                border: `1px solid ${tradeResult.verdict === "ACCEPT" ? "rgba(34,197,94,0.30)" : tradeResult.verdict === "DECLINE" ? "rgba(239,68,68,0.25)" : "rgba(212,168,67,0.30)"}` }}>
-                <div style={{ fontSize: 18, fontWeight: 900,
-                  color: tradeResult.verdict === "ACCEPT" ? "#16a34a" : tradeResult.verdict === "DECLINE" ? "#ef4444" : "#92680a" }}>
-                  {tradeResult.verdict}
-                </div>
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{tradeResult.reasoning}</div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -2050,10 +1993,7 @@ export default function EndZone() {
   const [ssResult, setSsResult] = useState<any>(null);
   const [ssLoading, setSsLoading] = useState(false);
 
-  const [tradeGive, setTradeGive] = useState("");
-  const [tradeReceive, setTradeReceive] = useState("");
-  const [tradeResult, setTradeResult] = useState<any>(null);
-  const [tradeLoading, setTradeLoading] = useState(false);
+
 
   const lockPickMutation = useMutation({
     mutationFn: (pick: any) => apiRequest("POST", "/api/nfl/lock-pick", pick).then(r => r.json()),
@@ -2477,10 +2417,7 @@ export default function EndZone() {
                 ssPlayer2={ssPlayer2} setSsPlayer2={setSsPlayer2}
                 ssResult={ssResult} setSsResult={setSsResult}
                 ssLoading={ssLoading} setSsLoading={setSsLoading}
-                tradeGive={tradeGive} setTradeGive={setTradeGive}
-                tradeReceive={tradeReceive} setTradeReceive={setTradeReceive}
-                tradeResult={tradeResult} setTradeResult={setTradeResult}
-                tradeLoading={tradeLoading} setTradeLoading={setTradeLoading}
+
               />
             )}
           </div>

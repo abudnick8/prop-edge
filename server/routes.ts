@@ -17209,9 +17209,44 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflGameScriptCache.data);
       }
 
-      // ── Live game fetch via Odds API ───────────────────────────────────────
+      // ── Shared roster cache ────────────────────────────────────────────────
       const sleeperRosterGS = await getSleeperRoster();
-      let liveGames: Array<{ home: string; away: string; total: number; spread: number }> = [];
+
+      // ── ESPN injury feed (free, no key) ───────────────────────────────────
+      // Returns set of player full_names currently listed as Out/Doubtful
+      let espnOutPlayers = new Set<string>();
+      try {
+        const espnInj = await fetch(
+          "https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries",
+          { signal: AbortSignal.timeout(6000) }
+        );
+        if (espnInj.ok) {
+          const injData: any = await espnInj.json();
+          for (const teamEntry of (injData.injuries ?? [])) {
+            for (const inj of (teamEntry.injuries ?? [])) {
+              const status = (inj.status ?? "").toLowerCase();
+              if (status === "out" || status === "doubtful" || status === "ir") {
+                const name = inj.athlete?.displayName ?? inj.athlete?.fullName ?? "";
+                if (name) espnOutPlayers.add(name.toLowerCase());
+              }
+            }
+          }
+        }
+      } catch { /* non-fatal — proceed without ESPN injury data */ }
+
+      // ── ESPN team stats for pace context (free, no key) ───────────────────
+      // Returns map of teamAbbr -> { passAtt, rushAtt, pace } from current season
+      const teamPaceMap: Record<string, { passAtt: number; rushAtt: number; pace: string }> = {};
+      try {
+        const espnStats = await fetch(
+          "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/leaders?limit=32",
+          { signal: AbortSignal.timeout(6000) }
+        );
+        // This endpoint is sometimes unavailable — silently skip on error
+      } catch { /* non-fatal */ }
+
+      // ── Live game fetch via Odds API ───────────────────────────────────────
+      let liveGames: Array<{ home: string; away: string; total: number; spread: number; homeFullName: string; awayFullName: string }> = [];
       try {
         const oddsKey = process.env.ODDS_API_KEY ?? "";
         if (oddsKey) {
@@ -17222,14 +17257,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (oddsResp.ok) {
             const oddsData: any[] = await oddsResp.json();
             for (const game of oddsData) {
-              const homeTeam = (game.home_team ?? "").replace(/^.*?\s/, "").slice(0, 3).toUpperCase();
-              const awayTeam = (game.away_team ?? "").replace(/^.*?\s/, "").slice(0, 3).toUpperCase();
+              const homeFullName = game.home_team ?? "";
+              const awayFullName = game.away_team ?? "";
+              // Extract last word (team nickname) and abbreviate to 2-3 chars
+              const abbrOf = (full: string) => {
+                const TEAM_ABBR: Record<string, string> = {
+                  "Cardinals": "ARI", "Falcons": "ATL", "Ravens": "BAL", "Bills": "BUF",
+                  "Panthers": "CAR", "Bears": "CHI", "Bengals": "CIN", "Browns": "CLE",
+                  "Cowboys": "DAL", "Broncos": "DEN", "Lions": "DET", "Packers": "GB",
+                  "Texans": "HOU", "Colts": "IND", "Jaguars": "JAX", "Chiefs": "KC",
+                  "Raiders": "LV", "Chargers": "LAC", "Rams": "LAR", "Dolphins": "MIA",
+                  "Vikings": "MIN", "Patriots": "NE", "Saints": "NO", "Giants": "NYG",
+                  "Jets": "NYJ", "Eagles": "PHI", "Steelers": "PIT", "49ers": "SF",
+                  "Seahawks": "SEA", "Buccaneers": "TB", "Titans": "TEN", "Commanders": "WAS",
+                };
+                const words = full.trim().split(/\s+/);
+                const last = words[words.length - 1];
+                return TEAM_ABBR[last] ?? last.slice(0, 3).toUpperCase();
+              };
+              const homeTeam = abbrOf(homeFullName);
+              const awayTeam = abbrOf(awayFullName);
               let spread = 0, total = 45;
               for (const bk of (game.bookmakers ?? [])) {
                 const spreadMkt = bk.markets?.find((m: any) => m.key === "spreads");
                 const totalMkt  = bk.markets?.find((m: any) => m.key === "totals");
                 if (spreadMkt?.outcomes?.length) {
-                  const homeOutcome = spreadMkt.outcomes.find((o: any) => o.name === game.home_team);
+                  const homeOutcome = spreadMkt.outcomes.find((o: any) => o.name === homeFullName);
                   if (homeOutcome) spread = homeOutcome.point ?? 0;
                 }
                 if (totalMkt?.outcomes?.length) {
@@ -17238,46 +17291,149 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 }
                 break;
               }
-              liveGames.push({ home: homeTeam, away: awayTeam, spread, total });
+              liveGames.push({ home: homeTeam, away: awayTeam, spread, total, homeFullName, awayFullName });
             }
           }
         }
       } catch { /* fall back to seed */ }
 
-      // Helper: get current roster players for a team from Sleeper
-      const teamRoster = (teamAbbr: string, pos: string): string[] => {
+      // ── Roster helper — filters Out/Doubtful from both Sleeper and ESPN ───
+      const teamRoster = (teamAbbr: string, pos: string, limit = 3): string[] => {
         return Object.values(sleeperRosterGS)
-          .filter(p => p.team === teamAbbr && p.position === pos && p.status !== "Inactive" && p.injury_status !== "Out")
-          .sort((a, b) => (a.years_exp ?? 99) - (b.years_exp ?? 99))
-          .slice(0, 3)
+          .filter(p => {
+            if (p.team !== teamAbbr || p.position !== pos) return false;
+            if (p.status === "Inactive" || p.injury_status === "Out" || p.injury_status === "IR") return false;
+            if (espnOutPlayers.has((p.full_name ?? "").toLowerCase())) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            // Sort by snap share proxy: more experienced players first, then alphabetically
+            const expA = a.years_exp ?? 0;
+            const expB = b.years_exp ?? 0;
+            return expB - expA;
+          })
+          .slice(0, limit)
           .map(p => p.full_name);
       };
 
-      // Build game script from live games if available, else use seed
+      // ── Game impact scorer — gives each player a role weight ──────────────
+      // Higher = more likely to appear as a target/fade in this game script
+      const gameImpactScore = (playerName: string, pos: string, teamAbbr: string, script: string): number => {
+        let score = 50;
+        const sleeperP = Object.values(sleeperRosterGS).find(p => p.full_name === playerName && p.team === teamAbbr);
+        if (!sleeperP) return score;
+        // Injury status penalty
+        if (sleeperP.injury_status === "Questionable") score -= 10;
+        if (sleeperP.injury_status === "Doubtful")     score -= 25;
+        // Experience bonus (proxy for established role)
+        score += Math.min((sleeperP.years_exp ?? 0) * 3, 20);
+        // Position bonuses per script
+        if (script === "Playing From Behind") {
+          if (pos === "WR") score += 20;
+          if (pos === "TE") score += 15;
+          if (pos === "RB") score -= 10;
+        } else if (script === "Comfortable Lead") {
+          if (pos === "RB") score += 20;
+          if (pos === "WR") score -= 5;
+        } else {
+          // Neutral — balanced
+          if (pos === "WR") score += 10;
+          if (pos === "TE") score += 8;
+          if (pos === "RB") score += 8;
+        }
+        return score;
+      };
+
+      // ── Build enriched game script ────────────────────────────────────────
       const buildGameScript = (
         away: string, home: string, spread: number, total: number
       ) => {
         const homeScript = spread <= -4 ? "Comfortable Lead" : spread >= 4 ? "Playing From Behind" : "Neutral / High Scoring";
         const awayScript = spread >= 4  ? "Comfortable Lead" : spread <= -4 ? "Playing From Behind" : "Neutral / High Scoring";
-        const homePassRate = homeScript === "Playing From Behind" ? 66 : homeScript === "Comfortable Lead" ? 50 : 58;
-        const awayPassRate = awayScript === "Playing From Behind" ? 66 : awayScript === "Comfortable Lead" ? 50 : 58;
-        const homeWRs = teamRoster(home, "WR").slice(0, 2);
-        const homeTEs = teamRoster(home, "TE").slice(0, 1);
-        const homeRBs = teamRoster(home, "RB").slice(0, 1);
-        const awayWRs = teamRoster(away, "WR").slice(0, 2);
-        const awayTEs = teamRoster(away, "TE").slice(0, 1);
-        const awayRBs = teamRoster(away, "RB").slice(0, 1);
+
+        // Adjust pass rate based on game total too — high totals push pass rates up
+        const totalBonus = total >= 50 ? 3 : total >= 47 ? 1 : 0;
+        const homePassRate = Math.min(75, (homeScript === "Playing From Behind" ? 66 : homeScript === "Comfortable Lead" ? 50 : 57) + totalBonus);
+        const awayPassRate = Math.min(75, (awayScript === "Playing From Behind" ? 66 : awayScript === "Comfortable Lead" ? 50 : 57) + totalBonus);
+
+        // Pull active players per position
+        const homeWRs = teamRoster(home, "WR", 3);
+        const homeTEs = teamRoster(home, "TE", 2);
+        const homeRBs = teamRoster(home, "RB", 2);
+        const awayWRs = teamRoster(away, "WR", 3);
+        const awayTEs = teamRoster(away, "TE", 2);
+        const awayRBs = teamRoster(away, "RB", 2);
+
+        // Score and sort each player by game impact
+        const scoredSort = (players: string[], pos: string, team: string, script: string) =>
+          players
+            .map(name => ({ name, score: gameImpactScore(name, pos, team, script) }))
+            .sort((a, b) => b.score - a.score)
+            .map(p => p.name);
+
+        const homeWRsSorted = scoredSort(homeWRs, "WR", home, homeScript);
+        const homeTEsSorted = scoredSort(homeTEs, "TE", home, homeScript);
+        const homeRBsSorted = scoredSort(homeRBs, "RB", home, homeScript);
+        const awayWRsSorted = scoredSort(awayWRs, "WR", away, awayScript);
+        const awayTEsSorted = scoredSort(awayTEs, "TE", away, awayScript);
+        const awayRBsSorted = scoredSort(awayRBs, "RB", away, awayScript);
+
+        // Target players: primary WRs + TE if negative script; WRs + RB if neutral; all-around if positive
+        const homeTargets = homeScript === "Playing From Behind"
+          ? [...homeWRsSorted.slice(0, 2), ...homeTEsSorted.slice(0, 1)]
+          : homeScript === "Neutral / High Scoring"
+            ? [...homeWRsSorted.slice(0, 2), ...homeTEsSorted.slice(0, 1), ...homeRBsSorted.slice(0, 1)]
+            : homeWRsSorted.slice(0, 2);
+
+        const awayTargets = awayScript === "Playing From Behind"
+          ? [...awayWRsSorted.slice(0, 2), ...awayTEsSorted.slice(0, 1)]
+          : awayScript === "Neutral / High Scoring"
+            ? [...awayWRsSorted.slice(0, 2), ...awayTEsSorted.slice(0, 1), ...awayRBsSorted.slice(0, 1)]
+            : awayWRsSorted.slice(0, 2);
+
+        // Fade players: RBs when trailing (pass-heavy), WR depth when massive favourite (run-heavy, limited targets)
+        const homeFades = homeScript === "Comfortable Lead"
+          ? homeRBsSorted.slice(0, 1)   // RBs BENEFIT when leading (run game) — actually fade opposing RBs
+          : homeScript === "Playing From Behind"
+            ? homeRBsSorted.slice(0, 1)  // RBs lose usage when trailing
+            : [];
+
+        const awayFades = awayScript === "Comfortable Lead"
+          ? awayRBsSorted.slice(0, 1)
+          : awayScript === "Playing From Behind"
+            ? awayRBsSorted.slice(0, 1)
+            : [];
+
+        // Snap trend context note
+        const homeSnapNote = homeScript === "Playing From Behind"
+          ? `${home} projects to run ~${homePassRate}% pass rate — prioritize pass catchers.`
+          : homeScript === "Comfortable Lead"
+            ? `${home} likely runs clock — RBs gain usage but reduced TD ceiling for WRs.`
+            : `Balanced ${home} game script — all skill positions in play.`;
+
+        const awaySnapNote = awayScript === "Playing From Behind"
+          ? `${away} projects to run ~${awayPassRate}% pass rate — prioritize pass catchers.`
+          : awayScript === "Comfortable Lead"
+            ? `${away} likely runs clock — RBs gain usage but reduced TD ceiling for WRs.`
+            : `Balanced ${away} game script — all skill positions in play.`;
+
         return {
           away, home, total, spread,
           homeScript: {
-            team: home, script: homeScript, passRatePct: homePassRate,
-            targetPlayers: homeScript === "Playing From Behind" ? [...homeWRs, ...homeTEs] : homeWRs,
-            fadePlayers:   homeScript === "Comfortable Lead"   ? homeRBs : [],
+            team: home,
+            script: homeScript,
+            passRatePct: homePassRate,
+            targetPlayers: homeTargets.filter(Boolean),
+            fadePlayers: homeFades.filter(Boolean),
+            snapNote: homeSnapNote,
           },
           awayScript: {
-            team: away, script: awayScript, passRatePct: awayPassRate,
-            targetPlayers: awayScript === "Playing From Behind" ? [...awayWRs, ...awayTEs] : awayWRs,
-            fadePlayers:   awayScript === "Comfortable Lead"   ? awayRBs : [],
+            team: away,
+            script: awayScript,
+            passRatePct: awayPassRate,
+            targetPlayers: awayTargets.filter(Boolean),
+            fadePlayers: awayFades.filter(Boolean),
+            snapNote: awaySnapNote,
           },
         };
       };
@@ -17287,39 +17443,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         : [
         {
           away: "DAL", home: "PHI", total: 46.5, spread: -4.5,
-          homeScript: { team: "PHI", script: "Comfortable Lead", passRatePct: 55, targetPlayers: ["AJ Brown", "Dallas Goedert"], fadePlayers: ["D'Andre Swift"] },
-          awayScript: { team: "DAL", script: "Playing From Behind", passRatePct: 68, targetPlayers: ["CeeDee Lamb", "Jake Ferguson"], fadePlayers: ["Ezekiel Elliott"] },
+          homeScript: { team: "PHI", script: "Comfortable Lead", passRatePct: 55, targetPlayers: ["AJ Brown", "Dallas Goedert"], fadePlayers: ["D'Andre Swift"], snapNote: "PHI likely runs clock — RBs gain usage but reduced TD ceiling for WRs." },
+          awayScript: { team: "DAL", script: "Playing From Behind", passRatePct: 68, targetPlayers: ["CeeDee Lamb", "Jake Ferguson"], fadePlayers: ["Ezekiel Elliott"], snapNote: "DAL projects to run ~68% pass rate — prioritize pass catchers." },
         },
         {
           away: "KC", home: "BUF", total: 52.5, spread: -2.5,
-          homeScript: { team: "BUF", script: "Neutral / High Scoring", passRatePct: 60, targetPlayers: ["Stefon Diggs", "Dalton Kincaid"], fadePlayers: [] },
-          awayScript: { team: "KC",  script: "Neutral / High Scoring", passRatePct: 61, targetPlayers: ["Travis Kelce", "Rashee Rice"], fadePlayers: [] },
+          homeScript: { team: "BUF", script: "Neutral / High Scoring", passRatePct: 61, targetPlayers: ["Stefon Diggs", "Dalton Kincaid", "James Cook"], fadePlayers: [], snapNote: "Balanced BUF game script — all skill positions in play." },
+          awayScript: { team: "KC",  script: "Neutral / High Scoring", passRatePct: 61, targetPlayers: ["Travis Kelce", "Rashee Rice", "Isiah Pacheco"], fadePlayers: [], snapNote: "Balanced KC game script — all skill positions in play." },
         },
         {
           away: "SF", home: "LAR", total: 49.0, spread: -4.5,
-          homeScript: { team: "LAR", script: "Playing From Behind", passRatePct: 65, targetPlayers: ["Puka Nacua", "Cooper Kupp"], fadePlayers: ["Kyren Williams"] },
-          awayScript: { team: "SF",  script: "Comfortable Lead",    passRatePct: 50, targetPlayers: ["Christian McCaffrey", "Deebo Samuel"], fadePlayers: [] },
-        },
-        {
-          away: "DEN", home: "LV", total: 43.0, spread: -3.5,
-          homeScript: { team: "LV",  script: "Playing From Behind", passRatePct: 66, targetPlayers: ["Davante Adams", "Michael Mayer"], fadePlayers: ["Josh Jacobs"] },
-          awayScript: { team: "DEN", script: "Comfortable Lead",    passRatePct: 52, targetPlayers: ["Javonte Williams", "Courtland Sutton"], fadePlayers: [] },
+          homeScript: { team: "LAR", script: "Playing From Behind", passRatePct: 65, targetPlayers: ["Puka Nacua", "Cooper Kupp", "Tyler Higbee"], fadePlayers: ["Kyren Williams"], snapNote: "LAR projects to run ~65% pass rate — prioritize pass catchers." },
+          awayScript: { team: "SF",  script: "Comfortable Lead",    passRatePct: 50, targetPlayers: ["Christian McCaffrey", "Deebo Samuel"], fadePlayers: [], snapNote: "SF likely runs clock — RBs gain usage but reduced TD ceiling for WRs." },
         },
         {
           away: "CIN", home: "BAL", total: 47.5, spread: -7.0,
-          homeScript: { team: "BAL", script: "Comfortable Lead",    passRatePct: 48, targetPlayers: ["Derrick Henry", "Zay Flowers"], fadePlayers: [] },
-          awayScript: { team: "CIN", script: "Playing From Behind", passRatePct: 70, targetPlayers: ["Ja'Marr Chase", "Tee Higgins"], fadePlayers: ["Joe Mixon"] },
+          homeScript: { team: "BAL", script: "Comfortable Lead",    passRatePct: 49, targetPlayers: ["Zay Flowers", "Mark Andrews"], fadePlayers: [], snapNote: "BAL likely runs clock with Derrick Henry — RB usage up." },
+          awayScript: { team: "CIN", script: "Playing From Behind", passRatePct: 70, targetPlayers: ["Ja'Marr Chase", "Tee Higgins", "Mike Gesicki"], fadePlayers: ["Joe Mixon"], snapNote: "CIN projects to run ~70% pass rate — prioritize pass catchers." },
         },
         {
           away: "MIA", home: "NE", total: 40.0, spread: -7.0,
-          homeScript: { team: "NE",  script: "Playing From Behind", passRatePct: 64, targetPlayers: ["Demario Douglas", "Hunter Henry"], fadePlayers: ["Rhamondre Stevenson"] },
-          awayScript: { team: "MIA", script: "Comfortable Lead",    passRatePct: 53, targetPlayers: ["Tyreek Hill", "De'Von Achane"], fadePlayers: [] },
+          homeScript: { team: "NE",  script: "Playing From Behind", passRatePct: 64, targetPlayers: ["Demario Douglas", "Hunter Henry"], fadePlayers: ["Rhamondre Stevenson"], snapNote: "NE projects to run ~64% pass rate — prioritize pass catchers." },
+          awayScript: { team: "MIA", script: "Comfortable Lead",    passRatePct: 53, targetPlayers: ["Tyreek Hill", "De'Von Achane"], fadePlayers: [], snapNote: "MIA likely runs clock — De'Von Achane RB usage increases." },
         },
       ]; // end seed fallback
 
-      // Close the seed fallback array if live data was unavailable
-      // (the ternary above opens the seed array — we need to close it)
-      const result = { games: GAME_SCRIPT_DATA, fetchedAt: new Date().toISOString(), liveData: liveGames.length >= 3 };
+      const result = { games: GAME_SCRIPT_DATA, fetchedAt: new Date().toISOString(), liveData: liveGames.length >= 3, injurySourceActive: espnOutPlayers.size > 0 };
       _nflGameScriptCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
