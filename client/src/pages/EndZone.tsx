@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   ChevronDown, ChevronUp, TrendingUp, Target, Zap, AlertCircle,
   CheckCircle, Clock, Search, X, Lock, Trophy, BarChart2,
-  Newspaper, RefreshCw, Filter, Star
+  Newspaper, RefreshCw, Filter, Star, Info
 } from "lucide-react";
 
 // ─── Color constants ─────────────────────────────────────────────────────────
@@ -331,6 +331,36 @@ function DetailDrawer({
 }
 
 // ─── Streak Tracker ───────────────────────────────────────────────────────────
+
+// ─── Analysis Info Box ────────────────────────────────────────────────────────
+function AnalysisInfo({ title, items }: { title: string; items: { label: string; desc: string }[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginBottom: 14, borderRadius: 10, border: `1px solid rgba(212,168,67,0.35)`, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 12px", background: "rgba(212,168,67,0.08)", border: "none", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Info size={13} color={GOLD_COLOR} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#92680a" }}>{title}</span>
+        </div>
+        {open ? <ChevronUp size={13} color={GOLD_COLOR} /> : <ChevronDown size={13} color={GOLD_COLOR} />}
+      </button>
+      {open && (
+        <div style={{ background: "rgba(212,168,67,0.04)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: GOLD_COLOR, minWidth: 90, flexShrink: 0, paddingTop: 1 }}>{item.label}</span>
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>{item.desc}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StreakTracker({ data }: { data: StreakData | null | undefined }) {
   if (!data) {
     return (
@@ -360,6 +390,15 @@ function StreakTracker({ data }: { data: StreakData | null | undefined }) {
         </div>
       </div>
 
+      <AnalysisInfo
+        title="How the streak is tracked"
+        items={[
+          { label: "Win/Loss", desc: "A pick is graded W if the player recorded the stat at or above the locked line before the game ends. Final box score is the source of truth." },
+          { label: "Edge %", desc: "At lock time, our model edge over the book price. Displayed per pick for context — higher edge = stronger signal at time of selection." },
+          { label: "Streak", desc: "Consecutive wins from the most recent pick. Resets to 0 on any loss. Best streak is your all-time high." },
+          { label: "Lock rule", desc: "Picks lock the moment you click Lock. Picks can still be replaced if the game has not started, but the original lock is still tracked in history." },
+        ]}
+      />
       {/* History */}
       {data.history && data.history.length > 0 ? (
         <div>
@@ -568,6 +607,16 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
 
   return (
     <div>
+      <AnalysisInfo
+        title="How waiver pickups are scored"
+        items={[
+          { label: "Pickup Score", desc: "0–100 composite. Weighted: recent snap % (30%), target/touch share (25%), matchup grade (20%), ESPN Fantasy ownership trend (15%), and news recency (10%)." },
+          { label: "Ownership %", desc: "Live ESPN Fantasy ownership pulled at request time. Any player owned in >50% of leagues is excluded entirely — these are true waiver wire targets." },
+          { label: "Trend", desc: "📈 Rising = snap % increased ≥5% in last 2 weeks. 🔥 Hot = top-5 Sleeper trending adds in last 24 hrs. ➡️ Stable = no significant change." },
+          { label: "Action", desc: "Add = immediate starter value. Stash = handcuff or bye-week filler with upside. Monitor = watch for role change but not yet startable." },
+          { label: "Sources", desc: "ESPN Fantasy (ownership %), Sleeper trending API (pickup trend), FantasyPros consensus (rank confirmation), Yahoo Fantasy (cross-reference)." },
+        ]}
+      />
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {positions.map(p => (
           <button key={p} onClick={() => setPosFilter(p)}
@@ -647,6 +696,16 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
 
   return (
     <div>
+      <AnalysisInfo
+        title="How snap trends are analyzed"
+        items={[
+          { label: "Snap %", desc: "Percentage of offensive snaps the player was on the field. Current week shown as the highlighted bar; bars show last 4 recorded weeks (right = most recent)." },
+          { label: "Delta", desc: "Change vs 3-week rolling average. +5% or more = Rising. −5% or more = Falling. Within ±4% = Stable." },
+          { label: "Target Share", desc: "% of team targets the player received this season. High snap % + high target share = must-start." },
+          { label: "Trending Up", desc: "Rising snap trend with a new role (starter injury, depth chart change, or scheme shift) gets extra weight in the waiver pickup score." },
+          { label: "Ownership tier", desc: "Low = under 30% owned · Medium = 30–60% · High = 60%+ owned in ESPN/Yahoo leagues." },
+        ]}
+      />
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {(["all", "rising", "falling"] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -702,6 +761,16 @@ function HandcuffPanel({ data }: { data: HandcuffPair[] }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <AnalysisInfo
+        title="How handcuff priority is determined"
+        items={[
+          { label: "Must Own", desc: "Starter has injury risk ≥7/10 AND the handcuff is owned in <30% of leagues. Highest upside if the starter misses time." },
+          { label: "High Value", desc: "Starter risk 5–6/10 OR handcuff is already in a timeshare. Worth rostering if you have a bench spot." },
+          { label: "Monitor", desc: "Starter is healthy, risk <5. Keep on your watchlist but not worth a roster spot yet." },
+          { label: "Injury Risk", desc: "0–10 composite based on age, position, injury history, workload (carries/game), and recent practice reports." },
+          { label: "Ownership %", desc: "Both starter and handcuff ownership shown. Low handcuff % = easy waiver add before the rest of your league reacts." },
+        ]}
+      />
       {data.map((h, i) => (
         <div key={i} style={{ background: "#fff", borderRadius: 12, border: `1px solid ${h.handcuffPriority === "Must Own" ? "rgba(239,68,68,0.25)" : "rgba(19,35,58,0.10)"}`, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -761,6 +830,17 @@ function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
           </button>
         ))}
       </div>
+      <AnalysisInfo
+        title="How matchup grades are calculated"
+        items={[
+          { label: "Grade A", desc: "Defense ranks 25–32 in the league against this position. Opponent quarterbacks/RBs/WRs/TEs consistently exceed their season averages." },
+          { label: "Grade B", desc: "Defense ranks 17–24. Favorable matchup — start with confidence, especially for flex decisions." },
+          { label: "Grade C", desc: "Defense ranks 9–16. Average matchup — rely on player talent more than the matchup edge." },
+          { label: "Grade D", desc: "Defense ranks 1–8. Tough draw — consider benching unless the player has elite talent or no better option." },
+          { label: "Rank #", desc: "Numeric rank 1–32 where 1 = hardest matchup for the offense and 32 = easiest. Lower rank = tougher defense." },
+          { label: "Data source", desc: "Weighted 60% full-season yards + points allowed per position, 40% last 4 weeks to reflect recent form." },
+        ]}
+      />
       <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>Sorted best matchup first (rank 1 = easiest for offense). A=elite, B=good, C=average, D=tough.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
         {sorted.map((row, i) => {
@@ -811,6 +891,16 @@ function BettingEdgePanel({
       {/* LINE MOVEMENT */}
       {section === "lines" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How line movement is analyzed"
+            items={[
+              { label: "Spread Move", desc: "Difference between opening spread and current spread. A line moving against the public bet % direction signals sharp (professional) money." },
+              { label: "Sharp Action", desc: "⚡ SHARP ACTION fires when ≥60% of public bets are on one side but the line moves the opposite way — strong indicator of sharp/syndicate action." },
+              { label: "Public Bets %", desc: "Percentage of total bet tickets (not money) on each side. High public % on a team whose line is moving away = reverse line movement." },
+              { label: "Total Move", desc: "Change in the game total (Over/Under) from open to current. Closing total drops often signal weather or key offensive injuries." },
+              { label: "Data source", desc: "The Odds API (real sportsbook lines). Sharp note is generated when spread move and public % disagree by 2+ points." },
+            ]}
+          />
           {!lineMovement?.games?.length && (
             <p style={{ color: MUTED, fontSize: 13 }}>No line movement data — check back closer to game week.</p>
           )}
@@ -869,6 +959,16 @@ function BettingEdgePanel({
       {/* INJURY IMPACT */}
       {section === "injury" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How injury impact is graded"
+            items={[
+              { label: "Betting Impact", desc: "High = expected 3+ point line adjustment. Medium = 1–2 points. Low = minor depth change with minimal line effect." },
+              { label: "Line Impact", desc: "Estimated direction and magnitude of how this injury moves the spread or total (e.g. 'Total −2.5' or 'Spread +1.5 away')." },
+              { label: "Status", desc: "Out = confirmed miss. Doubtful = <25% chance to play. Questionable = 50/50. Limited = likely plays but reduced role." },
+              { label: "Recommendation", desc: "Auto-generated based on position, role, and the adjusted Vegas line — e.g. 'Fade team total' or 'Target backup RB props'." },
+              { label: "Data source", desc: "ESPN injury report feed, updated multiple times daily. Stale if last refresh >4 hrs before game time." },
+            ]}
+          />
           {!injuryImpact?.players?.length && (
             <p style={{ color: MUTED, fontSize: 13 }}>No key injury impacts detected this week.</p>
           )}
@@ -911,6 +1011,16 @@ function BettingEdgePanel({
       {/* WEATHER */}
       {section === "weather" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How weather impact is assessed"
+            items={[
+              { label: "Wind", desc: "≥15 mph = passing game concern, total depressed. ≥20 mph = significant — fade kickers, WRs, and passing totals. Under becomes the lean." },
+              { label: "Temperature", desc: "≤32°F adds ball-handling difficulty. Sub-zero wind chill with snow historically reduces scoring by 3–7 points vs. the opener." },
+              { label: "Precipitation", desc: "≥30% chance triggers a caution flag. Rain/snow above 50% chance = lean Under on game total and fade WR volume props." },
+              { label: "DOME", desc: "Dome games are excluded from weather concerns. All indoor teams are marked automatically." },
+              { label: "Data source", desc: "Open-Meteo free forecast API pulled at request time for each outdoor stadium's lat/lon coordinates." },
+            ]}
+          />
           {!weather?.games?.length && (
             <p style={{ color: MUTED, fontSize: 13 }}>No outdoor games with weather concerns this week.</p>
           )}
@@ -966,6 +1076,16 @@ function BettingEdgePanel({
       {/* FIRST HALF MODEL */}
       {section === "firsthalf" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How the first-half model works"
+            items={[
+              { label: "H1 Total Proj", desc: "Model-projected first-half scoring based on team pace, recent H1 averages, and the Vegas game total. Compare to the market H1 line to find edge." },
+              { label: "H1 Spread Proj", desc: "Which team is favored in the first half and by how much. H1 spreads often diverge from full-game spreads — useful for live or first-half bets." },
+              { label: "Edge", desc: "Over = our model projects more first-half scoring than the market line. Under = model projects less. Neutral = within 0.5 of the market." },
+              { label: "Why H1?", desc: "First-half totals attract less sharp action than full-game lines, creating more exploitable edges. Trailing teams also adjust their script in H2." },
+              { label: "Inputs", desc: "Team first-half scoring averages (L4 wks), Vegas total, spread (game script), pace rankings, and any weather flags from the Weather panel." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             First-half totals have less sharp action. Teams trailing at half run more pass plays in H2 — use this to inform H1 totals and team script.
           </p>
@@ -1064,6 +1184,16 @@ function FantasyToolsPanel({
       {/* GAME SCRIPT */}
       {section === "gamescript" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How game script is projected"
+            items={[
+              { label: "Pass Rate %", desc: "Projected offensive pass rate based on spread size. A team favored by 7+ runs ~55% pass; a 7+ underdog runs ~62% pass in negative game scripts." },
+              { label: "Script", desc: "Positive = team expected to lead, run-heavy second half. Negative = team expected to trail, pass-heavy to catch up. Neutral = competitive game." },
+              { label: "Target players", desc: "WRs and TEs benefit most from negative scripts (more attempts). Highlighted in green — prioritize these in DFS/fantasy." },
+              { label: "Fade players", desc: "RBs on teams with negative scripts lose opportunity in pass-heavy situations. Highlighted in red — downgrade or bench." },
+              { label: "Inputs", desc: "Vegas spread, game total, team pace ranking, and current injury report to adjust starter availability." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Projected game script based on Vegas totals and spreads. Teams trailing by 7+ pass ~60% of snaps — avoid their RBs, target their WRs and TEs.
           </p>
@@ -1104,6 +1234,16 @@ function FantasyToolsPanel({
       {/* RED ZONE */}
       {section === "redzone" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How red zone share is analyzed"
+            items={[
+              { label: "RZ Target Share", desc: "% of team targets inside the opponent's 20-yard line that go to this player. 25%+ = elite TD upside. 15–24% = above-average. Below 15% = low TD floor." },
+              { label: "RZ TGTs/G", desc: "Average red zone targets per game this season. Stability here is more predictive of TD scoring than general target volume." },
+              { label: "TD/G", desc: "Touchdowns per game. Cross-referenced with RZ share to identify players who are converting their opportunities." },
+              { label: "Overall TGT%", desc: "Full-field target share for context. High overall share + high RZ share = true WR1/TE1 alpha." },
+              { label: "Color coding", desc: "Red = 25%+ RZ share (elite). Gold = 15–24% (above avg). Navy = below 15%. Note text explains any relevant matchup context." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Red zone target share is the strongest predictor of TD upside. Players with 25%+ RZ share are must-starts regardless of general target volume.
           </p>
@@ -1140,6 +1280,16 @@ function FantasyToolsPanel({
       {/* DVP SPLITS */}
       {section === "dvp" && (
         <div>
+          <AnalysisInfo
+            title="How DvP splits are graded"
+            items={[
+              { label: "Full-season grade", desc: "Overall season rank vs this position (A–D). Based on yards + fantasy points allowed per game to each position." },
+              { label: "L4 grade", desc: "Last 4 weeks only — reflects current defensive form. A defense can be a full-season A but trending to D if key players are injured." },
+              { label: "Home weakness", desc: "If a defense allows significantly more fantasy points at home than away (≥15% more), the position they're weakest against at home is flagged." },
+              { label: "Trending worse", desc: "Flagged when the L4 grade is 2+ letter grades worse than the full-season grade — indicates a defense that has fallen apart recently." },
+              { label: "Use case", desc: "Stack your player against a defense with a D grade at their position, especially if L4 is also D and the team shows no signs of recovery." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
             Defense vs. Position with home/away and recent-form splits. Last 4 weeks weighted more heavily than full season.
           </p>
@@ -1172,6 +1322,16 @@ function FantasyToolsPanel({
       {/* TRADE ANALYZER */}
       {section === "trade" && (
         <div>
+          <AnalysisInfo
+            title="How trade value is calculated"
+            items={[
+              { label: "ROS Value", desc: "Rest-of-season projected value on a 0–100 scale. Accounts for remaining schedule, bye weeks, injury risk, playoff matchups (Wks 15–17), and current role." },
+              { label: "ACCEPT", desc: "The player you receive has a ROS value ≥5 points higher than the player you give. Clear win for your roster." },
+              { label: "DECLINE", desc: "The player you give has a ROS value ≥5 points higher than what you receive. You'd be giving up too much." },
+              { label: "FAIR", desc: "Values within 4 points of each other. Decision comes down to positional need and roster construction." },
+              { label: "Inputs", desc: "Season stats, snap trend, target/touch share, age curve, injury history, upcoming matchup grades, and playoff schedule quality." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
             Enter two players to get a projected ROS value comparison and trade verdict.
           </p>
@@ -1228,6 +1388,16 @@ function FantasyToolsPanel({
       {/* START/SIT */}
       {section === "startsit" && (
         <div>
+          <AnalysisInfo
+            title="How start/sit decisions are made"
+            items={[
+              { label: "Proj Pts", desc: "PPR fantasy point projection for this week. Based on target/touch share, game script, matchup grade, and Vegas total." },
+              { label: "Matchup Grade", desc: "A–D grade for this player's position vs. their opponent this week (same scale as the Matchup Map tab)." },
+              { label: "Snap %", desc: "Most recent recorded snap percentage. High snap share = floor protection. Below 60% = high variance." },
+              { label: "Confidence", desc: "1–10 composite of all factors. 8+ = start without question. 5–7 = rely on projected points. Below 5 = bench if better options exist." },
+              { label: "Verdict", desc: "START is awarded to the player with the higher composite score. Reasoning explains the key differentiating factor." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
             Compare two players at the same position. Get a start/sit recommendation with matchup, snap trend, and projection data.
           </p>
@@ -1286,6 +1456,16 @@ function FantasyToolsPanel({
       {/* PLAYOFF SCHEDULE GRADER */}
       {section === "playoff" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How playoff grades are assigned"
+            items={[
+              { label: "Weekly grade", desc: "A–D matchup grade for each of Weeks 15, 16, and 17 — the typical fantasy playoff window. Uses the same DvP Splits methodology." },
+              { label: "Overall grade", desc: "Average of all three playoff weeks, weighted toward Wk 16 (championship week for most leagues). A= all three weeks favorable." },
+              { label: "Opponent", desc: "The actual NFL opponent for that week. Bye weeks appear as 'BYE' and auto-grade as D — plan your bench depth accordingly." },
+              { label: "Use case", desc: "When choosing between two similar players at trade deadline or on the waiver wire, the player with better playoff grades has long-term upside." },
+              { label: "Update cadence", desc: "Schedule grades update weekly as matchups are finalized. Late-season schedule changes (flexed games) are reflected within 24 hrs." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Fantasy playoff schedule grades (Weeks 15–17). A = elite matchup, D = avoid. Plan your roster now.
           </p>
@@ -1315,6 +1495,16 @@ function FantasyToolsPanel({
       {/* ADP VALUE */}
       {section === "adp" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How ADP value is identified"
+            items={[
+              { label: "Value diff", desc: "Consensus rank minus ADP rank. A +15 means the player is going 15 spots later in drafts than experts rank them — you get a discount." },
+              { label: "Consensus rank", desc: "Averaged across FantasyPros, ESPN, Yahoo, and CBS expert rankings, updated weekly during the season and daily at peak draft periods." },
+              { label: "ADP rank", desc: "Average draft position across platforms (Underdog, Sleeper, ESPN, Yahoo). Reflects where real managers are actually taking players." },
+              { label: "Target range", desc: "Positive value = target. Negative value = the market has already priced in the hype — avoid overpaying." },
+              { label: "Use case", desc: "In redraft: use at your pick. In best ball: stack ADP value at WR/RB in late rounds. In DFS: ADP value often correlates with lower ownership." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Players ranked significantly higher in consensus rankings than their current ADP. Positive value = you're getting them cheaper than they should go.
           </p>
@@ -1348,6 +1538,15 @@ function FantasyToolsPanel({
       {/* BYE WEEKS */}
       {section === "bye" && (
         <div>
+          <AnalysisInfo
+            title="How bye weeks affect your roster"
+            items={[
+              { label: "Planning rule", desc: "Add a streaming starter 1 week before your key players' byes. Avoid drafting/trading for players on the same bye week as your other starters." },
+              { label: "Waiver impact", desc: "High-ownership players on bye weeks often free up adds — their owners may drop them by mistake. Check the waiver wire mid-week." },
+              { label: "DFS impact", desc: "Fewer teams playing = smaller player pool. Use bye weeks to find contrarian plays in tournaments (lower ownership, same upside)." },
+              { label: "Data source", desc: "Official NFL schedule. Byes are fixed at season start; playoff bye rules do not apply here (this covers regular season Weeks 1–18)." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>All NFL team bye weeks for the current season. Plan your waiver wire adds and streaming plays accordingly.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
             {Object.entries(byeWeeks?.byWeek ?? {}).map(([week, teams]: [string, any]) => (
@@ -1368,6 +1567,16 @@ function FantasyToolsPanel({
       {/* STREAMING DST */}
       {section === "dst" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <AnalysisInfo
+            title="How streaming DSTs are graded"
+            items={[
+              { label: "Matchup grade", desc: "A–D grade based on opponent offensive rank. A = opponent is bottom-5 offense (most points allowed, turnovers, low scoring). D = elite offense." },
+              { label: "Opp OFF rank", desc: "Opponent's offensive ranking 1–32 this season. Rank 28–32 = ideal streaming matchup. Rank 1–8 = avoid regardless of DST quality." },
+              { label: "Proj pts", desc: "Projected fantasy points for the DST this week in standard PPR scoring. Based on sacks, turnovers, and points allowed models." },
+              { label: "Ownership %", desc: "Only DSTs owned in ≤50% of leagues are shown — ensures these are actually available on your waiver wire." },
+              { label: "Strategy", desc: "Never roster a DST for more than 2 weeks. Matchups are the only thing that matters — even great defenses face elite offenses eventually." },
+            ]}
+          />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
             Defenses available on most waiver wires with top-5 matchups this week. Stream the right DST for a huge points edge.
           </p>
@@ -1691,12 +1900,24 @@ export default function EndZone() {
 
             {/* Props table */}
             {!propsLoading && hasData && (
+              <>
+              <AnalysisInfo
+                title="How projections are graded"
+                items={[
+                  { label: "Model %", desc: "Our model's estimated probability the prop hits, based on season stats, last 5 games, matchup quality, and pace." },
+                  { label: "Book %", desc: "Implied probability from the bookmaker's odds (juice removed). Model % vs Book % = your edge." },
+                  { label: "Edge %", desc: "Model % minus Book %. Positive edge means our model sees value the market hasn't fully priced." },
+                  { label: "Confidence", desc: "Strong (≥70% model, ≥7% edge) · Medium (55–69%, 4–6% edge) · Thin (<55% or <4% edge). Only Strong/Medium appear by default." },
+                  { label: "Recent avg", desc: "Cross-validated against L5 game log. If recent average diverges >25% from season baseline, a safeguard flag is applied." },
+                ]}
+              />
               <PropsTable
                 rows={rows}
                 onSelect={setSelectedProp}
                 lockedPick={lockedPick}
                 onLock={handleLock}
               />
+              </>
             )}
 
             {/* Streak tracker */}
@@ -1774,6 +1995,16 @@ export default function EndZone() {
             </div>
 
             {/* ── Source + count summary ── */}
+            <AnalysisInfo
+              title="How news is ranked & filtered"
+              items={[
+                { label: "Sources", desc: "ESPN, CBS Sports, FantasyPros, NFL.com, Sleeper, and Yahoo Fantasy. Each card is tagged with its source." },
+                { label: "Relevance score", desc: "Each headline is scored for fantasy/betting relevance. Injury, activation, and trade items score higher. Minimum threshold of 3 to appear." },
+                { label: "Sort modes", desc: "Most Recent sorts by publish time. Most Relevant ranks by relevance score — injury reports and lineup changes appear first." },
+                { label: "Player tags", desc: "Named players detected in the headline are shown as chips below each card for quick scanning." },
+                { label: "Status badges", desc: "🚑 Injury · ✅ Activated · 🔄 Trade/Move · ⛔ Suspended — auto-detected from headline keywords." },
+              ]}
+            />
             {!newsLoading && newsData?.articles?.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <p style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
