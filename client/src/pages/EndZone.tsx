@@ -472,6 +472,11 @@ const SOURCE_STYLE: Record<string, { bg: string; color: string; border: string }
   "ESPN":         { bg: "rgba(212,0,0,0.09)",    color: "#c00",    border: "rgba(212,0,0,0.20)" },
   "ESPN Fantasy": { bg: "rgba(106,0,180,0.09)",  color: "#7c3aed", border: "rgba(106,0,180,0.20)" },
   "Rotowire":     { bg: "rgba(19,35,58,0.08)",   color: MUTED,     border: "rgba(19,35,58,0.15)" },
+  "CBS Sports":   { bg: "rgba(0,91,179,0.09)",   color: "#005bb3", border: "rgba(0,91,179,0.20)" },
+  "FantasyPros":  { bg: "rgba(34,139,34,0.09)",  color: "#16651b", border: "rgba(34,139,34,0.20)" },
+  "NFL.com":      { bg: "rgba(0,47,108,0.09)",   color: "#002f6c", border: "rgba(0,47,108,0.20)" },
+  "Sleeper":      { bg: "rgba(93,63,211,0.09)",  color: "#5d3fd3", border: "rgba(93,63,211,0.20)" },
+  "Yahoo Fantasy":{ bg: "rgba(102,0,153,0.09)",  color: "#660099", border: "rgba(102,0,153,0.20)" },
 };
 
 // ─── News Card ────────────────────────────────────────────────────────────────
@@ -481,7 +486,7 @@ function NewsCard({ item }: { item: NewsItem }) {
   const isActivated = /activated|returned from|cleared/.test(hl);
   const isTrade     = /traded|trade|signs|extension|contract/.test(hl);
   const isSuspended = /suspended/.test(hl);
-  const src = SOURCE_STYLE[item.source] ?? SOURCE_STYLE["Rotowire"];
+  const src = SOURCE_STYLE[item.source] ?? { bg: "rgba(19,35,58,0.08)", color: MUTED, border: "rgba(19,35,58,0.15)" };
 
   // Player tags from server (array of detected names)
   const playerTags: string[] = (item as any).playerTags ?? [];
@@ -597,6 +602,16 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
               </span>
               <span style={{ fontSize: 11, color: MUTED }}>Owned: <b style={{ color: NAVY }}>{p.ownershipPct}%</b></span>
               <span style={{ fontSize: 11, color: MUTED }}>Proj: <b style={{ color: NAVY }}>{p.weeklyProjectedPts} pts</b></span>
+              {(p as any).newsHighlighted && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                  background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}>IN NEWS</span>
+              )}
+              {((p as any).sources ?? ["Yahoo Fantasy"]).map((s: string) => (
+                <span key={s} style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                  background: SOURCE_STYLE[s]?.bg ?? "rgba(19,35,58,0.07)",
+                  color: SOURCE_STYLE[s]?.color ?? MUTED,
+                  border: `1px solid ${SOURCE_STYLE[s]?.border ?? "rgba(19,35,58,0.15)"}` }}>{s}</span>
+              ))}
             </div>
           </div>
         ))}
