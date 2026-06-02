@@ -7,12 +7,23 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
+// Football emoji icon component (lucide has no football icon)
+// Accepts all standard lucide props so it can be used in the nav item map
+function FootballIcon({ size = 20, ..._ }: { size?: number; [key: string]: any }) {
+  return (
+    <span style={{ fontSize: size * 0.85, lineHeight: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0 }}>
+      🏈
+    </span>
+  );
+}
+
 const navItems = [
   { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard },
   { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity        },
   { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp      },
   { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2       },
   { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy          },
+  { href: "/endzone",     label: "End Zone",        mobileLabel: "End Zone", icon: FootballIcon    },
   { href: "/intel",       label: "Player Intel",   mobileLabel: "Intel",    icon: Search          },
   { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap             },
   { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target          },

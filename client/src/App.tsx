@@ -24,6 +24,7 @@ import LiveScores from "@/pages/LiveScores";
 import MLInsights from "@/pages/MLInsights";
 import NotFound from "@/pages/not-found";
 import BTS from "@/pages/BTS";
+import EndZone from "@/pages/EndZone";
 import Book from "@/pages/Book";
 import AppInsights from "@/pages/AppInsights";
 import PlayerIntel from "@/pages/PlayerIntel";
@@ -271,6 +272,7 @@ function RouteTraders()     { return <FeatureGuard flagKey="markets"><TopTraders
 function RouteConviction()  { return <FeatureGuard flagKey="top_plays"><HighConviction /></FeatureGuard>; }
 function RouteMLInsights()  { return <FeatureGuard flagKey="ml_intel"><MLInsights /></FeatureGuard>; }
 function RouteBTS()         { return <FeatureGuard flagKey="bts"><BTS /></FeatureGuard>; }
+function RouteEndZone()     { return <EndZone />; }
 function RouteIntel()       { return <PlayerIntel />; }
 function RouteBook()        { return <OwnerGuard><Book /></OwnerGuard>; }
 function RouteInsights()    { return <OwnerGuard><AppInsights /></OwnerGuard>; }
@@ -338,6 +340,7 @@ function AppInner() {
               <Route path="/conviction"    component={RouteConviction} />
               <Route path="/ml-insights"   component={RouteMLInsights} />
               <Route path="/bts"           component={RouteBTS} />
+              <Route path="/endzone"       component={RouteEndZone} />
               <Route path="/intel"         component={RouteIntel} />
               <Route path="/book"          component={RouteBook} />
               <Route path="/insights"      component={RouteInsights} />
