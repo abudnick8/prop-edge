@@ -782,6 +782,621 @@ function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
   );
 }
 
+// ─── BettingEdgePanel ────────────────────────────────────────────────────────
+function BettingEdgePanel({
+  lineMovement, injuryImpact, weather, firstHalf
+}: { lineMovement: any; injuryImpact: any; weather: any; firstHalf: any }) {
+  const [section, setSection] = useState<"lines" | "injury" | "weather" | "firsthalf">("lines");
+  const sections = [
+    { key: "lines",     label: "📉 Line Movement" },
+    { key: "injury",    label: "🏥 Injury Impact" },
+    { key: "weather",   label: "🌬️ Weather" },
+    { key: "firsthalf", label: "1H Model" },
+  ] as const;
+
+  return (
+    <div>
+      {/* Section tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {sections.map(s => (
+          <button key={s.key} onClick={() => setSection(s.key)}
+            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: section === s.key ? NAVY : "rgba(19,35,58,0.07)",
+              color: section === s.key ? BG_COLOR : MUTED }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* LINE MOVEMENT */}
+      {section === "lines" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {!lineMovement?.games?.length && (
+            <p style={{ color: MUTED, fontSize: 13 }}>No line movement data — check back closer to game week.</p>
+          )}
+          {(lineMovement?.games ?? []).map((g: any, i: number) => {
+            const lineMove = g.currentSpread - g.openSpread;
+            const isSharp = g.reverseLineMovement;
+            const totalMove = g.currentTotal - g.openTotal;
+            return (
+              <div key={i} style={{ background: "#fff", borderRadius: 12, border: `1px solid ${isSharp ? "rgba(212,168,67,0.4)" : "rgba(19,35,58,0.10)"}`, padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: NAVY, marginBottom: 2 }}>
+                      {g.away} @ {g.home}
+                    </div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{g.gameTime}</div>
+                  </div>
+                  {isSharp && (
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10,
+                      background: "rgba(212,168,67,0.15)", color: "#92680a", border: "1px solid rgba(212,168,67,0.35)" }}>
+                      ⚡ SHARP ACTION
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700, marginBottom: 2 }}>SPREAD MOVE</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: lineMove !== 0 ? (lineMove > 0 ? "#16a34a" : "#ef4444") : MUTED }}>
+                      {lineMove > 0 ? `+${lineMove.toFixed(1)}` : lineMove.toFixed(1)}
+                    </div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{g.openSpread > 0 ? "+" : ""}{g.openSpread} → {g.currentSpread > 0 ? "+" : ""}{g.currentSpread}</div>
+                  </div>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700, marginBottom: 2 }}>PUBLIC BETS</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: NAVY }}>{g.publicBetPct}%</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>on {g.publicFavor}</div>
+                  </div>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700, marginBottom: 2 }}>TOTAL MOVE</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: totalMove !== 0 ? (totalMove > 0 ? "#16a34a" : "#ef4444") : MUTED }}>
+                      {g.openTotal} → {g.currentTotal}
+                    </div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{g.overUnderTrend}</div>
+                  </div>
+                </div>
+                {g.sharpNote && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#92680a", background: "rgba(212,168,67,0.08)", borderRadius: 6, padding: "5px 8px" }}>
+                    💡 {g.sharpNote}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* INJURY IMPACT */}
+      {section === "injury" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {!injuryImpact?.players?.length && (
+            <p style={{ color: MUTED, fontSize: 13 }}>No key injury impacts detected this week.</p>
+          )}
+          {(injuryImpact?.players ?? []).map((p: any, i: number) => {
+            const impactColor = p.bettingImpact === "High" ? "#ef4444" : p.bettingImpact === "Medium" ? GOLD_COLOR : MUTED;
+            return (
+              <div key={i} style={{ background: "#fff", borderRadius: 12, border: `1px solid rgba(239,68,68,0.15)`, padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{p.playerName}</span>
+                    <span style={{ fontSize: 10, marginLeft: 8, padding: "1px 6px", borderRadius: 10,
+                      background: "rgba(19,35,58,0.07)", color: MUTED }}>{p.position} · {p.team}</span>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10,
+                    background: `${impactColor}18`, color: impactColor, border: `1px solid ${impactColor}40` }}>
+                    {p.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>{p.injuryNote}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", flex: 1 }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>LINE IMPACT</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginTop: 1 }}>{p.lineImpact}</div>
+                  </div>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", flex: 1 }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>BETTING IMPACT</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: impactColor, marginTop: 1 }}>{p.bettingImpact}</div>
+                  </div>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", flex: 2 }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>RECOMMENDATION</div>
+                    <div style={{ fontSize: 11, color: NAVY, marginTop: 1 }}>{p.recommendation}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* WEATHER */}
+      {section === "weather" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {!weather?.games?.length && (
+            <p style={{ color: MUTED, fontSize: 13 }}>No outdoor games with weather concerns this week.</p>
+          )}
+          {(weather?.games ?? []).map((g: any, i: number) => {
+            const hasConcern = g.windSpeed >= 15 || g.tempF <= 32 || g.precipitation > 30;
+            return (
+              <div key={i} style={{ background: "#fff", borderRadius: 12,
+                border: `1px solid ${hasConcern ? "rgba(239,68,68,0.25)" : "rgba(19,35,58,0.10)"}`,
+                padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{g.away} @ {g.home}</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{g.stadium} · {g.gameTime}</div>
+                  </div>
+                  {hasConcern && (
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10,
+                      background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}>
+                      ⚠️ WEATHER ALERT
+                    </span>
+                  )}
+                  {g.isDome && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 10,
+                      background: "rgba(19,35,58,0.07)", color: MUTED }}>DOME</span>
+                  )}
+                </div>
+                {!g.isDome && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 }}>
+                    {[
+                      { label: "TEMP", value: `${g.tempF}°F`, concern: g.tempF <= 32 },
+                      { label: "WIND", value: `${g.windSpeed} mph`, concern: g.windSpeed >= 15 },
+                      { label: "PRECIP", value: `${g.precipitation}%`, concern: g.precipitation > 30 },
+                      { label: "CONDITION", value: g.condition, concern: false },
+                    ].map((w, j) => (
+                      <div key={j} style={{ background: w.concern ? "rgba(239,68,68,0.08)" : "rgba(19,35,58,0.04)",
+                        borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{w.label}</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: w.concern ? "#ef4444" : NAVY, marginTop: 2 }}>{w.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {g.bettingNote && (
+                  <div style={{ fontSize: 11, color: "#92680a", background: "rgba(212,168,67,0.08)", borderRadius: 6, padding: "5px 8px" }}>
+                    💡 {g.bettingNote}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* FIRST HALF MODEL */}
+      {section === "firsthalf" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            First-half totals have less sharp action. Teams trailing at half run more pass plays in H2 — use this to inform H1 totals and team script.
+          </p>
+          {!firstHalf?.games?.length && (
+            <p style={{ color: MUTED, fontSize: 13 }}>No first-half projections available — check back during the week.</p>
+          )}
+          {(firstHalf?.games ?? []).map((g: any, i: number) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: NAVY, marginBottom: 4 }}>{g.away} @ {g.home}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>H1 TOTAL PROJ</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: NAVY }}>{g.h1TotalProj}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>Mkt: {g.h1TotalLine}</div>
+                </div>
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>H1 SPREAD PROJ</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: NAVY }}>{g.h1SpreadProj > 0 ? "+" : ""}{g.h1SpreadProj}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>Mkt: {g.h1SpreadLine > 0 ? "+" : ""}{g.h1SpreadLine}</div>
+                </div>
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>EDGE</div>
+                  <div style={{ fontSize: 13, fontWeight: 900,
+                    color: g.edge === "Over" ? "#16a34a" : g.edge === "Under" ? "#ef4444" : MUTED }}>{g.edge}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>{g.edgeNote}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FantasyToolsPanel ────────────────────────────────────────────────────────
+function FantasyToolsPanel({
+  gameScript, redZone, dvpSplits, playoffGrader, adpValue, byeWeeks, streamingDST,
+  ssPlayer1, setSsPlayer1, ssPlayer2, setSsPlayer2, ssResult, setSsResult, ssLoading, setSsLoading,
+  tradeGive, setTradeGive, tradeReceive, setTradeReceive, tradeResult, setTradeResult, tradeLoading, setTradeLoading,
+}: any) {
+  const [section, setSection] = useState<"gamescript" | "redzone" | "dvp" | "trade" | "startsit" | "playoff" | "adp" | "bye" | "dst">("gamescript");
+  const sections = [
+    { key: "gamescript", label: "🎯 Game Script" },
+    { key: "redzone",    label: "🔴 Red Zone" },
+    { key: "dvp",        label: "📊 DvP Splits" },
+    { key: "trade",      label: "🔄 Trade Analyzer" },
+    { key: "startsit",   label: "✅ Start/Sit" },
+    { key: "playoff",    label: "🏆 Playoff Schedule" },
+    { key: "adp",        label: "💎 ADP Value" },
+    { key: "bye",        label: "📅 Bye Weeks" },
+    { key: "dst",        label: "🛡️ Stream DST" },
+  ] as const;
+
+  const handleStartSit = async () => {
+    if (!ssPlayer1 || !ssPlayer2) return;
+    setSsLoading(true);
+    try {
+      const r = await fetch(`/api/nfl/start-sit?p1=${encodeURIComponent(ssPlayer1)}&p2=${encodeURIComponent(ssPlayer2)}`);
+      setSsResult(await r.json());
+    } catch { setSsResult({ error: "Failed to load" }); }
+    setSsLoading(false);
+  };
+
+  const handleTrade = async () => {
+    if (!tradeGive || !tradeReceive) return;
+    setTradeLoading(true);
+    try {
+      const r = await fetch(`/api/nfl/trade-analyzer?give=${encodeURIComponent(tradeGive)}&receive=${encodeURIComponent(tradeReceive)}`);
+      setTradeResult(await r.json());
+    } catch { setTradeResult({ error: "Failed to load" }); }
+    setTradeLoading(false);
+  };
+
+  const gradeColor = (g: string) => {
+    if (g === "A+" || g === "A") return "#16a34a";
+    if (g === "B") return GOLD_COLOR;
+    if (g === "C") return "#f97316";
+    return "#ef4444";
+  };
+
+  return (
+    <div>
+      {/* Section tabs — scrollable row */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {sections.map(s => (
+          <button key={s.key} onClick={() => setSection(s.key)}
+            style={{ padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: section === s.key ? NAVY : "rgba(19,35,58,0.07)",
+              color: section === s.key ? BG_COLOR : MUTED }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* GAME SCRIPT */}
+      {section === "gamescript" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            Projected game script based on Vegas totals and spreads. Teams trailing by 7+ pass ~60% of snaps — avoid their RBs, target their WRs and TEs.
+          </p>
+          {(gameScript?.games ?? []).map((g: any, i: number) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{g.away} @ {g.home}</div>
+                <div style={{ fontSize: 11, color: MUTED }}>Total: {g.total} · Spread: {g.spread}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                {[g.homeScript, g.awayScript].map((team: any, j: number) => (
+                  <div key={j} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 4 }}>{team.team}</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>Pass rate: <b style={{ color: team.passRatePct >= 60 ? "#16a34a" : NAVY }}>{team.passRatePct}%</b></div>
+                    <div style={{ fontSize: 10, color: MUTED }}>Script: <b style={{ color: NAVY }}>{team.script}</b></div>
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 3 }}>TARGET</div>
+                      {(team.targetPlayers ?? []).map((p: string, k: number) => (
+                        <span key={k} style={{ fontSize: 10, fontWeight: 700, marginRight: 4, padding: "1px 6px",
+                          borderRadius: 10, background: "rgba(34,197,94,0.12)", color: "#15803d" }}>{p}</span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 3 }}>FADE</div>
+                      {(team.fadePlayers ?? []).map((p: string, k: number) => (
+                        <span key={k} style={{ fontSize: 10, fontWeight: 700, marginRight: 4, padding: "1px 6px",
+                          borderRadius: 10, background: "rgba(239,68,68,0.10)", color: "#ef4444" }}>{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* RED ZONE */}
+      {section === "redzone" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            Red zone target share is the strongest predictor of TD upside. Players with 25%+ RZ share are must-starts regardless of general target volume.
+          </p>
+          {(redZone?.players ?? []).map((p: any, i: number) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{p.playerName}</span>
+                  <span style={{ fontSize: 10, marginLeft: 8, padding: "1px 6px", borderRadius: 10, background: "rgba(19,35,58,0.07)", color: MUTED }}>{p.position} · {p.team}</span>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: p.rzTargetShare >= 25 ? "#ef4444" : p.rzTargetShare >= 15 ? GOLD_COLOR : NAVY }}>{p.rzTargetShare}%</div>
+                  <div style={{ fontSize: 9, color: MUTED }}>RZ Target Share</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {[
+                  { label: "RZ TGTs/G", value: p.rzTargetsPerGame },
+                  { label: "TD/G", value: p.tdsPerGame },
+                  { label: "OVERALL TGT%", value: `${p.overallTargetPct}%` },
+                ].map((m, j) => (
+                  <div key={j} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 6, padding: "6px 8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{m.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 11, color: MUTED }}>{p.note}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* DVP SPLITS */}
+      {section === "dvp" && (
+        <div>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+            Defense vs. Position with home/away and recent-form splits. Last 4 weeks weighted more heavily than full season.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(dvpSplits?.defenses ?? []).map((d: any, i: number) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: NAVY, marginBottom: 8 }}>{d.team} Defense</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 }}>
+                  {["QB", "RB", "WR", "TE"].map(pos => {
+                    const posData = d[pos];
+                    return (
+                      <div key={pos} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>{pos}</div>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(posData?.grade ?? "C"), marginTop: 2 }}>{posData?.grade ?? "C"}</div>
+                        <div style={{ fontSize: 9, color: MUTED }}>L4: {posData?.last4Grade ?? "C"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {d.homeWeakness && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: "rgba(239,68,68,0.10)", color: "#ef4444" }}>Weak at home vs {d.homeWeakness}</span>}
+                  {d.trendingWorse && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: "rgba(212,168,67,0.10)", color: "#92680a" }}>↓ trending {d.trendingWorse}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TRADE ANALYZER */}
+      {section === "trade" && (
+        <div>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
+            Enter two players to get a projected ROS value comparison and trade verdict.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 4 }}>YOU GIVE</label>
+              <input value={tradeGive} onChange={e => setTradeGive(e.target.value)}
+                placeholder="e.g. Justin Jefferson"
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(19,35,58,0.20)",
+                  fontSize: 13, color: NAVY, background: "#fff", boxSizing: "border-box" as const }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 4 }}>YOU RECEIVE</label>
+              <input value={tradeReceive} onChange={e => setTradeReceive(e.target.value)}
+                placeholder="e.g. Breece Hall"
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(19,35,58,0.20)",
+                  fontSize: 13, color: NAVY, background: "#fff", boxSizing: "border-box" as const }} />
+            </div>
+          </div>
+          <button onClick={handleTrade} disabled={tradeLoading || !tradeGive || !tradeReceive}
+            style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", cursor: "pointer",
+              background: NAVY, color: BG_COLOR, fontWeight: 800, fontSize: 14, opacity: tradeLoading ? 0.6 : 1 }}>
+            {tradeLoading ? "Analyzing..." : "Analyze Trade"}
+          </button>
+          {tradeResult && !tradeResult.error && (
+            <div style={{ marginTop: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                {[tradeResult.give, tradeResult.receive].map((p: any, j: number) => (
+                  <div key={j} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px", textAlign: "center" }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: NAVY, marginBottom: 2 }}>{p.name}</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: GOLD_COLOR }}>{p.rosValue}</div>
+                    <div style={{ fontSize: 9, color: MUTED }}>ROS Value</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>{p.position} · {p.team}</div>
+                  </div>
+                ))}
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 22 }}>⇄</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "center", padding: "10px", borderRadius: 10,
+                background: tradeResult.verdict === "ACCEPT" ? "rgba(34,197,94,0.12)" : tradeResult.verdict === "DECLINE" ? "rgba(239,68,68,0.10)" : "rgba(212,168,67,0.10)",
+                border: `1px solid ${tradeResult.verdict === "ACCEPT" ? "rgba(34,197,94,0.30)" : tradeResult.verdict === "DECLINE" ? "rgba(239,68,68,0.25)" : "rgba(212,168,67,0.30)"}` }}>
+                <div style={{ fontSize: 18, fontWeight: 900,
+                  color: tradeResult.verdict === "ACCEPT" ? "#16a34a" : tradeResult.verdict === "DECLINE" ? "#ef4444" : "#92680a" }}>
+                  {tradeResult.verdict}
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{tradeResult.reasoning}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* START/SIT */}
+      {section === "startsit" && (
+        <div>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
+            Compare two players at the same position. Get a start/sit recommendation with matchup, snap trend, and projection data.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            {[
+              { label: "PLAYER 1", val: ssPlayer1, set: setSsPlayer1 },
+              { label: "PLAYER 2", val: ssPlayer2, set: setSsPlayer2 },
+            ].map(({ label, val, set }, j) => (
+              <div key={j}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 4 }}>{label}</label>
+                <input value={val} onChange={e => set(e.target.value)}
+                  placeholder="Player name..."
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(19,35,58,0.20)",
+                    fontSize: 13, color: NAVY, background: "#fff", boxSizing: "border-box" as const }} />
+              </div>
+            ))}
+          </div>
+          <button onClick={handleStartSit} disabled={ssLoading || !ssPlayer1 || !ssPlayer2}
+            style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", cursor: "pointer",
+              background: NAVY, color: BG_COLOR, fontWeight: 800, fontSize: 14, opacity: ssLoading ? 0.6 : 1 }}>
+            {ssLoading ? "Analyzing..." : "Get Recommendation"}
+          </button>
+          {ssResult && !ssResult.error && (
+            <div style={{ marginTop: 14, background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "14px" }}>
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: NAVY }}>
+                  START: <span style={{ color: "#16a34a" }}>{ssResult.start}</span>
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{ssResult.reasoning}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[ssResult.p1, ssResult.p2].map((p: any, j: number) => (
+                  <div key={j} style={{ background: p.name === ssResult.start ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)",
+                    border: `1px solid ${p.name === ssResult.start ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.20)"}`,
+                    borderRadius: 10, padding: "10px" }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: NAVY, marginBottom: 6 }}>{p.name}</div>
+                    {[
+                      { label: "Proj Pts", val: p.projPts },
+                      { label: "Matchup", val: p.matchupGrade },
+                      { label: "Snap %", val: `${p.snapPct}%` },
+                      { label: "Confidence", val: `${p.confidence}/10` },
+                    ].map((m, k) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                        <span style={{ color: MUTED }}>{m.label}</span>
+                        <span style={{ fontWeight: 700, color: NAVY }}>{m.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PLAYOFF SCHEDULE GRADER */}
+      {section === "playoff" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            Fantasy playoff schedule grades (Weeks 15–17). A = elite matchup, D = avoid. Plan your roster now.
+          </p>
+          {(playoffGrader?.players ?? []).map((p: any, i: number) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{p.playerName}</span>
+                  <span style={{ fontSize: 10, marginLeft: 8, padding: "1px 6px", borderRadius: 10, background: "rgba(19,35,58,0.07)", color: MUTED }}>{p.position} · {p.team}</span>
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(p.overallPlayoffGrade) }}>{p.overallPlayoffGrade}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {(p.weeklyMatchups ?? []).map((w: any, j: number) => (
+                  <div key={j} style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>WK {w.week}</div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: gradeColor(w.grade), marginTop: 2 }}>{w.grade}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>vs {w.opponent}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ADP VALUE */}
+      {section === "adp" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            Players ranked significantly higher in consensus rankings than their current ADP. Positive value = you're getting them cheaper than they should go.
+          </p>
+          {(adpValue?.players ?? []).map((p: any, i: number) => {
+            const valueDiff = p.consensusRank - p.adpRank;
+            return (
+              <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{p.playerName}</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{p.position} · {p.team}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: valueDiff > 0 ? "#16a34a" : "#ef4444" }}>
+                      {valueDiff > 0 ? `+${valueDiff}` : valueDiff}
+                    </div>
+                    <div style={{ fontSize: 9, color: MUTED }}>positions of value</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>ADP: <b style={{ color: NAVY }}>#{p.adpRank}</b></span>
+                  <span style={{ fontSize: 11, color: MUTED }}>Consensus Rank: <b style={{ color: NAVY }}>#{p.consensusRank}</b></span>
+                </div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{p.note}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* BYE WEEKS */}
+      {section === "bye" && (
+        <div>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>All NFL team bye weeks for the current season. Plan your waiver wire adds and streaming plays accordingly.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
+            {Object.entries(byeWeeks?.byWeek ?? {}).map(([week, teams]: [string, any]) => (
+              <div key={week} style={{ background: "#fff", borderRadius: 10, border: "1px solid rgba(19,35,58,0.10)", padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: NAVY, marginBottom: 6 }}>Week {week}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                  {(teams as string[]).map((t: string) => (
+                    <span key={t} style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 6,
+                      background: "rgba(19,35,58,0.07)", color: MUTED }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STREAMING DST */}
+      {section === "dst" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+            Defenses available on most waiver wires with top-5 matchups this week. Stream the right DST for a huge points edge.
+          </p>
+          {(streamingDST?.teams ?? []).map((t: any, i: number) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{t.team} DST</span>
+                  <span style={{ fontSize: 11, marginLeft: 8, color: MUTED }}>vs {t.opponent}</span>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(t.matchupGrade) }}>{t.matchupGrade}</div>
+                  <div style={{ fontSize: 9, color: MUTED }}>matchup</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: MUTED }}>Owned: <b style={{ color: NAVY }}>{t.ownershipPct}%</b></span>
+                <span style={{ fontSize: 11, color: MUTED }}>Opp OFF rank: <b style={{ color: NAVY }}>#{t.oppOffenseRank}</b></span>
+                <span style={{ fontSize: 11, color: MUTED }}>Proj pts: <b style={{ color: NAVY }}>{t.projPoints}</b></span>
+              </div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>{t.note}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function EndZone() {
   const { user } = useAuth();
@@ -797,7 +1412,7 @@ export default function EndZone() {
   const [newsQueryDebounced, setNewsQueryDebounced] = useState("");
   const [newsSort, setNewsSort] = useState<"recent" | "popular">("recent");
   const [lockedPick, setLockedPick] = useState<any>(null);
-  const [radarPanel, setRadarPanel] = useState<"waiver" | "snaps" | "handcuffs" | "matchup">("waiver");
+  const [radarPanel, setRadarPanel] = useState<"waiver" | "snaps" | "handcuffs" | "matchup" | "betting" | "fantasy">("waiver");
 
   // Debounce news query
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -850,6 +1465,83 @@ export default function EndZone() {
     queryFn: () => fetch("/api/nfl/matchup-heatmap").then(r => r.json()),
     staleTime: 60 * 60 * 1000,
   });
+
+  const { data: lineMovementData } = useQuery({
+    queryKey: ["/api/nfl/line-movement"],
+    queryFn: () => fetch("/api/nfl/line-movement").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const { data: injuryImpactData } = useQuery({
+    queryKey: ["/api/nfl/injury-impact"],
+    queryFn: () => fetch("/api/nfl/injury-impact").then(r => r.json()),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: weatherData } = useQuery({
+    queryKey: ["/api/nfl/weather"],
+    queryFn: () => fetch("/api/nfl/weather").then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: firstHalfData } = useQuery({
+    queryKey: ["/api/nfl/first-half"],
+    queryFn: () => fetch("/api/nfl/first-half").then(r => r.json()),
+    staleTime: 15 * 60 * 1000,
+  });
+
+  const { data: gameScriptData } = useQuery({
+    queryKey: ["/api/nfl/game-script"],
+    queryFn: () => fetch("/api/nfl/game-script").then(r => r.json()),
+    staleTime: 15 * 60 * 1000,
+  });
+
+  const { data: redZoneData } = useQuery({
+    queryKey: ["/api/nfl/red-zone"],
+    queryFn: () => fetch("/api/nfl/red-zone").then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: dvpSplitsData } = useQuery({
+    queryKey: ["/api/nfl/dvp-splits"],
+    queryFn: () => fetch("/api/nfl/dvp-splits").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: playoffGraderData } = useQuery({
+    queryKey: ["/api/nfl/playoff-grader"],
+    queryFn: () => fetch("/api/nfl/playoff-grader").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: adpValueData } = useQuery({
+    queryKey: ["/api/nfl/adp-value"],
+    queryFn: () => fetch("/api/nfl/adp-value").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: byeWeekData } = useQuery({
+    queryKey: ["/api/nfl/bye-weeks"],
+    queryFn: () => fetch("/api/nfl/bye-weeks").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: streamingDSTData } = useQuery({
+    queryKey: ["/api/nfl/streaming-dst"],
+    queryFn: () => fetch("/api/nfl/streaming-dst").then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const [ssPlayer1, setSsPlayer1] = useState("");
+  const [ssPlayer2, setSsPlayer2] = useState("");
+  const [ssResult, setSsResult] = useState<any>(null);
+  const [ssLoading, setSsLoading] = useState(false);
+
+  const [tradeGive, setTradeGive] = useState("");
+  const [tradeReceive, setTradeReceive] = useState("");
+  const [tradeResult, setTradeResult] = useState<any>(null);
+  const [tradeLoading, setTradeLoading] = useState(false);
 
   const lockPickMutation = useMutation({
     mutationFn: (pick: any) => apiRequest("POST", "/api/nfl/lock-pick", pick).then(r => r.json()),
@@ -1140,6 +1832,8 @@ export default function EndZone() {
                 ["snaps",     "📊 Snap Trends"],
                 ["handcuffs", "🔗 Handcuffs"],
                 ["matchup",   "🗺️ Matchup Map"],
+                ["betting",   "📉 Betting Edge"],
+                ["fantasy",   "🧩 Fantasy Tools"],
               ] as const).map(([key, label]) => (
                 <button key={key} onClick={() => setRadarPanel(key)}
                   style={{
@@ -1211,6 +1905,37 @@ export default function EndZone() {
                   <MatchupHeatmapPanel data={matchupData?.data ?? []} />
                 )}
               </div>
+            )}
+
+            {/* Betting Edge */}
+            {radarPanel === "betting" && (
+              <BettingEdgePanel
+                lineMovement={lineMovementData}
+                injuryImpact={injuryImpactData}
+                weather={weatherData}
+                firstHalf={firstHalfData}
+              />
+            )}
+
+            {/* Fantasy Tools */}
+            {radarPanel === "fantasy" && (
+              <FantasyToolsPanel
+                gameScript={gameScriptData}
+                redZone={redZoneData}
+                dvpSplits={dvpSplitsData}
+                playoffGrader={playoffGraderData}
+                adpValue={adpValueData}
+                byeWeeks={byeWeekData}
+                streamingDST={streamingDSTData}
+                ssPlayer1={ssPlayer1} setSsPlayer1={setSsPlayer1}
+                ssPlayer2={ssPlayer2} setSsPlayer2={setSsPlayer2}
+                ssResult={ssResult} setSsResult={setSsResult}
+                ssLoading={ssLoading} setSsLoading={setSsLoading}
+                tradeGive={tradeGive} setTradeGive={setTradeGive}
+                tradeReceive={tradeReceive} setTradeReceive={setTradeReceive}
+                tradeResult={tradeResult} setTradeResult={setTradeResult}
+                tradeLoading={tradeLoading} setTradeLoading={setTradeLoading}
+              />
             )}
           </div>
         )}
