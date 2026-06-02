@@ -16499,62 +16499,237 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json({ data: cached, cachedAt: new Date(_nflMatchupCache.ts).toISOString(), count: cached.length });
       }
 
-      const MATCHUP_DATA: Record<string, { QB: number; RB: number; WR: number; TE: number }> = {
-        "ARI": { QB: 28, RB: 24, WR: 26, TE: 22 },
-        "ATL": { QB: 18, RB: 14, WR: 16, TE: 20 },
-        "BAL": { QB: 5,  RB: 8,  WR: 4,  TE: 7  },
-        "BUF": { QB: 12, RB: 18, WR: 15, TE: 14 },
-        "CAR": { QB: 29, RB: 27, WR: 30, TE: 28 },
-        "CHI": { QB: 20, RB: 16, WR: 18, TE: 17 },
-        "CIN": { QB: 10, RB: 12, WR: 11, TE: 9  },
-        "CLE": { QB: 8,  RB: 6,  WR: 7,  TE: 11 },
-        "DAL": { QB: 14, RB: 10, WR: 13, TE: 16 },
-        "DEN": { QB: 6,  RB: 9,  WR: 5,  TE: 8  },
-        "DET": { QB: 22, RB: 20, WR: 21, TE: 19 },
-        "GB":  { QB: 16, RB: 19, WR: 17, TE: 15 },
-        "HOU": { QB: 11, RB: 7,  WR: 10, TE: 12 },
-        "IND": { QB: 25, RB: 22, WR: 24, TE: 26 },
-        "JAX": { QB: 27, RB: 25, WR: 28, TE: 24 },
-        "KC":  { QB: 3,  RB: 5,  WR: 2,  TE: 4  },
-        "LAC": { QB: 17, RB: 15, WR: 19, TE: 18 },
-        "LAR": { QB: 21, RB: 17, WR: 22, TE: 21 },
-        "LV":  { QB: 30, RB: 28, WR: 29, TE: 30 },
-        "MIA": { QB: 15, RB: 11, WR: 14, TE: 13 },
-        "MIN": { QB: 9,  RB: 13, WR: 8,  TE: 10 },
-        "NE":  { QB: 4,  RB: 3,  WR: 6,  TE: 3  },
-        "NO":  { QB: 13, RB: 21, WR: 12, TE: 23 },
-        "NYG": { QB: 26, RB: 30, WR: 27, TE: 29 },
-        "NYJ": { QB: 2,  RB: 4,  WR: 3,  TE: 2  },
-        "PHI": { QB: 7,  RB: 2,  WR: 9,  TE: 6  },
-        "PIT": { QB: 1,  RB: 1,  WR: 1,  TE: 1  },
-        "SEA": { QB: 23, RB: 23, WR: 23, TE: 25 },
-        "SF":  { QB: 19, RB: 26, WR: 20, TE: 27 },
-        "TB":  { QB: 24, RB: 29, WR: 25, TE: 31 },
-        "TEN": { QB: 31, RB: 31, WR: 31, TE: 32 },
-        "WAS": { QB: 32, RB: 32, WR: 32, TE: 20 },
+      type PosDetail = {
+        rank: number;
+        allowedYpg: number;
+        allowedTdPg: number;
+        recentTrend: "improving" | "declining" | "stable";
+        keyPlayers: string[];
+        why: string;
+      };
+      type TeamDetail = { QB: PosDetail; RB: PosDetail; WR: PosDetail; TE: PosDetail };
+
+      const MATCHUP_DATA: Record<string, TeamDetail> = {
+        "ARI": {
+          QB: { rank: 28, allowedYpg: 278, allowedTdPg: 2.3, recentTrend: "declining", keyPlayers: ["Isaiah Simmons", "Marco Wilson"],         why: "Leaky secondary struggles vs mobile QBs; blitz-heavy scheme creates big-play risk. QBs average 278 YPG vs ARI." },
+          RB: { rank: 24, allowedYpg: 118, allowedTdPg: 1.2, recentTrend: "stable",    keyPlayers: ["Dennis Gardeck", "Zaven Collins"],         why: "Light box counts leave edge running lanes open. Best fits: outside zone backs who can bounce runs." },
+          WR: { rank: 26, allowedYpg: 148, allowedTdPg: 1.8, recentTrend: "declining", keyPlayers: ["Byron Murphy", "Starling Thomas V"],       why: "CB2 and CB3 are exploitable vs speed. No true shutdown corner after Murphy; WR2/slot plays best." },
+          TE: { rank: 22, allowedYpg: 72,  allowedTdPg: 0.8, recentTrend: "stable",    keyPlayers: ["Trey McBride (opponent)"],                  why: "Zone coverage over-focuses on WR depth; seam and crossing routes for TEs consistently open." },
+        },
+        "ATL": {
+          QB: { rank: 18, allowedYpg: 248, allowedTdPg: 1.7, recentTrend: "improving", keyPlayers: ["A.J. Terrell", "Jessie Bates III"],         why: "Terrell shuts down one side but safety help is inconsistent. Passable matchup for mid-tier QBs." },
+          RB: { rank: 14, allowedYpg: 102, allowedTdPg: 0.9, recentTrend: "improving", keyPlayers: ["Grady Jarrett", "David Onyemata"],           why: "Interior DL strength clogs run lanes between the tackles. Perimeter runs still viable." },
+          WR: { rank: 16, allowedYpg: 128, allowedTdPg: 1.2, recentTrend: "stable",    keyPlayers: ["A.J. Terrell", "Clark Phillips III"],       why: "Terrell is a lockdown CB1 but the slot is exploitable. Target slot WRs and WR2s." },
+          TE: { rank: 20, allowedYpg: 68,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Bates", "Onyemata"],                         why: "Zone-heavy scheme but LBs struggle in man coverage on move TEs. Good spot for TE seam routes." },
+        },
+        "BAL": {
+          QB: { rank: 5,  allowedYpg: 198, allowedTdPg: 1.1, recentTrend: "improving", keyPlayers: ["Roquan Smith", "Marlon Humphrey"],           why: "Elite LB coverage limits checkdown efficiency; Humphrey blankets WR1s reducing QB production ceiling." },
+          RB: { rank: 8,  allowedYpg: 88,  allowedTdPg: 0.6, recentTrend: "stable",    keyPlayers: ["Justin Madubuike", "Roquan Smith"],          why: "Madubuike and Broderick Washington stuff the A-gaps. Smith cleans up; RBs average sub-3.5 YPC." },
+          WR: { rank: 4,  allowedYpg: 172, allowedTdPg: 0.8, recentTrend: "improving", keyPlayers: ["Marlon Humphrey", "Kyle Hamilton"],          why: "Hamilton's range erases crossing routes; Humphrey is a true CB1. WRs consistently underperform projections." },
+          TE: { rank: 7,  allowedYpg: 48,  allowedTdPg: 0.4, recentTrend: "stable",    keyPlayers: ["Kyle Hamilton", "Roquan Smith"],             why: "Hamilton single-handedly eliminates seam routes. TEs face coverage that rivals any team in the league." },
+        },
+        "BUF": {
+          QB: { rank: 12, allowedYpg: 232, allowedTdPg: 1.5, recentTrend: "stable",    keyPlayers: ["Matt Milano", "Rasul Douglas"],              why: "Above-average secondary but Milano's absence inflates pass-game opportunities. Moderate weekly variance." },
+          RB: { rank: 18, allowedYpg: 108, allowedTdPg: 1.0, recentTrend: "declining", keyPlayers: ["DaQuan Jones", "Poona Ford"],                why: "Interior run defense solid but edge setting is inconsistent; wide-zone RBs can find cutback lanes." },
+          WR: { rank: 15, allowedYpg: 122, allowedTdPg: 1.1, recentTrend: "stable",    keyPlayers: ["Rasul Douglas", "Tre'Davious White"],        why: "Douglas is opportunistic but not elite. WR2/slot targets serviceable; deep ball limited by White." },
+          TE: { rank: 14, allowedYpg: 58,  allowedTdPg: 0.6, recentTrend: "stable",    keyPlayers: ["Micah Hyde", "Damar Hamlin"],                why: "Safety tandem covers seams well but LB coverage on in-line TEs is a weak point." },
+        },
+        "CAR": {
+          QB: { rank: 29, allowedYpg: 284, allowedTdPg: 2.4, recentTrend: "declining", keyPlayers: ["Jaycee Horn", "Jeremy Chinn"],               why: "Rebuilding roster; young secondary gets torched weekly. QBs approach 300 YPG on average against CAR." },
+          RB: { rank: 27, allowedYpg: 128, allowedTdPg: 1.4, recentTrend: "declining", keyPlayers: ["Derrick Brown", "Yetur Gross-Matos"],         why: "DT depth issues leave B-gap running lanes wide open. RB bellcows against CAR are must-starts." },
+          WR: { rank: 30, allowedYpg: 158, allowedTdPg: 2.0, recentTrend: "declining", keyPlayers: ["Jaycee Horn", "Donte Jackson"],              why: "Horn is good but the rest of the CB room is porous. WR2s and slot players routinely post WR1 lines." },
+          TE: { rank: 28, allowedYpg: 88,  allowedTdPg: 1.1, recentTrend: "declining", keyPlayers: ["Shaq Thompson", "Frankie Luvu"],             why: "LB corps struggles in coverage; TEs with move skills have a field day. Prime TE streaming spot." },
+        },
+        "CHI": {
+          QB: { rank: 20, allowedYpg: 252, allowedTdPg: 1.8, recentTrend: "stable",    keyPlayers: ["Tremaine Edmunds", "Jaylon Johnson"],        why: "Johnson is a solid CB1 but interior LB coverage creates checkdown opportunities beneath the zone." },
+          RB: { rank: 16, allowedYpg: 105, allowedTdPg: 0.9, recentTrend: "improving", keyPlayers: ["Montez Sweat", "Gervon Dexter"],             why: "Sweat collapses the edge well; Dexter improving vs run. Power RBs have limited success but speed backs find space." },
+          WR: { rank: 18, allowedYpg: 134, allowedTdPg: 1.3, recentTrend: "stable",    keyPlayers: ["Jaylon Johnson", "Kyler Gordon"],            why: "Johnson handles WR1; slot coverage via Gordon is inconsistent — best target is the opposing slot WR." },
+          TE: { rank: 17, allowedYpg: 62,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Tremaine Edmunds"],                         why: "Edmunds handles seam coverage but middle zones are soft. Red-zone TEs get looks here." },
+        },
+        "CIN": {
+          QB: { rank: 10, allowedYpg: 228, allowedTdPg: 1.4, recentTrend: "improving", keyPlayers: ["Trey Hendrickson", "Sam Hubbard"],           why: "Pass rush is elite — Hendrickson generates consistent pressure limiting QB comfort and time-in-pocket." },
+          RB: { rank: 12, allowedYpg: 98,  allowedTdPg: 0.8, recentTrend: "stable",    keyPlayers: ["B.J. Hill", "Sheldon Rankins"],              why: "DT rotation holds gaps; RBs held to 3.9 YPC but pass-catching backs still see targets on checkdowns." },
+          WR: { rank: 11, allowedYpg: 118, allowedTdPg: 1.0, recentTrend: "stable",    keyPlayers: ["Mike Hilton", "Cam Taylor-Britt"],           why: "Slot coverage (Hilton) is elite. WR1 matchups vs Taylor-Britt are exploitable; avoid targeting the slot." },
+          TE: { rank: 9,  allowedYpg: 52,  allowedTdPg: 0.5, recentTrend: "improving", keyPlayers: ["Logan Wilson", "Germaine Pratt"],            why: "Two-LB coverage shell limits seam access; TEs held to below-average lines most weeks." },
+        },
+        "CLE": {
+          QB: { rank: 8,  allowedYpg: 214, allowedTdPg: 1.2, recentTrend: "stable",    keyPlayers: ["Myles Garrett", "Za'Darius Smith"],          why: "Garrett is the best pass rusher in the NFL; QBs under constant pressure. Elite sack rate keeps TD ceiling low." },
+          RB: { rank: 6,  allowedYpg: 84,  allowedTdPg: 0.5, recentTrend: "stable",    keyPlayers: ["Myles Garrett", "Dalvin Tomlinson"],         why: "Tomlinson controls A-gaps; Garrett turns the corner on designed outside runs. RBs average 3.3 YPC." },
+          WR: { rank: 7,  allowedYpg: 108, allowedTdPg: 0.7, recentTrend: "improving", keyPlayers: ["Denzel Ward", "Martin Emerson Jr."],         why: "Ward is a lockdown CB1 when healthy; Emerson developing into a reliable CB2. WRs held to 108 YPG." },
+          TE: { rank: 11, allowedYpg: 55,  allowedTdPg: 0.5, recentTrend: "stable",    keyPlayers: ["Jeremiah Owusu-Koramoah"],                  why: "JOK excels in coverage vs TEs in space; in-line blocking TEs limited but move TEs occasionally find seams." },
+        },
+        "DAL": {
+          QB: { rank: 14, allowedYpg: 238, allowedTdPg: 1.6, recentTrend: "stable",    keyPlayers: ["Trevon Diggs", "DaRon Bland"],               why: "Diggs gambles for picks — boom-or-bust vs WR1s. Mid-level QBs can produce but TD ceiling is capped by Bland." },
+          RB: { rank: 10, allowedYpg: 95,  allowedTdPg: 0.8, recentTrend: "improving", keyPlayers: ["Micah Parsons", "Osa Odighizuwa"],           why: "Parsons disrupts the backfield constantly; RBs must account for him on every play. Sub-4.0 YPC vs DAL." },
+          WR: { rank: 13, allowedYpg: 120, allowedTdPg: 1.1, recentTrend: "stable",    keyPlayers: ["Trevon Diggs", "DaRon Bland"],               why: "Diggs' high-risk coverage creates variance. WR1s vs Bland are the target; avoid lining up vs Diggs." },
+          TE: { rank: 16, allowedYpg: 60,  allowedTdPg: 0.6, recentTrend: "stable",    keyPlayers: ["Leighton Vander Esch", "Damone Clark"],      why: "LB coverage is middle-tier; TEs with route variety can exploit zone gaps, especially on 3rd downs." },
+        },
+        "DEN": {
+          QB: { rank: 6,  allowedYpg: 202, allowedTdPg: 1.1, recentTrend: "improving", keyPlayers: ["Patrick Surtain II", "Nik Bonitto"],         why: "Surtain is arguably the best CB in football; QBs avoid his side entirely. Bonitto provides elite pressure." },
+          RB: { rank: 9,  allowedYpg: 90,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Jonah Williams", "D.J. Jones"],              why: "Stout run defense; Williams and Jones seal the interior. RBs held to 3.6 YPC against DEN all season." },
+          WR: { rank: 5,  allowedYpg: 104, allowedTdPg: 0.7, recentTrend: "improving", keyPlayers: ["Patrick Surtain II", "Ja'Quan McMillian"],   why: "Surtain eliminates WR1 production. McMillian handles the slot. Opposing WRs average fewest targets vs DEN." },
+          TE: { rank: 8,  allowedYpg: 50,  allowedTdPg: 0.4, recentTrend: "stable",    keyPlayers: ["Alex Singleton", "Josey Jewell"],            why: "LB coverage is above average; TEs held under 50 YPG. Red-zone TE targets limited by zone awareness." },
+        },
+        "DET": {
+          QB: { rank: 22, allowedYpg: 258, allowedTdPg: 2.0, recentTrend: "declining", keyPlayers: ["Emmanuel Moseley", "Carlton Davis III"],    why: "Secondary struggles to maintain coverage beyond 15 yards; QBs can exploit intermediate-deep routes." },
+          RB: { rank: 20, allowedYpg: 112, allowedTdPg: 1.1, recentTrend: "stable",    keyPlayers: ["Alim McNeill", "Levi Onwuzurike"],           why: "Interior DL is good but edge contain is inconsistent; outside zone runs find creases regularly." },
+          WR: { rank: 21, allowedYpg: 138, allowedTdPg: 1.4, recentTrend: "declining", keyPlayers: ["Carlton Davis III", "Brian Branch"],        why: "Davis CB1 is solid but Branch in slot can be attacked. WR2/slot profiles produce well against DET." },
+          TE: { rank: 19, allowedYpg: 65,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Alex Anzalone", "Malcolm Rodriguez"],       why: "LBs have decent range but TEs on crossing routes exploit the middle zones on a regular basis." },
+        },
+        "GB": {
+          QB: { rank: 16, allowedYpg: 242, allowedTdPg: 1.6, recentTrend: "stable",    keyPlayers: ["Jaire Alexander", "Quay Walker"],            why: "Alexander when healthy is elite; his injury history creates CB2 exposure. Walker helps underneath." },
+          RB: { rank: 19, allowedYpg: 110, allowedTdPg: 1.0, recentTrend: "stable",    keyPlayers: ["Kenny Clark", "Devonte Wyatt"],              why: "Clark is disruptive but rotating DT depth drops off sharply. Power runs find creases when Clark is managed." },
+          WR: { rank: 17, allowedYpg: 130, allowedTdPg: 1.2, recentTrend: "improving", keyPlayers: ["Jaire Alexander", "Eric Stokes"],            why: "Alexander vs WR1 is elite; attack Stokes and slot coverage. WR2/flex production is consistent vs GB." },
+          TE: { rank: 15, allowedYpg: 60,  allowedTdPg: 0.6, recentTrend: "stable",    keyPlayers: ["Quay Walker", "De'Vondre Campbell"],        why: "LB tandem handles seam coverage adequately; TEs with red-zone usage find value but not breakout spots." },
+        },
+        "HOU": {
+          QB: { rank: 11, allowedYpg: 230, allowedTdPg: 1.4, recentTrend: "stable",    keyPlayers: ["Will Anderson Jr.", "Derek Stingley Jr."],   why: "Anderson's pressure forces quick decisions; Stingley limits WR1 production but slot is exploitable." },
+          RB: { rank: 7,  allowedYpg: 86,  allowedTdPg: 0.6, recentTrend: "improving", keyPlayers: ["Sheldon Rankins", "Will Anderson Jr."],      why: "Anderson blows up inside runs at the line; stout run front limits every RB archetype consistently." },
+          WR: { rank: 10, allowedYpg: 116, allowedTdPg: 0.9, recentTrend: "stable",    keyPlayers: ["Derek Stingley Jr.", "Steven Nelson"],       why: "Stingley is a lockdown corner; Nelson is serviceable. Opposing WRs average only 116 YPG vs HOU." },
+          TE: { rank: 12, allowedYpg: 56,  allowedTdPg: 0.5, recentTrend: "stable",    keyPlayers: ["Eric Murray", "Jimmie Ward"],                why: "Safety depth limits TE production over the middle. Adequate but not elite TE coverage overall." },
+        },
+        "IND": {
+          QB: { rank: 25, allowedYpg: 268, allowedTdPg: 2.1, recentTrend: "declining", keyPlayers: ["Kenny Moore II", "Stephon Gilmore"],          why: "Aging CB room getting exposed; Gilmore's coverage range declining. QBs exploit the intermediate zones." },
+          RB: { rank: 22, allowedYpg: 115, allowedTdPg: 1.1, recentTrend: "stable",    keyPlayers: ["DeForest Buckner", "Grover Stewart"],        why: "Buckner is elite but the rest of the DL creates gap issues. RBs bounce outside and find edge lanes." },
+          WR: { rank: 24, allowedYpg: 142, allowedTdPg: 1.6, recentTrend: "declining", keyPlayers: ["Kenny Moore II", "Isaiah Rodgers"],           why: "CB depth is a major concern; WR2s and slot receivers consistently outperform projections vs IND." },
+          TE: { rank: 26, allowedYpg: 80,  allowedTdPg: 0.9, recentTrend: "declining", keyPlayers: ["Zaire Franklin", "E.J. Speed"],              why: "LB coverage coverage in space is a clear weakness; TEs with route-running ability are prime targets." },
+        },
+        "JAX": {
+          QB: { rank: 27, allowedYpg: 275, allowedTdPg: 2.2, recentTrend: "declining", keyPlayers: ["Tyson Campbell", "Darious Williams"],        why: "Campbell is inconsistent; Williams ages poorly in man. QBs find easy completions vs soft zones." },
+          RB: { rank: 25, allowedYpg: 122, allowedTdPg: 1.3, recentTrend: "declining", keyPlayers: ["Foye Oluokun", "Travon Walker"],              why: "Oluokun fills gaps well but Walker's edge setting is poor; outside runs gain yards consistently." },
+          WR: { rank: 28, allowedYpg: 152, allowedTdPg: 1.9, recentTrend: "declining", keyPlayers: ["Tyson Campbell", "Darious Williams"],        why: "Williams getting beat regularly; WR1s post top-10 lines and even WR3s find production vs JAX." },
+          TE: { rank: 24, allowedYpg: 78,  allowedTdPg: 0.9, recentTrend: "stable",    keyPlayers: ["Foyesade Oluokun", "Josh Allen (LB)"],       why: "LB coverage in space leaves seam routes available; TEs with target share routinely score vs JAX." },
+        },
+        "KC": {
+          QB: { rank: 3,  allowedYpg: 192, allowedTdPg: 1.0, recentTrend: "improving", keyPlayers: ["Chris Jones", "Trent McDuffie"],             why: "Jones disrupts every passing concept; McDuffie is an elite young CB. Chiefs allow fewest explosive pass plays." },
+          RB: { rank: 5,  allowedYpg: 82,  allowedTdPg: 0.5, recentTrend: "stable",    keyPlayers: ["Chris Jones", "Nick Bolton"],                why: "Jones collapses rushing lanes single-handedly; Bolton cleans up. RBs held to 3.4 YPC vs KC." },
+          WR: { rank: 2,  allowedYpg: 98,  allowedTdPg: 0.6, recentTrend: "improving", keyPlayers: ["Trent McDuffie", "L'Jarius Sneed"],          why: "Elite CB tandem; opponents' WR1 and WR2 both suppressed. Hardest WR matchup in the AFC." },
+          TE: { rank: 4,  allowedYpg: 44,  allowedTdPg: 0.3, recentTrend: "stable",    keyPlayers: ["Nick Bolton", "Drue Tranquill"],             why: "Bolton and Tranquill in coverage are above average; seam routes limited. TEs average sub-45 YPG vs KC." },
+        },
+        "LAC": {
+          QB: { rank: 17, allowedYpg: 245, allowedTdPg: 1.7, recentTrend: "stable",    keyPlayers: ["Derwin James", "J.C. Jackson"],              why: "James is elite but Jackson's age is showing. Pass D is good top-to-bottom but not dominant." },
+          RB: { rank: 15, allowedYpg: 103, allowedTdPg: 0.9, recentTrend: "stable",    keyPlayers: ["Austin Johnson", "Morgan Fox"],              why: "Serviceable run D; interior gaps sealed but perimeter contain inconsistent. Balanced RBs find value." },
+          WR: { rank: 19, allowedYpg: 136, allowedTdPg: 1.3, recentTrend: "stable",    keyPlayers: ["Asante Samuel Jr.", "Ja'Sir Taylor"],       why: "Samuel covers WR1 effectively; Taylor is average in slot. WR2 matchups against LAC are productive." },
+          TE: { rank: 18, allowedYpg: 63,  allowedTdPg: 0.6, recentTrend: "stable",    keyPlayers: ["Derwin James"],                             why: "James patrols the middle but zone gaps exist underneath. TEs in PPR formats find consistent floor." },
+        },
+        "LAR": {
+          QB: { rank: 21, allowedYpg: 255, allowedTdPg: 1.9, recentTrend: "stable",    keyPlayers: ["Jalen Ramsey", "Ahkello Witherspoon"],       why: "Ramsey era over; CB room is rebuilding. Intermediate passing game finds success vs LAR secondary." },
+          RB: { rank: 17, allowedYpg: 107, allowedTdPg: 1.0, recentTrend: "stable",    keyPlayers: ["Bobby Wagner", "Aaron Donald (retired)"],    why: "Wagner still calls the run fits well but without Donald the interior is patchwork. Some gap issues." },
+          WR: { rank: 22, allowedYpg: 140, allowedTdPg: 1.5, recentTrend: "declining", keyPlayers: ["Derion Kendrick", "Cobie Durant"],           why: "Young CB room exploited by experienced WRs; Kendrick is improving but WR1/2 post solid lines vs LAR." },
+          TE: { rank: 21, allowedYpg: 70,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Bobby Wagner", "Troy Reeder"],               why: "Wagner covers TEs in zone decently; red-zone TE targets are available but not elite production." },
+        },
+        "LV": {
+          QB: { rank: 30, allowedYpg: 288, allowedTdPg: 2.5, recentTrend: "declining", keyPlayers: ["Nate Hobbs", "Jack Jones"],                  why: "One of the worst secondaries in football; QBs routinely hit 300+ YPG. Every QB faces a dream matchup vs LV." },
+          RB: { rank: 28, allowedYpg: 130, allowedTdPg: 1.5, recentTrend: "declining", keyPlayers: ["Adam Butler", "Jerry Tillery"],              why: "Interior DL rotation is thin; gaps open quickly. Running backs post their best lines against LV defense." },
+          WR: { rank: 29, allowedYpg: 155, allowedTdPg: 2.1, recentTrend: "declining", keyPlayers: ["Nate Hobbs", "Jack Jones"],                  why: "Jones gets torched in man coverage; WR1/2/3 all post big numbers. Best WR streaming matchup in the league." },
+          TE: { rank: 30, allowedYpg: 90,  allowedTdPg: 1.2, recentTrend: "declining", keyPlayers: ["Divine Deablo", "Luke Masterson"],           why: "LB coverage in space is abysmal; seam routes, crosses, and RZ looks all available for TEs vs LV." },
+        },
+        "MIA": {
+          QB: { rank: 15, allowedYpg: 240, allowedTdPg: 1.6, recentTrend: "stable",    keyPlayers: ["Jalen Ramsey", "Xavien Howard"],             why: "Howard still elite but aging; Ramsey injury history is a concern. QBs find production on the CB2 side." },
+          RB: { rank: 11, allowedYpg: 96,  allowedTdPg: 0.8, recentTrend: "improving", keyPlayers: ["Zach Sieler", "Christian Wilkins"],          why: "Sieler is disruptive in the interior; outside runs contained by Rams-like edge discipline. RBs held to 3.7 YPC." },
+          WR: { rank: 14, allowedYpg: 122, allowedTdPg: 1.1, recentTrend: "stable",    keyPlayers: ["Xavien Howard", "Kader Kohou"],              why: "Howard covers WR1 but slot (Kohou) is exploitable on quick routes and YAC. Target opposing slot WRs." },
+          TE: { rank: 13, allowedYpg: 57,  allowedTdPg: 0.5, recentTrend: "stable",    keyPlayers: ["Jevon Holland", "DeShon Elliott"],           why: "Safety tandem limits TE seam targets; adequate TE coverage overall but red-zone looks still available." },
+        },
+        "MIN": {
+          QB: { rank: 9,  allowedYpg: 220, allowedTdPg: 1.3, recentTrend: "improving", keyPlayers: ["Byron Murphy Jr.", "Brian Flores (DC)"],     why: "Flores' scheme generates pressure without blitzing; Murphy is an elite run-stuffer doubling as CB1." },
+          RB: { rank: 13, allowedYpg: 100, allowedTdPg: 0.8, recentTrend: "stable",    keyPlayers: ["Jonathan Greenard", "Dean Lowry"],           why: "Edge rush collapses outside runs; inside is manageable. Receiving backs find targets but run game is limited." },
+          WR: { rank: 8,  allowedYpg: 112, allowedTdPg: 0.8, recentTrend: "improving", keyPlayers: ["Byron Murphy Jr.", "Shaquill Griffin"],      why: "Murphy's physicality disrupts WR releases at the line; zone coverage limits big plays. Tough WR matchup." },
+          TE: { rank: 10, allowedYpg: 53,  allowedTdPg: 0.5, recentTrend: "improving", keyPlayers: ["Jordan Hicks", "Ivan Pace Jr."],             why: "Hicks and Pace cover TEs in a disciplined zone; seam routes get bracketed. Below-average TE production here." },
+        },
+        "NE": {
+          QB: { rank: 4,  allowedYpg: 195, allowedTdPg: 1.0, recentTrend: "stable",    keyPlayers: ["Christian Gonzalez", "Jonathan Jones"],      why: "Gonzalez is the next elite Patriot CB; Jones is a savvy vet. NE scheme still limits QB efficiency league-wide." },
+          RB: { rank: 3,  allowedYpg: 78,  allowedTdPg: 0.4, recentTrend: "stable",    keyPlayers: ["Christian Barmore", "Davon Godchaux"],       why: "Barmore is an elite interior disruptor; Godchaux seals the A-gaps. RBs average 3.2 YPC vs NE — 3rd lowest." },
+          WR: { rank: 6,  allowedYpg: 106, allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Christian Gonzalez", "Jonathan Jones"],      why: "NE's scheme still confuses WR routes; Gonzalez holds WR1s to under 60 YPG on average." },
+          TE: { rank: 3,  allowedYpg: 42,  allowedTdPg: 0.3, recentTrend: "stable",    keyPlayers: ["Mack Wilson Sr.", "Jahlani Tavai"],          why: "LB tandem specifically coached for TE coverage; lowest TE yardage allowed per game in the AFC." },
+        },
+        "NO": {
+          QB: { rank: 13, allowedYpg: 236, allowedTdPg: 1.5, recentTrend: "stable",    keyPlayers: ["Marshon Lattimore", "Paulson Adebo"],        why: "Lattimore is elite when available; injury history is a concern. Adebo developing but exploitable on deep routes." },
+          RB: { rank: 21, allowedYpg: 113, allowedTdPg: 1.0, recentTrend: "declining", keyPlayers: ["David Onyemata", "Bryan Bresee"],            why: "Onyemata/Bresee interior depth is thin; RBs find running room and NO allows 4.1 YPC — above league avg." },
+          WR: { rank: 12, allowedYpg: 119, allowedTdPg: 1.0, recentTrend: "stable",    keyPlayers: ["Marshon Lattimore", "Alontae Taylor"],      why: "Lattimore eliminates WR1; Taylor is solid CB2. Slot and WR2 production is the opportunity window vs NO." },
+          TE: { rank: 23, allowedYpg: 75,  allowedTdPg: 0.8, recentTrend: "declining", keyPlayers: ["Pete Werner", "Demario Davis"],              why: "Davis is aging; Werner inconsistent in coverage. Seam routes exploited more frequently in recent weeks." },
+        },
+        "NYG": {
+          QB: { rank: 26, allowedYpg: 272, allowedTdPg: 2.2, recentTrend: "declining", keyPlayers: ["Adoree' Jackson", "Cor'Dale Flott"],         why: "Jackson injury history leaves CB2/3 exposed; QBs in 2-minute drill against NYG regularly produce big numbers." },
+          RB: { rank: 30, allowedYpg: 135, allowedTdPg: 1.6, recentTrend: "declining", keyPlayers: ["Kayvon Thibodeaux", "Dexter Lawrence"],      why: "Lawrence can't fix everything alone; off-ball LBs struggle to fill gaps. RBs average 4.5 YPC — worst in NFC." },
+          WR: { rank: 27, allowedYpg: 150, allowedTdPg: 1.8, recentTrend: "declining", keyPlayers: ["Adoree' Jackson", "Darnay Holmes"],          why: "Holmes is overmatched vs speed WRs; WR2/3 targets routinely reach 80+ yards. WR streaming gold mine." },
+          TE: { rank: 29, allowedYpg: 86,  allowedTdPg: 1.1, recentTrend: "declining", keyPlayers: ["Bobby Okereke", "Isaiah Simmons"],           why: "LB coverage in space is a major weakness; TEs with receiving roles average 80+ YPG vs NYG." },
+        },
+        "NYJ": {
+          QB: { rank: 2,  allowedYpg: 188, allowedTdPg: 0.9, recentTrend: "improving", keyPlayers: ["Sauce Gardner", "D.J. Reed"],                why: "Gardner may be the best CB in football; Reed provides elite CB2 coverage. QBs forced into checkdowns only." },
+          RB: { rank: 4,  allowedYpg: 80,  allowedTdPg: 0.4, recentTrend: "improving", keyPlayers: ["Quinnen Williams", "Al Woods"],              why: "Williams dominates the interior; RBs can't find cutback lanes. Sub-3.4 YPC vs NYJ — among the best in the league." },
+          WR: { rank: 3,  allowedYpg: 100, allowedTdPg: 0.6, recentTrend: "improving", keyPlayers: ["Sauce Gardner", "D.J. Reed"],                why: "Gardner/Reed tandem is the toughest WR matchup in the NFL. Even elite WR1s are held to modest lines." },
+          TE: { rank: 2,  allowedYpg: 40,  allowedTdPg: 0.3, recentTrend: "stable",    keyPlayers: ["C.J. Mosley", "Quincy Williams"],           why: "Mosley/Williams tandem is one of the best LB coverage pairs in the league; TEs limited to sub-40 YPG." },
+        },
+        "PHI": {
+          QB: { rank: 7,  allowedYpg: 210, allowedTdPg: 1.2, recentTrend: "stable",    keyPlayers: ["Darius Slay", "James Bradberry"],            why: "Elite CB tandem; Slay still locks down WR1s at age 32. Pass rush (Sweat/Reddick) forces quick decisions." },
+          RB: { rank: 2,  allowedYpg: 75,  allowedTdPg: 0.3, recentTrend: "stable",    keyPlayers: ["Jordan Davis", "Jalen Carter"],              why: "Davis and Carter form arguably the best DT duo in football. RBs average 3.1 YPC — 2nd lowest in the NFL." },
+          WR: { rank: 9,  allowedYpg: 114, allowedTdPg: 0.9, recentTrend: "stable",    keyPlayers: ["Darius Slay", "James Bradberry"],            why: "Slay vs WR1 is elite; Bradberry handles WR2. Slot coverage slightly weaker — target opposing slot WRs." },
+          TE: { rank: 6,  allowedYpg: 46,  allowedTdPg: 0.4, recentTrend: "stable",    keyPlayers: ["Nakobe Dean", "Zack Baun"],                  why: "Dean and Baun provide excellent seam coverage; TEs held to sub-50 YPG regularly — top-5 TE defense." },
+        },
+        "PIT": {
+          QB: { rank: 1,  allowedYpg: 182, allowedTdPg: 0.8, recentTrend: "improving", keyPlayers: ["T.J. Watt", "Minkah Fitzpatrick"],           why: "Watt is the most disruptive player in football; Fitzpatrick erases deep routes. QBs average just 182 YPG vs PIT." },
+          RB: { rank: 1,  allowedYpg: 72,  allowedTdPg: 0.3, recentTrend: "improving", keyPlayers: ["T.J. Watt", "Cam Heyward"],                  why: "Heyward and Watt shut down every run concept. RBs held to 3.0 YPC — lowest in the NFL. Avoid." },
+          WR: { rank: 1,  allowedYpg: 92,  allowedTdPg: 0.5, recentTrend: "improving", keyPlayers: ["Joey Porter Jr.", "Minkah Fitzpatrick"],     why: "Porter Jr. is emerging as a shutdown corner; Fitzpatrick roams centerfield. Hardest WR matchup in football." },
+          TE: { rank: 1,  allowedYpg: 38,  allowedTdPg: 0.2, recentTrend: "stable",    keyPlayers: ["Patrick Queen", "Cole Holcomb"],             why: "Queen and Holcomb are elite coverage LBs; TEs average just 38 YPG vs PIT — the lowest mark in the NFL." },
+        },
+        "SEA": {
+          QB: { rank: 23, allowedYpg: 260, allowedTdPg: 2.0, recentTrend: "stable",    keyPlayers: ["Devon Witherspoon", "Riq Woolen"],           why: "Witherspoon is a physical press CB but Woolen gambles; QBs exploit the free-release side of the field." },
+          RB: { rank: 23, allowedYpg: 116, allowedTdPg: 1.2, recentTrend: "stable",    keyPlayers: ["Leonard Williams", "Al Woods"],              why: "Williams is a space eater but not a gap penetrator; power RBs find room while speed backs hit the edges." },
+          WR: { rank: 23, allowedYpg: 143, allowedTdPg: 1.5, recentTrend: "stable",    keyPlayers: ["Devon Witherspoon", "Riq Woolen"],           why: "Woolen's gambling style creates variance; WR1s get held but WR2s and deep threats exploit gambles." },
+          TE: { rank: 25, allowedYpg: 79,  allowedTdPg: 0.9, recentTrend: "declining", keyPlayers: ["Jerome Baker", "Tyrel Dodson"],              why: "LB coverage has declined; seam routes and crossing patterns are consistent TE production spots vs SEA." },
+        },
+        "SF": {
+          QB: { rank: 19, allowedYpg: 250, allowedTdPg: 1.8, recentTrend: "stable",    keyPlayers: ["Charvarius Ward", "Tashaun Gipson"],         why: "Ward is good but SF's scheme relies on front-four pressure; when contained, the secondary is beatable." },
+          RB: { rank: 26, allowedYpg: 125, allowedTdPg: 1.3, recentTrend: "declining", keyPlayers: ["Arik Armstead", "Javon Hargrave"],           why: "Hargrave departure exposed interior; Armstead alone can't stop the run. RBs averaging 4.2 YPC vs SF lately." },
+          WR: { rank: 20, allowedYpg: 137, allowedTdPg: 1.4, recentTrend: "stable",    keyPlayers: ["Charvarius Ward", "Deommodore Lenoir"],      why: "Ward contains WR1; Lenoir in slot is solid. WR2 production is the consistent target vs SF secondary." },
+          TE: { rank: 27, allowedYpg: 82,  allowedTdPg: 1.0, recentTrend: "declining", keyPlayers: ["Fred Warner", "Dre Greenlaw"],               why: "Both Warner and Greenlaw are nursing injuries; TE coverage has dropped sharply in recent weeks." },
+        },
+        "TB": {
+          QB: { rank: 24, allowedYpg: 262, allowedTdPg: 2.1, recentTrend: "stable",    keyPlayers: ["Carlton Davis", "Antoine Winfield Jr."],     why: "Winfield is elite but Davis ages; QBs find the opposite side reliably. Decent streaming QB spot." },
+          RB: { rank: 29, allowedYpg: 132, allowedTdPg: 1.5, recentTrend: "declining", keyPlayers: ["Vita Vea", "Logan Hall"],                    why: "Vea can't do it alone; run D is a team-wide problem. RBs routinely rush for 100+ yards vs TB this season." },
+          WR: { rank: 25, allowedYpg: 145, allowedTdPg: 1.7, recentTrend: "declining", keyPlayers: ["Carlton Davis", "Zyon McCollum"],            why: "McCollum is developing but gets exposed by speed; slot coverage also weak. High WR production vs TB weekly." },
+          TE: { rank: 31, allowedYpg: 92,  allowedTdPg: 1.2, recentTrend: "declining", keyPlayers: ["Lavonte David", "K.J. Britt"],               why: "David is aging and Britt is underwhelming in space; TEs against TB have the 2nd most production in the NFL." },
+        },
+        "TEN": {
+          QB: { rank: 31, allowedYpg: 290, allowedTdPg: 2.6, recentTrend: "declining", keyPlayers: ["Sean Murphy-Bunting", "Caleb Farley"],       why: "Farley's injury history leaves huge voids; TEN secondary is the leakiest unit in the AFC. QBs thrive here." },
+          RB: { rank: 31, allowedYpg: 138, allowedTdPg: 1.7, recentTrend: "declining", keyPlayers: ["Jeffery Simmons", "Teair Tart"],             why: "Even Simmons can't save the run defense alone; RBs average 4.6 YPC vs TEN — 2nd worst in the NFL." },
+          WR: { rank: 31, allowedYpg: 162, allowedTdPg: 2.2, recentTrend: "declining", keyPlayers: ["Sean Murphy-Bunting", "Caleb Farley"],       why: "Complete CB room collapse; WR1s, WR2s, and even WR3s post big lines vs TEN. Must-start streaming spot." },
+          TE: { rank: 32, allowedYpg: 96,  allowedTdPg: 1.3, recentTrend: "declining", keyPlayers: ["Zach Cunningham", "David Long Jr."],         why: "Worst TE defense in the NFL; Cunningham/Long can't cover NFL tight ends. Streaming TE locks vs TEN." },
+        },
+        "WAS": {
+          QB: { rank: 32, allowedYpg: 295, allowedTdPg: 2.7, recentTrend: "declining", keyPlayers: ["Emmanuel Forbes", "Kendall Fuller"],         why: "Forbes still adjusting to the NFL; Fuller aging out. WAS allows the most QB yards in the league. QB1 streaming." },
+          RB: { rank: 32, allowedYpg: 142, allowedTdPg: 1.8, recentTrend: "declining", keyPlayers: ["Daron Payne", "Jonathan Allen"],             why: "Payne and Allen are good but the LB/secondary run-support is non-existent. Highest RB YPC allowed in the NFL." },
+          WR: { rank: 32, allowedYpg: 165, allowedTdPg: 2.3, recentTrend: "declining", keyPlayers: ["Emmanuel Forbes", "Danny Johnson"],          why: "Porous coverage at every level; WRs of all types post career-best lines vs WAS. Elite streaming matchup." },
+          TE: { rank: 20, allowedYpg: 68,  allowedTdPg: 0.7, recentTrend: "stable",    keyPlayers: ["Cody Barton", "Bobby Wagner"],               why: "Wagner brings surprising TE coverage competence; LBs plug seam routes adequately despite overall D struggles." },
+        },
       };
 
       const gradeRank = (rank: number): string => {
-        if (rank <= 8) return "A";
+        if (rank <= 8)  return "A";
         if (rank <= 16) return "B";
         if (rank <= 24) return "C";
         return "D";
       };
+      const trendLabel = (t: string) => t === "improving" ? "📈 Improving" : t === "declining" ? "📉 Declining" : "➡️ Stable";
 
       const posParam = (req.query.position as string | undefined)?.toUpperCase();
       const validPositions = ["QB", "RB", "WR", "TE"];
       const sortPos: "QB" | "RB" | "WR" | "TE" = (posParam && validPositions.includes(posParam)) ? posParam as "QB" | "RB" | "WR" | "TE" : "QB";
 
-      // Flatten to match frontend MatchupRow interface: flat QB/RB/WR/TE numbers + gradeQB etc.
-      const result = Object.entries(MATCHUP_DATA).map(([team, ranks]) => ({
+      const result = Object.entries(MATCHUP_DATA).map(([team, d]) => ({
         team,
-        QB: ranks.QB, gradeQB: gradeRank(ranks.QB),
-        RB: ranks.RB, gradeRB: gradeRank(ranks.RB),
-        WR: ranks.WR, gradeWR: gradeRank(ranks.WR),
-        TE: ranks.TE, gradeTE: gradeRank(ranks.TE),
+        QB: d.QB.rank, gradeQB: gradeRank(d.QB.rank),
+        RB: d.RB.rank, gradeRB: gradeRank(d.RB.rank),
+        WR: d.WR.rank, gradeWR: gradeRank(d.WR.rank),
+        TE: d.TE.rank, gradeTE: gradeRank(d.TE.rank),
+        detail: {
+          QB: { allowedYpg: d.QB.allowedYpg, allowedTdPg: d.QB.allowedTdPg, trend: trendLabel(d.QB.recentTrend), keyPlayers: d.QB.keyPlayers, why: d.QB.why },
+          RB: { allowedYpg: d.RB.allowedYpg, allowedTdPg: d.RB.allowedTdPg, trend: trendLabel(d.RB.recentTrend), keyPlayers: d.RB.keyPlayers, why: d.RB.why },
+          WR: { allowedYpg: d.WR.allowedYpg, allowedTdPg: d.WR.allowedTdPg, trend: trendLabel(d.WR.recentTrend), keyPlayers: d.WR.keyPlayers, why: d.WR.why },
+          TE: { allowedYpg: d.TE.allowedYpg, allowedTdPg: d.TE.allowedTdPg, trend: trendLabel(d.TE.recentTrend), keyPlayers: d.TE.keyPlayers, why: d.TE.why },
+        },
       }));
 
-      // Sort by selected position rank descending (higher rank number = easier matchup for offense)
       result.sort((a, b) => (b as any)[sortPos] - (a as any)[sortPos]);
 
       _nflMatchupCache = { data: result, ts: now };

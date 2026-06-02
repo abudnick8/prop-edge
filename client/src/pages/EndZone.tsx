@@ -93,9 +93,18 @@ interface HandcuffPair {
   injuryRisk: number; handcuffOwnershipPct: number; starterOwnershipPct: number;
   reason: string; handcuffPriority: "Must Own" | "High Value" | "Monitor";
 }
+interface MatchupDetail {
+  allowedYpg: number;
+  allowedTdPg: number;
+  trend: string;
+  keyPlayers: string[];
+  why: string;
+}
 interface MatchupRow {
-  team: string; QB: number; RB: number; WR: number; TE: number;
+  team: string;
+  QB: number; RB: number; WR: number; TE: number;
   gradeQB: string; gradeRB: string; gradeWR: string; gradeTE: string;
+  detail: { QB: MatchupDetail; RB: MatchupDetail; WR: MatchupDetail; TE: MatchupDetail };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -718,27 +727,31 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
   const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : "→";
   const deltaColor = (d: number) => d > 0 ? "#16a34a" : d < 0 ? "#ef4444" : MUTED;
 
-  // 10-bar sparkline, colour-coded by direction, most-recent = rightmost
+  // 10-bar sparkline, full width, colour-coded by direction, oldest left / newest right (gold)
   const SnapSparkline = ({ vals, wks }: { vals: number[]; wks: string[] }) => {
-    const reversed = [...vals].reverse(); // oldest left, newest right
+    const reversed = [...vals].reverse();
     const wksR = [...wks].reverse();
     const max = Math.max(...reversed, 1);
-    const totalW = 140; const totalH = 36;
+    const totalH = 32;
     const n = reversed.length;
-    const barW = Math.floor((totalW - (n - 1) * 2) / n);
+    const gap = 3;
+    // Use viewBox so SVG scales to container width
+    const vbW = 300;
+    const barW = (vbW - (n - 1) * gap) / n;
     return (
-      <svg width={totalW} height={totalH + 12} style={{ flexShrink: 0, overflow: "visible" }}>
+      <svg viewBox={`0 0 ${vbW} ${totalH + 13}`} width="100%" height={totalH + 13}
+        style={{ display: "block", overflow: "visible" }}>
         {reversed.map((v, i) => {
           const barH = Math.max(3, (v / max) * (totalH - 4));
-          const x = i * (barW + 2);
+          const x = i * (barW + gap);
           const isLatest = i === n - 1;
           const isRising = i > 0 && reversed[i] >= reversed[i - 1];
-          const fill = isLatest ? GOLD_COLOR : isRising ? "rgba(22,163,74,0.55)" : "rgba(239,68,68,0.45)";
+          const fill = isLatest ? GOLD_COLOR : isRising ? "rgba(22,163,74,0.60)" : "rgba(239,68,68,0.50)";
           return (
             <g key={i}>
               <rect x={x} y={totalH - barH} width={barW} height={barH} rx={2} fill={fill} />
-              <text x={x + barW / 2} y={totalH + 10} textAnchor="middle"
-                style={{ fontSize: 7, fill: MUTED, fontWeight: isLatest ? 800 : 400 }}>
+              <text x={x + barW / 2} y={totalH + 11} textAnchor="middle"
+                fontSize={8} fill={MUTED} fontWeight={isLatest ? 800 : 400}>
                 {wksR[i]?.replace("Wk ", "")}
               </text>
             </g>
@@ -763,22 +776,21 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
         ]}
       />
 
-      {/* Window selector */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: MUTED, alignSelf: "center", marginRight: 2, fontWeight: 600 }}>Window:</span>
+      {/* Controls row: window + trend filter on one line */}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 12, flexWrap: "nowrap", overflowX: "auto" }}>
+        <span style={{ fontSize: 10, color: MUTED, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>Window:</span>
         {(["1G", "3G", "5G", "10G"] as const).map(w => (
           <button key={w} onClick={() => setWindow(w)}
-            style={{ padding: "4px 11px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+            style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0,
               background: window === w ? NAVY_COLOR : "rgba(19,35,58,0.07)",
               color: window === w ? BG_COLOR : MUTED }}>
             {w}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        {/* Trend filter */}
+        <div style={{ width: 1, height: 16, background: "rgba(19,35,58,0.15)", flexShrink: 0, margin: "0 2px" }} />
         {(["all", "rising", "falling"] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
-            style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+            style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0,
               background: filter === f ? NAVY_COLOR : "rgba(19,35,58,0.07)",
               color: filter === f ? BG_COLOR : MUTED }}>
             {f === "all" ? "All" : f === "rising" ? "▲ Rising" : "▼ Falling"}
@@ -800,68 +812,65 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
                 padding: "10px 13px", cursor: "pointer" }}
               onClick={() => setExpanded(isOpen ? null : i)}>
 
-              {/* Top row: sparkline + header */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <div style={{ paddingTop: 2 }}>
-                  <SnapSparkline vals={p.snapPcts} wks={p.weekLabels} />
+              {/* Row 1: name/badges + right stats */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, color: NAVY_COLOR }}>{p.playerName}</span>
+                  <span style={{ fontSize: 10, color: MUTED, background: "rgba(19,35,58,0.07)", borderRadius: 10, padding: "1px 6px" }}>{p.position}</span>
+                  <span style={{ fontSize: 10, color: MUTED }}>{p.team}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: trendColor(trend),
+                    background: `${trendColor(trend)}12`, borderRadius: 10, padding: "1px 7px" }}>
+                    {trendArrow(trend)} {p.snapPcts[0]}%
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor(delta) }}>
+                    ({delta >= 0 ? "+" : ""}{delta}%{window !== "1G" ? " MA" : ""} · {range})
+                  </span>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
-                    <span style={{ fontWeight: 800, fontSize: 13, color: NAVY_COLOR }}>{p.playerName}</span>
-                    <span style={{ fontSize: 10, color: MUTED, background: "rgba(19,35,58,0.07)", borderRadius: 10, padding: "1px 6px" }}>{p.position}</span>
-                    <span style={{ fontSize: 10, color: MUTED }}>{p.team}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: trendColor(trend),
-                      background: `${trendColor(trend)}12`, borderRadius: 10, padding: "1px 7px" }}>
-                      {trendArrow(trend)} {p.snapPcts[0]}%
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor(delta) }}>
-                      ({delta >= 0 ? "+" : ""}{delta}%{window !== "1G" ? " MA" : ""} · {range})
-                    </span>
+                <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                  <div style={{ fontSize: 10, color: MUTED }}>Tgt <b style={{ color: NAVY_COLOR }}>{p.targetShare}%</b> · {p.ownershipTier} own.</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>
+                    <b style={{ color: GOLD_COLOR }}>{p.weeklyProjectedPts}</b> pts proj. {isOpen ? "▲" : "▼"}
                   </div>
-
-                  {/* MA stat row */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                    {([
-                      { label: "1G",  val: p.snapPcts[0], delta: p.delta1,  range: `${p.weekLabels[0]}` },
-                      { label: "3G",  val: p.avg3,        delta: p.delta3,  range: p.weekRange3 },
-                      { label: "5G",  val: p.avg5,        delta: p.delta5,  range: p.weekRange5 },
-                      { label: "10G", val: p.avg10,       delta: p.delta10, range: p.weekRange10 },
-                    ]).map(m => (
-                      <div key={m.label}
-                        style={{ display: "flex", flexDirection: "column", alignItems: "center",
-                          background: window === m.label ? `${GOLD_COLOR}18` : "rgba(19,35,58,0.04)",
-                          border: window === m.label ? `1px solid ${GOLD_COLOR}55` : "1px solid transparent",
-                          borderRadius: 8, padding: "3px 7px", minWidth: 44 }}>
-                        <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{m.label}</span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: NAVY_COLOR }}>{m.val}%</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: deltaColor(m.delta) }}>
-                          {m.delta >= 0 ? "+" : ""}{m.delta}%
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 2 }}>
-                      {p.touches !== null && (
-                        <span style={{ fontSize: 10, color: MUTED }}>Touch/g: <b style={{ color: NAVY_COLOR }}>{p.touches}</b></span>
-                      )}
-                      {p.routes !== null && (
-                        <span style={{ fontSize: 10, color: MUTED }}>Routes: <b style={{ color: NAVY_COLOR }}>{p.routes}%</b></span>
-                      )}
-                    </div>
-                  </div>
-
-                  <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.35, marginBottom: 2 }}>{p.note}</p>
-                </div>
-
-                {/* Right column */}
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, color: MUTED }}>Tgt: <b style={{ color: NAVY_COLOR }}>{p.targetShare}%</b></div>
-                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{p.ownershipTier} own.</div>
-                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                    <b style={{ color: GOLD_COLOR }}>{p.weeklyProjectedPts}</b> pts proj.
-                  </div>
-                  <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>{isOpen ? "▲" : "▼"}</div>
                 </div>
               </div>
+
+              {/* Row 2: sparkline full width */}
+              <div style={{ marginBottom: 8 }}>
+                <SnapSparkline vals={p.snapPcts} wks={p.weekLabels} />
+              </div>
+
+              {/* Row 3: MA tiles in one horizontal row */}
+              <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
+                {([
+                  { label: "1G",  val: p.snapPcts[0], delta: p.delta1 },
+                  { label: "3G",  val: p.avg3,        delta: p.delta3 },
+                  { label: "5G",  val: p.avg5,        delta: p.delta5 },
+                  { label: "10G", val: p.avg10,       delta: p.delta10 },
+                ]).map(m => (
+                  <div key={m.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                    background: window === m.label ? `${GOLD_COLOR}18` : "rgba(19,35,58,0.04)",
+                    border: window === m.label ? `1px solid ${GOLD_COLOR}55` : "1px solid rgba(19,35,58,0.08)",
+                    borderRadius: 8, padding: "4px 2px" }}>
+                    <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{m.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: NAVY_COLOR }}>{m.val}%</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: deltaColor(m.delta) }}>
+                      {m.delta >= 0 ? "+" : ""}{m.delta}%
+                    </span>
+                  </div>
+                ))}
+                {/* Touches + Routes tile */}
+                {(p.touches !== null || p.routes !== null) && (
+                  <div style={{ flex: 1.2, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
+                    background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)",
+                    borderRadius: 8, padding: "4px 2px", gap: 1 }}>
+                    {p.touches !== null && <span style={{ fontSize: 9, color: MUTED }}>Touch/g <b style={{ color: NAVY_COLOR }}>{p.touches}</b></span>}
+                    {p.routes !== null  && <span style={{ fontSize: 9, color: MUTED }}>Routes <b style={{ color: NAVY_COLOR }}>{p.routes}%</b></span>}
+                  </div>
+                )}
+              </div>
+
+              {/* Row 4: note */}
+              <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.35, margin: 0 }}>{p.note}</p>
 
               {/* Expanded: week-by-week breakdown */}
               {isOpen && (
@@ -964,52 +973,190 @@ function HandcuffPanel({ data }: { data: HandcuffPair[] }) {
 
 function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
   const [posFilter, setPosFilter] = useState<"QB" | "RB" | "WR" | "TE">("WR");
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
   const positions: Array<"QB" | "RB" | "WR" | "TE"> = ["QB", "RB", "WR", "TE"];
 
   const gradeColor = (g: string) => {
-    if (g === "A") return { bg: "rgba(34,197,94,0.15)",  text: "#15803d",  border: "rgba(34,197,94,0.30)" };
-    if (g === "B") return { bg: "rgba(212,168,67,0.15)", text: "#92680a",  border: "rgba(212,168,67,0.30)" };
-    if (g === "C") return { bg: "rgba(251,146,60,0.15)", text: "#c2410c",  border: "rgba(251,146,60,0.30)" };
-    return            { bg: "rgba(239,68,68,0.12)",  text: "#dc2626",  border: "rgba(239,68,68,0.25)" };
+    if (g === "A") return { bg: "rgba(34,197,94,0.13)",  text: "#15803d",  border: "rgba(34,197,94,0.28)",  pill: "rgba(34,197,94,0.18)"  };
+    if (g === "B") return { bg: "rgba(212,168,67,0.13)", text: "#92680a",  border: "rgba(212,168,67,0.28)", pill: "rgba(212,168,67,0.18)" };
+    if (g === "C") return { bg: "rgba(251,146,60,0.13)", text: "#c2410c",  border: "rgba(251,146,60,0.28)", pill: "rgba(251,146,60,0.18)" };
+    return            { bg: "rgba(239,68,68,0.10)",  text: "#dc2626",  border: "rgba(239,68,68,0.22)",  pill: "rgba(239,68,68,0.15)"  };
   };
+  const gradeLabel = (g: string) => g === "A" ? "Elite matchup" : g === "B" ? "Good matchup" : g === "C" ? "Average matchup" : "Tough matchup";
+  const trendColor = (t: string) => t.includes("Improving") ? "#15803d" : t.includes("Declining") ? "#dc2626" : MUTED;
 
-  const sorted = [...data].sort((a, b) => (a as any)[posFilter] - (b as any)[posFilter]);
+  // Sort easiest matchup first (highest rank number = weakest defense)
+  const sorted = [...data].sort((a, b) => (b as any)[posFilter] - (a as any)[posFilter]);
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      {/* Position filter */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
         {positions.map(p => (
-          <button key={p} onClick={() => setPosFilter(p)}
+          <button key={p} onClick={() => { setPosFilter(p); setOpenTeam(null); }}
             style={{ padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
-              background: posFilter === p ? NAVY : "rgba(19,35,58,0.07)", color: posFilter === p ? BG_COLOR : MUTED }}>
+              background: posFilter === p ? NAVY_COLOR : "rgba(19,35,58,0.07)",
+              color: posFilter === p ? BG_COLOR : MUTED }}>
             {p}
           </button>
         ))}
       </div>
+
       <AnalysisInfo
         title="How matchup grades are calculated"
         items={[
-          { label: "Grade A", desc: "Defense ranks 25–32 in the league against this position. Opponent quarterbacks/RBs/WRs/TEs consistently exceed their season averages." },
-          { label: "Grade B", desc: "Defense ranks 17–24. Favorable matchup — start with confidence, especially for flex decisions." },
-          { label: "Grade C", desc: "Defense ranks 9–16. Average matchup — rely on player talent more than the matchup edge." },
-          { label: "Grade D", desc: "Defense ranks 1–8. Tough draw — consider benching unless the player has elite talent or no better option." },
-          { label: "Rank #", desc: "Numeric rank 1–32 where 1 = hardest matchup for the offense and 32 = easiest. Lower rank = tougher defense." },
-          { label: "Data source", desc: "Weighted 60% full-season yards + points allowed per position, 40% last 4 weeks to reflect recent form." },
+          { label: "Grade A", desc: "Defense ranks 25–32 vs this position. Opponents consistently exceed season averages. Start with confidence." },
+          { label: "Grade B", desc: "Defense ranks 17–24. Favorable — good for flex decisions and borderline starters." },
+          { label: "Grade C", desc: "Defense ranks 9–16. Average — lean on player talent, not matchup." },
+          { label: "Grade D", desc: "Defense ranks 1–8. Tough draw — consider sitting unless elite talent or no alternative." },
+          { label: "Rank #", desc: "1–32 where 32 = easiest for the offense (weakest defense). Higher = better for fantasy." },
+          { label: "Data source", desc: "Weighted 60% full-season yards+TDs allowed per position, 40% last 4 weeks. Tap any team for full breakdown." },
         ]}
       />
-      <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>Sorted best matchup first (rank 1 = easiest for offense). A=elite, B=good, C=average, D=tough.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
-        {sorted.map((row, i) => {
+
+      <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+        Tap a team to see the full breakdown — key defenders, allowed stats, and why the grade was assigned.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sorted.map((row) => {
           const grade = (row as any)[`grade${posFilter}`] as string;
-          const rank = (row as any)[posFilter] as number;
-          const c = gradeColor(grade);
+          const rank  = (row as any)[posFilter] as number;
+          const det   = row.detail?.[posFilter] as MatchupDetail | undefined;
+          const c     = gradeColor(grade);
+          const isOpen = openTeam === row.team;
+
+          // All-position mini grades for the drawer header
+          const allPos: Array<"QB" | "RB" | "WR" | "TE"> = ["QB", "RB", "WR", "TE"];
+
           return (
-            <div key={i} style={{ background: c.bg, borderRadius: 10, border: `1px solid ${c.border}`, padding: "10px 12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 800, fontSize: 13, color: NAVY }}>{row.team}</span>
-                <span style={{ fontSize: 16, fontWeight: 900, color: c.text }}>{grade}</span>
+            <div key={row.team}
+              style={{ borderRadius: 12, border: `1px solid ${isOpen ? c.border : "rgba(19,35,58,0.10)"}`,
+                background: isOpen ? c.bg : "#fff", overflow: "hidden" }}>
+
+              {/* Collapsed row — always visible */}
+              <div
+                onClick={() => setOpenTeam(isOpen ? null : row.team)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", cursor: "pointer" }}>
+
+                {/* Rank badge */}
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: c.pill, display: "flex",
+                  alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: c.text }}>#{rank}</span>
+                </div>
+
+                {/* Team + label */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: NAVY_COLOR }}>{row.team}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 10,
+                      background: c.pill, color: c.text }}>{grade} — {gradeLabel(grade)}</span>
+                    {det && <span style={{ fontSize: 10, color: trendColor(det.trend) }}>{det.trend}</span>}
+                  </div>
+                  {det && (
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+                      {det.allowedYpg} YPG · {det.allowedTdPg} TD/g allowed vs {posFilter}
+                    </div>
+                  )}
+                </div>
+
+                {/* All-pos mini badges */}
+                <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                  {allPos.map(pos => {
+                    const g2 = (row as any)[`grade${pos}`] as string;
+                    const c2 = gradeColor(g2);
+                    return (
+                      <div key={pos} style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                        background: pos === posFilter ? c2.pill : "rgba(19,35,58,0.05)",
+                        borderRadius: 6, padding: "2px 5px", minWidth: 26 }}>
+                        <span style={{ fontSize: 8, color: MUTED, fontWeight: 700 }}>{pos}</span>
+                        <span style={{ fontSize: 11, fontWeight: 900,
+                          color: pos === posFilter ? c2.text : MUTED }}>{g2}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
               </div>
-              <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Rank #{rank} vs {posFilter}</div>
+
+              {/* Expanded drawer */}
+              {isOpen && det && (
+                <div style={{ borderTop: `1px solid ${c.border}`, padding: "12px 13px", background: "#fff" }}>
+
+                  {/* Why the grade */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase",
+                      letterSpacing: "0.06em", marginBottom: 4 }}>Why this grade</div>
+                    <p style={{ fontSize: 12, color: NAVY_COLOR, lineHeight: 1.45, margin: 0 }}>{det.why}</p>
+                  </div>
+
+                  {/* Stat tiles */}
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                    <div style={{ flex: 1, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8,
+                      padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>YPG Allowed</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: c.text }}>{det.allowedYpg}</div>
+                      <div style={{ fontSize: 9, color: MUTED }}>vs {posFilter}</div>
+                    </div>
+                    <div style={{ flex: 1, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8,
+                      padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>TD/Game</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: c.text }}>{det.allowedTdPg}</div>
+                      <div style={{ fontSize: 9, color: MUTED }}>vs {posFilter}</div>
+                    </div>
+                    <div style={{ flex: 1, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)",
+                      borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>Rank</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: NAVY_COLOR }}>#{rank}</div>
+                      <div style={{ fontSize: 9, color: MUTED }}>of 32</div>
+                    </div>
+                    <div style={{ flex: 1.2, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)",
+                      borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>Trend</div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: trendColor(det.trend), marginTop: 4 }}>{det.trend}</div>
+                    </div>
+                  </div>
+
+                  {/* Key defenders */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase",
+                      letterSpacing: "0.06em", marginBottom: 5 }}>Key Defenders to Watch</div>
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                      {det.keyPlayers.map((kp, ki) => (
+                        <span key={ki} style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
+                          background: "rgba(19,35,58,0.07)", color: NAVY_COLOR, border: "1px solid rgba(19,35,58,0.12)" }}>
+                          {kp}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* All-position grades for this team */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase",
+                      letterSpacing: "0.06em", marginBottom: 5 }}>All Position Grades</div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {allPos.map(pos => {
+                        const g2  = (row as any)[`grade${pos}`] as string;
+                        const r2  = (row as any)[pos] as number;
+                        const d2  = row.detail?.[pos] as MatchupDetail | undefined;
+                        const c2  = gradeColor(g2);
+                        const active = pos === posFilter;
+                        return (
+                          <div key={pos} style={{ flex: 1, border: `1px solid ${active ? c2.border : "rgba(19,35,58,0.10)"}`,
+                            background: active ? c2.bg : "rgba(19,35,58,0.03)", borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: MUTED }}>{pos}</div>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: c2.text }}>{g2}</div>
+                            <div style={{ fontSize: 9, color: MUTED }}>#{r2}</div>
+                            {d2 && <div style={{ fontSize: 9, color: MUTED, marginTop: 1 }}>{d2.allowedYpg} YPG</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
