@@ -445,30 +445,86 @@ function PropsTable({ rows, onSelect, lockedPick, onLock }: {
   );
 }
 
+// ─── Source badge color map ────────────────────────────────────────────────────
+const SOURCE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  "ESPN":         { bg: "rgba(212,0,0,0.09)",    color: "#c00",    border: "rgba(212,0,0,0.20)" },
+  "ESPN Fantasy": { bg: "rgba(106,0,180,0.09)",  color: "#7c3aed", border: "rgba(106,0,180,0.20)" },
+  "Rotowire":     { bg: "rgba(19,35,58,0.08)",   color: MUTED,     border: "rgba(19,35,58,0.15)" },
+};
+
 // ─── News Card ────────────────────────────────────────────────────────────────
 function NewsCard({ item }: { item: NewsItem }) {
-  const hasInjury = (item.headline || "").toLowerCase().match(/injur|ir|dnp|questionable|out|limited/);
+  const hl = (item.headline || "").toLowerCase();
+  const isInjury    = /injur|questionable|doubtful|ruled out|dnp|ir\b|placed on|out for/.test(hl);
+  const isActivated = /activated|returned from|cleared/.test(hl);
+  const isTrade     = /traded|trade|signs|extension|contract/.test(hl);
+  const isSuspended = /suspended/.test(hl);
+  const src = SOURCE_STYLE[item.source] ?? SOURCE_STYLE["Rotowire"];
+
+  // Player tags from server (array of detected names)
+  const playerTags: string[] = (item as any).playerTags ?? [];
+  const relevanceScore: number = (item as any).relevanceScore ?? 0;
+
   return (
-    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "14px 16px", boxShadow: "0 1px 4px rgba(19,35,58,0.05)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: item.source === "ESPN" ? "rgba(212,0,0,0.10)" : "rgba(19,35,58,0.08)", color: item.source === "ESPN" ? "#c00" : MUTED, border: `1px solid ${item.source === "ESPN" ? "rgba(212,0,0,0.20)" : "rgba(19,35,58,0.15)"}` }}>
+    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px", boxShadow: "0 1px 4px rgba(19,35,58,0.04)" }}>
+      {/* Top row: source badge + tags + timestamp */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 7, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Source */}
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+            background: src.bg, color: src.color, border: `1px solid ${src.border}` }}>
             {item.source}
           </span>
-          {hasInjury && (
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "rgba(248,113,113,0.10)", color: "#f87171", border: "1px solid rgba(248,113,113,0.25)" }}>
+          {/* Status tags */}
+          {isInjury && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+              background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}>
               🚑 Injury
             </span>
           )}
+          {isActivated && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+              background: "rgba(34,197,94,0.10)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.25)" }}>
+              ✅ Activated
+            </span>
+          )}
+          {isTrade && !isInjury && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+              background: "rgba(212,168,67,0.12)", color: GOLD_COLOR, border: "1px solid rgba(212,168,67,0.30)" }}>
+              🔄 Move
+            </span>
+          )}
+          {isSuspended && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+              background: "rgba(239,68,68,0.08)", color: "#dc2626", border: "1px solid rgba(239,68,68,0.20)" }}>
+              ⛔ Suspended
+            </span>
+          )}
         </div>
-        <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", marginLeft: 8 }}>{relativeTime(item.timestamp)}</span>
+        <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{relativeTime(item.timestamp ?? (item as any).publishedAt)}</span>
       </div>
-      <p style={{ fontWeight: 700, fontSize: 13, color: NAVY, lineHeight: 1.45, marginBottom: item.url ? 8 : 0 }}>{item.headline}</p>
-      {item.url && (
-        <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: GOLD_COLOR, fontWeight: 700, textDecoration: "none" }}>
-          Read more →
-        </a>
-      )}
+
+      {/* Headline */}
+      <p style={{ fontWeight: 700, fontSize: 13, color: NAVY, lineHeight: 1.45, marginBottom: 8 }}>{item.headline}</p>
+
+      {/* Bottom row: player tags + read more */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        {/* Player name chips (top 2) */}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {playerTags.slice(0, 2).map((tag, i) => (
+            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20,
+              background: "rgba(19,35,58,0.06)", color: MUTED, border: "1px solid rgba(19,35,58,0.10)" }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+        {item.url && (
+          <a href={item.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 11, color: GOLD_COLOR, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
+            Read more →
+          </a>
+        )}
+      </div>
     </div>
   );
 }
@@ -486,6 +542,7 @@ export default function EndZone() {
   const [selectedProp, setSelectedProp] = useState<PropRow | null>(null);
   const [newsQuery, setNewsQuery] = useState("");
   const [newsQueryDebounced, setNewsQueryDebounced] = useState("");
+  const [newsSort, setNewsSort] = useState<"recent" | "popular">("recent");
   const [lockedPick, setLockedPick] = useState<any>(null);
 
   // Debounce news query
@@ -511,11 +568,11 @@ export default function EndZone() {
     staleTime: 30 * 1000,
   });
 
-  const { data: newsData, isLoading: newsLoading } = useQuery({
-    queryKey: ["/api/nfl/news", newsQueryDebounced],
+  const { data: newsData, isLoading: newsLoading, refetch: refetchNews } = useQuery({
+    queryKey: ["/api/nfl/news", newsQueryDebounced, newsSort],
     queryFn: () =>
-      fetch(`/api/nfl/news?q=${encodeURIComponent(newsQueryDebounced)}&limit=20`).then(r => r.json()),
-    enabled: newsQueryDebounced.length > 1,
+      fetch(`/api/nfl/news?q=${encodeURIComponent(newsQueryDebounced)}&sort=${newsSort}&limit=30`).then(r => r.json()),
+    // Always fetch — no query required; default feed shows fantasy-relevant news
     staleTime: 5 * 60 * 1000,
   });
 
@@ -688,62 +745,111 @@ export default function EndZone() {
         {/* ════ TAB 2: Fantasy News ════ */}
         {activeTab === "news" && (
           <div style={{ marginTop: 20 }}>
-            {/* Search bar */}
-            <div style={{ position: "relative", marginBottom: 16 }}>
-              <Search size={16} color={MUTED} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-              <input
-                type="text"
-                placeholder="Search player news (e.g. Tyreek Hill)…"
-                value={newsQuery}
-                onChange={e => setNewsQuery(e.target.value)}
-                style={{
-                  width: "100%", paddingLeft: 40, paddingRight: newsQuery ? 40 : 14, paddingTop: 12, paddingBottom: 12,
-                  borderRadius: 12, border: "1px solid rgba(19,35,58,0.15)", background: "#fff",
-                  fontSize: 14, fontWeight: 600, color: NAVY, outline: "none", boxSizing: "border-box",
-                }}
-              />
-              {newsQuery && (
-                <button
-                  onClick={() => setNewsQuery("")}
-                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", display: "flex" }}
-                >
-                  <X size={16} color={MUTED} />
-                </button>
-              )}
+
+            {/* ── Search + Sort controls ── */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
+              {/* Search bar */}
+              <div style={{ position: "relative", flex: 1 }}>
+                <Search size={15} color={MUTED} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                <input
+                  type="text"
+                  placeholder="Filter by player or team…"
+                  value={newsQuery}
+                  onChange={e => setNewsQuery(e.target.value)}
+                  style={{
+                    width: "100%", paddingLeft: 38, paddingRight: newsQuery ? 36 : 12,
+                    paddingTop: 10, paddingBottom: 10,
+                    borderRadius: 10, border: "1px solid rgba(19,35,58,0.15)", background: "#fff",
+                    fontSize: 13, fontWeight: 500, color: NAVY, outline: "none", boxSizing: "border-box",
+                  }}
+                />
+                {newsQuery && (
+                  <button
+                    onClick={() => setNewsQuery("")}
+                    style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", display: "flex", padding: 2 }}
+                  >
+                    <X size={14} color={MUTED} />
+                  </button>
+                )}
+              </div>
+
+              {/* Sort toggle */}
+              <div style={{ display: "flex", borderRadius: 10, border: "1px solid rgba(19,35,58,0.15)", overflow: "hidden", flexShrink: 0 }}>
+                {(["recent", "popular"] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setNewsSort(s)}
+                    style={{
+                      padding: "9px 13px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                      background: newsSort === s ? NAVY : "#fff",
+                      color: newsSort === s ? BG_COLOR : MUTED,
+                      transition: "all 0.15s",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {s === "recent" ? "🕐 Recent" : "⭐ Top"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Refresh */}
+              <button
+                onClick={() => refetchNews()}
+                style={{ background: "none", border: "1px solid rgba(19,35,58,0.15)", borderRadius: 10, padding: "9px 10px", cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}
+                title="Refresh news"
+              >
+                <RefreshCw size={14} color={MUTED} style={newsLoading ? { animation: "spin 1s linear infinite" } : {}} />
+              </button>
             </div>
 
-            {/* Loading */}
+            {/* ── Source + count summary ── */}
+            {!newsLoading && newsData?.articles?.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <p style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+                  {newsQueryDebounced ? `${newsData.articles.length} results for "${newsQueryDebounced}"` : `${newsData.articles.length} fantasy-relevant stories`}
+                </p>
+                <p style={{ fontSize: 11, color: MUTED }}>
+                  Updated {newsData.cachedAt ? new Date(newsData.cachedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "just now"}
+                </p>
+              </div>
+            )}
+
+            {/* ── Loading ── */}
             {newsLoading && (
-              <div style={{ textAlign: "center", padding: "30px 0", color: MUTED }}>
+              <div style={{ textAlign: "center", padding: "36px 0", color: MUTED }}>
                 <RefreshCw size={20} style={{ animation: "spin 1s linear infinite", margin: "0 auto 8px", display: "block" }} />
-                <p style={{ fontSize: 13 }}>Fetching news…</p>
+                <p style={{ fontSize: 13 }}>Loading fantasy news…</p>
               </div>
             )}
 
-            {/* Empty state */}
-            {!newsLoading && newsQueryDebounced.length <= 1 && (
-              <div style={{ textAlign: "center", padding: "48px 20px", color: MUTED }}>
-                <Newspaper size={36} style={{ margin: "0 auto 12px", display: "block", opacity: 0.4 }} />
-                <p style={{ fontWeight: 700, fontSize: 14, color: NAVY, marginBottom: 4 }}>Fantasy News & Updates</p>
-                <p style={{ fontSize: 13 }}>Search for a player above to see their latest news and stats</p>
-              </div>
-            )}
-
-            {/* News cards */}
-            {!newsLoading && newsData?.items?.length > 0 && (
+            {/* ── News cards ── */}
+            {!newsLoading && newsData?.articles?.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {(newsData.items as NewsItem[]).map((item, i) => (
-                  <NewsCard key={item.id ?? i} item={item} />
+                {(newsData.articles as NewsItem[]).map((item, i) => (
+                  <NewsCard key={(item as any).url ?? i} item={item} />
                 ))}
               </div>
             )}
 
-            {/* No results */}
-            {!newsLoading && newsQueryDebounced.length > 1 && newsData?.items?.length === 0 && (
+            {/* ── No results (search) ── */}
+            {!newsLoading && newsQueryDebounced && newsData?.articles?.length === 0 && (
               <div style={{ textAlign: "center", padding: "40px 20px", color: MUTED }}>
                 <AlertCircle size={28} style={{ margin: "0 auto 10px", display: "block", opacity: 0.4 }} />
-                <p style={{ fontWeight: 700, color: NAVY, marginBottom: 4 }}>No news found</p>
-                <p style={{ fontSize: 13 }}>Try a different player name or check back later.</p>
+                <p style={{ fontWeight: 700, color: NAVY, marginBottom: 4 }}>No news found for "{newsQueryDebounced}"</p>
+                <p style={{ fontSize: 13 }}>Try a different player name or clear the filter to see all news.</p>
+              </div>
+            )}
+
+            {/* ── Empty (no data at all) ── */}
+            {!newsLoading && !newsData?.articles?.length && !newsQueryDebounced && (
+              <div style={{ textAlign: "center", padding: "48px 20px", color: MUTED }}>
+                <Newspaper size={36} style={{ margin: "0 auto 12px", display: "block", opacity: 0.35 }} />
+                <p style={{ fontWeight: 700, fontSize: 14, color: NAVY, marginBottom: 4 }}>No news available</p>
+                <p style={{ fontSize: 13 }}>Tap refresh to try again.</p>
               </div>
             )}
           </div>

@@ -15549,27 +15549,73 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ── GET /api/nfl/news ──────────────────────────────────────────────────────
+  // Fantasy-relevant player list used to score article relevance
+  const FANTASY_RELEVANT_PLAYERS = new Set([
+    // Elite QBs
+    "Patrick Mahomes", "Josh Allen", "Lamar Jackson", "Jalen Hurts", "Joe Burrow",
+    "Justin Herbert", "Dak Prescott", "Tua Tagovailoa", "Trevor Lawrence", "Jordan Love",
+    "Brock Purdy", "Sam Darnold", "CJ Stroud", "Anthony Richardson", "Caleb Williams",
+    // Top RBs
+    "Christian McCaffrey", "Derrick Henry", "Saquon Barkley", "Jonathan Taylor",
+    "Breece Hall", "Jahmyr Gibbs", "De'Von Achane", "Josh Jacobs", "Travis Etienne",
+    "Tony Pollard", "Kyren Williams", "Isiah Pacheco", "James Cook", "Bijan Robinson",
+    "Aaron Jones", "David Montgomery", "Rachaad White", "Nick Chubb", "Joe Mixon",
+    "Kenneth Walker", "Brian Robinson", "D'Andre Swift", "Alvin Kamara",
+    // Top WRs
+    "Tyreek Hill", "Justin Jefferson", "CeeDee Lamb", "Davante Adams", "Stefon Diggs",
+    "Amon-Ra St. Brown", "Puka Nacua", "Garrett Wilson", "DJ Moore", "DK Metcalf",
+    "Tyler Lockett", "Deebo Samuel", "Brandon Aiyuk", "Jaylen Waddle", "Tee Higgins",
+    "Ja'Marr Chase", "Chris Olave", "Drake London", "Michael Pittman", "Jordan Addison",
+    "Zay Flowers", "Rashee Rice", "Rome Odunze", "Malik Nabers", "Marvin Harrison",
+    // Top TEs
+    "Travis Kelce", "Sam LaPorta", "Mark Andrews", "Trey McBride", "Evan Engram",
+    "George Kittle", "Jake Ferguson", "Dalton Kincaid", "David Njoku", "Cole Kmet",
+    "T.J. Hockenson", "Kyle Pitts",
+  ]);
+
+  // High-value fantasy terms for relevance scoring
+  const FANTASY_TERMS = [
+    "touchdown", "injury", "questionable", "doubtful", "out", "ir ", "injured reserve",
+    "fantasy", "waiver", "start", "sit", "snap count", "target share", "red zone",
+    "depth chart", "suspended", "activated", "practice", "limited", "full practice",
+    "dnp", "ruled out", "week", "trade", "extension", "contract", "benched",
+    "starter", "backup", "role", "usage", "carries", "targets", "reception",
+  ];
+
   app.get("/api/nfl/news", async (req: Request, res: Response) => {
     try {
-      const q     = (req.query.q     as string) || "";
-      const limit = parseInt((req.query.limit as string) || "20", 10);
+      const q     = (req.query.q    as string) || "";
+      const sort  = (req.query.sort as string) || "recent"; // "recent" | "popular"
+      const limit = parseInt((req.query.limit as string) || "30", 10);
       const now   = Date.now();
       const TTL   = 5 * 60 * 1000; // 5 minutes
 
       if (!_nflNewsCache || (now - _nflNewsCache.ts) > TTL) {
-        // Fetch ESPN RSS and Rotowire in parallel
-        const [espnXml, rotoXml] = await Promise.allSettled([
+        // Fetch ESPN NFL, ESPN Fantasy, and Rotowire in parallel
+        const [espnXml, espnFantasyXml, rotoXml] = await Promise.allSettled([
           fetch("https://www.espn.com/espn/rss/nfl/news", { signal: AbortSignal.timeout(7000) })
             .then(r => r.ok ? r.text() : ""),
+          fetch("https://www.espn.com/espn/rss/fantasy/football/news", { signal: AbortSignal.timeout(7000) })
+            .then(r => r.ok ? r.text() : "").catch(() => ""),
           fetch("https://www.rotowire.com/football/rss-news.php", { signal: AbortSignal.timeout(7000) })
             .then(r => r.ok ? r.text() : ""),
         ]);
 
-        const articles: Array<{ headline: string; source: string; url: string; publishedAt: string; playerTags: string[] }> = [];
+        type RawArticle = {
+          headline: string;
+          source: string;
+          url: string;
+          publishedAt: string;
+          publishedMs: number;
+          playerTags: string[];
+          relevanceScore: number;
+          isFantasyRelevant: boolean;
+        };
+        const articles: RawArticle[] = [];
+        const seenHeadlines = new Set<string>();
 
         const parseRss = (xml: string, source: string) => {
           if (!xml) return;
-          // Extract <item> blocks
           let pos = 0;
           while (true) {
             const start = xml.indexOf("<item", pos);
@@ -15593,45 +15639,117 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
             const headline    = extractTag("title");
             const url         = extractTag("link") || extractTag("guid");
-            const publishedAt = extractTag("pubDate") || new Date().toISOString();
+            const pubDateStr  = extractTag("pubDate");
             const description = extractTag("description");
 
             if (!headline) continue;
 
-            // Extract player tags from headline + description
+            // Deduplicate by headline
+            const headlineKey = headline.toLowerCase().replace(/\s+/g, " ").slice(0, 80);
+            if (seenHeadlines.has(headlineKey)) continue;
+            seenHeadlines.add(headlineKey);
+
+            // Parse publish date to ms for sorting
+            const publishedMs = pubDateStr ? new Date(pubDateStr).getTime() : (Date.now() - 3600000);
+            const publishedAt = pubDateStr || new Date().toISOString();
+
+            // Extract player name tags
             const combined = `${headline} ${description}`;
             const playerTags: string[] = [];
-            // Simple: look for capitalized words pairs (heuristic names)
-            const namePattern = /\b([A-Z][a-z]+'?\s[A-Z][a-z]+(?:\s(?:Jr\.|Sr\.|III|II|IV)?)?)\b/g;
+            const namePattern = /\b([A-Z][a-z]+'?\.?\s[A-Z][a-z]+(?:\.?\s(?:Jr\.|Sr\.|III|II|IV))?)\b/g;
             let match: RegExpExecArray | null;
             while ((match = namePattern.exec(combined)) !== null) {
               const name = match[1].trim();
-              if (name.length > 4 && !["Super Bowl", "Monday Night", "Sunday Night", "Wild Card", "Pro Bowl", "Hall Fame"].includes(name)) {
+              if (
+                name.length > 4 &&
+                ![
+                  "Super Bowl", "Monday Night", "Sunday Night", "Thursday Night",
+                  "Wild Card", "Pro Bowl", "Hall Fame", "New York", "Los Angeles",
+                  "San Francisco", "New England", "Green Bay", "Kansas City",
+                  "Las Vegas", "San Diego", "Tampa Bay",
+                ].includes(name)
+              ) {
                 if (!playerTags.includes(name)) playerTags.push(name);
               }
             }
 
-            articles.push({ headline, source, url: url.replace(/&amp;/g, "&"), publishedAt, playerTags: playerTags.slice(0, 5) });
+            // Compute relevance score:
+            // +10 per fantasy-relevant player named in headline/description
+            // +3 per fantasy term
+            // +5 if source is Rotowire (player-specific focus)
+            // +2 per fantasy-relevant player in playerTags
+            const combinedLower = combined.toLowerCase();
+            let relevanceScore = 0;
+            let isFantasyRelevant = false;
+
+            for (const player of FANTASY_RELEVANT_PLAYERS) {
+              if (combinedLower.includes(player.toLowerCase())) {
+                relevanceScore += combined.includes(player) ? 10 : 6; // +10 headline match, +6 desc only
+                isFantasyRelevant = true;
+              }
+            }
+            for (const term of FANTASY_TERMS) {
+              if (combinedLower.includes(term)) relevanceScore += 3;
+            }
+            if (source === "Rotowire") relevanceScore += 5;
+            if (source === "ESPN Fantasy") relevanceScore += 4;
+
+            // Boost injury/status news heavily — fantasy-critical
+            if (/injur|questionable|out\s|ruled out|dnp|ir\b|placed on/i.test(headline)) {
+              relevanceScore += 15;
+              isFantasyRelevant = true;
+            }
+
+            articles.push({
+              headline,
+              source,
+              url: url.replace(/&amp;/g, "&"),
+              publishedAt,
+              publishedMs: isNaN(publishedMs) ? Date.now() - 3600000 : publishedMs,
+              playerTags: playerTags.slice(0, 6),
+              relevanceScore,
+              isFantasyRelevant,
+            });
           }
         };
 
-        if (espnXml.status === "fulfilled") parseRss(espnXml.value, "ESPN");
-        if (rotoXml.status === "fulfilled") parseRss(rotoXml.value, "Rotowire");
+        if (espnXml.status === "fulfilled")        parseRss(espnXml.value,        "ESPN");
+        if (espnFantasyXml.status === "fulfilled") parseRss(espnFantasyXml.value, "ESPN Fantasy");
+        if (rotoXml.status === "fulfilled")        parseRss(rotoXml.value,        "Rotowire");
 
         _nflNewsCache = { data: articles, ts: now };
       }
 
       let articles: any[] = _nflNewsCache.data;
 
+      // Filter by search query if provided
       if (q) {
         const ql = q.toLowerCase();
         articles = articles.filter(a =>
           a.headline.toLowerCase().includes(ql) ||
           a.playerTags.some((t: string) => t.toLowerCase().includes(ql))
         );
+      } else {
+        // Default: only show fantasy-relevant articles when no query
+        // Still include all if total is low
+        const relevant = articles.filter((a: any) => a.isFantasyRelevant || a.relevanceScore >= 6);
+        articles = relevant.length >= 5 ? relevant : articles;
       }
 
-      res.json({ articles: articles.slice(0, limit), total: articles.length, cachedAt: new Date(_nflNewsCache.ts).toISOString() });
+      // Sort: "recent" = newest first, "popular" = highest relevance score first
+      if (sort === "popular") {
+        articles = [...articles].sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+      } else {
+        // recent: sort by publishedMs descending
+        articles = [...articles].sort((a: any, b: any) => b.publishedMs - a.publishedMs);
+      }
+
+      res.json({
+        articles: articles.slice(0, limit),
+        total: articles.length,
+        sort,
+        cachedAt: new Date(_nflNewsCache.ts).toISOString(),
+      });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/news error:", e.message);
       res.status(500).json({ error: e.message });
