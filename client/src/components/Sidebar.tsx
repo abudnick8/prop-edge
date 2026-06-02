@@ -1,44 +1,60 @@
 import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import chLogoSrc from "@assets/ch-logo.jpg";
-import {
-  LayoutDashboard, Target, Settings, Trophy, Ticket,
-  TrendingUp, BarChart2, Shuffle, Zap, LineChart, Activity, Brain, LogOut, BookOpen, Search,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-// Football emoji icon component (lucide has no football icon)
-// Accepts all standard lucide props so it can be used in the nav item map
-function FootballIcon({ size = 20, ..._ }: { size?: number; [key: string]: any }) {
+// ── Emoji icon component ─────────────────────────────────────────────────────
+// All nav icons are emoji for visual consistency across every tab.
+function EmojiIcon({ emoji, size = 20, ..._ }: { emoji: string; size?: number; [key: string]: any }) {
   return (
-    <span style={{ fontSize: size * 0.85, lineHeight: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0 }}>
-      🏈
+    <span
+      aria-hidden="true"
+      style={{
+        fontSize: size * 0.85,
+        lineHeight: 1,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
+    >
+      {emoji}
     </span>
   );
 }
 
+// Factory: returns a component bound to a specific emoji
+function makeEmoji(emoji: string) {
+  return function NavEmoji({ size = 20, ...rest }: { size?: number; [key: string]: any }) {
+    return <EmojiIcon emoji={emoji} size={size} {...rest} />;
+  };
+}
+
 const navItems = [
-  { href: "/",            label: "Dashboard",      mobileLabel: "Home",     icon: LayoutDashboard },
-  { href: "/scores",      label: "Live Scores",    mobileLabel: "Scores",   icon: Activity        },
-  { href: "/clv",         label: "Line Movement",  mobileLabel: "Lines",    icon: TrendingUp      },
-  { href: "/markets",     label: "Pred. Markets",  mobileLabel: "Markets",  icon: BarChart2       },
-  { href: "/bts",         label: "Beat the Streak",mobileLabel: "BTS",      icon: Trophy          },
-  { href: "/endzone",     label: "End Zone",        mobileLabel: "End Zone", icon: FootballIcon    },
-  { href: "/intel",       label: "Player Intel",   mobileLabel: "Intel",    icon: Search          },
-  { href: "/conviction",  label: "Top Plays",      mobileLabel: "Top",      icon: Zap             },
-  { href: "/bets",        label: "All Picks",      mobileLabel: "Picks",    icon: Target          },
-  { href: "/linemate",    label: "Props Hub",      mobileLabel: "Props",    icon: LineChart       },
-  { href: "/fantasy",     label: "Fantasy",        mobileLabel: "Fantasy",  icon: Shuffle         },
-  { href: "/lotto",       label: "Lotto",          mobileLabel: "Lotto",    icon: Ticket          },
-  { href: "/bracket",     label: "Bracket",        mobileLabel: "Bracket",  icon: Trophy          },
-  { href: "/ml-insights", label: "ML Intel",       mobileLabel: "ML Intel", icon: Brain           },
-  { href: "/settings",    label: "Settings",       mobileLabel: "Settings", icon: Settings        },
+  { href: "/",            label: "Dashboard",       mobileLabel: "Home",     icon: makeEmoji("🏠") },
+  { href: "/scores",      label: "Live Scores",     mobileLabel: "Scores",   icon: makeEmoji("📡") },
+  { href: "/clv",         label: "Line Movement",   mobileLabel: "Lines",    icon: makeEmoji("📈") },
+  { href: "/markets",     label: "Pred. Markets",   mobileLabel: "Markets",  icon: makeEmoji("💹") },
+  { href: "/bts",         label: "Beat the Streak", mobileLabel: "BTS",      icon: makeEmoji("⚾") },
+  { href: "/endzone",     label: "End Zone",         mobileLabel: "End Zone", icon: makeEmoji("🏈") },
+  { href: "/intel",       label: "Player Intel",    mobileLabel: "Intel",    icon: makeEmoji("🔍") },
+  { href: "/conviction",  label: "Top Plays",       mobileLabel: "Top",      icon: makeEmoji("⚡") },
+  { href: "/bets",        label: "All Picks",       mobileLabel: "Picks",    icon: makeEmoji("🎯") },
+  { href: "/linemate",    label: "Props Hub",       mobileLabel: "Props",    icon: makeEmoji("📊") },
+  { href: "/fantasy",     label: "Fantasy",         mobileLabel: "Fantasy",  icon: makeEmoji("🏆") },
+  { href: "/lotto",       label: "Lotto",           mobileLabel: "Lotto",    icon: makeEmoji("🎰") },
+  { href: "/bracket",     label: "Bracket",         mobileLabel: "Bracket",  icon: makeEmoji("🗂️") },
+  { href: "/ml-insights", label: "ML Intel",        mobileLabel: "ML",       icon: makeEmoji("🤖") },
+  { href: "/settings",    label: "Settings",        mobileLabel: "Settings", icon: makeEmoji("⚙️") },
 ];
 
-// Owner-only nav items — appended dynamically when isOwner=true
+// Owner-only nav items
 const ownerNavItems = [
-  { href: "/book",     label: "The Book",    mobileLabel: "Book",     icon: BookOpen, tier: undefined },
-  { href: "/insights", label: "App Insights", mobileLabel: "Insights", icon: BarChart2, tier: undefined },
+  { href: "/book",     label: "The Book",     mobileLabel: "Book",     icon: makeEmoji("📖"), tier: undefined },
+  { href: "/insights", label: "App Insights", mobileLabel: "Insights", icon: makeEmoji("🔬"), tier: undefined },
 ];
 
 // Nav item badge definitions — editorial, restrained
