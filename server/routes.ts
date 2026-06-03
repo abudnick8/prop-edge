@@ -73,7 +73,7 @@ function mlSaveJSON(filePath: string, data: any): void {
 async function mlPullFromDB(): Promise<void> {
   const files = [
     "bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json",
-    "ml_insights.json", "graded_ids.json", "bts_picks.json",
+    "ml_insights.json", "graded_ids.json", "bts_picks.json", "mlb_daily_picks.json", "nfl_weekly_picks.json",
     "bts_ml_weights.json", "bts_ml_learning_log.json",
   ];
   let pulled = 0;
@@ -637,7 +637,7 @@ async function syncMLDataToGitHub(): Promise<void> {
   console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
-  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
 
   for (const filename of files) {
     const filepath = path.join(DATA_DIR, filename);
@@ -16868,6 +16868,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   let _nflWeatherCache: { data: any; ts: number } | null = null;
   let _nflFirstHalfCache: { data: any; ts: number } | null = null;
   let _nflGameScriptCache: { data: any; ts: number } | null = null;
+  let _mlbDailyPickCache:  { data: any; ts: number; date: string } | null = null;
+  let _nflWeeklyPickCache: { data: any; ts: number; week: string } | null = null;
   let _nflRedZoneCache: { data: any; ts: number } | null = null;
   let _nflDvpSplitsCache: { data: any; ts: number } | null = null;
   let _nflPlayoffGraderCache: { data: any; ts: number } | null = null;
@@ -17939,6 +17941,506 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       return res.json(result);
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/streaming-dst error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── GET /api/mlb/pick-of-day ─────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  const MLB_DAILY_PICKS_FILE = path.join(ML_DATA_DIR, "mlb_daily_picks.json");
+
+  // Load existing MLB daily picks from disk on startup
+  let mlbDailyPicksHistory: Record<string, any> = {};
+  try {
+    if (fs.existsSync(MLB_DAILY_PICKS_FILE)) {
+      mlbDailyPicksHistory = JSON.parse(fs.readFileSync(MLB_DAILY_PICKS_FILE, "utf-8"));
+    }
+  } catch { mlbDailyPicksHistory = {}; }
+
+  async function saveMlbDailyPicks() {
+    try {
+      fs.writeFileSync(MLB_DAILY_PICKS_FILE, JSON.stringify(mlbDailyPicksHistory, null, 2));
+      // Also persist to Postgres
+      try {
+        await storage.upsertMlDataFile("mlb_daily_picks.json", JSON.stringify(mlbDailyPicksHistory, null, 2));
+      } catch { /* non-fatal */ }
+    } catch (e: any) { console.error("[MLB Pick] save error:", e.message); }
+  }
+
+  app.get("/api/mlb/pick-of-day", async (req: Request, res: Response) => {
+    try {
+      const CTZ = "America/Chicago";
+      const todayStr = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" }).split("/").reverse().join("-").replace(/^(\d+)-(\d+)-(\d+)$/, "$1-$3-$2");
+      // Use YYYY-MM-DD
+      const now = Date.now();
+      const TTL = 20 * 60 * 1000;
+
+      if (_mlbDailyPickCache && _mlbDailyPickCache.date === todayStr && (now - _mlbDailyPickCache.ts) < TTL) {
+        return res.json({ ..._mlbDailyPickCache.data, history: mlbDailyPicksHistory });
+      }
+
+      // ── 1. Fetch today's MLB games from Odds API ────────────────────────
+      const oddsKey = process.env.ODDS_API_KEY ?? "";
+      let mlbGames: any[] = [];
+      if (oddsKey) {
+        try {
+          const r = await fetch(
+            `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=1`,
+            { signal: AbortSignal.timeout(10000) }
+          );
+          if (r.ok) mlbGames = await r.json();
+        } catch { /* non-fatal */ }
+      }
+
+      // Filter to today only (CT)
+      const todayDate = todayStr; // YYYY-MM-DD
+      mlbGames = mlbGames.filter((g: any) => {
+        if (!g.commence_time) return false;
+        const ct = new Date(g.commence_time).toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
+        const [m2, d2, y2] = ct.split("/");
+        return `${y2}-${m2}-${d2}` === todayDate;
+      });
+
+      // ── 2. Fetch sharp money for MLB ─────────────────────────────────────
+      let sharpGames: any[] = [];
+      try { sharpGames = await fetchSharpMoneyBySport("MLB"); } catch { /* non-fatal */ }
+
+      // ── 3. Score each game ───────────────────────────────────────────────
+      interface ScoredGame {
+        homeTeam: string; awayTeam: string; pickTeam: string; pickSide: "home" | "away";
+        pickML: number | null; spread: number | null; total: number | null;
+        score: number; grade: string; reasons: string[]; weatherNote: string | null;
+        sharpDirection: string | null; sharpScore: number; publicBetPct: number | null;
+        commenceTime: string | null;
+      }
+      const scoredGames: ScoredGame[] = [];
+
+      for (const game of mlbGames) {
+        const homeTeam = game.home_team ?? "";
+        const awayTeam = game.away_team ?? "";
+        let spreadHome: number | null = null;
+        let total: number | null = null;
+        let mlHome: number | null = null;
+        let mlAway: number | null = null;
+
+        for (const bk of (game.bookmakers ?? [])) {
+          const h2h    = bk.markets?.find((m: any) => m.key === "h2h");
+          const spreads = bk.markets?.find((m: any) => m.key === "spreads");
+          const totals  = bk.markets?.find((m: any) => m.key === "totals");
+          if (h2h?.outcomes?.length >= 2) {
+            mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
+            mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
+          }
+          if (spreads?.outcomes?.length) {
+            spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
+          }
+          if (totals?.outcomes?.length) {
+            total = totals.outcomes.find((o: any) => o.name === "Over")?.point ?? null;
+          }
+          if (mlHome !== null) break;
+        }
+
+        // Determine favored side
+        let pickSide: "home" | "away" = "home";
+        if (mlHome !== null && mlAway !== null) {
+          const homeImplied = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+          const awayImplied = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+          pickSide = awayImplied > homeImplied ? "away" : "home";
+        } else if (spreadHome !== null) {
+          pickSide = spreadHome > 0 ? "away" : "home";
+        }
+
+        const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+        const pickML   = pickSide === "home" ? mlHome : mlAway;
+
+        // Find sharp data for this game
+        const sharpMatch = sharpGames.find((sg: any) =>
+          (sg.homeTeam?.toLowerCase().includes(homeTeam.split(" ").pop()?.toLowerCase() ?? "") ||
+           homeTeam.toLowerCase().includes(sg.homeTeam?.toLowerCase() ?? "")) &&
+          (sg.awayTeam?.toLowerCase().includes(awayTeam.split(" ").pop()?.toLowerCase() ?? "") ||
+           awayTeam.toLowerCase().includes(sg.awayTeam?.toLowerCase() ?? ""))
+        );
+
+        const reasons: string[] = [];
+        let score = 40; // base
+
+        // Moneyline value score
+        if (pickML !== null) {
+          const impliedWin = pickML < 0 ? Math.abs(pickML) / (Math.abs(pickML) + 100) : 100 / (pickML + 100);
+          if (impliedWin >= 0.60) { score += 18; reasons.push(`Strong favorite (${Math.round(impliedWin * 100)}% implied win probability)`); }
+          else if (impliedWin >= 0.52) { score += 10; reasons.push(`Slight favorite (${Math.round(impliedWin * 100)}% implied win probability)`); }
+          else { score += 4; reasons.push(`Pick is a slight underdog — higher variance play`); }
+        }
+
+        // Sharp money signals
+        let sharpScore = 0;
+        let sharpDirection: string | null = null;
+        let publicBetPct: number | null = null;
+        if (sharpMatch) {
+          sharpScore = sharpMatch.sharpScore ?? 0;
+          sharpDirection = sharpMatch.sharpDirection ?? null;
+          const matchDir = pickSide === "home" ? "home" : "away";
+          if (sharpDirection === matchDir || sharpMatch.sharpBooksAgree) {
+            score += 15;
+            reasons.push(`Sharp money (${sharpScore}/100) aligned with pick — books agree`);
+          } else if (sharpDirection && sharpDirection !== matchDir && sharpDirection !== "neutral") {
+            score -= 8;
+            reasons.push(`Caution: sharp money leans ${sharpDirection} — opposite to pick`);
+          }
+          const pubHome = sharpMatch.publicBetPct?.home ?? null;
+          const pubAway = sharpMatch.publicBetPct?.away ?? null;
+          publicBetPct = pickSide === "home" ? pubHome : pubAway;
+          if (publicBetPct !== null && publicBetPct < 40) {
+            score += 8;
+            reasons.push(`Public betting only ${Math.round(publicBetPct)}% on pick — contrarian value`);
+          } else if (publicBetPct !== null && publicBetPct > 65) {
+            score -= 5;
+            reasons.push(`Public heavily on pick (${Math.round(publicBetPct)}%) — faded by sharp books`);
+          }
+          if (sharpMatch.rlmDetected) {
+            const rlmFavors = sharpMatch.rlmSide === (pickSide === "home" ? "home" : "away");
+            if (rlmFavors) { score += 10; reasons.push(`Reverse line movement detected — smart money pushing pick side`); }
+            else { score -= 5; reasons.push(`Reverse line movement against pick — slight concern`); }
+          }
+          if ((sharpMatch.sharpSignals ?? []).length > 0) {
+            reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0,3).join(", ")}`);
+          }
+        }
+
+        // Weather impact
+        let weatherNote: string | null = null;
+        try {
+          const sw = await fetchStructuredWeather(homeTeam, "MLB");
+          if (sw && !sw.isDome) {
+            weatherNote = `${sw.tempF}°F, wind ${sw.windMph} mph ${sw.windDir} — ${sw.impactLabel}`;
+            if (sw.windIn && sw.windMph > 15) { score -= 4; reasons.push(`Wind blowing in ${sw.windMph} mph — suppresses scoring, slight offense fade`); }
+            else if (sw.windOut && sw.windMph > 15) { score += 3; reasons.push(`Wind blowing out ${sw.windMph} mph — favors hitters`); }
+            if (sw.precipInches > 0.1) { score -= 6; reasons.push(`Rain in forecast (${sw.precipInches}"" precip) — postponement risk`); }
+            if (sw.tempF < 45) { score -= 3; reasons.push(`Cold weather (${sw.tempF}°F) — offenses tend to be suppressed`); }
+          } else if (sw?.isDome) {
+            weatherNote = "Dome stadium — weather neutral";
+          }
+        } catch { /* non-fatal */ }
+
+        // Game total context
+        if (total !== null) {
+          if (total >= 9.0) { score += 5; reasons.push(`High total (${total}) — offensive environment favors stronger lineup`); }
+          else if (total <= 7.0) { score -= 3; reasons.push(`Low total (${total}) — pitcher-friendly game; win margin likely slim`); }
+        }
+
+        // Home field advantage
+        if (pickSide === "home") { score += 4; reasons.push("Home field advantage"); }
+
+        score = Math.min(97, Math.max(20, score));
+        const grade = score >= 80 ? "A" : score >= 70 ? "B+" : score >= 60 ? "B" : score >= 50 ? "C+" : "C";
+
+        scoredGames.push({
+          homeTeam, awayTeam, pickTeam, pickSide, pickML, spread: spreadHome, total,
+          score, grade, reasons, weatherNote, sharpDirection, sharpScore, publicBetPct,
+          commenceTime: game.commence_time ?? null,
+        });
+      }
+
+      // Sort by score descending
+      scoredGames.sort((a, b) => b.score - a.score);
+
+      const primary   = scoredGames[0] ?? null;
+      const runnerUp  = scoredGames[1] ?? null;
+
+      const result = {
+        date: todayStr,
+        primary,
+        runnerUp,
+        gamesAnalyzed: scoredGames.length,
+        fetchedAt: new Date().toISOString(),
+        liveData: mlbGames.length > 0,
+      };
+
+      // Persist to history (only if we have live data and a pick)
+      if (primary && mlbGames.length > 0) {
+        if (!mlbDailyPicksHistory[todayStr]) {
+          mlbDailyPicksHistory[todayStr] = {
+            date: todayStr,
+            primary: { pickTeam: primary.pickTeam, grade: primary.grade, score: primary.score, result: "pending", homeTeam: primary.homeTeam, awayTeam: primary.awayTeam },
+            runnerUp: runnerUp ? { pickTeam: runnerUp.pickTeam, grade: runnerUp.grade, score: runnerUp.score, result: "pending", homeTeam: runnerUp.homeTeam, awayTeam: runnerUp.awayTeam } : null,
+          };
+          await saveMlbDailyPicks();
+        }
+      }
+
+      _mlbDailyPickCache = { data: result, ts: now, date: todayStr };
+      return res.json({ ...result, history: mlbDailyPicksHistory });
+    } catch (e: any) {
+      console.error("[MLB Pick] /api/mlb/pick-of-day error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/mlb/pick-of-day/grade ─────────────────────────────────────
+  app.post("/api/mlb/pick-of-day/grade", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { date, result, which } = req.body ?? {};
+      if (!date || !result || !which) return res.status(400).json({ error: "date, result, which required" });
+      if (!mlbDailyPicksHistory[date]) return res.status(404).json({ error: "No pick for that date" });
+      if (which === "primary") mlbDailyPicksHistory[date].primary.result = result;
+      else if (which === "runnerUp" && mlbDailyPicksHistory[date].runnerUp) mlbDailyPicksHistory[date].runnerUp.result = result;
+      await saveMlbDailyPicks();
+      _mlbDailyPickCache = null; // bust cache
+      return res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── GET /api/nfl/pick-of-week ────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  const NFL_WEEKLY_PICKS_FILE = path.join(ML_DATA_DIR, "nfl_weekly_picks.json");
+
+  let nflWeeklyPicksHistory: Record<string, any> = {};
+  try {
+    if (fs.existsSync(NFL_WEEKLY_PICKS_FILE)) {
+      nflWeeklyPicksHistory = JSON.parse(fs.readFileSync(NFL_WEEKLY_PICKS_FILE, "utf-8"));
+    }
+  } catch { nflWeeklyPicksHistory = {}; }
+
+  async function saveNflWeeklyPicks() {
+    try {
+      fs.writeFileSync(NFL_WEEKLY_PICKS_FILE, JSON.stringify(nflWeeklyPicksHistory, null, 2));
+      try { await storage.upsertMlDataFile("nfl_weekly_picks.json", JSON.stringify(nflWeeklyPicksHistory, null, 2)); } catch { /* non-fatal */ }
+    } catch (e: any) { console.error("[NFL Pick] save error:", e.message); }
+  }
+
+  // Helper: get NFL week label (e.g. "2026-W23")
+  function getNflWeekLabel(): string {
+    const d = new Date();
+    const startOfYear = new Date(d.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+  }
+
+  app.get("/api/nfl/pick-of-week", async (req: Request, res: Response) => {
+    try {
+      const weekLabel = getNflWeekLabel();
+      const now = Date.now();
+      const TTL = 60 * 60 * 1000; // 1-hour cache for weekly pick
+
+      if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel && (now - _nflWeeklyPickCache.ts) < TTL) {
+        return res.json({ ..._nflWeeklyPickCache.data, history: nflWeeklyPicksHistory });
+      }
+
+      const oddsKey = process.env.ODDS_API_KEY ?? "";
+      let nflGames: any[] = [];
+      if (oddsKey) {
+        try {
+          const r = await fetch(
+            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=7`,
+            { signal: AbortSignal.timeout(10000) }
+          );
+          if (r.ok) nflGames = await r.json();
+        } catch { /* non-fatal */ }
+      }
+
+      // Fetch sharp money for NFL
+      let nflSharp: any[] = [];
+      try { nflSharp = await fetchSharpMoneyBySport("NFL"); } catch { /* non-fatal */ }
+
+      // Fetch ESPN NFL injuries
+      let espnOut = new Set<string>();
+      try {
+        const injR = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(6000) });
+        if (injR.ok) {
+          const injData: any = await injR.json();
+          for (const te of (injData.injuries ?? [])) {
+            for (const inj of (te.injuries ?? [])) {
+              const s = (inj.status ?? "").toLowerCase();
+              if (s === "out" || s === "doubtful" || s === "ir") {
+                const nm = inj.athlete?.displayName ?? "";
+                if (nm) espnOut.add(nm.toLowerCase());
+              }
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      interface ScoredNflGame {
+        homeTeam: string; awayTeam: string; pickTeam: string; pickSide: "home" | "away";
+        pickML: number | null; spread: number | null; total: number | null;
+        score: number; grade: string; reasons: string[]; weatherNote: string | null;
+        sharpDirection: string | null; sharpScore: number; publicBetPct: number | null;
+        commenceTime: string | null; injuryNote: string | null;
+      }
+      const scoredNfl: ScoredNflGame[] = [];
+
+      for (const game of nflGames) {
+        const homeTeam = game.home_team ?? "";
+        const awayTeam = game.away_team ?? "";
+        let spreadHome: number | null = null;
+        let total: number | null = null;
+        let mlHome: number | null = null;
+        let mlAway: number | null = null;
+
+        for (const bk of (game.bookmakers ?? [])) {
+          const h2h     = bk.markets?.find((m: any) => m.key === "h2h");
+          const spreads  = bk.markets?.find((m: any) => m.key === "spreads");
+          const totals   = bk.markets?.find((m: any) => m.key === "totals");
+          if (h2h?.outcomes?.length >= 2) {
+            mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
+            mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
+          }
+          if (spreads?.outcomes?.length) spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
+          if (totals?.outcomes?.length)  total      = totals.outcomes.find((o: any)  => o.name === "Over")?.point ?? null;
+          if (mlHome !== null) break;
+        }
+
+        let pickSide: "home" | "away" = "home";
+        if (mlHome !== null && mlAway !== null) {
+          const hi = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+          const ai = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+          pickSide = ai > hi ? "away" : "home";
+        } else if (spreadHome !== null) {
+          pickSide = spreadHome > 0 ? "away" : "home";
+        }
+
+        const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+        const pickML   = pickSide === "home" ? mlHome : mlAway;
+
+        const sharpMatch = nflSharp.find((sg: any) =>
+          homeTeam.toLowerCase().includes((sg.homeTeam ?? "").toLowerCase().split(" ").pop() ?? "") ||
+          (sg.homeTeam ?? "").toLowerCase().includes(homeTeam.toLowerCase().split(" ").pop() ?? "")
+        );
+
+        const reasons: string[] = [];
+        let score = 40;
+
+        if (pickML !== null) {
+          const imp = pickML < 0 ? Math.abs(pickML) / (Math.abs(pickML) + 100) : 100 / (pickML + 100);
+          if (imp >= 0.62) { score += 18; reasons.push(`Heavy favorite — ${Math.round(imp*100)}% implied win probability`); }
+          else if (imp >= 0.53) { score += 10; reasons.push(`Favored team — ${Math.round(imp*100)}% implied win probability`); }
+          else { score += 3; reasons.push(`Near pick-em or slight underdog — higher variance`); }
+        }
+
+        let sharpScore = 0; let sharpDirection: string | null = null; let publicBetPct: number | null = null;
+        if (sharpMatch) {
+          sharpScore = sharpMatch.sharpScore ?? 0;
+          sharpDirection = sharpMatch.sharpDirection ?? null;
+          const matchDir = pickSide;
+          if (sharpDirection === matchDir || sharpMatch.sharpBooksAgree) {
+            score += 15; reasons.push(`Sharp money (${sharpScore}/100) aligned — books agree with pick`);
+          } else if (sharpDirection && sharpDirection !== matchDir && sharpDirection !== "neutral") {
+            score -= 8; reasons.push(`Caution: sharp money leans ${sharpDirection} — opposite to pick`);
+          }
+          const pubH = sharpMatch.publicBetPct?.home ?? null;
+          const pubA = sharpMatch.publicBetPct?.away ?? null;
+          publicBetPct = pickSide === "home" ? pubH : pubA;
+          if (publicBetPct !== null && publicBetPct < 40) { score += 8; reasons.push(`Contrarian pick — only ${Math.round(publicBetPct)}% public on this side`); }
+          else if (publicBetPct !== null && publicBetPct > 65) { score -= 4; reasons.push(`Heavy public action (${Math.round(publicBetPct)}%) — value may be eroded`); }
+          if (sharpMatch.rlmDetected) {
+            const rlmFavors = sharpMatch.rlmSide === pickSide;
+            if (rlmFavors) { score += 10; reasons.push("Reverse line movement confirms sharp activity on this side"); }
+            else { score -= 5; reasons.push("Reverse line movement goes against pick — slight concern"); }
+          }
+          if ((sharpMatch.sharpSignals ?? []).length > 0) reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0,3).join(", ")}`);
+        }
+
+        // Weather (NFL outdoor)
+        let weatherNote: string | null = null;
+        try {
+          const sw = await fetchStructuredWeather(homeTeam, "NFL");
+          if (sw && !sw.isDome) {
+            weatherNote = `${sw.tempF}°F, wind ${sw.windMph} mph ${sw.windDir} — ${sw.impactLabel}`;
+            if (sw.windMph > 20) { score -= 5; reasons.push(`Heavy wind (${sw.windMph} mph) — reduces passing efficiency for both teams`); }
+            else if (sw.windMph > 12) { score -= 2; reasons.push(`Moderate wind (${sw.windMph} mph) — minor passing impact`); }
+            if (sw.precipInches > 0.1) { score -= 4; reasons.push(`Rain/snow forecast — favors ground game, reduces scoring`); }
+            if (sw.tempF < 25) { score -= 5; reasons.push(`Extreme cold (${sw.tempF}°F) — impacts ball-handling and passing`); }
+          } else if (sw?.isDome) {
+            weatherNote = "Dome stadium — weather neutral, controlled conditions";
+            score += 2; reasons.push("Dome game — no weather variables");
+          }
+        } catch { /* non-fatal */ }
+
+        // Spread/total context
+        if (spreadHome !== null && total !== null) {
+          const favSpread = pickSide === "home" ? Math.abs(spreadHome) : (spreadHome > 0 ? spreadHome : Math.abs(spreadHome));
+          if (favSpread >= 7) { score += 6; reasons.push(`${pickTeam} favored by ${favSpread} — significant edge`); }
+          else if (favSpread >= 3.5) { score += 3; reasons.push(`${pickTeam} favored by ${favSpread}`); }
+          if (total >= 50) { score += 2; reasons.push(`High-total game (${total}) — offense-friendly environment`); }
+          else if (total <= 40) reasons.push(`Low total (${total}) — defensive game projected`);
+        }
+
+        // Home field
+        if (pickSide === "home") { score += 4; reasons.push("Home field advantage"); }
+
+        // Injury note — check Sleeper + ESPN for key players out on pick team
+        let injuryNote: string | null = null;
+        try {
+          const sleeperR = await getSleeperRoster();
+          const keyOut = Object.values(sleeperR).filter(p => {
+            const teamMatch2 = p.team && pickTeam.toLowerCase().includes(p.team.toLowerCase().slice(0,3));
+            return teamMatch2 && (p.injury_status === "Out" || p.injury_status === "IR" || espnOut.has((p.full_name ?? "").toLowerCase()));
+          }).map(p => p.full_name).slice(0, 3);
+          if (keyOut.length > 0) {
+            injuryNote = `Out/IR on ${pickTeam}: ${keyOut.join(", ")}`;
+            score -= keyOut.length * 3;
+            reasons.push(`Injury concern — ${keyOut.join(", ")} listed out`);
+          }
+        } catch { /* non-fatal */ }
+
+        score = Math.min(97, Math.max(20, score));
+        const grade = score >= 82 ? "A" : score >= 72 ? "B+" : score >= 62 ? "B" : score >= 52 ? "C+" : "C";
+
+        scoredNfl.push({
+          homeTeam, awayTeam, pickTeam, pickSide, pickML, spread: spreadHome, total,
+          score, grade, reasons, weatherNote, sharpDirection, sharpScore, publicBetPct,
+          commenceTime: game.commence_time ?? null, injuryNote,
+        });
+      }
+
+      scoredNfl.sort((a, b) => b.score - a.score);
+      const nflPrimary   = scoredNfl[0] ?? null;
+      const nflRunnerUp  = scoredNfl[1] ?? null;
+
+      const nflResult = {
+        week: weekLabel,
+        primary: nflPrimary,
+        runnerUp: nflRunnerUp,
+        gamesAnalyzed: scoredNfl.length,
+        fetchedAt: new Date().toISOString(),
+        liveData: nflGames.length > 0,
+      };
+
+      if (nflPrimary && nflGames.length > 0) {
+        if (!nflWeeklyPicksHistory[weekLabel]) {
+          nflWeeklyPicksHistory[weekLabel] = {
+            week: weekLabel,
+            primary: { pickTeam: nflPrimary.pickTeam, grade: nflPrimary.grade, score: nflPrimary.score, result: "pending", homeTeam: nflPrimary.homeTeam, awayTeam: nflPrimary.awayTeam },
+            runnerUp: nflRunnerUp ? { pickTeam: nflRunnerUp.pickTeam, grade: nflRunnerUp.grade, score: nflRunnerUp.score, result: "pending", homeTeam: nflRunnerUp.homeTeam, awayTeam: nflRunnerUp.awayTeam } : null,
+          };
+          await saveNflWeeklyPicks();
+        }
+      }
+
+      _nflWeeklyPickCache = { data: nflResult, ts: now, week: weekLabel };
+      return res.json({ ...nflResult, history: nflWeeklyPicksHistory });
+    } catch (e: any) {
+      console.error("[NFL Pick] /api/nfl/pick-of-week error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/nfl/pick-of-week/grade ─────────────────────────────────────
+  app.post("/api/nfl/pick-of-week/grade", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { week, result, which } = req.body ?? {};
+      if (!week || !result || !which) return res.status(400).json({ error: "week, result, which required" });
+      if (!nflWeeklyPicksHistory[week]) return res.status(404).json({ error: "No pick for that week" });
+      if (which === "primary") nflWeeklyPicksHistory[week].primary.result = result;
+      else if (which === "runnerUp" && nflWeeklyPicksHistory[week].runnerUp) nflWeeklyPicksHistory[week].runnerUp.result = result;
+      await saveNflWeeklyPicks();
+      _nflWeeklyPickCache = null;
+      return res.json({ ok: true });
+    } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });

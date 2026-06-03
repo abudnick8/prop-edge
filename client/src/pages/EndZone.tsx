@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   ChevronDown, ChevronUp, TrendingUp, Target, Zap, AlertCircle,
   CheckCircle, Clock, Search, X, Lock, Trophy, BarChart2,
-  Newspaper, RefreshCw, Filter, Star, Info
+  Newspaper, RefreshCw, Filter, Star, Info, Share2, TrendingDown
 } from "lucide-react";
 
 // ─── Color constants ─────────────────────────────────────────────────────────
@@ -1853,6 +1853,279 @@ function FantasyToolsPanel({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+// ─── NFL Pick of the Week ───────────────────────────────────────────────
+function nflGradeColor(g: string): string {
+  if (g === "A") return "#16a34a";
+  if (g === "B+") return "#2563eb";
+  if (g === "B") return "#7c3aed";
+  if (g === "C+") return "#d97706";
+  return "#6b7280";
+}
+function nflResultBadge(result: string) {
+  if (result === "win")  return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(34,197,94,0.12)", color: "#16a34a", borderRadius: 10, padding: "2px 7px" }}>WIN</span>;
+  if (result === "loss") return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(239,68,68,0.10)", color: "#dc2626", borderRadius: 10, padding: "2px 7px" }}>LOSS</span>;
+  if (result === "push") return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(250,204,21,0.12)", color: "#b8930a", borderRadius: 10, padding: "2px 7px" }}>PUSH</span>;
+  return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(19,35,58,0.06)", color: "#6b7280", borderRadius: 10, padding: "2px 7px" }}>PENDING</span>;
+}
+
+function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport = "NFL", onGrade }: {
+  pick: any; label: string; isRunnerUp?: boolean; isOwner?: boolean; sport?: string;
+  onGrade?: (which: "primary" | "runnerUp", result: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const which = isRunnerUp ? "runnerUp" as const : "primary" as const;
+  const mlFmt = (ml: number | null) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
+  const spreadFmt = (s: number | null) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+
+  const handleShare = () => {
+    const text = [
+      `🏟️ Clubhouse IQ — ${sport} Pick of the Week`,
+      `${label}: ${pick.pickTeam}`,
+      `Grade: ${pick.grade} · Confidence: ${pick.score}/100`,
+      pick.pickML ? `ML: ${mlFmt(pick.pickML)}` : "",
+      pick.spread != null ? `Spread: ${spreadFmt(pick.spread)}` : "",
+      "",
+      "Why this pick:",
+      ...(pick.reasons ?? []).slice(0, 5).map((r: string) => `• ${r}`),
+      "",
+      pick.weatherNote ? `🌤️ ${pick.weatherNote}` : "",
+      pick.injuryNote ? `⚠️ ${pick.injuryNote}` : "",
+      "",
+      "📱 Clubhouse IQ",
+    ].filter(Boolean).join("\n");
+    if (navigator.share) { navigator.share({ title: `${sport} Pick of the Week`, text }); }
+    else { navigator.clipboard?.writeText(text); setSharing(true); setTimeout(() => setSharing(false), 2000); }
+  };
+
+  return (
+    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
+      background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+      <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: isRunnerUp ? "rgba(19,35,58,0.06)" : "rgba(212,168,67,0.12)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {isRunnerUp ? <Star size={16} style={{ color: "#6b7280" }} /> : <Trophy size={16} style={{ color: GOLD_COLOR }} />}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 1 }}>{label}</div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: NAVY, lineHeight: 1.2 }}>{pick.pickTeam}</div>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
+            {pick.awayTeam} @ {pick.homeTeam}
+            {pick.pickML != null ? ` · ML ${mlFmt(pick.pickML)}` : ""}
+            {pick.spread != null ? ` · Spread ${spreadFmt(pick.spread)}` : ""}
+            {pick.total != null ? ` · O/U ${pick.total}` : ""}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, color: nflGradeColor(pick.grade) }}>{pick.grade}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>{pick.score}/100</div>
+          {nflResultBadge(pick.result ?? "pending")}
+        </div>
+        {open ? <ChevronUp size={14} style={{ color: MUTED, flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: MUTED, flexShrink: 0 }} />}
+      </div>
+
+      {open && (
+        <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          {/* Stats tiles */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 10 }}>
+            {[
+              { label: "Confidence", value: `${pick.score}/100` },
+              { label: "Grade", value: pick.grade, color: nflGradeColor(pick.grade) },
+              pick.sharpScore > 0 ? { label: "Sharp Score", value: `${pick.sharpScore}/100` } : null,
+              pick.publicBetPct != null ? { label: "Public Bets", value: `${Math.round(pick.publicBetPct)}%` } : null,
+              pick.total != null ? { label: "Total", value: `O/U ${pick.total}` } : null,
+            ].filter(Boolean).map((stat: any, i: number) => (
+              <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px" }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>{stat.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: stat.color ?? NAVY }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Weather */}
+          {pick.weatherNote && (
+            <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 13 }}>🌤️</span>
+              <span style={{ fontSize: 11, color: MUTED }}>{pick.weatherNote}</span>
+            </div>
+          )}
+
+          {/* Injury */}
+          {pick.injuryNote && (
+            <div style={{ background: "rgba(239,68,68,0.05)", borderRadius: 8, padding: "6px 10px", marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 13 }}>⚠️</span>
+              <span style={{ fontSize: 11, color: "#dc2626" }}>{pick.injuryNote}</span>
+            </div>
+          )}
+
+          {/* Reasons */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: NAVY, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Why this pick</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {(pick.reasons ?? []).map((reason: string, i: number) => {
+                const isNeg = /caution|injury|wind|rain|snow|cold|extreme|public heavily/i.test(reason);
+                return (
+                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 8, flexShrink: 0, marginTop: 1,
+                      background: isNeg ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                      display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {isNeg ? <TrendingDown size={8} style={{ color: "#dc2626" }} /> : <CheckCircle size={8} style={{ color: "#16a34a" }} />}
+                    </div>
+                    <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.4 }}>{reason}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {isRunnerUp && (
+            <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
+              <p style={{ fontSize: 10, color: MUTED, fontStyle: "italic" }}>Runner-up pick — not graded unless primary pick also fires.</p>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <button onClick={handleShare} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
+              padding: "6px 14px", borderRadius: 20, border: `1px solid rgba(19,35,58,0.15)`, background: "transparent", cursor: "pointer", color: NAVY }}>
+              <Share2 size={12} /> {sharing ? "Copied!" : "Share Pick"}
+            </button>
+            {isOwner && (!pick.result || pick.result === "pending") && onGrade && (
+              <>
+                <button onClick={() => onGrade(which, "win")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none", background: "rgba(34,197,94,0.12)", color: "#16a34a", cursor: "pointer" }}>✓ Win</button>
+                <button onClick={() => onGrade(which, "loss")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none", background: "rgba(239,68,68,0.10)", color: "#dc2626", cursor: "pointer" }}>✗ Loss</button>
+                <button onClick={() => onGrade(which, "push")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none", background: "rgba(250,204,21,0.10)", color: "#b8930a", cursor: "pointer" }}>~ Push</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NflPickOfWeekPanel() {
+  const [showHistory, setShowHistory] = useState(false);
+  const { isOwner } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["/api/nfl/pick-of-week"],
+    staleTime: 60 * 60 * 1000,
+    refetchInterval: 60 * 60 * 1000,
+  });
+
+  const gradeMutation = useMutation({
+    mutationFn: ({ week, result, which }: any) =>
+      fetch("/api/nfl/pick-of-week/grade", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ week, result, which }) }).then(r => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/nfl/pick-of-week"] }),
+  });
+
+  const history: Record<string, any> = data?.history ?? {};
+  const histEntries = Object.values(history).sort((a: any, b: any) => b.week > a.week ? 1 : -1);
+  const wins   = histEntries.filter((e: any) => e.primary?.result === "win").length;
+  const losses = histEntries.filter((e: any) => e.primary?.result === "loss").length;
+  const graded = wins + losses;
+  const pct    = graded > 0 ? Math.round((wins / graded) * 100) : null;
+
+  return (
+    <div style={{ background: BG_COLOR, borderRadius: 16, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ background: NAVY, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Trophy size={15} style={{ color: GOLD_COLOR }} />
+          <span style={{ fontSize: 14, fontWeight: 900, color: BG_COLOR }}>NFL Pick of the Week</span>
+          {data?.week && <span style={{ fontSize: 10, color: "rgba(246,241,231,0.55)", marginLeft: 4 }}>{data.week}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {graded > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 800, color: pct !== null && pct >= 60 ? "#4ade80" : pct !== null && pct >= 40 ? "#fbbf24" : "#f87171" }}>
+              {wins}W-{losses}L{pct !== null ? ` (${pct}%)` : ""}
+            </span>
+          )}
+          <button onClick={() => setShowHistory(h => !h)}
+            style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
+              border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
+            {showHistory ? "Hide History" : "History"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding: 14 }}>
+        {isLoading && (
+          <div style={{ textAlign: "center", padding: "24px 0", color: MUTED, fontSize: 13 }}>Analyzing this week's NFL slate…</div>
+        )}
+        {error && (
+          <div style={{ textAlign: "center", padding: "16px 0", color: "#dc2626", fontSize: 12 }}>Unable to load pick — try again shortly.</div>
+        )}
+        {!isLoading && !error && !data?.primary && (
+          <div style={{ textAlign: "center", padding: "16px 0", color: MUTED, fontSize: 12 }}>No NFL lines posted yet for this week.</div>
+        )}
+
+        {/* Primary pick */}
+        {data?.primary && (
+          <div style={{ marginBottom: 10 }}>
+            <NflPickCard
+              pick={{ ...data.primary, result: history[data.week]?.primary?.result ?? "pending" }}
+              label="Pick of the Week"
+              isOwner={isOwner}
+              onGrade={(which, result) => gradeMutation.mutate({ week: data.week, result, which })}
+            />
+          </div>
+        )}
+
+        {/* Runner-up */}
+        {data?.runnerUp && (
+          <NflPickCard
+            pick={{ ...data.runnerUp, result: history[data.week]?.runnerUp?.result ?? "pending" }}
+            label="Runner-Up"
+            isRunnerUp
+            isOwner={isOwner}
+            onGrade={(which, result) => gradeMutation.mutate({ week: data.week, result, which })}
+          />
+        )}
+
+        {/* Footer */}
+        {data?.gamesAnalyzed > 0 && (
+          <p style={{ fontSize: 10, color: MUTED, marginTop: 10, textAlign: "center" }}>
+            {data.gamesAnalyzed} games analyzed · {data.liveData ? "Live odds" : "Pre-season data"} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) + " CT" : ""}
+          </p>
+        )}
+
+        {/* History */}
+        {showHistory && (
+          <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: NAVY, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
+            {histEntries.length === 0 && <p style={{ fontSize: 11, color: MUTED }}>No historical picks yet — picks accumulate each week.</p>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {histEntries.map((entry: any) => (
+                <div key={entry.week} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "8px 12px" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: NAVY }}>{entry.primary?.pickTeam ?? "—"}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{entry.week} · Grade {entry.primary?.grade} · {entry.primary?.score}/100</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {nflResultBadge(entry.primary?.result ?? "pending")}
+                    {isOwner && entry.primary?.result === "pending" && (
+                      <>
+                        <button onClick={() => gradeMutation.mutate({ week: entry.week, result: "win", which: "primary" })}
+                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(34,197,94,0.12)", color: "#16a34a", cursor: "pointer", fontWeight: 700 }}>W</button>
+                        <button onClick={() => gradeMutation.mutate({ week: entry.week, result: "loss", which: "primary" })}
+                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.10)", color: "#dc2626", cursor: "pointer", fontWeight: 700 }}>L</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function EndZone() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -1867,7 +2140,7 @@ export default function EndZone() {
   const [newsQueryDebounced, setNewsQueryDebounced] = useState("");
   const [newsSort, setNewsSort] = useState<"recent" | "popular">("recent");
   const [lockedPick, setLockedPick] = useState<any>(null);
-  const [radarPanel, setRadarPanel] = useState<"waiver" | "snaps" | "handcuffs" | "matchup" | "betting" | "fantasy">("waiver");
+  const [radarPanel, setRadarPanel] = useState<"waiver" | "snaps" | "handcuffs" | "matchup" | "betting" | "fantasy" | "pickweek">("waiver");
 
   // Debounce news query
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2314,6 +2587,7 @@ export default function EndZone() {
             {/* Sub-panel selector */}
             <div style={{ display: "flex", gap: 6, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
               {([
+                ["pickweek",  "🏆 Pick of Week"],
                 ["waiver",    "📡 Waiver Wire"],
                 ["snaps",     "📊 Snap Trends"],
                 ["handcuffs", "🔗 Handcuffs"],
@@ -2417,8 +2691,18 @@ export default function EndZone() {
                 ssPlayer2={ssPlayer2} setSsPlayer2={setSsPlayer2}
                 ssResult={ssResult} setSsResult={setSsResult}
                 ssLoading={ssLoading} setSsLoading={setSsLoading}
-
               />
+            )}
+
+            {/* Pick of the Week */}
+            {radarPanel === "pickweek" && (
+              <div>
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: NAVY, marginBottom: 2 }}>🏆 NFL Pick of the Week</p>
+                  <p style={{ fontSize: 12, color: MUTED }}>The top-graded NFL team bet this week based on odds, sharp money, weather, injury report, and line movement. Includes a runner-up pick and full historical record.</p>
+                </div>
+                <NflPickOfWeekPanel />
+              </div>
             )}
           </div>
         )}

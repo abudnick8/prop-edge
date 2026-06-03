@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useHashLocation, navigate as wouterNavigate } from "wouter/use-hash-location";
 import ShareCard from "@/components/ShareCard";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search, Share2, Star, TrendingDown, Minus } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -875,6 +875,256 @@ function SplitSection({ title, rows }: { title: string; rows: { label: string; w
             <WinBar pct={row.pct} total={row.total} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── MLB Daily Pick of the Day ──────────────────────────────────────────────
+function gradeColor(g: string): string {
+  if (g === "A") return "#16a34a";
+  if (g === "B+") return "#2563eb";
+  if (g === "B") return "#7c3aed";
+  if (g === "C+") return "#d97706";
+  return "#6b7280";
+}
+function resultBadge(result: string) {
+  if (result === "win")    return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(34,197,94,0.12)", color: "#16a34a", borderRadius: 10, padding: "2px 7px" }}>WIN</span>;
+  if (result === "loss")   return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(239,68,68,0.10)", color: "#dc2626", borderRadius: 10, padding: "2px 7px" }}>LOSS</span>;
+  if (result === "push")   return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(250,204,21,0.12)", color: "#b8930a", borderRadius: 10, padding: "2px 7px" }}>PUSH</span>;
+  return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(19,35,58,0.06)", color: "#6b7280", borderRadius: 10, padding: "2px 7px" }}>PENDING</span>;
+}
+
+function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGrade }: {
+  pick: any; label: string; isRunnerUp?: boolean; isOwner?: boolean;
+  onGrade?: (which: "primary" | "runnerUp", result: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const which = isRunnerUp ? "runnerUp" : "primary";
+  const mlFmt = (ml: number | null) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
+  const spreadFmt = (s: number | null) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+
+  const handleShare = () => {
+    const text = [
+      `🏟️ Clubhouse IQ — MLB Pick of the Day`,
+      `${label}: ${pick.pickTeam}`,
+      `Grade: ${pick.grade} · Confidence: ${pick.score}/100`,
+      pick.pickML ? `ML: ${mlFmt(pick.pickML)}` : "",
+      "",
+      "Top Reasons:",
+      ...(pick.reasons ?? []).slice(0, 4).map((r: string) => `• ${r}`),
+      "",
+      "📱 Clubhouse IQ",
+    ].filter(Boolean).join("\n");
+    if (navigator.share) { navigator.share({ title: "MLB Pick of the Day", text }); }
+    else { navigator.clipboard?.writeText(text); setSharing(true); setTimeout(() => setSharing(false), 2000); }
+  };
+
+  return (
+    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`, background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+      {/* Header row */}
+      <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: isRunnerUp ? "rgba(19,35,58,0.06)" : "rgba(212,168,67,0.12)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {isRunnerUp ? <Star size={16} style={{ color: "#6b7280" }} /> : <Trophy size={16} style={{ color: "#D4A843" }} />}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 1 }}>{label}</div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: "#131A24", lineHeight: 1.2 }}>{pick.pickTeam}</div>
+          <div style={{ fontSize: 10, color: "#3D4B58", marginTop: 1 }}>
+            {pick.awayTeam} @ {pick.homeTeam}{pick.pickML ? ` · ML ${mlFmt(pick.pickML)}` : ""}{pick.spread != null ? ` · Spread ${spreadFmt(pick.spread)}` : ""}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(pick.grade) }}>{pick.grade}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58" }}>{pick.score}/100</div>
+          {resultBadge(pick.result ?? "pending")}
+        </div>
+        {open ? <ChevronUp size={14} style={{ color: "#6b7280", flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: "#6b7280", flexShrink: 0 }} />}
+      </div>
+
+      {/* Drawer */}
+      {open && (
+        <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+          {/* Quick stats row */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 10 }}>
+            {[
+              { label: "Confidence", value: `${pick.score}/100` },
+              { label: "Grade", value: pick.grade, color: gradeColor(pick.grade) },
+              pick.total ? { label: "Total", value: `O/U ${pick.total}` } : null,
+              pick.weatherNote ? { label: "Weather", value: pick.weatherNote.split("—")[0].trim() } : null,
+            ].filter(Boolean).map((stat: any, i: number) => (
+              <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px" }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>{stat.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: stat.color ?? "#131A24" }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reasoning */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#131A24", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Why this pick</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {(pick.reasons ?? []).map((reason: string, i: number) => {
+                const isNeg = reason.toLowerCase().startsWith("caution") || reason.toLowerCase().startsWith("injury") || reason.toLowerCase().startsWith("heavy wind") || reason.toLowerCase().startsWith("rain") || reason.toLowerCase().startsWith("extreme cold");
+                return (
+                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 8, background: isNeg ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      {isNeg ? <TrendingDown size={8} style={{ color: "#dc2626" }} /> : <CheckCircle size={8} style={{ color: "#16a34a" }} />}
+                    </div>
+                    <span style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.4 }}>{reason}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Runner-up note */}
+          {isRunnerUp && (
+            <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
+              <p style={{ fontSize: 10, color: "#6b7280", fontStyle: "italic" }}>Runner-up pick — not graded unless all primary picks also fire.</p>
+            </div>
+          )}
+
+          {/* Share + Owner grade */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <button onClick={handleShare} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
+              padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(19,35,58,0.15)", background: "transparent", cursor: "pointer", color: "#131A24" }}>
+              <Share2 size={12} /> {sharing ? "Copied!" : "Share Pick"}
+            </button>
+            {isOwner && (!pick.result || pick.result === "pending") && onGrade && (
+              <>
+                <button onClick={() => onGrade(which, "win")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none",
+                  background: "rgba(34,197,94,0.12)", color: "#16a34a", cursor: "pointer" }}>✓ Win</button>
+                <button onClick={() => onGrade(which, "loss")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none",
+                  background: "rgba(239,68,68,0.10)", color: "#dc2626", cursor: "pointer" }}>✗ Loss</button>
+                <button onClick={() => onGrade(which, "push")} style={{ fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 20, border: "none",
+                  background: "rgba(250,204,21,0.10)", color: "#b8930a", cursor: "pointer" }}>~ Push</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DailyPickPanel() {
+  const [showHistory, setShowHistory] = useState(false);
+  const { isOwner } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["/api/mlb/pick-of-day"],
+    staleTime: 20 * 60 * 1000,
+    refetchInterval: 20 * 60 * 1000,
+  });
+
+  const gradeMutation = useMutation({
+    mutationFn: ({ date, result, which }: any) =>
+      fetch("/api/mlb/pick-of-day/grade", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, result, which }) }).then(r => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/mlb/pick-of-day"] }),
+  });
+
+  const history: Record<string, any> = data?.history ?? {};
+  const histEntries = Object.values(history).sort((a: any, b: any) => b.date > a.date ? 1 : -1);
+  const wins   = histEntries.filter((e: any) => e.primary?.result === "win").length;
+  const losses = histEntries.filter((e: any) => e.primary?.result === "loss").length;
+  const graded = wins + losses;
+  const pct    = graded > 0 ? Math.round((wins / graded) * 100) : null;
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+      {/* Panel header */}
+      <div style={{ background: "#13233A", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Trophy size={15} style={{ color: "#D4A843" }} />
+          <span style={{ fontSize: 14, fontWeight: 900, color: "#F6F1E7" }}>MLB Pick of the Day</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {graded > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 800, color: pct !== null && pct >= 60 ? "#4ade80" : pct !== null && pct >= 40 ? "#fbbf24" : "#f87171" }}>
+              {wins}W-{losses}L{pct !== null ? ` (${pct}%)` : ""}
+            </span>
+          )}
+          <button onClick={() => setShowHistory(h => !h)}
+            style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
+              border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
+            {showHistory ? "Hide History" : "History"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding: 14 }}>
+        {isLoading && <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>Analyzing today's MLB slate…</div>}
+        {error && <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>Unable to load pick — check back shortly.</div>}
+
+        {!isLoading && !error && !data?.primary && (
+          <div style={{ textAlign: "center", padding: "16px 0", color: "#6b7280", fontSize: 12 }}>No MLB games found for today yet.</div>
+        )}
+
+        {/* Primary pick */}
+        {data?.primary && (
+          <div style={{ marginBottom: 10 }}>
+            <PickOfDayCard
+              pick={{ ...data.primary, result: history[data.date]?.primary?.result ?? "pending" }}
+              label="Today's Pick"
+              isOwner={isOwner}
+              onGrade={(which, result) => gradeMutation.mutate({ date: data.date, result, which })}
+            />
+          </div>
+        )}
+
+        {/* Runner-up pick */}
+        {data?.runnerUp && (
+          <PickOfDayCard
+            pick={{ ...data.runnerUp, result: history[data.date]?.runnerUp?.result ?? "pending" }}
+            label="Runner-Up"
+            isRunnerUp
+            isOwner={isOwner}
+            onGrade={(which, result) => gradeMutation.mutate({ date: data.date, result, which })}
+          />
+        )}
+
+        {/* Stats footer */}
+        {data?.gamesAnalyzed > 0 && (
+          <p style={{ fontSize: 10, color: "#6b7280", marginTop: 10, textAlign: "center" }}>
+            {data.gamesAnalyzed} games analyzed · {data.liveData ? "Live odds" : "Seed data"} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) + " CT" : ""}
+          </p>
+        )}
+
+        {/* History */}
+        {showHistory && (
+          <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
+            {histEntries.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>No historical picks yet.</p>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {histEntries.map((entry: any) => (
+                <div key={entry.date} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "8px 12px" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>{entry.primary?.pickTeam ?? "—"}</div>
+                    <div style={{ fontSize: 10, color: "#6b7280" }}>{entry.date} · Grade {entry.primary?.grade} · {entry.primary?.score}/100</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {resultBadge(entry.primary?.result ?? "pending")}
+                    {isOwner && entry.primary?.result === "pending" && (
+                      <>
+                        <button onClick={() => gradeMutation.mutate({ date: entry.date, result: "win", which: "primary" })}
+                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(34,197,94,0.12)", color: "#16a34a", cursor: "pointer", fontWeight: 700 }}>W</button>
+                        <button onClick={() => gradeMutation.mutate({ date: entry.date, result: "loss", which: "primary" })}
+                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.10)", color: "#dc2626", cursor: "pointer", fontWeight: 700 }}>L</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1821,6 +2071,9 @@ export default function BTS() {
           </div>
         </div>
       )}
+      {/* MLB Pick of the Day */}
+      <DailyPickPanel />
+
       {/* Pick Analytics */}
       <BtsAnalyticsPanel />
 
