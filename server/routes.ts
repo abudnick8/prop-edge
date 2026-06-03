@@ -18543,7 +18543,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // 2. SHARP MONEY (highest weight)
         let sharpScore = 0, sharpDirection: string | null = null, publicBetPct: number | null = null;
         let publicMoneyPct: number | null = null, pinnacleML: number | null = null;
-        if (sharpMatch) {
+        if (sharpMatch && (sharpMatch.sharpScore ?? 0) > 5) {
           sharpScore = sharpMatch.sharpScore ?? 0;
           sharpDirection = sharpMatch.sharpDirection ?? null;
           const matchDir = pickSide;
@@ -19199,7 +19199,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // 2. SHARP MONEY
         let sharpScore = 0, sharpDirection: string | null = null, publicBetPct: number | null = null;
         let publicMoneyPct: number | null = null, pinnacleML: number | null = null;
-        if (sharpMatch) {
+        if (sharpMatch && (sharpMatch.sharpScore ?? 0) > 5) {
           sharpScore = sharpMatch.sharpScore ?? 0;
           sharpDirection = sharpMatch.sharpDirection ?? null;
           const pubHome = sharpMatch.publicBetPct?.home ?? null;
