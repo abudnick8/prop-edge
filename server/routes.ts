@@ -8399,7 +8399,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       await Promise.all(targets.map(async (s) => {
         try {
-          const url = `https://site.api.espn.com/apis/site/v2/sports/${s.sn}/${s.lg}/scoreboard`;
+          // Always pass today's Central-time date so ESPN doesn't default to yesterday's completed games
+          const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+          const espnDateParam = `${ctNow.getFullYear()}${String(ctNow.getMonth()+1).padStart(2,"0")}${String(ctNow.getDate()).padStart(2,"0")}`;
+          const url = `https://site.api.espn.com/apis/site/v2/sports/${s.sn}/${s.lg}/scoreboard?dates=${espnDateParam}`;
           const r   = await fetch(url, { signal: AbortSignal.timeout(8000) });
           if (!r.ok) { results[s.key] = []; return; }
           const d   = await r.json() as any;
@@ -18412,7 +18415,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       async function fetchTodayStarters(): Promise<Map<string, StarterInfo>> {
         const map = new Map<string, StarterInfo>();
         try {
-          const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard", { signal: AbortSignal.timeout(7000) });
+          const ctNowStarter = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+          const starterDateParam = `${ctNowStarter.getFullYear()}${String(ctNowStarter.getMonth()+1).padStart(2,"0")}${String(ctNowStarter.getDate()).padStart(2,"0")}`;
+          const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${starterDateParam}`, { signal: AbortSignal.timeout(7000) });
           if (!r.ok) return map;
           const d: any = await r.json();
           for (const evt of (d?.events ?? [])) {
