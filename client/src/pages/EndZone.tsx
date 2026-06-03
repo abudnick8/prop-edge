@@ -2188,8 +2188,10 @@ function NflPickOfWeekPanel() {
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["/api/nfl/pick-of-week"],
     staleTime: 60 * 60 * 1000,
-    refetchInterval: 60 * 60 * 1000,
+    // Stop polling once locked — no further updates until next week
+    refetchInterval: (query) => (query.state.data?.locked ? false : 60 * 60 * 1000),
   });
+  const isPickLocked = data?.locked === true;
 
   const gradeMutation = useMutation({
     mutationFn: ({ week, result, which }: any) =>
@@ -2213,6 +2215,12 @@ function NflPickOfWeekPanel() {
           <Trophy size={15} style={{ color: GOLD_COLOR }} />
           <span style={{ fontSize: 14, fontWeight: 900, color: BG_COLOR }}>NFL Pick of the Week</span>
           {data?.week && <span style={{ fontSize: 10, color: "rgba(246,241,231,0.55)", marginLeft: 4 }}>{data.week}</span>}
+          {isPickLocked && (
+            <span style={{ fontSize: 9, fontWeight: 800, color: "#fbbf24", background: "rgba(251,191,36,0.15)",
+              border: "1px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "2px 7px", letterSpacing: 0.5 }}>
+              🔒 LOCKED
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {graded > 0 && (
@@ -2227,6 +2235,13 @@ function NflPickOfWeekPanel() {
           </button>
         </div>
       </div>
+      {isPickLocked && (
+        <div style={{ background: "rgba(251,191,36,0.07)", borderBottom: "1px solid rgba(251,191,36,0.15)",
+          padding: "6px 16px", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11 }}>🔒</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>Pick locked — within 15 min of kickoff. No further updates.</span>
+        </div>
+      )}
 
       <div style={{ padding: 14 }}>
         {isLoading && (

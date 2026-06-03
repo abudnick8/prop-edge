@@ -1217,8 +1217,10 @@ function DailyPickPanel() {
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["/api/mlb/pick-of-day"],
     staleTime: 20 * 60 * 1000,
-    refetchInterval: 20 * 60 * 1000,
+    // Once locked, stop polling — pick won't change
+    refetchInterval: (query) => (query.state.data?.locked ? false : 20 * 60 * 1000),
   });
+  const isPickLocked = data?.locked === true;
 
   const gradeMutation = useMutation({
     mutationFn: ({ date, result, which }: any) =>
@@ -1241,6 +1243,12 @@ function DailyPickPanel() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Trophy size={15} style={{ color: "#D4A843" }} />
           <span style={{ fontSize: 14, fontWeight: 900, color: "#F6F1E7" }}>MLB Pick of the Day</span>
+          {isPickLocked && (
+            <span style={{ fontSize: 9, fontWeight: 800, color: "#fbbf24", background: "rgba(251,191,36,0.15)",
+              border: "1px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "2px 7px", letterSpacing: 0.5 }}>
+              🔒 LOCKED
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {graded > 0 && (
@@ -1255,6 +1263,13 @@ function DailyPickPanel() {
           </button>
         </div>
       </div>
+      {isPickLocked && (
+        <div style={{ background: "rgba(251,191,36,0.07)", borderBottom: "1px solid rgba(251,191,36,0.15)",
+          padding: "6px 16px", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11 }}>🔒</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>Pick locked — within 15 min of first pitch. No further updates.</span>
+        </div>
+      )}
 
       <div style={{ padding: 14 }}>
         {isLoading && <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>Analyzing today's MLB slate…</div>}

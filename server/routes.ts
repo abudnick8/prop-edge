@@ -18095,8 +18095,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       })();
       const now = Date.now();
       const TTL = 20 * 60 * 1000;
-      if (_mlbDailyPickCache && _mlbDailyPickCache.date === todayStr && (now - _mlbDailyPickCache.ts) < TTL) {
-        return res.json({ ..._mlbDailyPickCache.data, history: mlbDailyPicksHistory });
+      const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before first pitch
+
+      // If we have a cached pick for today, check whether we're past the lock window
+      if (_mlbDailyPickCache && _mlbDailyPickCache.date === todayStr) {
+        const cachedData = _mlbDailyPickCache.data;
+        // Find earliest game time from cached scored games
+        const allGames: any[] = [
+          ...(cachedData.primary   ? [cachedData.primary]   : []),
+          ...(cachedData.runnerUp  ? [cachedData.runnerUp]  : []),
+        ];
+        const earliestMs = allGames.reduce((min, g) => {
+          const t = g.commenceTime ? new Date(g.commenceTime).getTime() : Infinity;
+          return t < min ? t : min;
+        }, Infinity);
+        const isLocked = isFinite(earliestMs) && now >= earliestMs - LOCK_BEFORE_MS;
+        // Return cached if locked (no more updates) OR still within normal TTL
+        if (isLocked || (now - _mlbDailyPickCache.ts) < TTL) {
+          return res.json({ ..._mlbDailyPickCache.data, history: mlbDailyPicksHistory, locked: isLocked });
+        }
       }
 
       // ── ESPN team ID map ────────────────────────────────────────────────
@@ -18487,7 +18504,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         await saveMlbDailyPicks();
       }
       _mlbDailyPickCache = { data: result, ts: now, date: todayStr };
-      return res.json({ ...result, history: mlbDailyPicksHistory });
+      return res.json({ ...result, history: mlbDailyPicksHistory, locked: false });
     } catch (e: any) {
       console.error("[MLB Pick] /api/mlb/pick-of-day error:", e.message);
       res.status(500).json({ error: e.message });
@@ -18542,8 +18559,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const weekLabel = getNflWeekLabel();
       const now = Date.now();
       const TTL = 60 * 60 * 1000;
-      if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel && (now - _nflWeeklyPickCache.ts) < TTL) {
-        return res.json({ ..._nflWeeklyPickCache.data, history: nflWeeklyPicksHistory });
+      const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before earliest game
+
+      if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel) {
+        const cachedData = _nflWeeklyPickCache.data;
+        const allGames: any[] = [
+          ...(cachedData.primary  ? [cachedData.primary]  : []),
+          ...(cachedData.runnerUp ? [cachedData.runnerUp] : []),
+        ];
+        const earliestMs = allGames.reduce((min, g) => {
+          const t = g.commenceTime ? new Date(g.commenceTime).getTime() : Infinity;
+          return t < min ? t : min;
+        }, Infinity);
+        const isLocked = isFinite(earliestMs) && now >= earliestMs - LOCK_BEFORE_MS;
+        if (isLocked || (now - _nflWeeklyPickCache.ts) < TTL) {
+          return res.json({ ..._nflWeeklyPickCache.data, history: nflWeeklyPicksHistory, locked: isLocked });
+        }
       }
 
       // ── ESPN NFL team ID map ────────────────────────────────────────────
@@ -18902,7 +18933,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         await saveNflWeeklyPicks();
       }
       _nflWeeklyPickCache = { data: nflResult, ts: now, week: weekLabel };
-      return res.json({ ...nflResult, history: nflWeeklyPicksHistory });
+      return res.json({ ...nflResult, history: nflWeeklyPicksHistory, locked: false });
     } catch (e: any) {
       console.error("[NFL Pick] /api/nfl/pick-of-week error:", e.message);
       res.status(500).json({ error: e.message });
