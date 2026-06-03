@@ -18062,6 +18062,211 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Strips "the", lowercases, trims whitespace so "Los Angeles Dodgers" → "los angeles dodgers"
   const normalizeTeam = (name: string) => name.toLowerCase().replace(/^the\s+/i, "").trim();
 
+  // ── Line-movement sharp fallback ─────────────────────────────────────────
+  // When the sharp money engine returns no match for a specific game, we derive
+  // a model-estimated sharp signal from line data already in scope:
+  //   • ML odds  → implied public lean (public bets favorites heavily)
+  //   • Spread   → positional value signal
+  //   • ESPN BPI → when available, overwrites ML-implied direction
+  // The result populates analysis.sharp so the UI always shows something.
+  async function buildLineFallbackSharp(opts: {
+    homeTeam: string;
+    awayTeam: string;
+    sport: string;
+    mlHome: number | null;
+    mlAway: number | null;
+    spread: number | null;
+    total:  number | null;
+    pickSide: "home" | "away";
+    pickTeam: string;
+    oppTeam:  string;
+  }): Promise<{
+    sharpScore: number;
+    sharpDirection: string;
+    sharpBooksAgree: boolean;
+    publicBetPct: number | null;
+    publicMoneyPct: number | null;
+    rlmDetected: boolean;
+    rlmSide: string | null;
+    pinnacleML: number | null;
+    sharpSignals: string[];
+    spreadDivergence: number | null;
+    isFallback: boolean;
+  }> {
+    const { homeTeam, awayTeam, sport, mlHome, mlAway, spread, total, pickSide, pickTeam, oppTeam } = opts;
+    const signals: string[] = [];
+    let score = 0;
+    let direction: "home" | "away" | "neutral" = "neutral";
+    let publicBetPct: number | null = null;
+    let publicMoneyPct: number | null = null;
+    let rlmDetected = false;
+    let rlmSide: string | null = null;
+    let pinnacleML: number | null = null;
+    let spreadDivergence: number | null = null;
+
+    // 1. ML-implied public lean
+    //    Public bettors heavily back favorites — implied prob from ML is a good proxy.
+    if (mlHome !== null && mlAway !== null) {
+      const rawHome = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+      const rawAway = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+      const total_ = rawHome + rawAway;
+      const impliedHomePct = (rawHome / total_) * 100;
+      const impliedAwayPct = (rawAway / total_) * 100;
+      // Public typically concentrates 60–75% of bets on implied favorites
+      // So if home is a 60% implied win, public bets ~65–70% home
+      const publicBias = 1.1; // public over-bets favorites by ~10%
+      const rawPublicHome = Math.min(85, impliedHomePct * publicBias);
+      publicBetPct    = pickSide === "home" ? Math.round(rawPublicHome) : Math.round(100 - rawPublicHome);
+      publicMoneyPct  = publicBetPct; // money% ≈ ticket% without raw data
+      pinnacleML      = pickSide === "home" ? mlHome : mlAway;
+
+      // Direction: if pick team is underdog, sharp lean may be contrarian value
+      const pickImplied = pickSide === "home" ? impliedHomePct : impliedAwayPct;
+      if (pickImplied >= 60) {
+        direction = pickSide;
+        score += 8;
+        signals.push(`Market gives ${pickTeam} ${Math.round(pickImplied)}% implied win probability — market-backed favorite`);
+      } else if (pickImplied < 48) {
+        // Underdog pick — sharp bettors take value on underdogs
+        direction = pickSide;
+        score += 5;
+        signals.push(`${pickTeam} is a market underdog (${Math.round(pickImplied)}% implied) — value-side pick`);
+      } else {
+        direction = pickSide;
+        score += 3;
+        signals.push(`${pickTeam} at ${Math.round(pickImplied)}% market implied probability`);
+      }
+    }
+
+    // 2. Spread signal — negative home spread = home favored = likely heavy public play
+    if (spread !== null) {
+      const homeFavored = spread < 0;
+      const favSide: "home" | "away" = homeFavored ? "home" : "away";
+      if (favSide !== pickSide) {
+        // Picking the underdog against spread — contrarian value
+        score += 4;
+        signals.push(`Spread: ${pickTeam} is the underdog (${spread > 0 ? "+" : ""}${spread}) — fade-the-public angle`);
+      } else {
+        signals.push(`Spread: ${pickTeam} favored at ${spread} — high public action expected`);
+      }
+    }
+
+    // 3. Try to get ESPN BPI for this game as an independent model check
+    try {
+      const ESPN_SPORT_PATHS_LOCAL: Record<string, { sport: string; league: string }> = {
+        NBA: { sport: "basketball", league: "nba" },
+        MLB: { sport: "baseball",   league: "mlb" },
+        NHL: { sport: "hockey",     league: "nhl" },
+        NFL: { sport: "football",   league: "nfl" },
+      };
+      const paths = ESPN_SPORT_PATHS_LOCAL[sport];
+      if (paths) {
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        const sbUrl = `https://site.api.espn.com/apis/site/v2/sports/${paths.sport}/${paths.league}/scoreboard?dates=${dateStr}`;
+        const sbRes = await fetch(sbUrl, { signal: AbortSignal.timeout(6000), headers: { Accept: "application/json" } });
+        if (sbRes.ok) {
+          const sbData: any = await sbRes.json();
+          const events: any[] = sbData.events ?? [];
+          const ev = events.find((e: any) => {
+            const comps: any[] = (e.competitions ?? [])[0]?.competitors ?? [];
+            const names = comps.map((c: any) => (c.team?.displayName ?? c.team?.name ?? "").toLowerCase());
+            return names.some((n: string) => homeTeam.toLowerCase().includes(n.split(" ").pop()!) || n.includes(homeTeam.toLowerCase().split(" ").pop()!));
+          });
+          if (ev) {
+            const eventId = ev.id;
+            const bpiUrl = `https://sports.core.api.espn.com/v2/sports/${paths.sport}/leagues/${paths.league}/events/${eventId}/competitions/${eventId}/predictor`;
+            const bpiRes = await fetch(bpiUrl, { signal: AbortSignal.timeout(5000), headers: { Accept: "application/json" } });
+            if (bpiRes.ok) {
+              const bpiData: any = await bpiRes.json();
+              const getStat = (side: any) => {
+                const stats: any[] = side?.statistics ?? [];
+                const gp = stats.find((s: any) => s.name === "gameProjection");
+                return gp ? parseFloat(gp.value) : null;
+              };
+              const homeWinPct = getStat(bpiData.homeTeam);
+              const awayWinPct = getStat(bpiData.awayTeam);
+              if (homeWinPct !== null || awayWinPct !== null) {
+                const pickBpi = pickSide === "home" ? homeWinPct : awayWinPct;
+                const oppBpi  = pickSide === "home" ? awayWinPct : homeWinPct;
+                if (pickBpi !== null) {
+                  score += pickBpi >= 60 ? 10 : pickBpi >= 50 ? 5 : 2;
+                  signals.push(`ESPN BPI model: ${pickTeam} ${pickBpi.toFixed(1)}% win probability`);
+                  if (oppBpi !== null) signals.push(`Opponent BPI: ${oppTeam} ${oppBpi.toFixed(1)}%`);
+                  // BPI vs ML: if BPI overweights pick vs ML implied, sharp lean
+                  if (publicBetPct !== null && pickBpi > 55 && publicBetPct < 45) {
+                    score += 8;
+                    signals.push(`Model-public divergence: BPI favors ${pickTeam} (${pickBpi.toFixed(1)}%) but public under-betting at ${publicBetPct}%`);
+                  }
+                }
+              }
+              // Check ESPN line movement for RLM proxy
+              try {
+                const oddsUrl = `https://sports.core.api.espn.com/v2/sports/${paths.sport}/leagues/${paths.league}/events/${eventId}/competitions/${eventId}/odds?limit=3`;
+                const oddsRes = await fetch(oddsUrl, { signal: AbortSignal.timeout(5000), headers: { Accept: "application/json" } });
+                if (oddsRes.ok) {
+                  const oddsData: any = await oddsRes.json();
+                  const item = (oddsData.items ?? [])[0];
+                  if (item) {
+                    const homeOdds = item.homeTeamOdds ?? {};
+                    const openSpread = homeOdds.open?.pointSpread?.value ?? null;
+                    const currSpread = homeOdds.current?.pointSpread?.value ?? item.spread ?? null;
+                    if (openSpread !== null && currSpread !== null && openSpread !== currSpread) {
+                      const moveAmt = Math.abs(currSpread - openSpread).toFixed(1);
+                      spreadDivergence = +(currSpread - openSpread).toFixed(1);
+                      // RLM: line moved toward underdog side against public
+                      const lineFavoursHome = currSpread < openSpread; // spread went more negative = home more favored
+                      if (lineFavoursHome && publicBetPct !== null && publicBetPct < 40) {
+                        rlmDetected = true; rlmSide = "home";
+                        score += 15;
+                        signals.push(`⚡ RLM signal: Line moved ${moveAmt} pts toward HOME despite low public action — smart money on ${pickSide === "home" ? pickTeam : oppTeam}`);
+                      } else if (!lineFavoursHome && publicBetPct !== null && publicBetPct > 60) {
+                        rlmDetected = true; rlmSide = "away";
+                        score += 15;
+                        signals.push(`⚡ RLM signal: Line moved ${moveAmt} pts toward AWAY despite heavy public on home — smart money on ${pickSide === "away" ? pickTeam : oppTeam}`);
+                      } else {
+                        signals.push(`Line movement: ${moveAmt} pts (open ${openSpread > 0 ? "+" : ""}${openSpread} → current ${currSpread > 0 ? "+" : ""}${currSpread}) from ESPN/DraftKings`);
+                      }
+                    } else if (currSpread !== null) {
+                      signals.push(`Current line: ${pickTeam} ${currSpread > 0 ? "+" : ""}${currSpread} (no opening line movement detected)`);
+                    }
+                    // Add total if available
+                    if (item.overUnder != null) {
+                      signals.push(`Total: ${item.overUnder} | ML: ${pickTeam} ${pinnacleML != null ? (pinnacleML > 0 ? "+" : "") + pinnacleML : "N/A"}`);
+                    }
+                  }
+                }
+              } catch { /* non-fatal */ }
+            }
+          }
+        }
+      }
+    } catch { /* non-fatal — ESPN BPI is best-effort */ }
+
+    // 4. Baseline note if we have very little
+    if (signals.length === 0) {
+      signals.push(`Line data: ${pickTeam} ML ${mlHome !== null ? (mlHome > 0 ? "+" : "") + mlHome : "N/A"} | spread ${spread ?? "N/A"} | total ${total ?? "N/A"}`);
+      signals.push("Live sharp money data unavailable — estimate derived from market odds & line movement");
+    } else {
+      signals.push("Sharp estimate: derived from market odds & ESPN line movement (live bet% unavailable)");
+    }
+
+    score = Math.min(55, Math.max(5, score)); // cap fallback at 55 — never looks like hard sharp data
+
+    return {
+      sharpScore: score,
+      sharpDirection: direction,
+      sharpBooksAgree: false,
+      publicBetPct,
+      publicMoneyPct,
+      rlmDetected,
+      rlmSide,
+      pinnacleML,
+      sharpSignals: signals,
+      spreadDivergence,
+      isFallback: true,
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // ── GET /api/mlb/pick-of-day ─────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════════════════════
@@ -18389,7 +18594,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0, 4).join(" · ")}`);
           }
         } else {
-          analysis.sharp = null;
+          // No sharp match found — derive from line data + ESPN BPI
+          const fb = await buildLineFallbackSharp({ homeTeam, awayTeam, sport: "MLB", mlHome, mlAway, spread: spreadHome, total, pickSide, pickTeam, oppTeam });
+          sharpScore     = fb.sharpScore;
+          sharpDirection = fb.sharpDirection;
+          publicBetPct   = fb.publicBetPct;
+          publicMoneyPct = fb.publicMoneyPct;
+          pinnacleML     = fb.pinnacleML;
+          analysis.sharp = {
+            sharpScore: fb.sharpScore, sharpDirection: fb.sharpDirection,
+            sharpBooksAgree: false,
+            publicBetPct: fb.publicBetPct, publicMoneyPct: fb.publicMoneyPct,
+            rlmDetected: fb.rlmDetected, rlmSide: fb.rlmSide,
+            pinnacleML: fb.pinnacleML, sharpSignals: fb.sharpSignals,
+            spreadDivergence: fb.spreadDivergence, isFallback: true,
+          };
+          // Apply light scoring from fallback direction
+          if (fb.sharpDirection === pickSide && fb.sharpScore >= 20) {
+            score += 6; reasons.push(`Market & model lean: ${pickTeam} (est. sharp score ${fb.sharpScore}/100 — live data unavailable)`);
+          } else if (fb.rlmDetected && fb.rlmSide === pickSide) {
+            score += 8; reasons.push(`Estimated RLM: line movement suggests smart money on ${pickTeam}`);
+          }
+          if (fb.sharpSignals.length > 0) {
+            reasons.push(`Line movement analysis: ${fb.sharpSignals.slice(0, 3).join(" · ")}`);
+          }
         }
 
         // 3. STARTING PITCHER DUEL
@@ -18990,7 +19218,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0, 4).join(" · ")}`);
           }
         } else {
-          analysis.sharp = null;
+          // No sharp match found — derive from Odds API lines + ESPN BPI
+          const fb = await buildLineFallbackSharp({ homeTeam, awayTeam, sport: "NFL", mlHome, mlAway, spread: spreadHome, total, pickSide, pickTeam, oppTeam });
+          sharpScore     = fb.sharpScore;
+          sharpDirection = fb.sharpDirection;
+          publicBetPct   = fb.publicBetPct;
+          publicMoneyPct = fb.publicMoneyPct;
+          pinnacleML     = fb.pinnacleML;
+          analysis.sharp = {
+            sharpScore: fb.sharpScore, sharpDirection: fb.sharpDirection,
+            sharpBooksAgree: false,
+            publicBetPct: fb.publicBetPct, publicMoneyPct: fb.publicMoneyPct,
+            rlmDetected: fb.rlmDetected, rlmSide: fb.rlmSide,
+            pinnacleML: fb.pinnacleML, sharpSignals: fb.sharpSignals,
+            spreadDivergence: fb.spreadDivergence, isFallback: true,
+          };
+          // Apply light scoring from fallback direction
+          if (fb.sharpDirection === pickSide && fb.sharpScore >= 20) {
+            score += 6; reasons.push(`Market & model lean: ${pickTeam} (est. sharp score ${fb.sharpScore}/100 — live Pinnacle data unavailable)`);
+          } else if (fb.rlmDetected && fb.rlmSide === pickSide) {
+            score += 8; reasons.push(`Estimated RLM: line movement suggests smart money on ${pickTeam}`);
+          }
+          if (fb.sharpSignals.length > 0) {
+            reasons.push(`Line movement analysis: ${fb.sharpSignals.slice(0, 3).join(" · ")}`);
+          }
         }
 
         // 3. OFFENSE vs DEFENSE MATCHUP

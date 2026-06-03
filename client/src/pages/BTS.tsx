@@ -995,7 +995,14 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
 
           {/* Sharp Money */}
           {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
-            <Section title="Sharp Money" icon="💰">
+            <Section title={sharp.isFallback ? "Sharp Money (Est.)" : "Sharp Money"} icon="💰">
+              {sharp.isFallback && (
+                <div style={{ background: "rgba(212,168,67,0.10)", borderRadius: 8, padding: "5px 10px",
+                  marginBottom: 8, border: "1px solid rgba(212,168,67,0.25)" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "#D4A843" }}>⚠️ Estimated — </span>
+                  <span style={{ fontSize: 9, color: "#3D4B58" }}>Live Pinnacle data unavailable. Score derived from market odds, ESPN BPI &amp; line movement.</span>
+                </div>
+              )}
               <div style={{ background: sharp.sharpScore >= 65 ? "rgba(34,197,94,0.06)" : "rgba(19,35,58,0.04)",
                 borderRadius: 10, padding: "10px 12px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1009,16 +1016,16 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
                     <div style={{ fontSize: 20, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : sharp.sharpScore >= 40 ? "#D4A843" : "#dc2626" }}>
                       {sharp.sharpScore ?? 0}
                     </div>
-                    <div style={{ fontSize: 9, color: "#6b7280" }}>Sharp Score /100</div>
+                    <div style={{ fontSize: 9, color: "#6b7280" }}>{sharp.isFallback ? "Est. Score /100" : "Sharp Score /100"}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
-                  {sharp.publicBetPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Bets: <b>{Math.round(sharp.publicBetPct)}%</b></div>}
-                  {sharp.publicMoneyPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Money: <b>{Math.round(sharp.publicMoneyPct)}%</b></div>}
+                  {sharp.publicBetPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Bets: <b>{Math.round(sharp.publicBetPct)}%{sharp.isFallback ? " (est.)" : ""}</b></div>}
+                  {sharp.publicMoneyPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Money: <b>{Math.round(sharp.publicMoneyPct)}%{sharp.isFallback ? " (est.)" : ""}</b></div>}
                   {sharp.rlmDetected && <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 700 }}>⚡ RLM: {sharp.rlmSide}</div>}
-                  {sharp.pinnacleML != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Pinnacle: <b>{mlFmt(sharp.pinnacleML)}</b></div>}
+                  {sharp.pinnacleML != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Pinnacle ML: <b>{mlFmt(sharp.pinnacleML)}</b></div>}
                   {sharp.spreadDivergence != null && Math.abs(sharp.spreadDivergence) >= 0.5 &&
-                    <div style={{ fontSize: 10, color: "#3D4B58" }}>Spread Div: <b>{sharp.spreadDivergence > 0 ? "+" : ""}{sharp.spreadDivergence}</b></div>}
+                    <div style={{ fontSize: 10, color: "#3D4B58" }}>Spread Move: <b>{sharp.spreadDivergence > 0 ? "+" : ""}{sharp.spreadDivergence}</b></div>}
                 </div>
                 {sharp.sharpSignals && sharp.sharpSignals.length > 0 && (
                   <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
