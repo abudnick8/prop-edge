@@ -18058,6 +18058,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ── Team name normalizer for sharp money matching ──────────────────────────
+  // Strips "the", lowercases, trims whitespace so "Los Angeles Dodgers" → "los angeles dodgers"
+  const normalizeTeam = (name: string) => name.toLowerCase().replace(/^the\s+/i, "").trim();
+
   // ═══════════════════════════════════════════════════════════════════════════
   // ── GET /api/mlb/pick-of-day ─────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════════════════════
@@ -18281,8 +18285,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         // Find sharp data
         const sharpMatch = sharpGames.find((sg: any) => {
-          const hn = normalize(homeTeam), an = normalize(awayTeam);
-          const shn = normalize(sg.homeTeam ?? ""), san = normalize(sg.awayTeam ?? "");
+          const hn = normalizeTeam(homeTeam), an = normalizeTeam(awayTeam);
+          const shn = normalizeTeam(sg.homeTeam ?? ""), san = normalizeTeam(sg.awayTeam ?? "");
           return (hn.includes(shn) || shn.includes(hn)) && (an.includes(san) || san.includes(an));
         });
 
@@ -18715,8 +18719,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         ]);
 
         const sharpMatch = nflSharp.find((sg: any) => {
-          const hn = normalize(homeTeam), an = normalize(awayTeam);
-          const shn = normalize(sg.homeTeam ?? ""), san = normalize(sg.awayTeam ?? "");
+          const hn = normalizeTeam(homeTeam), an = normalizeTeam(awayTeam);
+          const shn = normalizeTeam(sg.homeTeam ?? ""), san = normalizeTeam(sg.awayTeam ?? "");
           return (hn.includes(shn) || shn.includes(hn)) && (an.includes(san) || san.includes(an));
         });
 
