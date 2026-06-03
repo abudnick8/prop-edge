@@ -18546,12 +18546,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { console.error("[NFL Pick] save error:", e.message); }
   }
 
-  // Helper: get NFL week label (e.g. "2026-W23")
+  // Helper: get NFL week label based on actual 2026 NFL season dates
+  // Week 1 = Sept 9, 2026 (Wednesday kickoff). Each week runs Wed–Tue.
   function getNflWeekLabel(): string {
-    const d = new Date();
-    const startOfYear = new Date(d.getFullYear(), 0, 1);
-    const weekNum = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-    return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+    const NFL_SEASON_START = new Date("2026-09-09T00:00:00Z"); // Week 1 Wednesday
+    const NFL_SEASON_WEEKS = 18;
+    const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const msSinceStart = now.getTime() - NFL_SEASON_START.getTime();
+    if (msSinceStart < 0) {
+      // Before season — return Week 1 label so we look ahead to upcoming games
+      return "2026-W01";
+    }
+    const weekNum = Math.floor(msSinceStart / MS_PER_WEEK) + 1;
+    if (weekNum > NFL_SEASON_WEEKS) {
+      // Offseason / playoffs handled separately
+      return "2026-Playoffs";
+    }
+    return `2026-W${String(weekNum).padStart(2, "0")}`;
   }
 
   app.get("/api/nfl/pick-of-week", async (req: Request, res: Response) => {
@@ -18698,7 +18710,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       if (oddsKey) {
         try {
           const r = await fetch(
-            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=7`,
+            // Before season: look 120 days ahead. During season: 10 days covers the full NFL week window.
+            (() => {
+              const NFL_START = new Date("2026-09-09T00:00:00Z");
+              const daysAhead = Date.now() < NFL_START.getTime() ? 120 : 10;
+              return `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=${daysAhead}`;
+            })(),
             { signal: AbortSignal.timeout(10000) }
           );
           if (r.ok) nflGames = await r.json();

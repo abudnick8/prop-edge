@@ -7,7 +7,7 @@ import {
   Trophy, Target, Flame, TrendingUp, Activity, Brain,
   ChevronRight, Zap, Star, Clock, CheckCircle, XCircle,
   BarChart2, Layers, Radio, DollarSign, Eye, ArrowUp,
-  ArrowDown, Minus, Calendar, Shield, Percent, BookOpen,
+  ArrowDown, Minus, Calendar, Shield, Percent, BookOpen, ChevronDown,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +76,20 @@ const fmtTime = (s?: string) => {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
 const fmtOdds = (n?: number) => (!n ? "" : n > 0 ? `+${n}` : `${n}`);
+
+// ─── Season helpers ───────────────────────────────────────────────────────────
+// MLB regular season: approx Apr 1 – Sep 30 (show anytime during the year in practice
+// since the pick engine already handles off-days gracefully)
+const MLB_IS_ACTIVE = (() => {
+  const now = new Date();
+  const m = now.getMonth() + 1; // 1-indexed
+  return m >= 4 && m <= 10; // April–October
+})();
+
+// NFL 2026 season: Sept 9, 2026 through ~Jan 10, 2027
+const NFL_SEASON_START = new Date("2026-09-09T00:00:00Z");
+const NFL_SEASON_END   = new Date("2027-01-11T00:00:00Z");
+const NFL_IS_ACTIVE = Date.now() >= NFL_SEASON_START.getTime() && Date.now() < NFL_SEASON_END.getTime();
 
 // ─── Sport Tabs ───────────────────────────────────────────────────────────────
 
@@ -337,6 +351,22 @@ export default function Dashboard() {
     queryFn: () => apiRequest("GET", "/api/live-scores").then(r => r.json()),
     refetchInterval: 20000,
   });
+  // ── Pick of Day (MLB) — always fetch when MLB season is active
+  const { data: mlbPick, isLoading: mlbPickL } = useQuery<any>({
+    queryKey: ["/api/mlb/pick-of-day"],
+    queryFn: () => apiRequest("GET", "/api/mlb/pick-of-day").then(r => r.json()),
+    enabled: MLB_IS_ACTIVE,
+    staleTime: 20 * 60 * 1000,
+    refetchInterval: (q) => (q.state.data?.locked ? false : 20 * 60 * 1000),
+  });
+  // ── Pick of Week (NFL) — only fetch when NFL season is active
+  const { data: nflPick, isLoading: nflPickL } = useQuery<any>({
+    queryKey: ["/api/nfl/pick-of-week"],
+    queryFn: () => apiRequest("GET", "/api/nfl/pick-of-week").then(r => r.json()),
+    enabled: NFL_IS_ACTIVE,
+    staleTime: 60 * 60 * 1000,
+    refetchInterval: (q) => (q.state.data?.locked ? false : 60 * 60 * 1000),
+  });
 
   // ── Normalize helpers ─────────────────────────────────────────────────────────
   function normGame(g: any) {
@@ -482,7 +512,7 @@ export default function Dashboard() {
   const filteredTodaySport  = todayGames.filter(g => matchSport(g.sport));
 
   // BTS is MLB-only — always show regardless of sport tab
-  const topBts = btsPicks.slice(0, 5);
+  const topBts = btsPicks.slice(0, 3); // show top 3 on dashboard
 
   // Stats
   const sportsActive = stats ? Object.keys(stats.bySport).filter(k => stats.bySport[k] > 0) : [];
@@ -586,6 +616,109 @@ export default function Dashboard() {
       <div style={{ padding: "12px 16px 0", display: "flex", flexDirection: "column", gap: 10 }}>
 
         {/* ── Top Plays ──────────────────────────────────────────────────────── */}
+        {/* ── Daily Picks (MLB active, NFL when in season) ──────────────────── */}
+        {MLB_IS_ACTIVE && (
+          <Card style={{ padding: 0, overflow: "hidden", borderColor: "rgba(212,168,67,0.30)" }}>
+            <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(212,168,67,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Trophy size={14} style={{ color: "#D4A843" }} />
+                </div>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>&#9918; MLB Pick of the Day</span>
+                  {mlbPick?.locked && <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(19,35,58,0.07)", color: "#64748b", borderRadius: 8, padding: "1px 7px", marginLeft: 6 }}>&#128274; Locked</span>}
+                </div>
+              </div>
+              <Link href="/bts">
+                <span style={{ fontSize: 11, color: "#D4A843", fontWeight: 700, cursor: "pointer" }}>BTS Tab &rarr;</span>
+              </Link>
+            </div>
+            <div style={{ padding: "10px 14px" }}>
+              {mlbPickL ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><Skel /><Skel /></div>
+              ) : !mlbPick?.primary ? (
+                <EmptyState text="No MLB pick generated yet today" />
+              ) : (
+                <Link href="/bts">
+                  <div style={{ background: "rgba(212,168,67,0.05)", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(212,168,67,0.20)", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: "#D4A843", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Pick of the Day</div>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#131A24" }}>{mlbPick.primary.pickTeam}</div>
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                          {mlbPick.primary.awayTeam} @ {mlbPick.primary.homeTeam}
+                          {mlbPick.primary.pickML != null ? ` · ML ${mlbPick.primary.pickML > 0 ? "+" : ""}{mlbPick.primary.pickML}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, marginLeft: 10 }}>
+                        <span style={{ fontSize: 22, fontWeight: 900, color: mlbPick.primary.grade === "A" ? "#16a34a" : mlbPick.primary.grade?.startsWith("B") ? "#2563eb" : "#D4A843" }}>{mlbPick.primary.grade}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b" }}>{mlbPick.primary.score}/100</span>
+                      </div>
+                      <ChevronRight size={14} style={{ color: "#94a3b8", marginLeft: 8, flexShrink: 0 }} />
+                    </div>
+                    {mlbPick.primary.reasons?.length > 0 && (
+                      <div style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4 }}>
+                        {mlbPick.primary.reasons[0]}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {NFL_IS_ACTIVE && (
+          <Card style={{ padding: 0, overflow: "hidden", borderColor: "rgba(19,35,58,0.20)" }}>
+            <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(19,35,58,0.07)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Trophy size={14} style={{ color: "#13233A" }} />
+                </div>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>&#127944; NFL Pick of the Week</span>
+                  {nflPick?.locked && <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(19,35,58,0.07)", color: "#64748b", borderRadius: 8, padding: "1px 7px", marginLeft: 6 }}>&#128274; Locked</span>}
+                </div>
+              </div>
+              <Link href="/end-zone">
+                <span style={{ fontSize: 11, color: "#13233A", fontWeight: 700, cursor: "pointer" }}>End Zone &rarr;</span>
+              </Link>
+            </div>
+            <div style={{ padding: "10px 14px" }}>
+              {nflPickL ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><Skel /><Skel /></div>
+              ) : !nflPick?.primary ? (
+                <EmptyState text="NFL pick not yet generated for this week" />
+              ) : (
+                <Link href="/end-zone">
+                  <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(19,35,58,0.12)", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: "#13233A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Pick of the Week</div>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#131A24" }}>{nflPick.primary.pickTeam}</div>
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                          {nflPick.primary.awayTeam} @ {nflPick.primary.homeTeam}
+                          {nflPick.primary.pickML != null ? ` · ML ${nflPick.primary.pickML > 0 ? "+" : ""}{nflPick.primary.pickML}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, marginLeft: 10 }}>
+                        <span style={{ fontSize: 22, fontWeight: 900, color: nflPick.primary.grade === "A" ? "#16a34a" : nflPick.primary.grade?.startsWith("B") ? "#2563eb" : "#D4A843" }}>{nflPick.primary.grade}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b" }}>{nflPick.primary.score}/100</span>
+                      </div>
+                      <ChevronRight size={14} style={{ color: "#94a3b8", marginLeft: 8, flexShrink: 0 }} />
+                    </div>
+                    {nflPick.primary.reasons?.length > 0 && (
+                      <div style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4 }}>
+                        {nflPick.primary.reasons[0]}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )}
+            </div>
+          </Card>
+        )}
+
         <Card>
           <SectionHeader icon={<Flame size={14} style={{ color: "#ef4444" }} />} label="Top Plays Today" linkTo="/conviction" badge={filteredTopPlays.length} />
           <SportTabs active={activeSport} onChange={setActiveSport} />
@@ -732,10 +865,10 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              {btsPicks.length > 5 && (
+              {btsPicks.length > 3 && (
                 <Link href="/bts">
                   <p style={{ fontSize: 11, color: "#D4A843", fontWeight: 700, textAlign: "center", margin: "4px 0 0", cursor: "pointer" }}>
-                    +{btsPicks.length - 5} more picks →
+                    +{btsPicks.length - 3} more picks →
                   </p>
                 </Link>
               )}

@@ -901,6 +901,7 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
 }) {
   const [open, setOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const which = isRunnerUp ? "runnerUp" : "primary";
   const mlFmt = (ml: number | null | undefined) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
   const spreadFmt = (s: number | null | undefined) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
@@ -948,31 +949,10 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
     </div>
   );
 
-  const handleShare = () => {
-    const lines = [
-      `🏟️ Clubhouse IQ — MLB Pick of the Day`,
-      `${label}: ${pick.pickTeam}`,
-      `Grade: ${pick.grade} · Confidence: ${pick.score}/100`,
-      pick.pickML ? `ML: ${mlFmt(pick.pickML)}` : "",
-      pick.spread != null ? `Spread: ${spreadFmt(pick.spread)}` : "",
-      "",
-      pickStarter.name ? `Starter: ${pickStarter.name} (${pickStarter.era ?? "—"} ERA, ${pickStarter.wins ?? 0}-${pickStarter.losses ?? 0})` : "",
-      oppStarter.name ? `vs ${oppStarter.name} (${oppStarter.era ?? "—"} ERA)` : "",
-      "",
-      sharp.sharpDirection ? `Sharp money: ${sharp.sharpDirection} (${sharp.sharpScore ?? 0}/100)` : "",
-      "",
-      "Top Reasons:",
-      ...(pick.reasons ?? []).slice(0, 5).map((r: string) => `• ${r}`),
-      "",
-      weather && !weather.isDome ? `🌤️ ${weather.description} · ${weather.tempF}°F · Wind ${weather.windMph}mph ${weather.windDir}` : "",
-      "",
-      "📱 Clubhouse IQ",
-    ].filter(Boolean).join("\n");
-    if (navigator.share) { navigator.share({ title: "MLB Pick of the Day", text: lines }); }
-    else { navigator.clipboard?.writeText(lines); setSharing(true); setTimeout(() => setSharing(false), 2000); }
-  };
+  const handleShare = () => setShowShareModal(true);
 
   return (
+    <>
     <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
       background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
 
@@ -1190,7 +1170,7 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <button onClick={handleShare} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
               padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(19,35,58,0.15)", background: "transparent", cursor: "pointer", color: "#131A24" }}>
-              <Share2 size={12} /> {sharing ? "Copied!" : "Share Pick"}
+              <Share2 size={12} /> Share Pick
             </button>
             {isOwner && (!pick.result || pick.result === "pending") && onGrade && (
               <>
@@ -1206,6 +1186,188 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
         </div>
       )}
     </div>
+
+    {/* ── Share Modal ── */}
+    {showShareModal && (
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(10,16,28,0.82)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        overflowY: "auto", padding: "20px 16px 40px",
+      }} onClick={e => { if (e.target === e.currentTarget) setShowShareModal(false); }}>
+        <div style={{
+          background: "#F6F1E7", borderRadius: 22, width: "100%", maxWidth: 420,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.40)", overflow: "hidden",
+        }}>
+          {/* Modal Header */}
+          <div style={{ background: NAVY_COLOR, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(212,168,67,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {isRunnerUp ? <Star size={17} style={{ color: GOLD_COLOR }} /> : <Trophy size={17} style={{ color: GOLD_COLOR }} />}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(246,241,231,0.55)", textTransform: "uppercase", letterSpacing: 1 }}>Clubhouse IQ · MLB</div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: "#F6F1E7" }}>{label}</div>
+              </div>
+            </div>
+            <button onClick={() => setShowShareModal(false)} style={{ background: "rgba(246,241,231,0.12)", border: "none", borderRadius: 10, width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <X size={14} style={{ color: "#F6F1E7" }} />
+            </button>
+          </div>
+
+          {/* Pick hero */}
+          <div style={{ background: "rgba(212,168,67,0.10)", borderBottom: "1px solid rgba(19,35,58,0.10)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: NAVY_COLOR, lineHeight: 1.1 }}>{pick.pickTeam}</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{pick.awayTeam} @ {pick.homeTeam}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+                {pick.pickML != null && <span style={{ fontSize: 11, fontWeight: 700, background: NAVY_COLOR, color: GOLD_COLOR, borderRadius: 8, padding: "3px 9px" }}>ML {mlFmt(pick.pickML)}</span>}
+                {pick.spread != null && <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(19,35,58,0.08)", color: NAVY_COLOR, borderRadius: 8, padding: "3px 9px" }}>Spread {spreadFmt(pick.spread)}</span>}
+                {pick.total != null && <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(19,35,58,0.08)", color: NAVY_COLOR, borderRadius: 8, padding: "3px 9px" }}>O/U {pick.total}</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div style={{ fontSize: 36, fontWeight: 900, color: gradeColor(pick.grade), lineHeight: 1 }}>{pick.grade}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{pick.score}/100</div>
+            </div>
+          </div>
+
+          {/* Analysis sections */}
+          <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+            {/* Sharp Money */}
+            {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>💰 Sharp Money</div>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : NAVY_COLOR }}>{sharp.sharpDirection ?? "Neutral"}</span>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : sharp.sharpScore >= 40 ? GOLD_COLOR : "#dc2626" }}>{sharp.sharpScore ?? 0}/100</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 10px" }}>
+                    {sharp.publicBetPct != null && <span style={{ fontSize: 10, color: MUTED }}>Public Bets: <b>{Math.round(sharp.publicBetPct)}%</b></span>}
+                    {sharp.publicMoneyPct != null && <span style={{ fontSize: 10, color: MUTED }}>Public Money: <b>{Math.round(sharp.publicMoneyPct)}%</b></span>}
+                    {sharp.rlmDetected && <span style={{ fontSize: 10, fontWeight: 700, color: "#dc2626" }}>⚡ RLM: {sharp.rlmSide}</span>}
+                  </div>
+                  {sharp.sharpSignals && sharp.sharpSignals.length > 0 && (
+                    <div style={{ marginTop: 7, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {sharp.sharpSignals.map((sig: string, i: number) => (
+                        <span key={i} style={{ fontSize: 9, fontWeight: 700, background: "rgba(19,35,58,0.07)", borderRadius: 6, padding: "2px 7px", color: NAVY_COLOR }}>{sig}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Starter Duel */}
+            {(pickStarter.name || oppStarter.name) && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>⚾ Starter Duel</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[{ team: pick.pickTeam, s: pickStarter, isPick: true }, { team: pick.oppTeam ?? "", s: oppStarter, isPick: false }].map(({ team: t, s, isPick }) => (
+                    <div key={t} style={{ background: isPick ? "rgba(212,168,67,0.10)" : "rgba(19,35,58,0.04)",
+                      borderRadius: 10, padding: "10px 11px", border: isPick ? `1px solid rgba(212,168,67,0.25)` : "1px solid transparent" }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: isPick ? GOLD_COLOR : "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>{isPick ? "▶ Pick" : "Opp"}</div>
+                      <div style={{ fontSize: 12, fontWeight: 900, color: NAVY_COLOR, marginBottom: 5 }}>{s.name ?? "TBD"}</div>
+                      <div style={{ fontSize: 10, color: MUTED }}>ERA: <b>{s.era ?? "—"}</b> · WHIP: <b>{s.whip ?? "—"}</b></div>
+                      <div style={{ fontSize: 10, color: MUTED }}>W-L: <b>{s.wins ?? 0}-{s.losses ?? 0}</b>{s.k9 ? ` · K/9: ${s.k9}` : ""}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Offense vs Pitching */}
+            {(pickBatting.avg || oppPitching.era) && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>📊 Offense vs Pitching</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div style={{ background: "rgba(212,168,67,0.08)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(212,168,67,0.18)" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>{pick.pickTeam} Offense</div>
+                    {pickBatting.avg && <div style={{ fontSize: 10, color: MUTED }}>AVG: <b style={{ color: NAVY_COLOR }}>.{String(Math.round(parseFloat(pickBatting.avg) * 1000)).padStart(3, "0")}</b></div>}
+                    {pickBatting.ops && <div style={{ fontSize: 10, color: MUTED }}>OPS: <b style={{ color: NAVY_COLOR }}>{pickBatting.ops}</b></div>}
+                    {pickBatting.runsPerGame && <div style={{ fontSize: 10, color: MUTED }}>R/G: <b style={{ color: NAVY_COLOR }}>{pickBatting.runsPerGame}</b></div>}
+                  </div>
+                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "9px 11px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>Opp Pitching</div>
+                    {oppPitching.era && <div style={{ fontSize: 10, color: MUTED }}>ERA: <b style={{ color: NAVY_COLOR }}>{oppPitching.era}</b></div>}
+                    {oppPitching.whip && <div style={{ fontSize: 10, color: MUTED }}>WHIP: <b style={{ color: NAVY_COLOR }}>{oppPitching.whip}</b></div>}
+                    {oppPitching.k9 && <div style={{ fontSize: 10, color: MUTED }}>K/9: <b style={{ color: NAVY_COLOR }}>{oppPitching.k9}</b></div>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Home/Road */}
+            {homeField.pickSide && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>🏟️ Home / Road</div>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(19,35,58,0.08)", display: "flex", gap: 16 }}>
+                  <div><div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase" }}>Playing</div><div style={{ fontSize: 13, fontWeight: 900, color: NAVY_COLOR }}>{homeField.pickSide}</div></div>
+                  {homeField.homeRecord && <div><div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase" }}>Home</div><div style={{ fontSize: 13, fontWeight: 800, color: "#16a34a" }}>{homeField.homeRecord}</div></div>}
+                  {homeField.roadRecord && <div><div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase" }}>Road</div><div style={{ fontSize: 13, fontWeight: 800, color: NAVY_COLOR }}>{homeField.roadRecord}</div></div>}
+                </div>
+              </div>
+            )}
+
+            {/* Weather */}
+            {weather && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>🌤️ Weather</div>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  {weather.isDome ? (
+                    <span style={{ fontSize: 11, color: MUTED }}>🏟️ Dome — weather neutral</span>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: MUTED }}>🌡️ <b>{weather.tempF}°F</b></span>
+                        <span style={{ fontSize: 11, color: MUTED }}>💨 <b>{weather.windMph}mph {weather.windDir}</b></span>
+                        {weather.precipInches > 0 && <span style={{ fontSize: 11, color: MUTED }}>🌧️ <b>{weather.precipInches}"</b></span>}
+                      </div>
+                      <div style={{ fontSize: 10, color: MUTED }}>{weather.description}</div>
+                      {(weather.windOut || weather.windIn) && (
+                        <div style={{ marginTop: 5, fontSize: 10, fontWeight: 700, color: weather.windOut ? "#dc2626" : "#16a34a" }}>
+                          {weather.windOut ? "⚡ Wind blowing OUT — hitter-friendly" : "🛡️ Wind blowing IN — pitcher-friendly"}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Edge Summary */}
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>📋 Edge Summary</div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "10px 13px", border: "1px solid rgba(19,35,58,0.08)", display: "flex", flexDirection: "column", gap: 5 }}>
+                {(pick.reasons ?? []).map((reason: string, i: number) => {
+                  const isNeg = /caution|injury|heavy wind|rain|snow|extreme cold|public heavily/i.test(reason);
+                  return (
+                    <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                      <div style={{ width: 16, height: 16, borderRadius: 8,
+                        background: isNeg ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                        <span style={{ fontSize: 9, fontWeight: 900, color: isNeg ? "#dc2626" : "#16a34a" }}>{isNeg ? "✕" : "✓"}</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.4 }}>{reason}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 6, borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+              <span style={{ fontSize: 10, color: "#6b7280" }}>clubhouseiqbets@gmail.com</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: GOLD_COLOR }}>Clubhouse IQ ⚾</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
