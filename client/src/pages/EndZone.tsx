@@ -1881,12 +1881,18 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
   const a = pick.analysis ?? {};
   const sharp = a.sharp ?? {};
   const offDef = a.offenseDefense ?? {};
-  const pickStats = offDef.pickStats ?? {};
-  const oppStats = offDef.oppStats ?? {};
+  const pickStats = a.pickStats ?? offDef.pickStats ?? {};
+  const oppStats = a.oppStats ?? offDef.oppStats ?? {};
   const injuries = a.injuries ?? {};
   const weather = a.weather ?? null;
   const homeField = a.homeField ?? {};
   const market = a.market ?? {};
+  const keyPlayers = a.keyPlayers ?? {};
+  const defMatchup = a.defMatchup ?? {};
+  const pickKeyPlayers = keyPlayers.pick ?? null;
+  const oppKeyPlayers = keyPlayers.opp ?? null;
+  const pickDefRanks = defMatchup.pickDef ?? null; // pick team's defense strength
+  const oppDefRanks  = defMatchup.oppDef ?? null;  // opponent's defense (faces pick team's offense)
 
   const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
     <div style={{ marginBottom: 12 }}>
@@ -1905,6 +1911,21 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
       <span style={{ fontSize: 12, fontWeight: 800, color: highlight ? GOLD_COLOR : NAVY }}>{value}</span>
     </div>
   );
+
+  const defRankColor = (rank: number | undefined) => {
+    if (!rank) return MUTED;
+    if (rank <= 8)  return "#16a34a"; // green = tough defense
+    if (rank <= 16) return "#65a30d";
+    if (rank <= 24) return GOLD_COLOR;
+    return "#dc2626"; // red = weak defense
+  };
+  const defRankLabel = (rank: number | undefined) => {
+    if (!rank) return "—";
+    if (rank <= 8)  return `#${rank} (Elite)`;
+    if (rank <= 16) return `#${rank} (Good)`;
+    if (rank <= 24) return `#${rank} (Below Avg)`;
+    return `#${rank} (Weak)`;
+  };
 
   const TileRow = ({ items }: { items: Array<{ label: string; value: string; color?: string } | null> }) => (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2001,32 +2022,129 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
             </Section>
           )}
 
-          {/* Offense vs Defense */}
-          {(pickStats.ppg || oppStats.ppgAllowed) && (
+          {/* Offense vs Defense — Full both-team view */}
+          {(pickStats.ppg || oppStats.ppg || pickKeyPlayers || oppKeyPlayers) && (
             <Section title="Offense vs Defense" icon="🏈">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{ background: "rgba(212,168,67,0.06)", borderRadius: 10, padding: "10px 11px",
-                  border: "1px solid rgba(212,168,67,0.15)" }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
-                    {pick.pickTeam} Offense
-                  </div>
-                  {pickStats.ppg && <StatRow label="Points/G" value={pickStats.ppg} />}
-                  {pickStats.passingYpg && <StatRow label="Pass Yds/G" value={pickStats.passingYpg} />}
-                  {pickStats.rushingYpg && <StatRow label="Rush Yds/G" value={pickStats.rushingYpg} />}
-                  {pickStats.completionPct != null && <StatRow label="Comp%" value={`${pickStats.completionPct}%`} />}
-                  {pickStats.turnovers != null && <StatRow label="Turnovers" value={`${pickStats.turnovers}`} />}
+              {/* Pick Team Offense */}
+              <div style={{ background: "rgba(212,168,67,0.06)", borderRadius: 10, padding: "10px 11px",
+                border: "1px solid rgba(212,168,67,0.15)", marginBottom: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase",
+                  letterSpacing: 0.8, marginBottom: 6 }}>{pick.pickTeam} Offense</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
+                  {pickStats.ppg != null && <StatRow label="Points/G" value={String(pickStats.ppg)} highlight />}
+                  {pickStats.passingYpg != null && <StatRow label="Pass Yds/G" value={String(pickStats.passingYpg)} />}
+                  {pickStats.rushingYpg != null && <StatRow label="Rush Yds/G" value={String(pickStats.rushingYpg)} />}
+                  {pickStats.passCompPct && <StatRow label="Comp%" value={pickStats.passCompPct} />}
+                  {pickStats.qbRating && pickStats.qbRating !== "—" && <StatRow label="QB Rating" value={pickStats.qbRating} />}
+                  {pickStats.turnoversGiven != null && <StatRow label="Turnovers" value={String(pickStats.turnoversGiven)} />}
+                  {pickStats.sacksFor != null && <StatRow label="Sacks (D)" value={String(pickStats.sacksFor)} />}
+                  {pickStats.interceptions != null && <StatRow label="INTs (D)" value={String(pickStats.interceptions)} />}
                 </div>
-                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 11px" }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
-                    Opp Defense
+                {/* Key offensive players */}
+                {pickKeyPlayers && (
+                  <div style={{ borderTop: "1px solid rgba(212,168,67,0.20)", paddingTop: 6, marginTop: 4 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Key Players</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
+                      {pickKeyPlayers.qb  && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>QB</b> {pickKeyPlayers.qb}</span>}
+                      {pickKeyPlayers.rb  && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>RB</b> {pickKeyPlayers.rb}</span>}
+                      {pickKeyPlayers.wr1 && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>WR1</b> {pickKeyPlayers.wr1}</span>}
+                      {pickKeyPlayers.wr2 && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>WR2</b> {pickKeyPlayers.wr2}</span>}
+                      {pickKeyPlayers.te  && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>TE</b> {pickKeyPlayers.te}</span>}
+                    </div>
                   </div>
-                  {oppStats.ppgAllowed && <StatRow label="PPG Allowed" value={oppStats.ppgAllowed} />}
-                  {oppStats.yardsAllowedPerGame && <StatRow label="Yds Allowed/G" value={oppStats.yardsAllowedPerGame} />}
-                  {oppStats.sacks != null && <StatRow label="Sacks" value={`${oppStats.sacks}`} />}
-                  {oppStats.interceptions != null && <StatRow label="INTs" value={`${oppStats.interceptions}`} />}
-                  {oppStats.turnovers != null && <StatRow label="Opp TO" value={`${oppStats.turnovers}`} />}
-                </div>
+                )}
               </div>
+
+              {/* Opponent Offense */}
+              <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 11px",
+                border: "1px solid rgba(19,35,58,0.08)", marginBottom: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase",
+                  letterSpacing: 0.8, marginBottom: 6 }}>{pick.oppTeam} Offense</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
+                  {oppStats.ppg != null && <StatRow label="Points/G" value={String(oppStats.ppg)} />}
+                  {oppStats.passingYpg != null && <StatRow label="Pass Yds/G" value={String(oppStats.passingYpg)} />}
+                  {oppStats.rushingYpg != null && <StatRow label="Rush Yds/G" value={String(oppStats.rushingYpg)} />}
+                  {oppStats.passCompPct && <StatRow label="Comp%" value={oppStats.passCompPct} />}
+                  {oppStats.qbRating && oppStats.qbRating !== "—" && <StatRow label="QB Rating" value={oppStats.qbRating} />}
+                  {oppStats.turnoversGiven != null && <StatRow label="Turnovers" value={String(oppStats.turnoversGiven)} />}
+                  {oppStats.sacksFor != null && <StatRow label="Sacks (D)" value={String(oppStats.sacksFor)} />}
+                  {oppStats.interceptions != null && <StatRow label="INTs (D)" value={String(oppStats.interceptions)} />}
+                </div>
+                {oppKeyPlayers && (
+                  <div style={{ borderTop: "1px solid rgba(19,35,58,0.10)", paddingTop: 6, marginTop: 4 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Key Players</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
+                      {oppKeyPlayers.qb  && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>QB</b> {oppKeyPlayers.qb}</span>}
+                      {oppKeyPlayers.rb  && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>RB</b> {oppKeyPlayers.rb}</span>}
+                      {oppKeyPlayers.wr1 && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>WR1</b> {oppKeyPlayers.wr1}</span>}
+                      {oppKeyPlayers.wr2 && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>WR2</b> {oppKeyPlayers.wr2}</span>}
+                      {oppKeyPlayers.te  && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>TE</b> {oppKeyPlayers.te}</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Positional Matchup Grid — Pick Offense vs Opp Defense */}
+              {oppDefRanks && (
+                <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "10px 11px",
+                  border: "1px solid rgba(19,35,58,0.07)" }}>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase",
+                    letterSpacing: 0.8, marginBottom: 7 }}>{pick.oppTeam} Defense vs {pick.pickTeam} Offense</div>
+                  {(["QB", "RB", "WR", "TE"] as const).map(pos => {
+                    const rank: number | undefined = (oppDefRanks as any)[pos];
+                    const ypg: number | undefined = (oppDefRanks as any)[`${pos}_ypg`];
+                    const why: string = (oppDefRanks as any)[`${pos}_why`] ?? "";
+                    const keys: string[] = (oppDefRanks as any)[`${pos}_keys`] ?? [];
+                    return (
+                      <div key={pos} style={{ paddingBottom: 7, marginBottom: 7,
+                        borderBottom: pos !== "TE" ? "1px solid rgba(19,35,58,0.06)" : "none" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 10, fontWeight: 900, background: "rgba(19,35,58,0.07)",
+                              borderRadius: 5, padding: "2px 6px", color: NAVY }}>{pos}</span>
+                            {keys.length > 0 && (
+                              <span style={{ fontSize: 9, color: MUTED }}>{keys.slice(0, 2).join(", ")}</span>
+                            )}
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: defRankColor(rank) }}>{defRankLabel(rank)}</div>
+                            {ypg != null && <div style={{ fontSize: 9, color: MUTED }}>{ypg} YPG allowed</div>}
+                          </div>
+                        </div>
+                        {why && <div style={{ fontSize: 9, color: MUTED, lineHeight: 1.4, fontStyle: "italic" }}>{why}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Pick Defense vs Opp Offense */}
+              {pickDefRanks && (
+                <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "10px 11px",
+                  border: "1px solid rgba(19,35,58,0.07)", marginTop: 8 }}>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase",
+                    letterSpacing: 0.8, marginBottom: 7 }}>{pick.pickTeam} Defense vs {pick.oppTeam} Offense</div>
+                  {(["QB", "RB", "WR", "TE"] as const).map(pos => {
+                    const rank: number | undefined = (pickDefRanks as any)[pos];
+                    const ypg: number | undefined = (pickDefRanks as any)[`${pos}_ypg`];
+                    const keys: string[] = (pickDefRanks as any)[`${pos}_keys`] ?? [];
+                    return (
+                      <div key={pos} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                        paddingBottom: 4, marginBottom: 4, borderBottom: pos !== "TE" ? "1px solid rgba(19,35,58,0.05)" : "none" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 900, background: "rgba(19,35,58,0.07)",
+                            borderRadius: 5, padding: "2px 6px", color: NAVY }}>{pos}</span>
+                          {keys.length > 0 && <span style={{ fontSize: 9, color: MUTED }}>{keys.slice(0, 2).join(", ")}</span>}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: defRankColor(rank) }}>{defRankLabel(rank)}</div>
+                          {ypg != null && <div style={{ fontSize: 9, color: MUTED }}>{ypg} YPG allowed</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Section>
           )}
 
@@ -2232,26 +2350,102 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
               </div>
             )}
 
-            {/* Offense vs Defense */}
-            {(pickStats.ppg || oppStats.ppg) && (
+            {/* Offense vs Defense — Pick Team */}
+            {(pickStats.ppg || oppStats.ppg || pickKeyPlayers || oppKeyPlayers) && (
               <div>
-                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>🏈 Offense vs Defense</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <div style={{ background: "rgba(212,168,67,0.08)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(212,168,67,0.18)" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>{pick.pickTeam}</div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>🏈 Team Breakdown</div>
+
+                {/* Pick Team Offense */}
+                <div style={{ background: "rgba(212,168,67,0.08)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(212,168,67,0.18)", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>{pick.pickTeam} Offense</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 10px", marginBottom: pickKeyPlayers ? 6 : 0 }}>
                     {pickStats.ppg != null && <div style={{ fontSize: 10, color: MUTED }}>PPG: <b style={{ color: NAVY_COLOR }}>{pickStats.ppg}</b></div>}
-                    {pickStats.passingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Pass Yds/G: <b style={{ color: NAVY_COLOR }}>{pickStats.passingYpg}</b></div>}
-                    {pickStats.rushingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Rush Yds/G: <b style={{ color: NAVY_COLOR }}>{pickStats.rushingYpg}</b></div>}
-                    {pickStats.qbRating && <div style={{ fontSize: 10, color: MUTED }}>QB Rating: <b style={{ color: NAVY_COLOR }}>{pickStats.qbRating}</b></div>}
+                    {pickStats.passingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Pass/G: <b style={{ color: NAVY_COLOR }}>{pickStats.passingYpg}</b></div>}
+                    {pickStats.rushingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Rush/G: <b style={{ color: NAVY_COLOR }}>{pickStats.rushingYpg}</b></div>}
+                    {pickStats.qbRating && pickStats.qbRating !== "—" && <div style={{ fontSize: 10, color: MUTED }}>QB Rtg: <b style={{ color: NAVY_COLOR }}>{pickStats.qbRating}</b></div>}
+                    {pickStats.turnoversGiven != null && <div style={{ fontSize: 10, color: MUTED }}>TOs: <b style={{ color: NAVY_COLOR }}>{pickStats.turnoversGiven}</b></div>}
+                    {pickStats.passCompPct && <div style={{ fontSize: 10, color: MUTED }}>Comp%: <b style={{ color: NAVY_COLOR }}>{pickStats.passCompPct}</b></div>}
                   </div>
-                  <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "9px 11px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>Opp Defense</div>
-                    {oppStats.defPpgAllowed != null && <div style={{ fontSize: 10, color: MUTED }}>PPG Allowed: <b style={{ color: NAVY_COLOR }}>{oppStats.defPpgAllowed}</b></div>}
-                    {oppStats.defPassYpgAllowed != null && <div style={{ fontSize: 10, color: MUTED }}>Pass Yds Allowed: <b style={{ color: NAVY_COLOR }}>{oppStats.defPassYpgAllowed}</b></div>}
-                    {oppStats.sacksFor != null && <div style={{ fontSize: 10, color: MUTED }}>Sacks: <b style={{ color: NAVY_COLOR }}>{oppStats.sacksFor}</b></div>}
-                    {oppStats.interceptions != null && <div style={{ fontSize: 10, color: MUTED }}>INTs: <b style={{ color: NAVY_COLOR }}>{oppStats.interceptions}</b></div>}
-                  </div>
+                  {pickKeyPlayers && (
+                    <div style={{ borderTop: "1px solid rgba(212,168,67,0.25)", paddingTop: 5, marginTop: 4, display: "flex", flexWrap: "wrap", gap: "2px 8px" }}>
+                      {pickKeyPlayers.qb  && <span style={{ fontSize: 9, color: NAVY_COLOR }}><b style={{ color: GOLD_COLOR }}>QB</b> {pickKeyPlayers.qb}</span>}
+                      {pickKeyPlayers.rb  && <span style={{ fontSize: 9, color: NAVY_COLOR }}><b style={{ color: GOLD_COLOR }}>RB</b> {pickKeyPlayers.rb}</span>}
+                      {pickKeyPlayers.wr1 && <span style={{ fontSize: 9, color: NAVY_COLOR }}><b style={{ color: GOLD_COLOR }}>WR1</b> {pickKeyPlayers.wr1}</span>}
+                      {pickKeyPlayers.wr2 && <span style={{ fontSize: 9, color: NAVY_COLOR }}><b style={{ color: GOLD_COLOR }}>WR2</b> {pickKeyPlayers.wr2}</span>}
+                      {pickKeyPlayers.te  && <span style={{ fontSize: 9, color: NAVY_COLOR }}><b style={{ color: GOLD_COLOR }}>TE</b> {pickKeyPlayers.te}</span>}
+                    </div>
+                  )}
                 </div>
+
+                {/* Opponent Offense */}
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(19,35,58,0.07)", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>{pick.oppTeam} Offense</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 10px", marginBottom: oppKeyPlayers ? 6 : 0 }}>
+                    {oppStats.ppg != null && <div style={{ fontSize: 10, color: MUTED }}>PPG: <b style={{ color: NAVY_COLOR }}>{oppStats.ppg}</b></div>}
+                    {oppStats.passingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Pass/G: <b style={{ color: NAVY_COLOR }}>{oppStats.passingYpg}</b></div>}
+                    {oppStats.rushingYpg != null && <div style={{ fontSize: 10, color: MUTED }}>Rush/G: <b style={{ color: NAVY_COLOR }}>{oppStats.rushingYpg}</b></div>}
+                    {oppStats.qbRating && oppStats.qbRating !== "—" && <div style={{ fontSize: 10, color: MUTED }}>QB Rtg: <b style={{ color: NAVY_COLOR }}>{oppStats.qbRating}</b></div>}
+                    {oppStats.turnoversGiven != null && <div style={{ fontSize: 10, color: MUTED }}>TOs: <b style={{ color: NAVY_COLOR }}>{oppStats.turnoversGiven}</b></div>}
+                    {oppStats.passCompPct && <div style={{ fontSize: 10, color: MUTED }}>Comp%: <b style={{ color: NAVY_COLOR }}>{oppStats.passCompPct}</b></div>}
+                  </div>
+                  {oppKeyPlayers && (
+                    <div style={{ borderTop: "1px solid rgba(19,35,58,0.10)", paddingTop: 5, marginTop: 4, display: "flex", flexWrap: "wrap", gap: "2px 8px" }}>
+                      {oppKeyPlayers.qb  && <span style={{ fontSize: 9, color: MUTED }}><b style={{ color: NAVY_COLOR }}>QB</b> {oppKeyPlayers.qb}</span>}
+                      {oppKeyPlayers.rb  && <span style={{ fontSize: 9, color: MUTED }}><b style={{ color: NAVY_COLOR }}>RB</b> {oppKeyPlayers.rb}</span>}
+                      {oppKeyPlayers.wr1 && <span style={{ fontSize: 9, color: MUTED }}><b style={{ color: NAVY_COLOR }}>WR1</b> {oppKeyPlayers.wr1}</span>}
+                      {oppKeyPlayers.wr2 && <span style={{ fontSize: 9, color: MUTED }}><b style={{ color: NAVY_COLOR }}>WR2</b> {oppKeyPlayers.wr2}</span>}
+                      {oppKeyPlayers.te  && <span style={{ fontSize: 9, color: MUTED }}><b style={{ color: NAVY_COLOR }}>TE</b> {oppKeyPlayers.te}</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* Positional Matchup — Opp Defense vs Pick Offense */}
+                {oppDefRanks && (
+                  <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(19,35,58,0.07)", marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>{pick.oppTeam} Def vs {pick.pickTeam}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 10px" }}>
+                      {(["QB", "RB", "WR", "TE"] as const).map(pos => {
+                        const rank: number | undefined = (oppDefRanks as any)[pos];
+                        const ypg: number | undefined = (oppDefRanks as any)[`${pos}_ypg`];
+                        const color = rank == null ? MUTED : rank <= 8 ? "#16a34a" : rank <= 16 ? "#65a30d" : rank <= 24 ? GOLD_COLOR : "#dc2626";
+                        const lbl = rank == null ? "—" : rank <= 8 ? "Elite" : rank <= 16 ? "Good" : rank <= 24 ? "Below Avg" : "Weak";
+                        return (
+                          <div key={pos} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(19,35,58,0.07)", borderRadius: 4, padding: "1px 5px", color: NAVY_COLOR }}>{pos}</span>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color }}>{lbl}</div>
+                              {ypg != null && <div style={{ fontSize: 8, color: MUTED }}>{ypg} YPG</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pick Defense vs Opp Offense */}
+                {pickDefRanks && (
+                  <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "9px 11px", border: "1px solid rgba(19,35,58,0.07)" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>{pick.pickTeam} Def vs {pick.oppTeam}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 10px" }}>
+                      {(["QB", "RB", "WR", "TE"] as const).map(pos => {
+                        const rank: number | undefined = (pickDefRanks as any)[pos];
+                        const ypg: number | undefined = (pickDefRanks as any)[`${pos}_ypg`];
+                        const color = rank == null ? MUTED : rank <= 8 ? "#16a34a" : rank <= 16 ? "#65a30d" : rank <= 24 ? GOLD_COLOR : "#dc2626";
+                        const lbl = rank == null ? "—" : rank <= 8 ? "Elite" : rank <= 16 ? "Good" : rank <= 24 ? "Below Avg" : "Weak";
+                        return (
+                          <div key={pos} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(19,35,58,0.07)", borderRadius: 4, padding: "1px 5px", color: NAVY_COLOR }}>{pos}</span>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color }}>{lbl}</div>
+                              {ypg != null && <div style={{ fontSize: 8, color: MUTED }}>{ypg} YPG</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

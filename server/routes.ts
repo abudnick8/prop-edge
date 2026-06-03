@@ -18724,11 +18724,158 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const nflSharp = await fetchSharpMoneyBySport("NFL").catch(() => [] as any[]);
 
+      // ── ESPN NFL schedule cross-validation ────────────────────────────────
+      // Fetch the current week's scheduled matchups from ESPN scoreboard to
+      // validate that the Odds API game pairings are real scheduled games.
+      let espnScheduledPairs: Set<string> = new Set();
+      try {
+        const NFL_START_2026 = new Date("2026-09-09T00:00:00Z");
+        const isPreSeason = Date.now() < NFL_START_2026.getTime();
+        // During preseason we look ahead; during season we check scoreboard for this week
+        const sbUrl = isPreSeason
+          ? `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260909-20260915`
+          : `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=50`;
+        const sbR = await fetch(sbUrl, { signal: AbortSignal.timeout(7000) });
+        if (sbR.ok) {
+          const sbData: any = await sbR.json();
+          for (const ev of (sbData?.events ?? [])) {
+            const comps = ev.competitions ?? [ev];
+            for (const comp of comps) {
+              const competitors: any[] = comp.competitors ?? [];
+              const homeC = competitors.find((c: any) => c.homeAway === "home");
+              const awayC = competitors.find((c: any) => c.homeAway === "away");
+              if (homeC && awayC) {
+                // Store both display names and abbreviations as lower-case for fuzzy matching
+                const hNames = [homeC.team?.displayName, homeC.team?.abbreviation, homeC.team?.name].filter(Boolean).map((n: string) => n.toLowerCase());
+                const aNames = [awayC.team?.displayName, awayC.team?.abbreviation, awayC.team?.name].filter(Boolean).map((n: string) => n.toLowerCase());
+                for (const h of hNames) for (const a of aNames) {
+                  espnScheduledPairs.add(`${h}|${a}`);
+                }
+              }
+            }
+          }
+        }
+      } catch { /* non-fatal — skip cross-validation if ESPN down */ }
+
+      // Helper: check if a home/away pair is in the ESPN schedule (or schedule is empty = skip)
+      function isValidMatchup(home: string, away: string): boolean {
+        if (espnScheduledPairs.size === 0) return true; // no schedule data — allow all
+        const h = home.toLowerCase(), a = away.toLowerCase();
+        // Direct match
+        if (espnScheduledPairs.has(`${h}|${a}`)) return true;
+        // Fuzzy: check if any scheduled pair partially matches both teams
+        for (const pair of espnScheduledPairs) {
+          const [ph, pa] = pair.split("|");
+          const hMatch = ph.includes(h) || h.includes(ph) || (h.length >= 4 && ph.includes(h.slice(0, 4))) || (ph.length >= 4 && h.includes(ph.slice(0, 4)));
+          const aMatch = pa.includes(a) || a.includes(pa) || (a.length >= 4 && pa.includes(a.slice(0, 4))) || (pa.length >= 4 && a.includes(pa.slice(0, 4)));
+          if (hMatch && aMatch) return true;
+        }
+        return false;
+      }
+
+      // ── NFL Key Players & Defensive Matchup Ranks ─────────────────────────
+      // Compact defensive matchup ranks per team (rank 1=best defense vs that pos)
+      const NFL_DEF_RANKS: Record<string, { QB: number; RB: number; WR: number; TE: number;
+        QB_ypg: number; RB_ypg: number; WR_ypg: number; TE_ypg: number;
+        QB_why: string; RB_why: string; WR_why: string; TE_why: string;
+        QB_keys: string[]; RB_keys: string[]; WR_keys: string[]; TE_keys: string[];
+      }> = {
+        "ARI": { QB: 28, QB_ypg: 278, QB_why: "Leaky secondary; blitz-heavy scheme creates big-play risk", QB_keys: ["Isaiah Simmons","Marco Wilson"], RB: 24, RB_ypg: 118, RB_why: "Light box counts leave edge running lanes open", RB_keys: ["Dennis Gardeck","Zaven Collins"], WR: 26, WR_ypg: 148, WR_why: "No true shutdown corner; CB2/CB3 exploitable vs speed", WR_keys: ["Byron Murphy","Starling Thomas V"], TE: 22, TE_ypg: 72, TE_why: "Zone over-focuses on WR depth; seam/cross routes open for TEs", TE_keys: ["Zaven Collins"] },
+        "ATL": { QB: 18, QB_ypg: 248, QB_why: "Terrell shuts one side but safety help inconsistent", QB_keys: ["A.J. Terrell","Jessie Bates III"], RB: 14, RB_ypg: 102, RB_why: "Interior DL clogs run lanes; perimeter runs still viable", RB_keys: ["Grady Jarrett","David Onyemata"], WR: 16, WR_ypg: 128, WR_why: "Terrell is lockdown CB1; slot exploitable", WR_keys: ["A.J. Terrell","Clark Phillips III"], TE: 20, TE_ypg: 68, TE_why: "Zone-heavy scheme but LBs struggle in man coverage on move TEs", TE_keys: ["Jessie Bates III","David Onyemata"] },
+        "BAL": { QB: 5, QB_ypg: 198, QB_why: "Elite LB coverage limits checkdowns; Humphrey blankets WR1s", QB_keys: ["Roquan Smith","Marlon Humphrey"], RB: 8, RB_ypg: 88, RB_why: "Madubuike and Broderick Washington stuff A-gaps; RBs sub-3.5 YPC", RB_keys: ["Justin Madubuike","Roquan Smith"], WR: 4, WR_ypg: 172, WR_why: "Hamilton erases crossers; Humphrey CB1. WRs consistently underperform", WR_keys: ["Marlon Humphrey","Kyle Hamilton"], TE: 7, TE_ypg: 48, TE_why: "Hamilton eliminates seam routes single-handedly", TE_keys: ["Kyle Hamilton","Roquan Smith"] },
+        "BUF": { QB: 12, QB_ypg: 232, QB_why: "Above-avg secondary but Milano absence creates variance", QB_keys: ["Matt Milano","Rasul Douglas"], RB: 18, RB_ypg: 108, RB_why: "Solid interior but edge inconsistent; wide-zone RBs find cutback lanes", RB_keys: ["DaQuan Jones","Poona Ford"], WR: 15, WR_ypg: 122, WR_why: "Douglas opportunistic; slot serviceable; deep ball limited by White", WR_keys: ["Rasul Douglas","Tre'Davious White"], TE: 14, TE_ypg: 58, TE_why: "Safety tandem covers seams; LB coverage on in-line TEs is a weak point", TE_keys: ["Micah Hyde","Damar Hamlin"] },
+        "CAR": { QB: 29, QB_ypg: 284, QB_why: "Rebuilding; young secondary gets torched weekly. QBs ~300 YPG vs CAR", QB_keys: ["Jaycee Horn","Jeremy Chinn"], RB: 27, RB_ypg: 128, RB_why: "DT depth issues leave B-gap lanes wide open", RB_keys: ["Derrick Brown","Yetur Gross-Matos"], WR: 30, WR_ypg: 158, WR_why: "Horn is good but rest of CB room porous; WR2/slot post WR1 lines", WR_keys: ["Jaycee Horn","Donte Jackson"], TE: 28, TE_ypg: 88, TE_why: "LB corps struggles in coverage; TEs with move skills have a field day", TE_keys: ["Shaq Thompson","Frankie Luvu"] },
+        "CHI": { QB: 20, QB_ypg: 252, QB_why: "Johnson CB1 solid but interior LB coverage creates checkdowns", QB_keys: ["Tremaine Edmunds","Jaylon Johnson"], RB: 16, RB_ypg: 105, RB_why: "Sweat collapses edge; Dexter improving. Speed backs find space", RB_keys: ["Montez Sweat","Gervon Dexter"], WR: 18, WR_ypg: 134, WR_why: "Johnson handles WR1; slot (Gordon) inconsistent — best target is slot WR", WR_keys: ["Jaylon Johnson","Kyler Gordon"], TE: 17, TE_ypg: 62, TE_why: "Edmunds handles seam but middle zones are soft; RZ TEs get looks", TE_keys: ["Tremaine Edmunds"] },
+        "CIN": { QB: 10, QB_ypg: 228, QB_why: "Hendrickson elite pressure limits QB comfort and pocket time", QB_keys: ["Trey Hendrickson","Sam Hubbard"], RB: 12, RB_ypg: 98, RB_why: "DT rotation holds gaps; pass-catching RBs still see checkdown targets", RB_keys: ["B.J. Hill","Sheldon Rankins"], WR: 11, WR_ypg: 118, WR_why: "Slot (Hilton) elite. WR1 vs Taylor-Britt exploitable; avoid slot", WR_keys: ["Mike Hilton","Cam Taylor-Britt"], TE: 9, TE_ypg: 52, TE_why: "Two-LB shell limits seam access; TEs below-average most weeks", TE_keys: ["Logan Wilson","Germaine Pratt"] },
+        "CLE": { QB: 8, QB_ypg: 214, QB_why: "Garrett best pass rusher in NFL; QBs under constant pressure", QB_keys: ["Myles Garrett","Za'Darius Smith"], RB: 6, RB_ypg: 84, RB_why: "Tomlinson controls A-gaps; Garrett turns corner on outside runs. RBs 3.3 YPC", RB_keys: ["Myles Garrett","Dalvin Tomlinson"], WR: 7, WR_ypg: 108, WR_why: "Ward lockdown CB1 when healthy; Emerson reliable CB2", WR_keys: ["Denzel Ward","Martin Emerson Jr."], TE: 11, TE_ypg: 55, TE_why: "JOK excels vs TEs in space; in-line blocked but move TEs find occasional seams", TE_keys: ["Jeremiah Owusu-Koramoah"] },
+        "DAL": { QB: 14, QB_ypg: 238, QB_why: "Diggs gambles for picks — boom-or-bust vs WR1s. Mid QBs can produce", QB_keys: ["Trevon Diggs","DaRon Bland"], RB: 10, RB_ypg: 95, RB_why: "Parsons disrupts backfield constantly; RBs sub-4.0 YPC vs DAL", RB_keys: ["Micah Parsons","Osa Odighizuwa"], WR: 13, WR_ypg: 120, WR_why: "Diggs high-risk coverage creates variance; WR1s vs Bland are the target", WR_keys: ["Trevon Diggs","DaRon Bland"], TE: 16, TE_ypg: 60, TE_why: "LB coverage middle-tier; TEs with route variety exploit zone gaps on 3rd downs", TE_keys: ["Leighton Vander Esch","Damone Clark"] },
+        "DEN": { QB: 6, QB_ypg: 202, QB_why: "Surtain arguably best CB in football; QBs avoid his side entirely", QB_keys: ["Patrick Surtain II","Nik Bonitto"], RB: 9, RB_ypg: 90, RB_why: "Stout run defense; Williams and Jones seal interior. RBs 3.6 YPC vs DEN", RB_keys: ["Jonah Williams","D.J. Jones"], WR: 5, WR_ypg: 104, WR_why: "Surtain eliminates WR1 production. McMillian handles slot", WR_keys: ["Patrick Surtain II","Ja'Quan McMillian"], TE: 8, TE_ypg: 50, TE_why: "LB coverage above average; TEs held under 50 YPG. RZ TE targets limited", TE_keys: ["Alex Singleton","Josey Jewell"] },
+        "DET": { QB: 22, QB_ypg: 258, QB_why: "Secondary struggles beyond 15 yards; QBs exploit intermediate-deep routes", QB_keys: ["Emmanuel Moseley","Carlton Davis III"], RB: 20, RB_ypg: 112, RB_why: "Good interior DL but edge contain inconsistent; outside zone runs find creases", RB_keys: ["Alim McNeill","Levi Onwuzurike"], WR: 21, WR_ypg: 138, WR_why: "Davis CB1 solid but Branch in slot can be attacked; WR2/slot produce well vs DET", WR_keys: ["Carlton Davis III","Brian Branch"], TE: 19, TE_ypg: 65, TE_why: "LBs have decent range but TEs on crossing routes exploit middle zones", TE_keys: ["Alex Anzalone","Malcolm Rodriguez"] },
+        "GB":  { QB: 16, QB_ypg: 242, QB_why: "Alexander elite when healthy; injury history creates CB2 exposure", QB_keys: ["Jaire Alexander","Quay Walker"], RB: 19, RB_ypg: 110, RB_why: "Clark disruptive but DT depth drops sharply; power runs find creases", RB_keys: ["Kenny Clark","Devonte Wyatt"], WR: 17, WR_ypg: 130, WR_why: "Alexander vs WR1 elite; attack Stokes and slot coverage", WR_keys: ["Jaire Alexander","Eric Stokes"], TE: 15, TE_ypg: 60, TE_why: "LB tandem handles seam adequately; TEs with RZ usage find value", TE_keys: ["Quay Walker","De'Vondre Campbell"] },
+        "HOU": { QB: 11, QB_ypg: 230, QB_why: "Anderson pressure forces quick decisions; Stingley limits WR1 but slot exploitable", QB_keys: ["Will Anderson Jr.","Derek Stingley Jr."], RB: 7, RB_ypg: 86, RB_why: "Anderson blows up inside runs at LOS; stout run front limits all RB types", RB_keys: ["Sheldon Rankins","Will Anderson Jr."], WR: 10, WR_ypg: 116, WR_why: "Stingley lockdown corner; Nelson serviceable. WRs avg 116 YPG vs HOU", WR_keys: ["Derek Stingley Jr.","Steven Nelson"], TE: 12, TE_ypg: 56, TE_why: "Safety depth limits TE over-middle; adequate but not elite TE coverage", TE_keys: ["Eric Murray","Jimmie Ward"] },
+        "IND": { QB: 25, QB_ypg: 268, QB_why: "Aging CB room exposed; Gilmore's coverage range declining", QB_keys: ["Kenny Moore II","Stephon Gilmore"], RB: 22, RB_ypg: 115, RB_why: "Buckner elite but rest of DL creates gap issues; RBs bounce and find edge lanes", RB_keys: ["DeForest Buckner","Grover Stewart"], WR: 24, WR_ypg: 142, WR_why: "CB depth a major concern; WR2s/slot consistently outperform projections vs IND", WR_keys: ["Kenny Moore II","Isaiah Rodgers"], TE: 26, TE_ypg: 80, TE_why: "LB coverage in space is clear weakness; TEs with route-running are prime targets", TE_keys: ["Zaire Franklin","E.J. Speed"] },
+        "JAX": { QB: 27, QB_ypg: 275, QB_why: "Campbell inconsistent; Williams ages poorly. QBs find easy completions vs soft zones", QB_keys: ["Tyson Campbell","Darious Williams"], RB: 25, RB_ypg: 122, RB_why: "Oluokun fills gaps but Walker edge setting poor; outside runs gain yards", RB_keys: ["Foye Oluokun","Travon Walker"], WR: 28, WR_ypg: 152, WR_why: "Williams getting beat regularly; WR1s post top-10 lines vs JAX", WR_keys: ["Tyson Campbell","Darious Williams"], TE: 24, TE_ypg: 78, TE_why: "LB coverage in space leaves seam routes available; TEs with target share routinely score", TE_keys: ["Foyesade Oluokun","Josh Allen (LB)"] },
+        "KC":  { QB: 3, QB_ypg: 192, QB_why: "Jones disrupts every passing concept; McDuffie elite young CB", QB_keys: ["Chris Jones","Trent McDuffie"], RB: 5, RB_ypg: 82, RB_why: "Jones collapses rushing lanes single-handedly; RBs 3.4 YPC vs KC", RB_keys: ["Chris Jones","Nick Bolton"], WR: 2, WR_ypg: 98, WR_why: "Elite CB tandem; opponents' WR1 and WR2 both suppressed. Hardest AFC WR matchup", WR_keys: ["Trent McDuffie","L'Jarius Sneed"], TE: 4, TE_ypg: 44, TE_why: "Bolton and Tranquill above-avg in coverage; TEs sub-45 YPG vs KC", TE_keys: ["Nick Bolton","Drue Tranquill"] },
+        "LAC": { QB: 17, QB_ypg: 245, QB_why: "James elite but Jackson aging; good top-to-bottom not dominant", QB_keys: ["Derwin James","J.C. Jackson"], RB: 15, RB_ypg: 103, RB_why: "Serviceable run D; interior sealed but perimeter contain inconsistent", RB_keys: ["Austin Johnson","Morgan Fox"], WR: 19, WR_ypg: 136, WR_why: "Samuel covers WR1 effectively; Taylor average in slot. WR2 matchups productive", WR_keys: ["Asante Samuel Jr.","Ja'Sir Taylor"], TE: 18, TE_ypg: 63, TE_why: "James patrols middle but zone gaps underneath; TEs find consistent PPR floor", TE_keys: ["Derwin James"] },
+        "LAR": { QB: 21, QB_ypg: 255, QB_why: "Ramsey era over; CB room rebuilding. Intermediate passing finds success", QB_keys: ["Jalen Ramsey","Ahkello Witherspoon"], RB: 17, RB_ypg: 107, RB_why: "Wagner calls run fits well but without Donald interior is patchwork", RB_keys: ["Bobby Wagner","Aaron Donald (ret.)"], WR: 22, WR_ypg: 140, WR_why: "Young CB room exploited by experienced WRs; Kendrick improving but WR1/2 post solid lines", WR_keys: ["Derion Kendrick","Cobie Durant"], TE: 21, TE_ypg: 70, TE_why: "Wagner covers TEs in zone decently; RZ TE targets available but not elite", TE_keys: ["Bobby Wagner","Troy Reeder"] },
+        "LV":  { QB: 30, QB_ypg: 288, QB_why: "One of the worst secondaries; QBs routinely hit 300+ YPG. Dream matchup vs LV", QB_keys: ["Nate Hobbs","Jack Jones"], RB: 28, RB_ypg: 130, RB_why: "Interior DL rotation thin; gaps open quickly. RBs post career games vs LV", RB_keys: ["Adam Butler","Jerry Tillery"], WR: 29, WR_ypg: 155, WR_why: "Jones gets torched in man; WR1/2/3 all post big numbers. Best WR streaming matchup", WR_keys: ["Nate Hobbs","Jack Jones"], TE: 30, TE_ypg: 90, TE_why: "LB coverage in space abysmal; seam routes, crosses, RZ targets all available", TE_keys: ["Divine Deablo","Luke Masterson"] },
+        "MIA": { QB: 15, QB_ypg: 240, QB_why: "Howard still elite but aging; Ramsey injury history concern", QB_keys: ["Jalen Ramsey","Xavien Howard"], RB: 11, RB_ypg: 96, RB_why: "Sieler disruptive interior; outside runs contained by edge discipline", RB_keys: ["Zach Sieler","Christian Wilkins"], WR: 14, WR_ypg: 122, WR_why: "Howard covers WR1; slot (Kohou) exploitable on quick routes and YAC", WR_keys: ["Xavien Howard","Kader Kohou"], TE: 13, TE_ypg: 57, TE_why: "Safety tandem limits TE seam targets; adequate TE coverage but RZ looks available", TE_keys: ["Jevon Holland","DeShon Elliott"] },
+        "MIN": { QB: 9, QB_ypg: 220, QB_why: "Flores' scheme generates pressure without blitzing; Murphy elite run-stuffer/CB1", QB_keys: ["Byron Murphy Jr.","Brian Flores (DC)"], RB: 13, RB_ypg: 100, RB_why: "Edge rush collapses outside runs; receiving backs find targets", RB_keys: ["Jonathan Greenard","Dean Lowry"], WR: 8, WR_ypg: 112, WR_why: "Murphy's physicality disrupts WR releases at line; zone limits big plays", WR_keys: ["Byron Murphy Jr.","Shaquill Griffin"], TE: 10, TE_ypg: 53, TE_why: "Hicks and Pace cover TEs in disciplined zone; seams get bracketed", TE_keys: ["Jordan Hicks","Ivan Pace Jr."] },
+        "NE":  { QB: 4, QB_ypg: 195, QB_why: "Gonzalez next elite Patriot CB; NE scheme limits QB efficiency league-wide", QB_keys: ["Christian Gonzalez","Jonathan Jones"], RB: 3, RB_ypg: 78, RB_why: "Barmore elite interior disruptor; Godchaux seals A-gaps. RBs 3.2 YPC vs NE", RB_keys: ["Christian Barmore","Davon Godchaux"], WR: 6, WR_ypg: 106, WR_why: "NE scheme confuses WR routes; Gonzalez holds WR1s under 60 YPG on average", WR_keys: ["Christian Gonzalez","Jonathan Jones"], TE: 3, TE_ypg: 42, TE_why: "LB tandem specifically coached for TE coverage; lowest TE yards allowed/game in AFC", TE_keys: ["Mack Wilson Sr.","Jahlani Tavai"] },
+        "NO":  { QB: 13, QB_ypg: 236, QB_why: "Lattimore elite when available; injury history concern. Adebo exploitable on deep routes", QB_keys: ["Marshon Lattimore","Paulson Adebo"], RB: 21, RB_ypg: 113, RB_why: "Onyemata/Bresee interior thin; RBs find running room and NO allows 4.1 YPC", RB_keys: ["David Onyemata","Bryan Bresee"], WR: 12, WR_ypg: 119, WR_why: "Lattimore eliminates WR1; Taylor solid CB2. Slot and WR2 are opportunity window vs NO", WR_keys: ["Marshon Lattimore","Alontae Taylor"], TE: 23, TE_ypg: 75, TE_why: "Davis aging; Werner inconsistent. Seam routes exploited more in recent weeks", TE_keys: ["Pete Werner","Demario Davis"] },
+        "NYG": { QB: 26, QB_ypg: 272, QB_why: "Jackson injury history leaves CB2/3 exposed; QBs produce big in 2-minute drill", QB_keys: ["Adoree' Jackson","Cor'Dale Flott"], RB: 32, RB_ypg: 135, RB_why: "Lawrence can't fix everything alone; LBs struggle to fill gaps. RBs avg 4.5 YPC — worst in NFC", RB_keys: ["Kayvon Thibodeaux","Dexter Lawrence"], WR: 27, WR_ypg: 150, WR_why: "Holmes overmatched vs speed WRs; WR2/3 targets routinely reach 80+ yards", WR_keys: ["Adoree' Jackson","Darnay Holmes"], TE: 29, TE_ypg: 86, TE_why: "LB coverage in space major weakness; TEs with receiving roles avg 80+ YPG vs NYG", TE_keys: ["Bobby Okereke","Isaiah Simmons"] },
+        "NYJ": { QB: 2, QB_ypg: 188, QB_why: "Gardner may be best CB in football; Reed elite CB2. QBs forced into checkdowns only", QB_keys: ["Sauce Gardner","D.J. Reed"], RB: 4, RB_ypg: 80, RB_why: "Williams dominates interior; RBs can't find cutback lanes. Sub-3.4 YPC vs NYJ", RB_keys: ["Quinnen Williams","Al Woods"], WR: 3, WR_ypg: 100, WR_why: "Gardner/Reed tandem toughest WR matchup in NFL; even elite WR1s modest lines", WR_keys: ["Sauce Gardner","D.J. Reed"], TE: 2, TE_ypg: 40, TE_why: "Mosley/Williams tandem best LB coverage pair in league; TEs sub-40 YPG", TE_keys: ["C.J. Mosley","Quincy Williams"] },
+        "PHI": { QB: 7, QB_ypg: 210, QB_why: "Elite CB tandem; Slay locks WR1s. Pass rush (Sweat/Reddick) forces quick decisions", QB_keys: ["Darius Slay","James Bradberry"], RB: 2, RB_ypg: 75, RB_why: "Davis and Carter arguably best DT duo in football. RBs 3.1 YPC — 2nd lowest in NFL", RB_keys: ["Jordan Davis","Jalen Carter"], WR: 9, WR_ypg: 114, WR_why: "Slay vs WR1 elite; Bradberry handles WR2. Slot coverage slightly weaker", WR_keys: ["Darius Slay","James Bradberry"], TE: 6, TE_ypg: 46, TE_why: "Dean and Baun provide excellent seam coverage; TEs sub-50 YPG regularly", TE_keys: ["Nakobe Dean","Zack Baun"] },
+        "PIT": { QB: 1, QB_ypg: 182, QB_why: "Watt most disruptive player in football; Fitzpatrick erases deep routes. QBs avg 182 YPG vs PIT", QB_keys: ["T.J. Watt","Minkah Fitzpatrick"], RB: 1, RB_ypg: 72, RB_why: "Heyward and Watt shut down every run concept. RBs 3.0 YPC — lowest in NFL", RB_keys: ["T.J. Watt","Cam Heyward"], WR: 1, WR_ypg: 92, WR_why: "Porter Jr. emerging shutdown corner; Fitzpatrick roams centerfield. Hardest WR matchup in football", WR_keys: ["Joey Porter Jr.","Minkah Fitzpatrick"], TE: 1, TE_ypg: 38, TE_why: "Queen and Holcomb elite coverage LBs; TEs avg 38 YPG vs PIT — lowest in NFL", TE_keys: ["Patrick Queen","Cole Holcomb"] },
+        "SEA": { QB: 23, QB_ypg: 260, QB_why: "Witherspoon physical press CB but Woolen gambles; QBs exploit free-release side", QB_keys: ["Devon Witherspoon","Riq Woolen"], RB: 23, RB_ypg: 116, RB_why: "Williams space eater not gap penetrator; power RBs find room, speed backs hit edges", RB_keys: ["Leonard Williams","Al Woods"], WR: 23, WR_ypg: 143, WR_why: "Woolen gambling style creates variance; WR1s held but WR2s exploit gambles", WR_keys: ["Devon Witherspoon","Riq Woolen"], TE: 25, TE_ypg: 79, TE_why: "LB coverage has declined; seam routes and crossing patterns consistent TE production vs SEA", TE_keys: ["Jerome Baker","Tyrel Dodson"] },
+        "SF":  { QB: 19, QB_ypg: 250, QB_why: "Ward good but SF relies on front-four; when contained secondary is beatable", QB_keys: ["Charvarius Ward","Tashaun Gipson"], RB: 26, RB_ypg: 125, RB_why: "Hargrave departure exposed interior; RBs avg 4.2 YPC vs SF lately", RB_keys: ["Arik Armstead","Javon Hargrave"], WR: 20, WR_ypg: 137, WR_why: "Ward contains WR1; Lenoir in slot solid. WR2 production consistent target vs SF", WR_keys: ["Charvarius Ward","Deommodore Lenoir"], TE: 27, TE_ypg: 82, TE_why: "Both Warner and Greenlaw nursing injuries; TE coverage has dropped sharply", TE_keys: ["Fred Warner","Dre Greenlaw"] },
+        "TB":  { QB: 24, QB_ypg: 262, QB_why: "Winfield elite but Davis ages; QBs find opposite side reliably", QB_keys: ["Carlton Davis","Antoine Winfield Jr."], RB: 29, RB_ypg: 132, RB_why: "Vea can't do it alone; run D team-wide problem. RBs routinely 100+ yards vs TB", RB_keys: ["Vita Vea","Logan Hall"], WR: 25, WR_ypg: 145, WR_why: "McCollum developing but gets exposed by speed; slot also weak. High WR production vs TB", WR_keys: ["Carlton Davis","Zyon McCollum"], TE: 20, TE_ypg: 68, TE_why: "Winfield covers seams; zone underneath leaks to tight ends in red zone", TE_keys: ["Antoine Winfield Jr.","SirVocea Dennis"] },
+        "TEN": { QB: 31, QB_ypg: 292, QB_why: "Worst pass defense in AFC; secondary getting torched weekly. Every QB is a streamer vs TEN", QB_keys: ["L'Jarius Sneed","Theo Jackson"], RB: 31, RB_ypg: 138, RB_why: "Even Simmons can't save run defense alone; RBs avg 4.6 YPC vs TEN", RB_keys: ["Jeffery Simmons","Teair Tart"], WR: 31, WR_ypg: 162, WR_why: "Complete CB room collapse; WR1s, WR2s, WR3s all post big lines vs TEN", WR_keys: ["Sean Murphy-Bunting","Caleb Farley"], TE: 32, TE_ypg: 96, TE_why: "Worst TE defense in NFL; Cunningham/Long can't cover NFL TEs. Prime streaming spot", TE_keys: ["Zach Cunningham","David Long Jr."] },
+        "WAS": { QB: 32, QB_ypg: 295, QB_why: "Forbes still adjusting; Fuller aging out. WAS allows the most QB yards in the league", QB_keys: ["Emmanuel Forbes","Kendall Fuller"], RB: 32, RB_ypg: 142, RB_why: "Payne and Allen good but LB/secondary run-support non-existent. Highest RB YPC allowed", RB_keys: ["Daron Payne","Jonathan Allen"], WR: 32, WR_ypg: 165, WR_why: "Porous coverage at every level; WRs of all types post career-best lines vs WAS", WR_keys: ["Emmanuel Forbes","Danny Johnson"], TE: 20, TE_ypg: 68, TE_why: "Wagner brings surprising TE coverage competence; LBs plug seam routes adequately", TE_keys: ["Cody Barton","Bobby Wagner"] },
+      };
+
+      // ── NFL Key Offensive Players per team (name → role) ──────────────────
+      // Uses NFL_ROSTER_TIERS defined above in the scope; here we build a
+      // simplified lookup from abbreviated team names to full player lists.
+      // NFL_ROSTER_TIERS is already accessible in this scope (defined at line ~15387).
+      function getNflKeyPlayers(teamName: string): { qb: string; rb: string; wr1: string; wr2: string; te: string } | null {
+        // Try to match team name to roster tiers abbreviation
+        const TEAM_NAME_TO_ABBR: Record<string, string> = {
+          "Kansas City Chiefs": "KC", "Buffalo Bills": "BUF", "Baltimore Ravens": "BAL",
+          "San Francisco 49ers": "SF", "Dallas Cowboys": "DAL", "Philadelphia Eagles": "PHI",
+          "Detroit Lions": "DET", "Miami Dolphins": "MIA", "Cincinnati Bengals": "CIN",
+          "Houston Texans": "HOU", "Los Angeles Chargers": "LAC", "New York Jets": "NYJ",
+          "Jacksonville Jaguars": "JAX", "Tennessee Titans": "TEN", "Indianapolis Colts": "IND",
+          "Cleveland Browns": "CLE", "Pittsburgh Steelers": "PIT", "Denver Broncos": "DEN",
+          "Las Vegas Raiders": "LV", "Los Angeles Rams": "LAR", "Seattle Seahawks": "SEA",
+          "Arizona Cardinals": "ARI", "New Orleans Saints": "NO", "Atlanta Falcons": "ATL",
+          "Carolina Panthers": "CAR", "Tampa Bay Buccaneers": "TB", "Minnesota Vikings": "MIN",
+          "Green Bay Packers": "GB", "Chicago Bears": "CHI", "Washington Commanders": "WAS",
+          "New York Giants": "NYG", "New England Patriots": "NE",
+        };
+        const abbr = TEAM_NAME_TO_ABBR[teamName] ??
+          Object.entries(TEAM_NAME_TO_ABBR).find(([k]) => teamName.includes(k.split(" ").pop()!))?.at(1) as string | undefined ??
+          null;
+        if (!abbr) return null;
+        const t = NFL_ROSTER_TIERS[abbr];
+        if (!t) return null;
+        return { qb: t.qb, rb: t.rb1, wr1: t.wr1, wr2: t.wr2 ?? "", te: t.te1 };
+      }
+
+      // Helper to get defensive matchup rank for a team (look up by team display name)
+      function getNflDefRanks(teamName: string) {
+        const TEAM_NAME_TO_ABBR: Record<string, string> = {
+          "Kansas City Chiefs": "KC", "Buffalo Bills": "BUF", "Baltimore Ravens": "BAL",
+          "San Francisco 49ers": "SF", "Dallas Cowboys": "DAL", "Philadelphia Eagles": "PHI",
+          "Detroit Lions": "DET", "Miami Dolphins": "MIA", "Cincinnati Bengals": "CIN",
+          "Houston Texans": "HOU", "Los Angeles Chargers": "LAC", "New York Jets": "NYJ",
+          "Jacksonville Jaguars": "JAX", "Tennessee Titans": "TEN", "Indianapolis Colts": "IND",
+          "Cleveland Browns": "CLE", "Pittsburgh Steelers": "PIT", "Denver Broncos": "DEN",
+          "Las Vegas Raiders": "LV", "Los Angeles Rams": "LAR", "Seattle Seahawks": "SEA",
+          "Arizona Cardinals": "ARI", "New Orleans Saints": "NO", "Atlanta Falcons": "ATL",
+          "Carolina Panthers": "CAR", "Tampa Bay Buccaneers": "TB", "Minnesota Vikings": "MIN",
+          "Green Bay Packers": "GB", "Chicago Bears": "CHI", "Washington Commanders": "WAS",
+          "New York Giants": "NYG", "New England Patriots": "NE",
+        };
+        const abbr = TEAM_NAME_TO_ABBR[teamName] ??
+          Object.entries(TEAM_NAME_TO_ABBR).find(([k]) => teamName.includes(k.split(" ").pop()!))?.at(1) as string | undefined ??
+          null;
+        if (!abbr) return null;
+        return NFL_DEF_RANKS[abbr] ?? null;
+      }
+
       const scoredNfl: any[] = [];
 
       for (const game of nflGames) {
         const homeTeam = game.home_team ?? "";
         const awayTeam = game.away_team ?? "";
+
+        // Cross-validate: skip games whose matchup doesn't appear in the ESPN schedule
+        if (!isValidMatchup(homeTeam, awayTeam)) {
+          console.log(`[NFL Pick] Skipping unverified matchup: ${homeTeam} vs ${awayTeam}`);
+          continue;
+        }
+
         let spreadHome: number | null = null, total: number | null = null;
         let mlHome: number | null = null, mlAway: number | null = null;
 
@@ -18765,6 +18912,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           pickId ? fetchNflTeamStats(pickId, pickTeam) : Promise.resolve(null),
           oppId  ? fetchNflTeamStats(oppId,  oppTeam)  : Promise.resolve(null),
         ]);
+
+        // Key offensive players for both teams
+        const pickKeyPlayers = getNflKeyPlayers(pickTeam);
+        const oppKeyPlayers  = getNflKeyPlayers(oppTeam);
+        // Defensive matchup ranks (opponent's defense vs pick team's offensive positions)
+        const pickDefRanks = getNflDefRanks(pickTeam); // pick team's defense strength
+        const oppDefRanks  = getNflDefRanks(oppTeam);  // opponent's defense strength (faces pick team offense)
 
         const sharpMatch = nflSharp.find((sg: any) => {
           const hn = normalizeTeam(homeTeam), an = normalizeTeam(awayTeam);
@@ -18841,6 +18995,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         // 3. OFFENSE vs DEFENSE MATCHUP
         analysis.offenseDefense = { pickStats, oppStats };
+        analysis.keyPlayers = { pick: pickKeyPlayers, opp: oppKeyPlayers };
+        analysis.defMatchup = { pickDef: pickDefRanks, oppDef: oppDefRanks };
+
         if (pickStats && oppStats) {
           // Scoring offense vs defense
           const ppgAdv = pickStats.ppg - oppStats.ppg; // positive = pick team scores more
@@ -18865,6 +19022,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           // Win percentage
           if (pickStats.winPct >= 0.600) { score += 5; reasons.push(`${pickTeam} elite record: ${Math.round(pickStats.winPct * 100)}% win rate`); }
           else if (pickStats.winPct <= 0.380) { score -= 5; reasons.push(`${pickTeam} poor record: ${Math.round(pickStats.winPct * 100)}% win rate`); }
+        }
+
+        // 3b. POSITIONAL MATCHUP ANALYSIS (pick team offense vs opp defense)
+        if (oppDefRanks) {
+          // QB matchup: how good is the opponent's defense vs QB?
+          if (oppDefRanks.QB <= 8) {
+            score -= 4;
+            reasons.push(`${pickTeam} QB faces elite pass defense (Rank ${oppDefRanks.QB} vs QB, ${oppDefRanks.QB_ypg} YPG allowed) — ${oppDefRanks.QB_why}`);
+          } else if (oppDefRanks.QB >= 25) {
+            score += 5;
+            reasons.push(`${pickTeam} QB faces vulnerable pass defense (Rank ${oppDefRanks.QB} vs QB, ${oppDefRanks.QB_ypg} YPG allowed) — ${oppDefRanks.QB_why}`);
+          }
+          // WR matchup
+          if (oppDefRanks.WR <= 6) {
+            score -= 3;
+            reasons.push(`${oppTeam} elite CB coverage (Rank ${oppDefRanks.WR} vs WR) — ${pickKeyPlayers?.wr1 ? pickKeyPlayers.wr1 + " will be tested" : "WRs will face tough coverage"}`);
+          } else if (oppDefRanks.WR >= 24) {
+            score += 4;
+            reasons.push(`${pickTeam} WRs face weak secondary (Rank ${oppDefRanks.WR} vs WR, ${oppDefRanks.WR_ypg} YPG allowed) — favorable receiving matchup`);
+          }
+          // RB matchup
+          if (oppDefRanks.RB <= 5) {
+            score -= 2;
+            reasons.push(`${oppTeam} stout run defense (Rank ${oppDefRanks.RB} vs RB) — ${pickKeyPlayers?.rb ? pickKeyPlayers.rb + " faces a tough matchup" : "rushing game may struggle"}`);
+          } else if (oppDefRanks.RB >= 26) {
+            score += 3;
+            reasons.push(`${pickTeam} RB faces porous run defense (Rank ${oppDefRanks.RB} vs RB) — ${pickKeyPlayers?.rb ? pickKeyPlayers.rb + " should have a big day" : "ground game should thrive"}`);
+          }
         }
 
         // 4. HOME FIELD
@@ -18931,7 +19116,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
           score, grade, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
           commenceTime: game.commence_time ?? null, injuryNote,
-          analysis: { ...analysis, pickStats, oppStats, pickInjuries, oppInjuries },
+          analysis: {
+            ...analysis,
+            pickStats, oppStats, pickInjuries, oppInjuries,
+            keyPlayers: analysis.keyPlayers,
+            defMatchup: analysis.defMatchup,
+          },
         });
       }
 
