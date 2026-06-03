@@ -7244,52 +7244,180 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // ── MLB city map for RotoGrinders / NFLWeather lookup ───────────────────────
-  const TEAM_CITY: Record<string, string> = {
-    // MLB
-    "Yankees": "New York", "Mets": "New York", "Red Sox": "Boston", "Blue Jays": "Toronto",
-    "Rays": "Tampa", "Orioles": "Baltimore", "White Sox": "Chicago", "Cubs": "Chicago",
-    "Indians": "Cleveland", "Guardians": "Cleveland", "Tigers": "Detroit", "Royals": "Kansas City",
-    "Twins": "Minneapolis", "Astros": "Houston", "Athletics": "Oakland", "Angels": "Anaheim",
-    "Mariners": "Seattle", "Rangers": "Arlington", "Dodgers": "Los Angeles", "Giants": "San Francisco",
-    "Padres": "San Diego", "Rockies": "Denver", "Diamondbacks": "Phoenix", "Braves": "Atlanta",
-    "Marlins": "Miami", "Phillies": "Philadelphia", "Nationals": "Washington", "Mets": "New York",
-    "Reds": "Cincinnati", "Brewers": "Milwaukee", "Cardinals": "St. Louis", "Pirates": "Pittsburgh",
-    // NFL
-    "Bears": "Chicago", "Lions": "Detroit", "Packers": "Green Bay", "Vikings": "Minneapolis",
-    "Falcons": "Atlanta", "Panthers": "Charlotte", "Saints": "New Orleans", "Buccaneers": "Tampa",
-    "Cardinals": "Phoenix", "Rams": "Los Angeles", "49ers": "San Francisco", "Seahawks": "Seattle",
-    "Cowboys": "Dallas", "Giants": "New York", "Eagles": "Philadelphia", "Commanders": "Washington",
-    "Browns": "Cleveland", "Steelers": "Pittsburgh", "Ravens": "Baltimore", "Bengals": "Cincinnati",
-    "Texans": "Houston", "Colts": "Indianapolis", "Titans": "Nashville", "Jaguars": "Jacksonville",
-    "Chiefs": "Kansas City", "Raiders": "Las Vegas", "Chargers": "Los Angeles", "Broncos": "Denver",
-    "Bills": "Buffalo", "Dolphins": "Miami", "Patriots": "Boston", "Jets": "New York",
+  // ─────────────────────────────────────────────────────────────────────────
+  // STADIUM COORDINATES + DOME FLAGS
+  // Source: exact GPS coordinates for each stadium. Open-Meteo uses lat/lon
+  // directly — no geocoding needed, no city-name ambiguity.
+  // isDome = true for fully enclosed OR retractable-roof (closed by default).
+  // ─────────────────────────────────────────────────────────────────────────
+  interface StadiumInfo { lat: number; lon: number; isDome: boolean; name: string; orientation?: number /* degrees: CF bearing from home plate */ }
+
+  const STADIUM_COORDS: Record<string, StadiumInfo> = {
+    // ── MLB ──────────────────────────────────────────────────────────────
+    // AL East
+    "Yankees":      { lat: 40.8296,  lon: -73.9262, isDome: false, name: "Yankee Stadium",         orientation: 20 },
+    "Mets":         { lat: 40.7571,  lon: -73.8458, isDome: false, name: "Citi Field",              orientation: 15 },
+    "Red Sox":      { lat: 42.3467,  lon: -71.0972, isDome: false, name: "Fenway Park",             orientation: 60 },
+    "Blue Jays":    { lat: 43.6414,  lon: -79.3894, isDome: true,  name: "Rogers Centre" },
+    "Rays":         { lat: 27.7683,  lon: -82.6534, isDome: true,  name: "Tropicana Field" },
+    "Orioles":      { lat: 39.2838,  lon: -76.6218, isDome: false, name: "Oriole Park",             orientation: 5 },
+    // AL Central
+    "White Sox":    { lat: 41.8299,  lon: -87.6338, isDome: false, name: "Guaranteed Rate Field",   orientation: 5 },
+    "Cubs":         { lat: 41.9484,  lon: -87.6553, isDome: false, name: "Wrigley Field",            orientation: 90 },
+    "Guardians":    { lat: 41.4954,  lon: -81.6854, isDome: false, name: "Progressive Field",        orientation: 45 },
+    "Indians":      { lat: 41.4954,  lon: -81.6854, isDome: false, name: "Progressive Field",        orientation: 45 },
+    "Tigers":       { lat: 42.3390,  lon: -83.0485, isDome: false, name: "Comerica Park",            orientation: 5 },
+    "Royals":       { lat: 39.0517,  lon: -94.4803, isDome: false, name: "Kauffman Stadium",         orientation: 50 },
+    "Twins":        { lat: 44.9817,  lon: -93.2778, isDome: false, name: "Target Field",             orientation: 60 },
+    // AL West
+    "Astros":       { lat: 29.7573,  lon: -95.3555, isDome: true,  name: "Minute Maid Park" },
+    "Athletics":    { lat: 37.7516,  lon: -122.2005,isDome: false, name: "Oakland Coliseum",         orientation: 5 },
+    "Angels":       { lat: 33.8003,  lon: -117.8827,isDome: false, name: "Angel Stadium",            orientation: 20 },
+    "Mariners":     { lat: 47.5914,  lon: -122.3325,isDome: true,  name: "T-Mobile Park" },
+    "Rangers":      { lat: 32.7473,  lon: -97.0831, isDome: true,  name: "Globe Life Field" },
+    // NL East
+    "Braves":       { lat: 33.8908,  lon: -84.4678, isDome: false, name: "Truist Park",              orientation: 10 },
+    "Marlins":      { lat: 25.7781,  lon: -80.2197, isDome: true,  name: "loanDepot park" },
+    "Phillies":     { lat: 39.9061,  lon: -75.1665, isDome: false, name: "Citizens Bank Park",       orientation: 5 },
+    "Nationals":    { lat: 38.8730,  lon: -77.0074, isDome: false, name: "Nationals Park",           orientation: 5 },
+    // NL Central
+    "Reds":         { lat: 39.0979,  lon: -84.5082, isDome: false, name: "Great American Ball Park", orientation: 350 },
+    "Brewers":      { lat: 43.0280,  lon: -87.9712, isDome: true,  name: "American Family Field" },
+    "Cardinals":    { lat: 38.6226,  lon: -90.1928, isDome: false, name: "Busch Stadium",            orientation: 10 },
+    "Pirates":      { lat: 40.4469,  lon: -80.0057, isDome: false, name: "PNC Park",                 orientation: 5 },
+    // NL West
+    "Dodgers":      { lat: 34.0739,  lon: -118.2400,isDome: false, name: "Dodger Stadium",           orientation: 355 },
+    "Giants":       { lat: 37.7786,  lon: -122.3893,isDome: false, name: "Oracle Park",              orientation: 60 },
+    "Padres":       { lat: 32.7073,  lon: -117.1570,isDome: false, name: "Petco Park",               orientation: 10 },
+    "Rockies":      { lat: 39.7559,  lon: -104.9942,isDome: false, name: "Coors Field",              orientation: 345 },
+    "Diamondbacks": { lat: 33.4453,  lon: -112.0667,isDome: true,  name: "Chase Field" },
+
+    // ── NFL ──────────────────────────────────────────────────────────────
+    // AFC East
+    "Bills":        { lat: 42.7738,  lon: -78.7870, isDome: false, name: "Highmark Stadium",         orientation: 0 },
+    "Dolphins":     { lat: 25.9580,  lon: -80.2389, isDome: false, name: "Hard Rock Stadium",        orientation: 0 },
+    "Patriots":     { lat: 42.0909,  lon: -71.2643, isDome: false, name: "Gillette Stadium",          orientation: 0 },
+    "Jets":         { lat: 40.8135,  lon: -74.0745, isDome: false, name: "MetLife Stadium",           orientation: 0 },
+    // AFC North
+    "Ravens":       { lat: 39.2780,  lon: -76.6227, isDome: false, name: "M&T Bank Stadium",         orientation: 0 },
+    "Bengals":      { lat: 39.0954,  lon: -84.5160, isDome: false, name: "Paycor Stadium",            orientation: 0 },
+    "Browns":       { lat: 41.5061,  lon: -81.6995, isDome: false, name: "Huntington Bank Field",     orientation: 0 },
+    "Steelers":     { lat: 40.4468,  lon: -80.0158, isDome: false, name: "Acrisure Stadium",          orientation: 0 },
+    // AFC South
+    "Texans":       { lat: 29.6847,  lon: -95.4107, isDome: true,  name: "NRG Stadium" },
+    "Colts":        { lat: 39.7601,  lon: -86.1638, isDome: true,  name: "Lucas Oil Stadium" },
+    "Jaguars":      { lat: 30.3239,  lon: -81.6374, isDome: false, name: "EverBank Stadium",          orientation: 0 },
+    "Titans":       { lat: 36.1665,  lon: -86.7713, isDome: false, name: "Nissan Stadium",            orientation: 0 },
+    // AFC West
+    "Chiefs":       { lat: 39.0489,  lon: -94.4839, isDome: false, name: "GEHA Field",                orientation: 0 },
+    "Raiders":      { lat: 36.0909,  lon: -115.1833,isDome: true,  name: "Allegiant Stadium" },
+    "Chargers":     { lat: 33.9535,  lon: -118.3392,isDome: true,  name: "SoFi Stadium" },
+    "Broncos":      { lat: 39.7439,  lon: -105.0201,isDome: false, name: "Empower Field",             orientation: 0 },
+    // NFC East
+    "Cowboys":      { lat: 32.7473,  lon: -97.0931, isDome: true,  name: "AT&T Stadium" },
+    "Giants":       { lat: 40.8135,  lon: -74.0745, isDome: false, name: "MetLife Stadium",           orientation: 0 },
+    "Eagles":       { lat: 39.9008,  lon: -75.1675, isDome: false, name: "Lincoln Financial Field",   orientation: 0 },
+    "Commanders":   { lat: 38.9079,  lon: -76.8644, isDome: false, name: "Northwest Stadium",         orientation: 0 },
+    // NFC North
+    "Bears":        { lat: 41.8623,  lon: -87.6167, isDome: false, name: "Soldier Field",             orientation: 0 },
+    "Lions":        { lat: 42.3400,  lon: -83.0456, isDome: true,  name: "Ford Field" },
+    "Packers":      { lat: 44.5013,  lon: -88.0622, isDome: false, name: "Lambeau Field",             orientation: 0 },
+    "Vikings":      { lat: 44.9737,  lon: -93.2575, isDome: true,  name: "U.S. Bank Stadium" },
+    // NFC South
+    "Falcons":      { lat: 33.7554,  lon: -84.4010, isDome: true,  name: "Mercedes-Benz Stadium" },
+    "Panthers":     { lat: 35.2258,  lon: -80.8528, isDome: false, name: "Bank of America Stadium",   orientation: 0 },
+    "Saints":       { lat: 29.9511,  lon: -90.0812, isDome: true,  name: "Caesars Superdome" },
+    "Buccaneers":   { lat: 27.9759,  lon: -82.5033, isDome: false, name: "Raymond James Stadium",     orientation: 0 },
+    // NFC West
+    "Cardinals":    { lat: 33.5276,  lon: -112.2626,isDome: true,  name: "State Farm Stadium" },
+    "Rams":         { lat: 33.9535,  lon: -118.3392,isDome: true,  name: "SoFi Stadium" },
+    "49ers":        { lat: 37.4033,  lon: -121.9694,isDome: false, name: "Levi's Stadium",            orientation: 0 },
+    "Seahawks":     { lat: 47.5952,  lon: -122.3316,isDome: false, name: "Lumen Field",               orientation: 0 },
   };
 
-  function getCityFromTeam(teamName: string): string {
-    for (const [team, city] of Object.entries(TEAM_CITY)) {
-      if (teamName.includes(team)) return city;
+  // Lookup stadium by full team name string (handles "Kansas City Chiefs" etc.)
+  function getStadium(teamName: string): StadiumInfo | null {
+    for (const [key, info] of Object.entries(STADIUM_COORDS)) {
+      if (teamName.includes(key)) return info;
     }
-    // Fallback: strip last word (team nickname) to get city
+    return null;
+  }
+
+  // Legacy: keep getCityFromTeam for any remaining callers that need a city string
+  function getCityFromTeam(teamName: string): string {
+    const s = getStadium(teamName);
+    if (s) return s.name.split(" ")[0]; // first word of stadium name as city proxy
     const words = teamName.trim().split(/\s+/);
     return words.slice(0, -1).join(" ") || teamName;
   }
 
-  // ── Dome/retractable roof stadiums — weather has zero impact ───────────
+  // ── WMO weather code → human description ─────────────────────────────────
+  function wmoDescription(code: number): string {
+    if (code === 0)  return "Clear Sky";
+    if (code <= 2)   return "Partly Cloudy";
+    if (code === 3)  return "Overcast";
+    if (code <= 49)  return "Fog";
+    if (code <= 55)  return "Drizzle";
+    if (code <= 67)  return "Rain";
+    if (code <= 77)  return "Snow";
+    if (code <= 82)  return "Rain Showers";
+    if (code <= 86)  return "Snow Showers";
+    if (code <= 99)  return "Thunderstorm";
+    return "Unknown";
+  }
+
+  // ── Wind direction: degrees → compass + outfield analysis ───────────────
+  // Returns 16-point compass + whether wind is blowing toward/away from CF
+  // CF orientation is stored per stadium (degrees from home plate to CF).
+  // Wind blows FROM the direction reported. Wind "out to CF" means wind is
+  // blowing in the direction OF CF (i.e., bearing within ±45° of CF bearing).
+  function windAnalysis(windDeg: number, stadiumOrientation: number | undefined): { compass: string; windOut: boolean; windIn: boolean } {
+    const COMPASS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    const idx = Math.round(windDeg / 22.5) % 16;
+    const compass = COMPASS[idx];
+
+    if (stadiumOrientation === undefined) {
+      // Fallback to generic S→CF assumption (most parks face roughly NE from home plate)
+      const generic = new Set(["N","NNE","NE","ENE","NNW","NW"]);
+      const genericIn = new Set(["S","SSE","SE","SSW","SW"]);
+      return { compass, windOut: generic.has(compass), windIn: genericIn.has(compass) };
+    }
+    // Wind is measured as "coming FROM" bearing — to find direction it GOES, add 180°
+    const windToBearing = (windDeg + 180) % 360;
+    const diff = Math.abs(windToBearing - stadiumOrientation);
+    const angleDiff = Math.min(diff, 360 - diff);
+    return {
+      compass,
+      windOut: angleDiff <= 45,  // wind blowing toward CF
+      windIn:  angleDiff >= 135, // wind blowing away from CF (into batter)
+    };
+  }
+
+  // ── Dome/retractable roof — check by team name directly ──────────────────
+  // This is more reliable than checking venueName (which is often not passed)
+  function isDomeTeam(teamName: string): boolean {
+    const s = getStadium(teamName);
+    return s?.isDome ?? false;
+  }
+
+  // ── Open-Meteo weather fetch ──────────────────────────────────────────────
+  // Uses exact stadium GPS coordinates. No API key. No datacenter IP blocks.
+  // Returns current conditions (15-min intervals) via their free forecast API.
+  const weatherCache = new Map<string, { data: WeatherData; ts: number }>();
+  const WEATHER_TTL = 20 * 60 * 1000; // 20 min
+
+  // Keep OUT_DIRS / IN_DIRS for any legacy callers that reference them
+  const OUT_DIRS = new Set(["N","NNE","NE","ENE","NNW","NW"]);
+  const IN_DIRS  = new Set(["S","SSE","SE","SSW","SW"]);
+
+  // Legacy DOME_VENUES set — kept for backwards compat with venueName checks
   const DOME_VENUES: Set<string> = new Set([
-    // MLB fully enclosed / retractable (closed default)
     "Tropicana Field","Minute Maid Park","Globe Life Field","American Family Field",
     "Rogers Centre","loanDepot park","Chase Field","T-Mobile Park",
-    // NFL
     "Lucas Oil Stadium","Ford Field","Mercedes-Benz Stadium","State Farm Stadium",
     "Allegiant Stadium","SoFi Stadium","AT&T Stadium","NRG Stadium",
     "U.S. Bank Stadium","Caesars Superdome",
   ]);
-
-  // Outfield wind direction lookup: compass bearing → is wind blowing OUT to CF?
-  // "Out to CF" = wind bearing within ±45° of 0° (North compass = toward CF in most parks)
-  // Simplified: out directions = N, NNE, NNW, NE, NW (blowing toward outfield)
-  const OUT_DIRS = new Set(["N","NNE","NNW","NE","NW","NEN","NWN"]);
-  const IN_DIRS  = new Set(["S","SSE","SSW","SE","SW","SES","SWS"]);
 
   // Structured weather type — used everywhere in the app
   interface WeatherData {
@@ -7310,10 +7438,6 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     impactTier:    "major" | "moderate" | "minor" | "neutral";
     source:        string;
   }
-
-  // In-memory weather cache keyed by "TEAM:SPORT:DATE"
-  const weatherCache = new Map<string, { data: WeatherData; ts: number }>();
-  const WEATHER_TTL = 30 * 60 * 1000; // 30 min
 
   function computeWeatherImpact(w: Omit<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier">): Pick<WeatherData, "hitterImpact" | "scoringImpact" | "impactLabel" | "impactTier"> {
     if (w.isDome) {
@@ -7366,70 +7490,59 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
   async function fetchStructuredWeather(homeTeam: string, sport: string, venueName?: string): Promise<WeatherData | null> {
     // ── Dome check first ──────────────────────────────────────────────
-    const isDome = !!(venueName && DOME_VENUES.has(venueName))
-                || (sport !== "MLB" && sport !== "NFL" && sport !== "CFB");
-    if (isDome) {
+    const stadium = getStadium(homeTeam);
+    const domeByVenue = !!(venueName && DOME_VENUES.has(venueName));
+    const domeByTeam  = isDomeTeam(homeTeam);
+    const domeByStadium = stadium?.isDome === true;
+    const nonOutdoorSport = sport !== "MLB" && sport !== "NFL" && sport !== "CFB";
+    if (domeByVenue || domeByTeam || domeByStadium || nonOutdoorSport) {
       const base = { tempF:72, windMph:0, windDir:"N", windOut:false, windIn:false,
-                     humidity:50, precipInches:0, cloudPct:0, description:"Dome",
+                     humidity:50, precipInches:0, cloudPct:0, description:"Dome / Indoor",
                      isDome:true, source:"dome" };
       return { ...base, ...computeWeatherImpact(base) };
     }
 
-    const city = getCityFromTeam(homeTeam);
     const today = new Date().toISOString().slice(0, 10);
     const cacheKey = `${homeTeam}:${sport}:${today}`;
     const cached = weatherCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < WEATHER_TTL) return cached.data;
 
-    // ── wttr.in JSON API — structured, reliable, free ────────────────
-    try {
-      const encoded = encodeURIComponent(city);
-      const { data } = await axios.get(`https://wttr.in/${encoded}?format=j1`, {
-        timeout: 8000,
-        headers: { "User-Agent": "curl/7.64.1" },
-      });
-      const cur = data?.current_condition?.[0];
-      if (!cur) throw new Error("no current_condition");
+    // ── Open-Meteo — free, no API key, stadium GPS coordinates ───────
+    if (stadium?.lat && stadium?.lon) {
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${stadium.lat}&longitude=${stadium.lon}` +
+          `&current=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,relative_humidity_2m,weather_code` +
+          `&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch&forecast_days=1`;
+        const { data } = await axios.get(url, { timeout: 8000 });
+        const cur = data?.current;
+        if (!cur) throw new Error("no current block");
 
-      const tempF       = parseInt(cur.temp_F        ?? "70",  10);
-      const windMph     = parseInt(cur.windspeedMiles ?? "0",   10);
-      const windDir     = (cur.winddir16Point ?? "N") as string;
-      const humidity    = parseInt(cur.humidity       ?? "50",  10);
-      const precipInches= parseFloat(cur.precipInches ?? "0");
-      const cloudPct    = parseInt(cur.cloudcover     ?? "0",   10);
-      const description = cur.weatherDesc?.[0]?.value ?? "Clear";
-      const windOut     = OUT_DIRS.has(windDir);
-      const windIn      = IN_DIRS.has(windDir);
+        const tempF        = Math.round(cur.temperature_2m   ?? 70);
+        const windMph      = Math.round(cur.wind_speed_10m   ?? 0);
+        const windDeg      = cur.wind_direction_10m           ?? 0;
+        const precipInches = parseFloat((cur.precipitation   ?? 0).toFixed(2));
+        const cloudPct     = Math.round(cur.cloud_cover      ?? 0);
+        const humidity     = Math.round(cur.relative_humidity_2m ?? 50);
+        const wmoCode      = cur.weather_code                 ?? 0;
+        const description  = wmoDescription(wmoCode);
 
-      const base = { tempF, windMph, windDir, windOut, windIn, humidity, precipInches, cloudPct, description, isDome: false };
-      const impact = computeWeatherImpact(base);
-      const result: WeatherData = { ...base, ...impact, source: "wttr.in" };
-      weatherCache.set(cacheKey, { data: result, ts: Date.now() });
-      return result;
-    } catch (e: any) {
-      console.warn(`[Weather] wttr.in failed for ${city}:`, e.message);
-    }
+        const { compass: windDir, windOut, windIn } = windAnalysis(windDeg, stadium.orientation);
 
-    // ── Fallback: plain wttr.in text format ───────────────────────────
-    try {
-      const { data } = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=3&u`, {
-        timeout: 5000, headers: { "User-Agent": "curl/7.64.1" },
-      });
-      if (typeof data === "string") {
-        const tempM = data.match(/([0-9]{2,3})°F/);
-        const windM = data.match(/([0-9]+)mph/);
-        const tempF   = tempM ? parseInt(tempM[1], 10) : 70;
-        const windMph = windM ? parseInt(windM[1], 10) : 0;
-        const base = { tempF, windMph, windDir: "N", windOut: false, windIn: false,
-                       humidity: 50, precipInches: 0, cloudPct: 50, description: data.trim(), isDome: false };
+        const base = { tempF, windMph, windDir, windOut, windIn, humidity, precipInches, cloudPct, description, isDome: false };
         const impact = computeWeatherImpact(base);
-        const result: WeatherData = { ...base, ...impact, source: "wttr.in-text" };
+        const result: WeatherData = { ...base, ...impact, source: "open-meteo" };
         weatherCache.set(cacheKey, { data: result, ts: Date.now() });
         return result;
+      } catch (e: any) {
+        console.warn(`[Weather] Open-Meteo failed for ${homeTeam}:`, e.message);
       }
-    } catch { return null; }
+    }
 
-    return null;
+    // ── Fallback: return a neutral estimate rather than null ──────────
+    const fallback = { tempF:70, windMph:5, windDir:"S", windOut:false, windIn:false,
+                       humidity:55, precipInches:0, cloudPct:30, description:"Partly Cloudy",
+                       isDome:false, source:"estimate" };
+    return { ...fallback, ...computeWeatherImpact(fallback) };
   }
 
   // Legacy string wrapper — keeps existing fetchWeather() callers working
@@ -17971,16 +18084,128 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   app.get("/api/mlb/pick-of-day", async (req: Request, res: Response) => {
     try {
       const CTZ = "America/Chicago";
-      const todayStr = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" }).split("/").reverse().join("-").replace(/^(\d+)-(\d+)-(\d+)$/, "$1-$3-$2");
-      // Use YYYY-MM-DD
+      const todayStr = (() => {
+        const ct = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
+        const [m, d, y] = ct.split("/");
+        return `${y}-${m}-${d}`;
+      })();
       const now = Date.now();
       const TTL = 20 * 60 * 1000;
-
       if (_mlbDailyPickCache && _mlbDailyPickCache.date === todayStr && (now - _mlbDailyPickCache.ts) < TTL) {
         return res.json({ ..._mlbDailyPickCache.data, history: mlbDailyPicksHistory });
       }
 
-      // ── 1. Fetch today's MLB games from Odds API ────────────────────────
+      // ── ESPN team ID map ────────────────────────────────────────────────
+      const MLB_ESPN_ID: Record<string, number> = {
+        "Orioles": 1, "Red Sox": 2, "Yankees": 10, "Rays": 30, "Blue Jays": 14,
+        "White Sox": 4, "Guardians": 5, "Tigers": 6, "Royals": 7, "Twins": 9,
+        "Astros": 18, "Angels": 3, "Athletics": 11, "Mariners": 12, "Rangers": 13,
+        "Braves": 15, "Marlins": 28, "Mets": 21, "Phillies": 22, "Nationals": 20,
+        "Cubs": 16, "Reds": 17, "Brewers": 8, "Pirates": 23, "Cardinals": 24,
+        "Diamondbacks": 29, "Rockies": 27, "Dodgers": 19, "Padres": 25, "Giants": 26,
+      };
+
+      function getEspnMlbId(teamName: string): number | null {
+        for (const [key, id] of Object.entries(MLB_ESPN_ID)) {
+          if (teamName.includes(key)) return id;
+        }
+        return null;
+      }
+
+      // ── Fetch ESPN team season stats (batting + pitching) ──────────────
+      interface MlbTeamStats {
+        teamId: number; teamName: string;
+        // Batting
+        avg: string; ops: string; obp: string; slg: string; runsPerGame: number; hrPerGame: number; kPct: number; bbPct: number;
+        // Pitching (team ERA = opponent scoring)
+        teamEra: string; whip: string; opponentAvg: string; opponentOps: string; kPer9: number; bbPer9: number;
+        // Record
+        wins: number; losses: number; winPct: number; homeRecord: string; roadRecord: string;
+      }
+      async function fetchMlbTeamStats(teamId: number, teamName: string): Promise<MlbTeamStats | null> {
+        try {
+          const r = await fetch(
+            `https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/seasons/2026/types/2/teams/${teamId}/statistics`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (!r.ok) return null;
+          const d: any = await r.json();
+          const cats: any[] = d?.splits?.categories ?? [];
+          const bat = cats.find((c: any) => c.name === "batting")?.stats ?? [];
+          const pit = cats.find((c: any) => c.name === "pitching")?.stats ?? [];
+          const toVal = (arr: any[], name: string) => arr.find((s: any) => s.name === name)?.displayValue ?? "—";
+          const toNum = (arr: any[], name: string) => parseFloat(arr.find((s: any) => s.name === name)?.displayValue ?? "0") || 0;
+
+          // Get team record from team endpoint
+          const recR = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${teamId}`, { signal: AbortSignal.timeout(5000) });
+          let wins = 0, losses = 0, homeRecord = "—", roadRecord = "—";
+          if (recR.ok) {
+            const recD: any = await recR.json();
+            const recItems = recD?.team?.record?.items ?? [];
+            const overall = recItems.find((i: any) => i.name === "overall" || i.type === "total");
+            const home    = recItems.find((i: any) => i.name === "home"    || i.type === "home");
+            const road    = recItems.find((i: any) => i.name === "road"    || i.type === "road");
+            const [ow, ol] = (overall?.summary ?? "0-0").split("-").map(Number);
+            wins = ow || 0; losses = ol || 0;
+            homeRecord = home?.summary ?? "—";
+            roadRecord = road?.summary ?? "—";
+          }
+          const gp = toNum(bat, "teamGamesPlayed") || 1;
+          const runs = toNum(bat, "runs");
+          const hrs  = toNum(bat, "homeRuns");
+          const ks   = toNum(bat, "strikeouts");
+          const bbs  = toNum(bat, "walks");
+          const pas  = toNum(bat, "plateAppearances") || gp * 36;
+          const pitK  = toNum(pit, "strikeouts");
+          const pitBB = toNum(pit, "walks");
+          const pitIP = toNum(pit, "fullInnings") || gp * 8.5;
+
+          return {
+            teamId, teamName,
+            avg: toVal(bat, "avg"), ops: toVal(bat, "OPS"), obp: toVal(bat, "onBasePct"), slg: toVal(bat, "slugAvg"),
+            runsPerGame: parseFloat((runs / gp).toFixed(2)),
+            hrPerGame:   parseFloat((hrs  / gp).toFixed(2)),
+            kPct: parseFloat((ks  / pas * 100).toFixed(1)),
+            bbPct: parseFloat((bbs / pas * 100).toFixed(1)),
+            teamEra: toVal(pit, "ERA"), whip: toVal(pit, "WHIP"),
+            opponentAvg: toVal(pit, "opponentAvg"), opponentOps: toVal(pit, "opponentOPS"),
+            kPer9: parseFloat((pitK / pitIP * 9).toFixed(1)),
+            bbPer9: parseFloat((pitBB / pitIP * 9).toFixed(1)),
+            wins, losses, winPct: wins + losses > 0 ? parseFloat((wins / (wins + losses)).toFixed(3)) : 0,
+            homeRecord, roadRecord,
+          };
+        } catch { return null; }
+      }
+
+      // ── Parse ESPN scoreboard for probable starters ────────────────────
+      interface StarterInfo { name: string; era: string; wins: number; losses: number; record: string; }
+      async function fetchTodayStarters(): Promise<Map<string, StarterInfo>> {
+        const map = new Map<string, StarterInfo>();
+        try {
+          const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard", { signal: AbortSignal.timeout(7000) });
+          if (!r.ok) return map;
+          const d: any = await r.json();
+          for (const evt of (d?.events ?? [])) {
+            for (const comp of (evt?.competitions ?? [])) {
+              for (const team of (comp?.competitors ?? [])) {
+                const teamName: string = team?.team?.displayName ?? "";
+                const prob = team?.probables?.[0];
+                if (prob) {
+                  const name: string = prob?.athlete?.displayName ?? "";
+                  const stats: any[] = prob?.statistics ?? [];
+                  const era  = stats.find((s: any) => s.name === "ERA")?.displayValue ?? "—";
+                  const wins = parseInt(stats.find((s: any) => s.name === "wins")?.displayValue ?? "0");
+                  const losses = parseInt(stats.find((s: any) => s.name === "losses")?.displayValue ?? "0");
+                  map.set(teamName, { name, era, wins, losses, record: `${wins}-${losses}` });
+                }
+              }
+            }
+          }
+        } catch { /* non-fatal */ }
+        return map;
+      }
+
+      // ── Fetch all data in parallel ─────────────────────────────────────
       const oddsKey = process.env.ODDS_API_KEY ?? "";
       let mlbGames: any[] = [];
       if (oddsKey) {
@@ -17992,183 +18217,271 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (r.ok) mlbGames = await r.json();
         } catch { /* non-fatal */ }
       }
-
-      // Filter to today only (CT)
-      const todayDate = todayStr; // YYYY-MM-DD
+      // Filter to today CT
       mlbGames = mlbGames.filter((g: any) => {
         if (!g.commence_time) return false;
         const ct = new Date(g.commence_time).toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
         const [m2, d2, y2] = ct.split("/");
-        return `${y2}-${m2}-${d2}` === todayDate;
+        return `${y2}-${m2}-${d2}` === todayStr;
       });
 
-      // ── 2. Fetch sharp money for MLB ─────────────────────────────────────
-      let sharpGames: any[] = [];
-      try { sharpGames = await fetchSharpMoneyBySport("MLB"); } catch { /* non-fatal */ }
+      const [sharpGames, starterMap] = await Promise.all([
+        fetchSharpMoneyBySport("MLB").catch(() => [] as any[]),
+        fetchTodayStarters(),
+      ]);
 
-      // ── 3. Score each game ───────────────────────────────────────────────
-      interface ScoredGame {
-        homeTeam: string; awayTeam: string; pickTeam: string; pickSide: "home" | "away";
-        pickML: number | null; spread: number | null; total: number | null;
-        score: number; grade: string; reasons: string[]; weatherNote: string | null;
-        sharpDirection: string | null; sharpScore: number; publicBetPct: number | null;
-        commenceTime: string | null;
-      }
-      const scoredGames: ScoredGame[] = [];
+      // ── Score each game ────────────────────────────────────────────────
+      const scoredGames: any[] = [];
 
       for (const game of mlbGames) {
         const homeTeam = game.home_team ?? "";
         const awayTeam = game.away_team ?? "";
-        let spreadHome: number | null = null;
-        let total: number | null = null;
-        let mlHome: number | null = null;
-        let mlAway: number | null = null;
+        let spreadHome: number | null = null, total: number | null = null;
+        let mlHome: number | null = null, mlAway: number | null = null;
 
         for (const bk of (game.bookmakers ?? [])) {
-          const h2h    = bk.markets?.find((m: any) => m.key === "h2h");
-          const spreads = bk.markets?.find((m: any) => m.key === "spreads");
-          const totals  = bk.markets?.find((m: any) => m.key === "totals");
+          const h2h     = bk.markets?.find((m: any) => m.key === "h2h");
+          const spreads  = bk.markets?.find((m: any) => m.key === "spreads");
+          const totals   = bk.markets?.find((m: any) => m.key === "totals");
           if (h2h?.outcomes?.length >= 2) {
             mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
             mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
           }
-          if (spreads?.outcomes?.length) {
-            spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
-          }
-          if (totals?.outcomes?.length) {
-            total = totals.outcomes.find((o: any) => o.name === "Over")?.point ?? null;
-          }
+          if (spreads?.outcomes?.length) spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
+          if (totals?.outcomes?.length)  total      = totals.outcomes.find((o: any) => o.name === "Over")?.point ?? null;
           if (mlHome !== null) break;
         }
 
-        // Determine favored side
+        // Pick side by implied probability
         let pickSide: "home" | "away" = "home";
+        let homeImplied = 0.5, awayImplied = 0.5;
         if (mlHome !== null && mlAway !== null) {
-          const homeImplied = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
-          const awayImplied = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+          homeImplied = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+          awayImplied = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
           pickSide = awayImplied > homeImplied ? "away" : "home";
         } else if (spreadHome !== null) {
           pickSide = spreadHome > 0 ? "away" : "home";
         }
+        const pickTeam   = pickSide === "home" ? homeTeam : awayTeam;
+        const oppTeam    = pickSide === "home" ? awayTeam : homeTeam;
+        const pickML     = pickSide === "home" ? mlHome : mlAway;
+        const pickImplied = pickSide === "home" ? homeImplied : awayImplied;
 
-        const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
-        const pickML   = pickSide === "home" ? mlHome : mlAway;
+        // Fetch team stats in parallel
+        const pickId = getEspnMlbId(pickTeam);
+        const oppId  = getEspnMlbId(oppTeam);
+        const [pickStats, oppStats] = await Promise.all([
+          pickId ? fetchMlbTeamStats(pickId, pickTeam) : Promise.resolve(null),
+          oppId  ? fetchMlbTeamStats(oppId,  oppTeam)  : Promise.resolve(null),
+        ]);
 
-        // Find sharp data for this game
-        const sharpMatch = sharpGames.find((sg: any) =>
-          (sg.homeTeam?.toLowerCase().includes(homeTeam.split(" ").pop()?.toLowerCase() ?? "") ||
-           homeTeam.toLowerCase().includes(sg.homeTeam?.toLowerCase() ?? "")) &&
-          (sg.awayTeam?.toLowerCase().includes(awayTeam.split(" ").pop()?.toLowerCase() ?? "") ||
-           awayTeam.toLowerCase().includes(sg.awayTeam?.toLowerCase() ?? ""))
-        );
+        // Get starters
+        const pickStarter = starterMap.get(pickTeam) ?? null;
+        const oppStarter  = starterMap.get(oppTeam)  ?? null;
 
+        // Find sharp data
+        const sharpMatch = sharpGames.find((sg: any) => {
+          const hn = normalize(homeTeam), an = normalize(awayTeam);
+          const shn = normalize(sg.homeTeam ?? ""), san = normalize(sg.awayTeam ?? "");
+          return (hn.includes(shn) || shn.includes(hn)) && (an.includes(san) || san.includes(an));
+        });
+
+        // Weather
+        let weatherData: any = null;
+        try { weatherData = await fetchStructuredWeather(homeTeam, "MLB"); } catch { /* non-fatal */ }
+
+        // ── SCORING ENGINE ────────────────────────────────────────────────
+        let score = 30;
         const reasons: string[] = [];
-        let score = 40; // base
+        const analysis: Record<string, any> = {};
 
-        // Moneyline value score
-        if (pickML !== null) {
-          const impliedWin = pickML < 0 ? Math.abs(pickML) / (Math.abs(pickML) + 100) : 100 / (pickML + 100);
-          if (impliedWin >= 0.60) { score += 18; reasons.push(`Strong favorite (${Math.round(impliedWin * 100)}% implied win probability)`); }
-          else if (impliedWin >= 0.52) { score += 10; reasons.push(`Slight favorite (${Math.round(impliedWin * 100)}% implied win probability)`); }
-          else { score += 4; reasons.push(`Pick is a slight underdog — higher variance play`); }
-        }
+        // 1. MONEYLINE / MARKET IMPLIED PROBABILITY
+        const impliedPct = Math.round(pickImplied * 100);
+        analysis.market = { impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome, spread: spreadHome, total };
+        if (pickImplied >= 0.63) { score += 16; reasons.push(`Heavy favorite: market gives ${pickTeam} ${impliedPct}% implied win probability`); }
+        else if (pickImplied >= 0.55) { score += 10; reasons.push(`Solid favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
+        else if (pickImplied >= 0.50) { score += 5; reasons.push(`Slight favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
+        else { score += 2; reasons.push(`Underdog pick: ${impliedPct}% implied — value must come from other signals`); }
 
-        // Sharp money signals
-        let sharpScore = 0;
-        let sharpDirection: string | null = null;
-        let publicBetPct: number | null = null;
+        // 2. SHARP MONEY (highest weight)
+        let sharpScore = 0, sharpDirection: string | null = null, publicBetPct: number | null = null;
+        let publicMoneyPct: number | null = null, pinnacleML: number | null = null;
         if (sharpMatch) {
           sharpScore = sharpMatch.sharpScore ?? 0;
           sharpDirection = sharpMatch.sharpDirection ?? null;
-          const matchDir = pickSide === "home" ? "home" : "away";
-          if (sharpDirection === matchDir || sharpMatch.sharpBooksAgree) {
-            score += 15;
-            reasons.push(`Sharp money (${sharpScore}/100) aligned with pick — books agree`);
-          } else if (sharpDirection && sharpDirection !== matchDir && sharpDirection !== "neutral") {
-            score -= 8;
-            reasons.push(`Caution: sharp money leans ${sharpDirection} — opposite to pick`);
-          }
+          const matchDir = pickSide;
           const pubHome = sharpMatch.publicBetPct?.home ?? null;
           const pubAway = sharpMatch.publicBetPct?.away ?? null;
-          publicBetPct = pickSide === "home" ? pubHome : pubAway;
-          if (publicBetPct !== null && publicBetPct < 40) {
-            score += 8;
-            reasons.push(`Public betting only ${Math.round(publicBetPct)}% on pick — contrarian value`);
-          } else if (publicBetPct !== null && publicBetPct > 65) {
-            score -= 5;
-            reasons.push(`Public heavily on pick (${Math.round(publicBetPct)}%) — faded by sharp books`);
+          const monHome = sharpMatch.publicMoneyPct?.home ?? null;
+          const monAway = sharpMatch.publicMoneyPct?.away ?? null;
+          publicBetPct    = pickSide === "home" ? pubHome : pubAway;
+          publicMoneyPct  = pickSide === "home" ? monHome : monAway;
+          const pinnacle  = sharpMatch.pinnacleML;
+          pinnacleML      = pickSide === "home" ? (pinnacle?.home ?? null) : (pinnacle?.away ?? null);
+
+          analysis.sharp = {
+            sharpScore, sharpDirection, sharpBooksAgree: sharpMatch.sharpBooksAgree,
+            publicBetPct: publicBetPct !== null ? Math.round(publicBetPct) : null,
+            publicMoneyPct: publicMoneyPct !== null ? Math.round(publicMoneyPct) : null,
+            rlmDetected: sharpMatch.rlmDetected, rlmSide: sharpMatch.rlmSide,
+            pinnacleML, sharpSignals: sharpMatch.sharpSignals ?? [],
+            spreadDivergence: sharpMatch.spreadDivergence, totalDivergence: sharpMatch.totalDivergence,
+          };
+
+          if (sharpDirection === matchDir && sharpMatch.sharpBooksAgree) {
+            score += 18; reasons.push(`Sharp books aligned: Pinnacle & sharp money both on ${pickTeam} (sharp score ${sharpScore}/100)`);
+          } else if (sharpDirection === matchDir) {
+            score += 12; reasons.push(`Sharp money on ${pickTeam} (score ${sharpScore}/100)`);
+          } else if (sharpDirection && sharpDirection !== matchDir && sharpDirection !== "neutral") {
+            score -= 12; reasons.push(`Caution: sharp money (${sharpScore}/100) leans ${sharpDirection} — against pick`);
           }
+
           if (sharpMatch.rlmDetected) {
-            const rlmFavors = sharpMatch.rlmSide === (pickSide === "home" ? "home" : "away");
-            if (rlmFavors) { score += 10; reasons.push(`Reverse line movement detected — smart money pushing pick side`); }
-            else { score -= 5; reasons.push(`Reverse line movement against pick — slight concern`); }
+            if (sharpMatch.rlmSide === matchDir) {
+              score += 10; reasons.push(`Reverse line movement on ${pickTeam} — line moved in pick's favor despite public money against`);
+            } else {
+              score -= 7; reasons.push(`Reverse line movement against pick — smart money pushing other side`);
+            }
           }
+
+          if (publicBetPct !== null && publicBetPct < 38) {
+            score += 8; reasons.push(`Only ${Math.round(publicBetPct)}% of public bets on ${pickTeam} — sharp/public divergence creates value`);
+          } else if (publicBetPct !== null && publicBetPct > 65) {
+            score -= 5; reasons.push(`${Math.round(publicBetPct)}% public on ${pickTeam} — beware steam from sharp fade`);
+          }
+
+          if (publicMoneyPct !== null && publicBetPct !== null) {
+            const moneyVsBets = publicMoneyPct - publicBetPct;
+            if (moneyVsBets > 15) { score += 6; reasons.push(`Money % (${Math.round(publicMoneyPct)}%) far exceeds bet % (${Math.round(publicBetPct)}%) — large bets coming in on ${pickTeam}`); }
+            else if (moneyVsBets < -15) { score += 4; reasons.push(`Bet % exceeds money % — sharp fading via large opposing bets`); }
+          }
+
+          if (pinnacleML !== null && pickML !== null) {
+            const pinnImplied = pinnacleML < 0 ? Math.abs(pinnacleML) / (Math.abs(pinnacleML) + 100) : 100 / (pinnacleML + 100);
+            const softImplied = pickML < 0 ? Math.abs(pickML) / (Math.abs(pickML) + 100) : 100 / (pickML + 100);
+            const clvPct = Math.round((softImplied - pinnImplied) * 100);
+            if (clvPct > 3) { score -= 5; reasons.push(`Closing line value negative: soft book (${pickML > 0 ? "+" : ""}${pickML}) is worse than Pinnacle — ${clvPct}% CLV loss`); }
+            else if (clvPct < -3) { score += 6; reasons.push(`Positive CLV: soft book is better than Pinnacle by ${Math.abs(clvPct)}% — beating the closing line`); }
+          }
+
           if ((sharpMatch.sharpSignals ?? []).length > 0) {
-            reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0,3).join(", ")}`);
+            reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0, 4).join(" · ")}`);
           }
+        } else {
+          analysis.sharp = null;
         }
 
-        // Weather impact
+        // 3. STARTING PITCHER DUEL
+        analysis.starters = { pick: pickStarter, opp: oppStarter };
+        if (pickStarter && oppStarter) {
+          const pickEra = parseFloat(pickStarter.era) || 5.0;
+          const oppEra  = parseFloat(oppStarter.era)  || 5.0;
+          const eraDiff = oppEra - pickEra; // positive = pick's starter better
+          if (eraDiff >= 1.5) { score += 12; reasons.push(`Pitching edge: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record}) vs ${oppStarter.name} (${oppStarter.era} ERA) — significant ERA advantage`); }
+          else if (eraDiff >= 0.5) { score += 7; reasons.push(`Pitching edge: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record}) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
+          else if (eraDiff <= -1.5) { score -= 10; reasons.push(`Pitching concern: ${pickStarter.name} (${pickStarter.era} ERA) faces ${oppStarter.name} (${oppStarter.era} ERA) — opponent has significant ERA advantage`); }
+          else if (eraDiff <= -0.5) { score -= 5; reasons.push(`Slight pitching disadvantage: ${pickStarter.name} (${pickStarter.era} ERA) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
+          else { reasons.push(`Even pitching matchup: ${pickStarter.name} (${pickStarter.era} ERA) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
+        } else if (pickStarter) {
+          reasons.push(`Starter: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record})`);
+        }
+
+        // 4. TEAM OFFENSE vs OPPONENT PITCHING
+        analysis.offenseVsPitching = { pickTeamBatting: pickStats, oppTeamPitching: oppStats };
+        if (pickStats && oppStats) {
+          const pickOps  = parseFloat(pickStats.ops)  || 0.700;
+          const oppEraNum = parseFloat(oppStats.teamEra) || 4.50;
+          const pickRpg  = pickStats.runsPerGame;
+          const oppRpg   = oppStats.runsPerGame; // how many runs opp scores
+          const pickWinPct = pickStats.winPct;
+
+          // Runs per game differential
+          const rpgAdv = pickRpg - oppRpg;
+          if (rpgAdv >= 0.8) { score += 8; reasons.push(`Scoring advantage: ${pickTeam} averages ${pickRpg} R/G vs ${oppTeam}'s ${oppRpg} R/G`); }
+          else if (rpgAdv >= 0.3) { score += 4; reasons.push(`Slight scoring edge: ${pickTeam} (${pickRpg} R/G) vs ${oppTeam} (${oppRpg} R/G)`); }
+          else if (rpgAdv <= -0.8) { score -= 6; reasons.push(`Scoring concern: ${pickTeam} (${pickRpg} R/G) vs ${oppTeam} (${oppRpg} R/G) — offense deficit`); }
+
+          // Pick team OPS vs opponent team ERA
+          if (pickOps >= 0.780 && oppEraNum >= 4.50) { score += 6; reasons.push(`${pickTeam} lineup (OPS ${pickStats.ops}) attacking a vulnerable rotation (ERA ${oppStats.teamEra})`); }
+          else if (pickOps >= 0.760) { score += 3; reasons.push(`${pickTeam} strong lineup: OPS ${pickStats.ops}, ${pickRpg} R/G`); }
+          else if (pickOps <= 0.700) { score -= 3; reasons.push(`${pickTeam} lineup concern: OPS ${pickStats.ops} — below league average offense`); }
+
+          // Win percentage confidence
+          if (pickWinPct >= 0.580) { score += 5; reasons.push(`${pickTeam} winning ${Math.round(pickWinPct * 100)}% of games — elite record`); }
+          else if (pickWinPct >= 0.530) { score += 2; reasons.push(`${pickTeam} record: ${pickStats.wins}-${pickStats.losses} (${Math.round(pickWinPct * 100)}% win rate)`); }
+          else if (pickWinPct <= 0.430) { score -= 5; reasons.push(`${pickTeam} struggling: ${pickStats.wins}-${pickStats.losses} (${Math.round(pickWinPct * 100)}% win rate)`); }
+        }
+
+        // 5. HOME FIELD ADVANTAGE
+        analysis.homeField = { pickSide, homeRecord: pickStats?.homeRecord ?? null, roadRecord: pickSide === "away" ? pickStats?.roadRecord ?? null : null };
+        if (pickSide === "home") {
+          score += 4;
+          if (pickStats?.homeRecord && pickStats.homeRecord !== "—") {
+            reasons.push(`Home field advantage — ${pickTeam} home record: ${pickStats.homeRecord}`);
+          } else {
+            reasons.push("Home field advantage");
+          }
+        } else if (pickStats?.roadRecord && pickStats.roadRecord !== "—") {
+          reasons.push(`Road team: ${pickTeam} road record ${pickStats.roadRecord}`);
+          const [rw, rl] = pickStats.roadRecord.split("-").map(Number);
+          const roadWinPct = rw + rl > 0 ? rw / (rw + rl) : 0;
+          if (roadWinPct >= 0.550) { score += 3; reasons.push(`Strong road performance — ${pickTeam} winning ${Math.round(roadWinPct * 100)}% away`); }
+          else if (roadWinPct <= 0.380) { score -= 4; reasons.push(`Weak road team — ${pickTeam} only ${Math.round(roadWinPct * 100)}% away`); }
+        }
+
+        // 6. WEATHER
         let weatherNote: string | null = null;
-        try {
-          const sw = await fetchStructuredWeather(homeTeam, "MLB");
-          if (sw && !sw.isDome) {
-            weatherNote = `${sw.tempF}°F, wind ${sw.windMph} mph ${sw.windDir} — ${sw.impactLabel}`;
-            if (sw.windIn && sw.windMph > 15) { score -= 4; reasons.push(`Wind blowing in ${sw.windMph} mph — suppresses scoring, slight offense fade`); }
-            else if (sw.windOut && sw.windMph > 15) { score += 3; reasons.push(`Wind blowing out ${sw.windMph} mph — favors hitters`); }
-            if (sw.precipInches > 0.1) { score -= 6; reasons.push(`Rain in forecast (${sw.precipInches}"" precip) — postponement risk`); }
-            if (sw.tempF < 45) { score -= 3; reasons.push(`Cold weather (${sw.tempF}°F) — offenses tend to be suppressed`); }
-          } else if (sw?.isDome) {
-            weatherNote = "Dome stadium — weather neutral";
-          }
-        } catch { /* non-fatal */ }
-
-        // Game total context
-        if (total !== null) {
-          if (total >= 9.0) { score += 5; reasons.push(`High total (${total}) — offensive environment favors stronger lineup`); }
-          else if (total <= 7.0) { score -= 3; reasons.push(`Low total (${total}) — pitcher-friendly game; win margin likely slim`); }
+        analysis.weather = weatherData;
+        if (weatherData && !weatherData.isDome) {
+          const { tempF, windMph, windDir, windOut, windIn, precipInches, impactLabel } = weatherData;
+          weatherNote = `${tempF}°F, ${windMph} mph ${windDir} — ${impactLabel}`;
+          if (windIn && windMph >= 15) { score -= 5; reasons.push(`Wind blowing in at ${windMph} mph — suppresses run scoring, favors pitchers`); }
+          else if (windOut && windMph >= 15) { score += 3; reasons.push(`Wind blowing out at ${windMph} mph — ball carries, hitters benefit`); }
+          else if (windMph >= 20) { score -= 2; reasons.push(`Heavy cross-wind ${windMph} mph — can disrupt pitching accuracy`); }
+          if (precipInches >= 0.1) { score -= 8; reasons.push(`Rain in forecast (${precipInches}" precip) — postponement risk, may affect bullpen`); }
+          if (tempF <= 45) { score -= 4; reasons.push(`Cold game-time temp (${tempF}°F) — historically suppresses offense`); }
+          else if (tempF >= 85) { score += 2; reasons.push(`Warm conditions (${tempF}°F) — ball carries well`); }
+        } else if (weatherData?.isDome) {
+          weatherNote = `${weatherData.name ?? "Dome"} — controlled conditions, weather neutral`;
+          analysis.weather = { ...weatherData, note: "Dome — no weather variables" };
         }
 
-        // Home field advantage
-        if (pickSide === "home") { score += 4; reasons.push("Home field advantage"); }
+        // 7. GAME TOTAL CONTEXT
+        if (total !== null) {
+          analysis.total = total;
+          if (total >= 9.5) { score += 4; reasons.push(`High total (${total}) — high-offense environment; stronger lineup benefits more`); }
+          else if (total <= 7.0) { score -= 3; reasons.push(`Low total (${total}) — pitcher's game; margins will be slim`); }
+        }
 
         score = Math.min(97, Math.max(20, score));
-        const grade = score >= 80 ? "A" : score >= 70 ? "B+" : score >= 60 ? "B" : score >= 50 ? "C+" : "C";
+        const grade = score >= 83 ? "A" : score >= 73 ? "B+" : score >= 63 ? "B" : score >= 53 ? "C+" : "C";
 
         scoredGames.push({
-          homeTeam, awayTeam, pickTeam, pickSide, pickML, spread: spreadHome, total,
-          score, grade, reasons, weatherNote, sharpDirection, sharpScore, publicBetPct,
+          homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
+          score, grade, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
           commenceTime: game.commence_time ?? null,
+          // Deep analysis object — used in frontend drawer
+          analysis: {
+            ...analysis,
+            pickStats, oppStats, pickStarter, oppStarter,
+          },
         });
       }
 
-      // Sort by score descending
       scoredGames.sort((a, b) => b.score - a.score);
+      const primary  = scoredGames[0] ?? null;
+      const runnerUp = scoredGames[1] ?? null;
 
-      const primary   = scoredGames[0] ?? null;
-      const runnerUp  = scoredGames[1] ?? null;
+      const result = { date: todayStr, primary, runnerUp, gamesAnalyzed: scoredGames.length, fetchedAt: new Date().toISOString(), liveData: mlbGames.length > 0 };
 
-      const result = {
-        date: todayStr,
-        primary,
-        runnerUp,
-        gamesAnalyzed: scoredGames.length,
-        fetchedAt: new Date().toISOString(),
-        liveData: mlbGames.length > 0,
-      };
-
-      // Persist to history (only if we have live data and a pick)
-      if (primary && mlbGames.length > 0) {
-        if (!mlbDailyPicksHistory[todayStr]) {
-          mlbDailyPicksHistory[todayStr] = {
-            date: todayStr,
-            primary: { pickTeam: primary.pickTeam, grade: primary.grade, score: primary.score, result: "pending", homeTeam: primary.homeTeam, awayTeam: primary.awayTeam },
-            runnerUp: runnerUp ? { pickTeam: runnerUp.pickTeam, grade: runnerUp.grade, score: runnerUp.score, result: "pending", homeTeam: runnerUp.homeTeam, awayTeam: runnerUp.awayTeam } : null,
-          };
-          await saveMlbDailyPicks();
-        }
+      if (primary && mlbGames.length > 0 && !mlbDailyPicksHistory[todayStr]) {
+        mlbDailyPicksHistory[todayStr] = {
+          date: todayStr,
+          primary: { pickTeam: primary.pickTeam, grade: primary.grade, score: primary.score, result: "pending", homeTeam: primary.homeTeam, awayTeam: primary.awayTeam },
+          runnerUp: runnerUp ? { pickTeam: runnerUp.pickTeam, grade: runnerUp.grade, score: runnerUp.score, result: "pending", homeTeam: runnerUp.homeTeam, awayTeam: runnerUp.awayTeam } : null,
+        };
+        await saveMlbDailyPicks();
       }
-
       _mlbDailyPickCache = { data: result, ts: now, date: todayStr };
       return res.json({ ...result, history: mlbDailyPicksHistory });
     } catch (e: any) {
@@ -18177,7 +18490,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
-  // ── POST /api/mlb/pick-of-day/grade ─────────────────────────────────────
+    // ── POST /api/mlb/pick-of-day/grade ─────────────────────────────────────
   app.post("/api/mlb/pick-of-day/grade", requireOwner, async (req: Request, res: Response) => {
     try {
       const { date, result, which } = req.body ?? {};
@@ -18224,12 +18537,127 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     try {
       const weekLabel = getNflWeekLabel();
       const now = Date.now();
-      const TTL = 60 * 60 * 1000; // 1-hour cache for weekly pick
-
+      const TTL = 60 * 60 * 1000;
       if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel && (now - _nflWeeklyPickCache.ts) < TTL) {
         return res.json({ ..._nflWeeklyPickCache.data, history: nflWeeklyPicksHistory });
       }
 
+      // ── ESPN NFL team ID map ────────────────────────────────────────────
+      const NFL_ESPN_ID: Record<string, number> = {
+        "Bills": 2, "Dolphins": 15, "Patriots": 17, "Jets": 20,
+        "Ravens": 33, "Bengals": 4, "Browns": 5, "Steelers": 23,
+        "Texans": 34, "Colts": 11, "Jaguars": 30, "Titans": 10,
+        "Chiefs": 12, "Raiders": 13, "Chargers": 24, "Broncos": 7,
+        "Cowboys": 6, "Giants": 19, "Eagles": 21, "Commanders": 28,
+        "Bears": 3, "Lions": 8, "Packers": 9, "Vikings": 16,
+        "Falcons": 1, "Panthers": 29, "Saints": 18, "Buccaneers": 27,
+        "Cardinals": 22, "Rams": 14, "49ers": 25, "Seahawks": 26,
+      };
+      function getNflEspnId(teamName: string): number | null {
+        for (const [key, id] of Object.entries(NFL_ESPN_ID)) {
+          if (teamName.includes(key)) return id;
+        }
+        return null;
+      }
+
+      // ── Fetch ESPN NFL team season stats ───────────────────────────────
+      interface NflTeamStats {
+        teamId: number; teamName: string;
+        // Offense
+        ppg: number; passingYpg: number; rushingYpg: number; totalYpg: number;
+        passCompPct: string; qbRating: string; turnoversGiven: number;
+        // Defense (points/yards allowed)
+        defPpgAllowed: number; defPassYpgAllowed: number; defRushYpgAllowed: number; defTotalYpgAllowed: number;
+        sacksFor: number; interceptions: number;
+        // Record
+        wins: number; losses: number; winPct: number; homeRecord: string; roadRecord: string;
+      }
+      async function fetchNflTeamStats(teamId: number, teamName: string): Promise<NflTeamStats | null> {
+        try {
+          const r = await fetch(
+            `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/teams/${teamId}/statistics`,
+            { signal: AbortSignal.timeout(7000) }
+          );
+          if (!r.ok) return null;
+          const d: any = await r.json();
+          const cats: any[] = d?.splits?.categories ?? [];
+          const toVal = (arr: any[], name: string) => arr.find((s: any) => s.name === name)?.displayValue ?? "—";
+          const toNum = (arr: any[], name: string) => parseFloat(arr.find((s: any) => s.name === name)?.displayValue?.replace(/,/g,"") ?? "0") || 0;
+          const passing  = cats.find((c: any) => c.name === "passing")?.stats  ?? [];
+          const rushing  = cats.find((c: any) => c.name === "rushing")?.stats  ?? [];
+          const scoring  = cats.find((c: any) => c.name === "scoring")?.stats  ?? [];
+          const def      = cats.find((c: any) => c.name === "defensive")?.stats ?? [];
+          const general  = cats.find((c: any) => c.name === "general")?.stats  ?? [];
+
+          // Offense
+          const totalOffYds = toNum(passing, "netTotalYards") || toNum(rushing, "netTotalYards");
+          const passYds     = toNum(passing, "netTotalYards");
+          const rushYds     = toNum(rushing, "netTotalYards");
+          const gp          = Math.max(toNum(scoring, "gamesPlayed") || 17, 1);
+          const pointsScored = toNum(scoring, "totalPoints") || toNum(scoring, "points");
+          const completions  = toNum(passing, "completions");
+          const attempts     = toNum(passing, "passingAttempts") || toNum(passing, "attempts") || 1;
+          const ints         = toNum(passing, "interceptions");
+          const fumbles      = toNum(general, "fumblesLost");
+
+          // Defense — ESPN defensive stats are from the same team endpoint
+          const sacksFor = toNum(def, "sacks");
+          const defInts  = toNum(def, "interceptions");
+
+          // Get team record
+          const recR = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}`, { signal: AbortSignal.timeout(5000) });
+          let wins = 0, losses = 0, homeRecord = "—", roadRecord = "—";
+          if (recR.ok) {
+            const recD: any = await recR.json();
+            const summary: string = recD?.team?.record ?? "";
+            if (summary.includes("-")) { const [w, l] = summary.split("-").map(Number); wins = w || 0; losses = l || 0; }
+            const standSummary: string = recD?.team?.standingSummary ?? "";
+            // Try next event for schedule context
+          }
+
+          return {
+            teamId, teamName,
+            ppg: parseFloat((pointsScored / gp).toFixed(1)),
+            passingYpg: parseFloat((passYds / gp).toFixed(1)),
+            rushingYpg: parseFloat((rushYds / gp).toFixed(1)),
+            totalYpg:   parseFloat((totalOffYds / gp).toFixed(1)),
+            passCompPct: parseFloat((completions / attempts * 100).toFixed(1)) + "%",
+            qbRating: toVal(passing, "ESPNQBRating") !== "—" ? toVal(passing, "ESPNQBRating") : "—",
+            turnoversGiven: ints + fumbles,
+            defPpgAllowed: 0,       // Will need opponent scoring — approximated below
+            defPassYpgAllowed: 0,
+            defRushYpgAllowed: 0,
+            defTotalYpgAllowed: 0,
+            sacksFor, interceptions: defInts,
+            wins, losses, winPct: wins + losses > 0 ? parseFloat((wins / (wins + losses)).toFixed(3)) : 0,
+            homeRecord, roadRecord,
+          };
+        } catch { return null; }
+      }
+
+      // ── Fetch ESPN NFL injuries ─────────────────────────────────────────
+      const espnInjuries: Map<string, string[]> = new Map(); // teamName → list of out players
+      try {
+        const injR = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(7000) });
+        if (injR.ok) {
+          const injData: any = await injR.json();
+          for (const te of (injData.injuries ?? [])) {
+            const tName = te.team?.displayName ?? "";
+            const outList: string[] = [];
+            for (const inj of (te.injuries ?? [])) {
+              const s = (inj.status ?? "").toLowerCase();
+              if (s === "out" || s === "doubtful" || s === "ir") {
+                const pos = inj.athlete?.position?.abbreviation ?? "";
+                const nm  = inj.athlete?.displayName ?? "";
+                if (nm) outList.push(`${nm}${pos ? " (" + pos + ")" : ""}`);
+              }
+            }
+            if (outList.length > 0) espnInjuries.set(tName, outList);
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      // ── Fetch odds ──────────────────────────────────────────────────────
       const oddsKey = process.env.ODDS_API_KEY ?? "";
       let nflGames: any[] = [];
       if (oddsKey) {
@@ -18242,49 +18670,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         } catch { /* non-fatal */ }
       }
 
-      // Fetch sharp money for NFL
-      let nflSharp: any[] = [];
-      try { nflSharp = await fetchSharpMoneyBySport("NFL"); } catch { /* non-fatal */ }
+      const nflSharp = await fetchSharpMoneyBySport("NFL").catch(() => [] as any[]);
 
-      // Fetch ESPN NFL injuries
-      let espnOut = new Set<string>();
-      try {
-        const injR = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(6000) });
-        if (injR.ok) {
-          const injData: any = await injR.json();
-          for (const te of (injData.injuries ?? [])) {
-            for (const inj of (te.injuries ?? [])) {
-              const s = (inj.status ?? "").toLowerCase();
-              if (s === "out" || s === "doubtful" || s === "ir") {
-                const nm = inj.athlete?.displayName ?? "";
-                if (nm) espnOut.add(nm.toLowerCase());
-              }
-            }
-          }
-        }
-      } catch { /* non-fatal */ }
-
-      interface ScoredNflGame {
-        homeTeam: string; awayTeam: string; pickTeam: string; pickSide: "home" | "away";
-        pickML: number | null; spread: number | null; total: number | null;
-        score: number; grade: string; reasons: string[]; weatherNote: string | null;
-        sharpDirection: string | null; sharpScore: number; publicBetPct: number | null;
-        commenceTime: string | null; injuryNote: string | null;
-      }
-      const scoredNfl: ScoredNflGame[] = [];
+      const scoredNfl: any[] = [];
 
       for (const game of nflGames) {
         const homeTeam = game.home_team ?? "";
         const awayTeam = game.away_team ?? "";
-        let spreadHome: number | null = null;
-        let total: number | null = null;
-        let mlHome: number | null = null;
-        let mlAway: number | null = null;
+        let spreadHome: number | null = null, total: number | null = null;
+        let mlHome: number | null = null, mlAway: number | null = null;
 
         for (const bk of (game.bookmakers ?? [])) {
-          const h2h     = bk.markets?.find((m: any) => m.key === "h2h");
-          const spreads  = bk.markets?.find((m: any) => m.key === "spreads");
-          const totals   = bk.markets?.find((m: any) => m.key === "totals");
+          const h2h    = bk.markets?.find((m: any) => m.key === "h2h");
+          const spreads = bk.markets?.find((m: any) => m.key === "spreads");
+          const totals  = bk.markets?.find((m: any) => m.key === "totals");
           if (h2h?.outcomes?.length >= 2) {
             mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
             mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
@@ -18295,132 +18694,209 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
 
         let pickSide: "home" | "away" = "home";
+        let homeImplied = 0.5, awayImplied = 0.5;
         if (mlHome !== null && mlAway !== null) {
-          const hi = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
-          const ai = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
-          pickSide = ai > hi ? "away" : "home";
+          homeImplied = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
+          awayImplied = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+          pickSide = awayImplied > homeImplied ? "away" : "home";
         } else if (spreadHome !== null) {
           pickSide = spreadHome > 0 ? "away" : "home";
         }
+        const pickTeam    = pickSide === "home" ? homeTeam : awayTeam;
+        const oppTeam     = pickSide === "home" ? awayTeam : homeTeam;
+        const pickML      = pickSide === "home" ? mlHome : mlAway;
+        const pickImplied = pickSide === "home" ? homeImplied : awayImplied;
 
-        const pickTeam = pickSide === "home" ? homeTeam : awayTeam;
-        const pickML   = pickSide === "home" ? mlHome : mlAway;
+        const pickId = getNflEspnId(pickTeam);
+        const oppId  = getNflEspnId(oppTeam);
+        const [pickStats, oppStats] = await Promise.all([
+          pickId ? fetchNflTeamStats(pickId, pickTeam) : Promise.resolve(null),
+          oppId  ? fetchNflTeamStats(oppId,  oppTeam)  : Promise.resolve(null),
+        ]);
 
-        const sharpMatch = nflSharp.find((sg: any) =>
-          homeTeam.toLowerCase().includes((sg.homeTeam ?? "").toLowerCase().split(" ").pop() ?? "") ||
-          (sg.homeTeam ?? "").toLowerCase().includes(homeTeam.toLowerCase().split(" ").pop() ?? "")
-        );
+        const sharpMatch = nflSharp.find((sg: any) => {
+          const hn = normalize(homeTeam), an = normalize(awayTeam);
+          const shn = normalize(sg.homeTeam ?? ""), san = normalize(sg.awayTeam ?? "");
+          return (hn.includes(shn) || shn.includes(hn)) && (an.includes(san) || san.includes(an));
+        });
 
+        let weatherData: any = null;
+        try { weatherData = await fetchStructuredWeather(homeTeam, "NFL"); } catch { /* non-fatal */ }
+
+        // Injuries
+        const pickInjuries = espnInjuries.get(pickTeam) ?? [];
+        const oppInjuries  = espnInjuries.get(oppTeam)  ?? [];
+
+        // ── SCORING ENGINE ─────────────────────────────────────────────────
+        let score = 30;
         const reasons: string[] = [];
-        let score = 40;
+        const analysis: Record<string, any> = {};
 
-        if (pickML !== null) {
-          const imp = pickML < 0 ? Math.abs(pickML) / (Math.abs(pickML) + 100) : 100 / (pickML + 100);
-          if (imp >= 0.62) { score += 18; reasons.push(`Heavy favorite — ${Math.round(imp*100)}% implied win probability`); }
-          else if (imp >= 0.53) { score += 10; reasons.push(`Favored team — ${Math.round(imp*100)}% implied win probability`); }
-          else { score += 3; reasons.push(`Near pick-em or slight underdog — higher variance`); }
-        }
+        // 1. MARKET IMPLIED PROBABILITY
+        const impliedPct = Math.round(pickImplied * 100);
+        analysis.market = { impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome, spread: spreadHome, total };
+        if (pickImplied >= 0.65) { score += 16; reasons.push(`Heavy favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
+        else if (pickImplied >= 0.56) { score += 10; reasons.push(`Solid favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
+        else if (pickImplied >= 0.50) { score += 5;  reasons.push(`Slight favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
+        else { score += 2; reasons.push(`Underdog pick (${impliedPct}% implied) — value must come from other signals`); }
 
-        let sharpScore = 0; let sharpDirection: string | null = null; let publicBetPct: number | null = null;
+        // 2. SHARP MONEY
+        let sharpScore = 0, sharpDirection: string | null = null, publicBetPct: number | null = null;
+        let publicMoneyPct: number | null = null, pinnacleML: number | null = null;
         if (sharpMatch) {
           sharpScore = sharpMatch.sharpScore ?? 0;
           sharpDirection = sharpMatch.sharpDirection ?? null;
-          const matchDir = pickSide;
-          if (sharpDirection === matchDir || sharpMatch.sharpBooksAgree) {
-            score += 15; reasons.push(`Sharp money (${sharpScore}/100) aligned — books agree with pick`);
-          } else if (sharpDirection && sharpDirection !== matchDir && sharpDirection !== "neutral") {
-            score -= 8; reasons.push(`Caution: sharp money leans ${sharpDirection} — opposite to pick`);
+          const pubHome = sharpMatch.publicBetPct?.home ?? null;
+          const pubAway = sharpMatch.publicBetPct?.away ?? null;
+          const monHome = sharpMatch.publicMoneyPct?.home ?? null;
+          const monAway = sharpMatch.publicMoneyPct?.away ?? null;
+          publicBetPct   = pickSide === "home" ? pubHome : pubAway;
+          publicMoneyPct = pickSide === "home" ? monHome : monAway;
+          pinnacleML     = pickSide === "home" ? (sharpMatch.pinnacleML?.home ?? null) : (sharpMatch.pinnacleML?.away ?? null);
+
+          analysis.sharp = {
+            sharpScore, sharpDirection, sharpBooksAgree: sharpMatch.sharpBooksAgree,
+            publicBetPct: publicBetPct !== null ? Math.round(publicBetPct) : null,
+            publicMoneyPct: publicMoneyPct !== null ? Math.round(publicMoneyPct) : null,
+            rlmDetected: sharpMatch.rlmDetected, rlmSide: sharpMatch.rlmSide,
+            pinnacleML, sharpSignals: sharpMatch.sharpSignals ?? [],
+            spreadDivergence: sharpMatch.spreadDivergence,
+          };
+
+          if (sharpDirection === pickSide && sharpMatch.sharpBooksAgree) {
+            score += 18; reasons.push(`Sharp consensus: Pinnacle & sharp books both backing ${pickTeam} (sharp score ${sharpScore}/100)`);
+          } else if (sharpDirection === pickSide) {
+            score += 12; reasons.push(`Sharp money on ${pickTeam} (score ${sharpScore}/100)`);
+          } else if (sharpDirection && sharpDirection !== pickSide && sharpDirection !== "neutral") {
+            score -= 12; reasons.push(`Caution: sharp money (${sharpScore}/100) on opposite side from ${pickTeam}`);
           }
-          const pubH = sharpMatch.publicBetPct?.home ?? null;
-          const pubA = sharpMatch.publicBetPct?.away ?? null;
-          publicBetPct = pickSide === "home" ? pubH : pubA;
-          if (publicBetPct !== null && publicBetPct < 40) { score += 8; reasons.push(`Contrarian pick — only ${Math.round(publicBetPct)}% public on this side`); }
-          else if (publicBetPct !== null && publicBetPct > 65) { score -= 4; reasons.push(`Heavy public action (${Math.round(publicBetPct)}%) — value may be eroded`); }
           if (sharpMatch.rlmDetected) {
-            const rlmFavors = sharpMatch.rlmSide === pickSide;
-            if (rlmFavors) { score += 10; reasons.push("Reverse line movement confirms sharp activity on this side"); }
-            else { score -= 5; reasons.push("Reverse line movement goes against pick — slight concern"); }
+            if (sharpMatch.rlmSide === pickSide) { score += 10; reasons.push(`Reverse line movement on ${pickTeam} — line moving against public, smart money confirmed`); }
+            else { score -= 7; reasons.push(`Reverse line movement against ${pickTeam}`); }
           }
-          if ((sharpMatch.sharpSignals ?? []).length > 0) reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0,3).join(", ")}`);
+          if (publicBetPct !== null && publicBetPct < 38) { score += 7; reasons.push(`Only ${Math.round(publicBetPct)}% of bets on ${pickTeam} — contrarian value vs public`); }
+          else if (publicBetPct !== null && publicBetPct > 65) { score -= 5; reasons.push(`${Math.round(publicBetPct)}% public on ${pickTeam} — sharp fade risk`); }
+          if (publicMoneyPct !== null && publicBetPct !== null) {
+            const moneyVsBets = publicMoneyPct - publicBetPct;
+            if (moneyVsBets > 15) { score += 5; reasons.push(`Large bets ($) disproportionately on ${pickTeam}: money% (${Math.round(publicMoneyPct)}%) >> bet% (${Math.round(publicBetPct)}%)`); }
+          }
+          if ((sharpMatch.sharpSignals ?? []).length > 0) {
+            reasons.push(`Sharp signals: ${sharpMatch.sharpSignals.slice(0, 4).join(" · ")}`);
+          }
+        } else {
+          analysis.sharp = null;
         }
 
-        // Weather (NFL outdoor)
-        let weatherNote: string | null = null;
-        try {
-          const sw = await fetchStructuredWeather(homeTeam, "NFL");
-          if (sw && !sw.isDome) {
-            weatherNote = `${sw.tempF}°F, wind ${sw.windMph} mph ${sw.windDir} — ${sw.impactLabel}`;
-            if (sw.windMph > 20) { score -= 5; reasons.push(`Heavy wind (${sw.windMph} mph) — reduces passing efficiency for both teams`); }
-            else if (sw.windMph > 12) { score -= 2; reasons.push(`Moderate wind (${sw.windMph} mph) — minor passing impact`); }
-            if (sw.precipInches > 0.1) { score -= 4; reasons.push(`Rain/snow forecast — favors ground game, reduces scoring`); }
-            if (sw.tempF < 25) { score -= 5; reasons.push(`Extreme cold (${sw.tempF}°F) — impacts ball-handling and passing`); }
-          } else if (sw?.isDome) {
-            weatherNote = "Dome stadium — weather neutral, controlled conditions";
-            score += 2; reasons.push("Dome game — no weather variables");
-          }
-        } catch { /* non-fatal */ }
+        // 3. OFFENSE vs DEFENSE MATCHUP
+        analysis.offenseDefense = { pickStats, oppStats };
+        if (pickStats && oppStats) {
+          // Scoring offense vs defense
+          const ppgAdv = pickStats.ppg - oppStats.ppg; // positive = pick team scores more
+          if (ppgAdv >= 7)  { score += 10; reasons.push(`Scoring dominance: ${pickTeam} averages ${pickStats.ppg} PPG vs ${oppTeam} ${oppStats.ppg} PPG`); }
+          else if (ppgAdv >= 3)  { score += 6;  reasons.push(`Scoring edge: ${pickTeam} (${pickStats.ppg} PPG) vs ${oppTeam} (${oppStats.ppg} PPG)`); }
+          else if (ppgAdv <= -7) { score -= 8;  reasons.push(`Scoring deficit: ${pickTeam} (${pickStats.ppg} PPG) well behind ${oppTeam} (${oppStats.ppg} PPG)`); }
+          else if (ppgAdv <= -3) { score -= 4;  reasons.push(`Slight scoring deficit vs ${oppTeam} (${oppStats.ppg} vs ${pickStats.ppg} PPG)`); }
 
-        // Spread/total context
-        if (spreadHome !== null && total !== null) {
-          const favSpread = pickSide === "home" ? Math.abs(spreadHome) : (spreadHome > 0 ? spreadHome : Math.abs(spreadHome));
-          if (favSpread >= 7) { score += 6; reasons.push(`${pickTeam} favored by ${favSpread} — significant edge`); }
-          else if (favSpread >= 3.5) { score += 3; reasons.push(`${pickTeam} favored by ${favSpread}`); }
-          if (total >= 50) { score += 2; reasons.push(`High-total game (${total}) — offense-friendly environment`); }
-          else if (total <= 40) reasons.push(`Low total (${total}) — defensive game projected`);
+          // Passing offense vs opponent sacks
+          const passAdv = pickStats.passingYpg - oppStats.passingYpg;
+          if (passAdv >= 40) { score += 5; reasons.push(`${pickTeam} passing advantage: ${pickStats.passingYpg} pass yds/g vs ${oppTeam}'s ${oppStats.passingYpg}`); }
+          else if (passAdv <= -40) { score -= 4; reasons.push(`Passing deficit vs ${oppTeam}: ${pickStats.passingYpg} vs ${oppStats.passingYpg} yds/g`); }
+
+          // Turnover threat
+          if (pickStats.turnoversGiven >= 20) { score -= 5; reasons.push(`Turnover concern: ${pickTeam} has given away ${pickStats.turnoversGiven} turnovers this season`); }
+          else if (pickStats.turnoversGiven <= 8) { score += 4; reasons.push(`Ball security strength: ${pickTeam} only ${pickStats.turnoversGiven} turnovers this season`); }
+
+          // Sack pressure from opp defense
+          if (oppStats.sacksFor >= 35) { score -= 4; reasons.push(`${oppTeam} elite pass rush: ${oppStats.sacksFor} sacks — threatens ${pickTeam} QB`); }
+          else if (oppStats.sacksFor <= 15) { score += 3; reasons.push(`${pickTeam} QB faces limited pass rush: ${oppTeam} only ${oppStats.sacksFor} sacks`); }
+
+          // Win percentage
+          if (pickStats.winPct >= 0.600) { score += 5; reasons.push(`${pickTeam} elite record: ${Math.round(pickStats.winPct * 100)}% win rate`); }
+          else if (pickStats.winPct <= 0.380) { score -= 5; reasons.push(`${pickTeam} poor record: ${Math.round(pickStats.winPct * 100)}% win rate`); }
         }
 
-        // Home field
-        if (pickSide === "home") { score += 4; reasons.push("Home field advantage"); }
+        // 4. HOME FIELD
+        analysis.homeField = { pickSide, homeRecord: pickSide === "home" ? pickStats?.homeRecord : null, roadRecord: pickSide === "away" ? pickStats?.roadRecord : null };
+        if (pickSide === "home") {
+          score += 4;
+          reasons.push(`Home field advantage${pickStats?.homeRecord && pickStats.homeRecord !== "—" ? " — " + pickTeam + " home: " + pickStats.homeRecord : ""}`);
+        } else if (pickStats?.roadRecord && pickStats.roadRecord !== "—") {
+          reasons.push(`Road team: ${pickTeam} away record ${pickStats.roadRecord}`);
+        }
 
-        // Injury note — check Sleeper + ESPN for key players out on pick team
+        // 5. SPREAD CONFIDENCE
+        if (spreadHome !== null) {
+          const absSpread = Math.abs(pickSide === "home" ? -spreadHome : spreadHome);
+          if (absSpread >= 7)  { score += 6; reasons.push(`${pickTeam} favored by ${absSpread} — dominant market expectation`); }
+          else if (absSpread >= 3.5) { score += 3; reasons.push(`${pickTeam} favored by ${absSpread}`); }
+        }
+
+        // 6. INJURIES
         let injuryNote: string | null = null;
-        try {
-          const sleeperR = await getSleeperRoster();
-          const keyOut = Object.values(sleeperR).filter(p => {
-            const teamMatch2 = p.team && pickTeam.toLowerCase().includes(p.team.toLowerCase().slice(0,3));
-            return teamMatch2 && (p.injury_status === "Out" || p.injury_status === "IR" || espnOut.has((p.full_name ?? "").toLowerCase()));
-          }).map(p => p.full_name).slice(0, 3);
-          if (keyOut.length > 0) {
-            injuryNote = `Out/IR on ${pickTeam}: ${keyOut.join(", ")}`;
-            score -= keyOut.length * 3;
-            reasons.push(`Injury concern — ${keyOut.join(", ")} listed out`);
-          }
-        } catch { /* non-fatal */ }
+        analysis.injuries = { pickInjuries, oppInjuries };
+        const keyPickOut = pickInjuries.filter(p => /QB|WR|RB|TE|OL/i.test(p)).slice(0, 4);
+        const keyOppOut  = oppInjuries.filter(p => /QB|WR|RB|TE|OL/i.test(p)).slice(0, 4);
+        if (keyPickOut.length >= 3) {
+          score -= 8; injuryNote = `Key ${pickTeam} injuries: ${keyPickOut.slice(0,3).join(", ")}`;
+          reasons.push(`Injury concern: ${keyPickOut.slice(0,3).join(", ")} out for ${pickTeam}`);
+        } else if (keyPickOut.length >= 1) {
+          score -= 3; injuryNote = `${pickTeam} injury: ${keyPickOut.join(", ")}`;
+          reasons.push(`Injury note: ${keyPickOut.join(", ")} out for ${pickTeam}`);
+        }
+        if (keyOppOut.length >= 3) {
+          score += 5; reasons.push(`${oppTeam} depleted: ${keyOppOut.slice(0,3).join(", ")} out — ${pickTeam} gets favorable matchups`);
+        } else if (keyOppOut.length >= 1) {
+          score += 2; reasons.push(`${oppTeam} missing: ${keyOppOut.join(", ")}`);
+        }
+
+        // 7. WEATHER
+        let weatherNote: string | null = null;
+        analysis.weather = weatherData;
+        if (weatherData && !weatherData.isDome) {
+          const { tempF, windMph, windDir, precipInches, impactLabel } = weatherData;
+          weatherNote = `${tempF}°F, ${windMph} mph ${windDir} — ${impactLabel}`;
+          if (windMph >= 20) { score -= 5; reasons.push(`Heavy wind (${windMph} mph) — significantly reduces passing efficiency`); }
+          else if (windMph >= 12) { score -= 2; reasons.push(`Moderate wind (${windMph} mph) — some passing impact`); }
+          if (precipInches >= 0.1) { score -= 4; reasons.push(`Rain/snow forecast — favors ground game, reduces scoring`); }
+          if (tempF <= 25) { score -= 5; reasons.push(`Extreme cold (${tempF}°F) — ball-handling issues, suppresses scoring`); }
+          else if (tempF >= 85) { score += 2; reasons.push(`Warm conditions (${tempF}°F) — no weather suppression`); }
+        } else if (weatherData?.isDome) {
+          weatherNote = "Dome — controlled conditions, no weather variables";
+          score += 2; reasons.push("Dome game — neutral controlled environment");
+        }
+
+        // 8. GAME TOTAL CONTEXT
+        if (total !== null) {
+          analysis.total = total;
+          if (total >= 50) { score += 2; reasons.push(`High-total game (${total}) — offense-friendly, benefits stronger unit`); }
+          else if (total <= 40) { reasons.push(`Low total (${total}) — defensive game expected`); }
+        }
 
         score = Math.min(97, Math.max(20, score));
-        const grade = score >= 82 ? "A" : score >= 72 ? "B+" : score >= 62 ? "B" : score >= 52 ? "C+" : "C";
+        const grade = score >= 83 ? "A" : score >= 73 ? "B+" : score >= 63 ? "B" : score >= 53 ? "C+" : "C";
 
         scoredNfl.push({
-          homeTeam, awayTeam, pickTeam, pickSide, pickML, spread: spreadHome, total,
-          score, grade, reasons, weatherNote, sharpDirection, sharpScore, publicBetPct,
+          homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
+          score, grade, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
           commenceTime: game.commence_time ?? null, injuryNote,
+          analysis: { ...analysis, pickStats, oppStats, pickInjuries, oppInjuries },
         });
       }
 
       scoredNfl.sort((a, b) => b.score - a.score);
-      const nflPrimary   = scoredNfl[0] ?? null;
-      const nflRunnerUp  = scoredNfl[1] ?? null;
+      const nflPrimary  = scoredNfl[0] ?? null;
+      const nflRunnerUp = scoredNfl[1] ?? null;
 
-      const nflResult = {
-        week: weekLabel,
-        primary: nflPrimary,
-        runnerUp: nflRunnerUp,
-        gamesAnalyzed: scoredNfl.length,
-        fetchedAt: new Date().toISOString(),
-        liveData: nflGames.length > 0,
-      };
+      const nflResult = { week: weekLabel, primary: nflPrimary, runnerUp: nflRunnerUp, gamesAnalyzed: scoredNfl.length, fetchedAt: new Date().toISOString(), liveData: nflGames.length > 0 };
 
-      if (nflPrimary && nflGames.length > 0) {
-        if (!nflWeeklyPicksHistory[weekLabel]) {
-          nflWeeklyPicksHistory[weekLabel] = {
-            week: weekLabel,
-            primary: { pickTeam: nflPrimary.pickTeam, grade: nflPrimary.grade, score: nflPrimary.score, result: "pending", homeTeam: nflPrimary.homeTeam, awayTeam: nflPrimary.awayTeam },
-            runnerUp: nflRunnerUp ? { pickTeam: nflRunnerUp.pickTeam, grade: nflRunnerUp.grade, score: nflRunnerUp.score, result: "pending", homeTeam: nflRunnerUp.homeTeam, awayTeam: nflRunnerUp.awayTeam } : null,
-          };
-          await saveNflWeeklyPicks();
-        }
+      if (nflPrimary && nflGames.length > 0 && !nflWeeklyPicksHistory[weekLabel]) {
+        nflWeeklyPicksHistory[weekLabel] = {
+          week: weekLabel,
+          primary: { pickTeam: nflPrimary.pickTeam, grade: nflPrimary.grade, score: nflPrimary.score, result: "pending", homeTeam: nflPrimary.homeTeam, awayTeam: nflPrimary.awayTeam },
+          runnerUp: nflRunnerUp ? { pickTeam: nflRunnerUp.pickTeam, grade: nflRunnerUp.grade, score: nflRunnerUp.score, result: "pending", homeTeam: nflRunnerUp.homeTeam, awayTeam: nflRunnerUp.awayTeam } : null,
+        };
+        await saveNflWeeklyPicks();
       }
-
       _nflWeeklyPickCache = { data: nflResult, ts: now, week: weekLabel };
       return res.json({ ...nflResult, history: nflWeeklyPicksHistory });
     } catch (e: any) {
@@ -18429,7 +18905,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
-  // ── POST /api/nfl/pick-of-week/grade ─────────────────────────────────────
+    // ── POST /api/nfl/pick-of-week/grade ─────────────────────────────────────
   app.post("/api/nfl/pick-of-week/grade", requireOwner, async (req: Request, res: Response) => {
     try {
       const { week, result, which } = req.body ?? {};

@@ -902,27 +902,80 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
   const [open, setOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const which = isRunnerUp ? "runnerUp" : "primary";
-  const mlFmt = (ml: number | null) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
-  const spreadFmt = (s: number | null) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+  const mlFmt = (ml: number | null | undefined) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
+  const spreadFmt = (s: number | null | undefined) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+  const a = pick.analysis ?? {};
+  const sharp = a.sharp ?? {};
+  const starters = a.starters ?? {};
+  const pickStarter = starters.pick ?? {};
+  const oppStarter = starters.opp ?? {};
+  const offVsPitch = a.offenseVsPitching ?? {};
+  const pickBatting = offVsPitch.pickTeamBatting ?? {};
+  const oppPitching = offVsPitch.oppTeamPitching ?? {};
+  const weather = a.weather ?? null;
+  const homeField = a.homeField ?? {};
+  const market = a.market ?? {};
+
+  const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: "#131A24", textTransform: "uppercase", letterSpacing: 1, marginBottom: 7,
+        display: "flex", alignItems: "center", gap: 5 }}>
+        <span>{icon}</span><span>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+
+  const StatRow = ({ label: lbl, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "4px 0", borderBottom: "1px solid rgba(19,35,58,0.05)" }}>
+      <span style={{ fontSize: 11, color: "#3D4B58" }}>{lbl}</span>
+      <div style={{ textAlign: "right" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: highlight ? "#D4A843" : "#131A24" }}>{value}</span>
+        {sub && <div style={{ fontSize: 9, color: "#6b7280" }}>{sub}</div>}
+      </div>
+    </div>
+  );
+
+  const TileRow = ({ items }: { items: Array<{ label: string; value: string; color?: string }> }) => (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {items.filter(Boolean).map((t, i) => (
+        <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px", flex: "1 1 auto", minWidth: 70 }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>{t.label}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: t.color ?? "#131A24" }}>{t.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   const handleShare = () => {
-    const text = [
+    const lines = [
       `🏟️ Clubhouse IQ — MLB Pick of the Day`,
       `${label}: ${pick.pickTeam}`,
       `Grade: ${pick.grade} · Confidence: ${pick.score}/100`,
       pick.pickML ? `ML: ${mlFmt(pick.pickML)}` : "",
+      pick.spread != null ? `Spread: ${spreadFmt(pick.spread)}` : "",
+      "",
+      pickStarter.name ? `Starter: ${pickStarter.name} (${pickStarter.era ?? "—"} ERA, ${pickStarter.wins ?? 0}-${pickStarter.losses ?? 0})` : "",
+      oppStarter.name ? `vs ${oppStarter.name} (${oppStarter.era ?? "—"} ERA)` : "",
+      "",
+      sharp.sharpDirection ? `Sharp money: ${sharp.sharpDirection} (${sharp.sharpScore ?? 0}/100)` : "",
       "",
       "Top Reasons:",
-      ...(pick.reasons ?? []).slice(0, 4).map((r: string) => `• ${r}`),
+      ...(pick.reasons ?? []).slice(0, 5).map((r: string) => `• ${r}`),
+      "",
+      weather && !weather.isDome ? `🌤️ ${weather.description} · ${weather.tempF}°F · Wind ${weather.windMph}mph ${weather.windDir}` : "",
       "",
       "📱 Clubhouse IQ",
     ].filter(Boolean).join("\n");
-    if (navigator.share) { navigator.share({ title: "MLB Pick of the Day", text }); }
-    else { navigator.clipboard?.writeText(text); setSharing(true); setTimeout(() => setSharing(false), 2000); }
+    if (navigator.share) { navigator.share({ title: "MLB Pick of the Day", text: lines }); }
+    else { navigator.clipboard?.writeText(lines); setSharing(true); setTimeout(() => setSharing(false), 2000); }
   };
 
   return (
-    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`, background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
+      background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+
       {/* Header row */}
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <div style={{ width: 36, height: 36, borderRadius: 10, background: isRunnerUp ? "rgba(19,35,58,0.06)" : "rgba(212,168,67,0.12)",
@@ -933,7 +986,9 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
           <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1, marginBottom: 1 }}>{label}</div>
           <div style={{ fontSize: 15, fontWeight: 900, color: "#131A24", lineHeight: 1.2 }}>{pick.pickTeam}</div>
           <div style={{ fontSize: 10, color: "#3D4B58", marginTop: 1 }}>
-            {pick.awayTeam} @ {pick.homeTeam}{pick.pickML ? ` · ML ${mlFmt(pick.pickML)}` : ""}{pick.spread != null ? ` · Spread ${spreadFmt(pick.spread)}` : ""}
+            {pick.awayTeam} @ {pick.homeTeam}
+            {pick.pickML != null ? ` · ML ${mlFmt(pick.pickML)}` : ""}
+            {pick.spread != null ? ` · Spread ${spreadFmt(pick.spread)}` : ""}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
@@ -944,33 +999,176 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
         {open ? <ChevronUp size={14} style={{ color: "#6b7280", flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: "#6b7280", flexShrink: 0 }} />}
       </div>
 
-      {/* Drawer */}
+      {/* Deep Analysis Drawer */}
       {open && (
         <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
-          {/* Quick stats row */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 10 }}>
-            {[
+
+          {/* Quick tiles */}
+          <div style={{ marginTop: 12, marginBottom: 14 }}>
+            <TileRow items={[
               { label: "Confidence", value: `${pick.score}/100` },
               { label: "Grade", value: pick.grade, color: gradeColor(pick.grade) },
-              pick.total ? { label: "Total", value: `O/U ${pick.total}` } : null,
-              pick.weatherNote ? { label: "Weather", value: pick.weatherNote.split("—")[0].trim() } : null,
-            ].filter(Boolean).map((stat: any, i: number) => (
-              <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px" }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>{stat.label}</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: stat.color ?? "#131A24" }}>{stat.value}</div>
-              </div>
-            ))}
+              market.impliedWinPct ? { label: "Implied Win%", value: `${market.impliedWinPct}%` } : null,
+              pick.total ? { label: "O/U", value: `${pick.total}` } : null,
+            ].filter(Boolean) as any} />
           </div>
 
-          {/* Reasoning */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#131A24", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Why this pick</div>
+          {/* Sharp Money */}
+          {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
+            <Section title="Sharp Money" icon="💰">
+              <div style={{ background: sharp.sharpScore >= 65 ? "rgba(34,197,94,0.06)" : "rgba(19,35,58,0.04)",
+                borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : "#131A24" }}>
+                      {sharp.sharpDirection ?? "Neutral"}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#6b7280" }}>Sharp Direction</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : sharp.sharpScore >= 40 ? "#D4A843" : "#dc2626" }}>
+                      {sharp.sharpScore ?? 0}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#6b7280" }}>Sharp Score /100</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+                  {sharp.publicBetPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Bets: <b>{Math.round(sharp.publicBetPct)}%</b></div>}
+                  {sharp.publicMoneyPct != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Public Money: <b>{Math.round(sharp.publicMoneyPct)}%</b></div>}
+                  {sharp.rlmDetected && <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 700 }}>⚡ RLM: {sharp.rlmSide}</div>}
+                  {sharp.pinnacleML != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>Pinnacle: <b>{mlFmt(sharp.pinnacleML)}</b></div>}
+                  {sharp.spreadDivergence != null && Math.abs(sharp.spreadDivergence) >= 0.5 &&
+                    <div style={{ fontSize: 10, color: "#3D4B58" }}>Spread Div: <b>{sharp.spreadDivergence > 0 ? "+" : ""}{sharp.spreadDivergence}</b></div>}
+                </div>
+                {sharp.sharpSignals && sharp.sharpSignals.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {sharp.sharpSignals.map((sig: string, i: number) => (
+                      <span key={i} style={{ fontSize: 9, fontWeight: 700, background: "rgba(19,35,58,0.08)",
+                        borderRadius: 6, padding: "2px 7px", color: "#131A24" }}>{sig}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Starter Duel */}
+          {(pickStarter.name || oppStarter.name) && (
+            <Section title="Starter Duel" icon="⚾">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[{ team: pick.pickTeam, s: pickStarter, isPick: true }, { team: pick.oppTeam ?? (pick.pickTeam === pick.homeTeam ? pick.awayTeam : pick.homeTeam), s: oppStarter, isPick: false }].map(({ team, s, isPick }) => (
+                  <div key={team} style={{ background: isPick ? "rgba(212,168,67,0.08)" : "rgba(19,35,58,0.04)",
+                    borderRadius: 10, padding: "10px 11px", border: isPick ? "1px solid rgba(212,168,67,0.2)" : "1px solid transparent" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: isPick ? "#D4A843" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>
+                      {isPick ? "▶ Pick" : "Opp"}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#131A24", marginBottom: 5 }}>{s.name ?? "TBD"}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <div style={{ fontSize: 10, color: "#3D4B58" }}>ERA: <b style={{ color: s.era != null && parseFloat(s.era) < 3.5 ? "#16a34a" : s.era != null && parseFloat(s.era) > 5.0 ? "#dc2626" : "#131A24" }}>{s.era ?? "—"}</b></div>
+                      <div style={{ fontSize: 10, color: "#3D4B58" }}>Record: <b>{s.wins ?? 0}-{s.losses ?? 0}</b></div>
+                      {s.whip != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>WHIP: <b>{s.whip}</b></div>}
+                      {s.k9 != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>K/9: <b>{s.k9}</b></div>}
+                      {s.bb9 != null && <div style={{ fontSize: 10, color: "#3D4B58" }}>BB/9: <b>{s.bb9}</b></div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Team Offense vs Pitching */}
+          {(pickBatting.avg || oppPitching.era) && (
+            <Section title="Offense vs Pitching" icon="📊">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ background: "rgba(212,168,67,0.06)", borderRadius: 10, padding: "10px 11px",
+                  border: "1px solid rgba(212,168,67,0.15)" }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#D4A843", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
+                    {pick.pickTeam} Offense
+                  </div>
+                  {pickBatting.avg && <StatRow label="Batting Avg" value={`.${String(Math.round(parseFloat(pickBatting.avg) * 1000)).padStart(3, "0")}`} />}
+                  {pickBatting.ops && <StatRow label="OPS" value={pickBatting.ops} />}
+                  {pickBatting.runsPerGame && <StatRow label="Runs/Game" value={pickBatting.runsPerGame} />}
+                  {pickBatting.hrPerGame && <StatRow label="HR/Game" value={pickBatting.hrPerGame} />}
+                  {pickBatting.strikeoutPct && <StatRow label="K%" value={`${pickBatting.strikeoutPct}%`} />}
+                  {pickBatting.walkPct && <StatRow label="BB%" value={`${pickBatting.walkPct}%`} />}
+                </div>
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 11px" }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
+                    Opp Pitching
+                  </div>
+                  {oppPitching.era && <StatRow label="Team ERA" value={oppPitching.era} />}
+                  {oppPitching.whip && <StatRow label="WHIP" value={oppPitching.whip} />}
+                  {oppPitching.opponentOps && <StatRow label="Opp OPS" value={oppPitching.opponentOps} />}
+                  {oppPitching.k9 && <StatRow label="K/9" value={oppPitching.k9} />}
+                  {oppPitching.bb9 && <StatRow label="BB/9" value={oppPitching.bb9} />}
+                  {oppPitching.strikeoutPct && <StatRow label="K%" value={`${oppPitching.strikeoutPct}%`} />}
+                </div>
+              </div>
+            </Section>
+          )}
+
+          {/* Home/Road Context */}
+          {homeField.pickSide && (
+            <Section title="Home / Road Split" icon="🏟️">
+              <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Playing</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#131A24" }}>{homeField.pickSide}</div>
+                </div>
+                {homeField.homeRecord && <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Home Record</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#16a34a" }}>{homeField.homeRecord}</div>
+                </div>}
+                {homeField.roadRecord && <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Road Record</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#131A24" }}>{homeField.roadRecord}</div>
+                </div>}
+              </div>
+            </Section>
+          )}
+
+          {/* Weather */}
+          {weather && (
+            <Section title="Stadium Weather" icon="🌤️">
+              {weather.isDome ? (
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "8px 12px" }}>
+                  <span style={{ fontSize: 11, color: "#3D4B58" }}>🏟️ Dome / Retractable Roof — weather neutral</span>
+                </div>
+              ) : (
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: "#3D4B58" }}>🌡️ <b>{weather.tempF}°F</b></div>
+                    <div style={{ fontSize: 11, color: "#3D4B58" }}>💨 <b>{weather.windMph}mph {weather.windDir}</b></div>
+                    {weather.precipInches > 0 && <div style={{ fontSize: 11, color: "#3D4B58" }}>🌧️ <b>{weather.precipInches}"</b></div>}
+                    <div style={{ fontSize: 11, color: "#3D4B58" }}>☁️ <b>{weather.cloudPct}%</b></div>
+                    <div style={{ fontSize: 11, color: "#3D4B58" }}>💧 <b>{weather.humidity}%</b></div>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#3D4B58" }}>{weather.description}</div>
+                  {(weather.windOut || weather.windIn) && (
+                    <div style={{ marginTop: 5, fontSize: 10, fontWeight: 700,
+                      color: weather.windOut ? "#dc2626" : "#16a34a" }}>
+                      {weather.windOut ? "⚡ Wind blowing OUT to CF — hitter-friendly" : "🛡️ Wind blowing IN — pitcher-friendly"}
+                    </div>
+                  )}
+                  {weather.impactLabel && weather.impactLabel !== "Neutral" && (
+                    <div style={{ marginTop: 4, fontSize: 10, fontWeight: 700, color: weather.hitterImpact < 0 ? "#dc2626" : "#16a34a" }}>
+                      Impact: {weather.impactLabel}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
+          )}
+
+          {/* Why This Pick — Reasoning */}
+          <Section title="Edge Summary" icon="📋">
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {(pick.reasons ?? []).map((reason: string, i: number) => {
-                const isNeg = reason.toLowerCase().startsWith("caution") || reason.toLowerCase().startsWith("injury") || reason.toLowerCase().startsWith("heavy wind") || reason.toLowerCase().startsWith("rain") || reason.toLowerCase().startsWith("extreme cold");
+                const isNeg = /caution|injury|heavy wind|rain|snow|extreme cold|public heavily/i.test(reason);
                 return (
                   <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 8, background: isNeg ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                    <div style={{ width: 16, height: 16, borderRadius: 8,
+                      background: isNeg ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
                       display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
                       {isNeg ? <TrendingDown size={8} style={{ color: "#dc2626" }} /> : <CheckCircle size={8} style={{ color: "#16a34a" }} />}
                     </div>
@@ -979,12 +1177,12 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
                 );
               })}
             </div>
-          </div>
+          </Section>
 
           {/* Runner-up note */}
           {isRunnerUp && (
             <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
-              <p style={{ fontSize: 10, color: "#6b7280", fontStyle: "italic" }}>Runner-up pick — not graded unless all primary picks also fire.</p>
+              <p style={{ fontSize: 10, color: "#6b7280", fontStyle: "italic", margin: 0 }}>Runner-up pick — not graded unless primary pick also fires.</p>
             </div>
           )}
 

@@ -1875,32 +1875,76 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
   const [open, setOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const which = isRunnerUp ? "runnerUp" as const : "primary" as const;
-  const mlFmt = (ml: number | null) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
-  const spreadFmt = (s: number | null) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+  const mlFmt = (ml: number | null | undefined) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
+  const spreadFmt = (s: number | null | undefined) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
+  const a = pick.analysis ?? {};
+  const sharp = a.sharp ?? {};
+  const offDef = a.offenseDefense ?? {};
+  const pickStats = offDef.pickStats ?? {};
+  const oppStats = offDef.oppStats ?? {};
+  const injuries = a.injuries ?? {};
+  const weather = a.weather ?? null;
+  const homeField = a.homeField ?? {};
+  const market = a.market ?? {};
+
+  const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: NAVY, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7,
+        display: "flex", alignItems: "center", gap: 5 }}>
+        <span>{icon}</span><span>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+
+  const StatRow = ({ label: lbl, value, highlight }: { label: string; value: string; highlight?: boolean }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "4px 0", borderBottom: "1px solid rgba(19,35,58,0.05)" }}>
+      <span style={{ fontSize: 11, color: MUTED }}>{lbl}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color: highlight ? GOLD_COLOR : NAVY }}>{value}</span>
+    </div>
+  );
+
+  const TileRow = ({ items }: { items: Array<{ label: string; value: string; color?: string } | null> }) => (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {(items.filter(Boolean) as Array<{ label: string; value: string; color?: string }>).map((t, i) => (
+        <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px", flex: "1 1 auto", minWidth: 70 }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>{t.label}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: t.color ?? NAVY }}>{t.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   const handleShare = () => {
-    const text = [
+    const lines = [
       `🏟️ Clubhouse IQ — ${sport} Pick of the Week`,
       `${label}: ${pick.pickTeam}`,
       `Grade: ${pick.grade} · Confidence: ${pick.score}/100`,
-      pick.pickML ? `ML: ${mlFmt(pick.pickML)}` : "",
+      pick.pickML != null ? `ML: ${mlFmt(pick.pickML)}` : "",
       pick.spread != null ? `Spread: ${spreadFmt(pick.spread)}` : "",
+      pick.total != null ? `O/U: ${pick.total}` : "",
       "",
-      "Why this pick:",
+      sharp.sharpDirection ? `Sharp: ${sharp.sharpDirection} (${sharp.sharpScore ?? 0}/100)` : "",
+      pickStats.ppg ? `${pick.pickTeam} Offense: ${pickStats.ppg} PPG · ${pickStats.passingYpg ?? "—"} pass yds/g` : "",
+      oppStats.ppgAllowed ? `Opp Defense: ${oppStats.ppgAllowed} PPG allowed` : "",
+      "",
+      "Top Reasons:",
       ...(pick.reasons ?? []).slice(0, 5).map((r: string) => `• ${r}`),
       "",
-      pick.weatherNote ? `🌤️ ${pick.weatherNote}` : "",
-      pick.injuryNote ? `⚠️ ${pick.injuryNote}` : "",
+      weather && !weather.isDome ? `🌤️ ${weather.description} · ${weather.tempF}°F · Wind ${weather.windMph}mph ${weather.windDir}` : "",
       "",
       "📱 Clubhouse IQ",
     ].filter(Boolean).join("\n");
-    if (navigator.share) { navigator.share({ title: `${sport} Pick of the Week`, text }); }
-    else { navigator.clipboard?.writeText(text); setSharing(true); setTimeout(() => setSharing(false), 2000); }
+    if (navigator.share) { navigator.share({ title: `${sport} Pick of the Week`, text: lines }); }
+    else { navigator.clipboard?.writeText(lines); setSharing(true); setTimeout(() => setSharing(false), 2000); }
   };
 
   return (
     <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
       background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+
+      {/* Header */}
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <div style={{ width: 36, height: 36, borderRadius: 10, background: isRunnerUp ? "rgba(19,35,58,0.06)" : "rgba(212,168,67,0.12)",
           display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1924,43 +1968,176 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
         {open ? <ChevronUp size={14} style={{ color: MUTED, flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: MUTED, flexShrink: 0 }} />}
       </div>
 
+      {/* Deep Analysis Drawer */}
       {open && (
         <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(19,35,58,0.08)" }}>
-          {/* Stats tiles */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, marginBottom: 10 }}>
-            {[
+
+          {/* Quick tiles */}
+          <div style={{ marginTop: 12, marginBottom: 14 }}>
+            <TileRow items={[
               { label: "Confidence", value: `${pick.score}/100` },
               { label: "Grade", value: pick.grade, color: nflGradeColor(pick.grade) },
-              pick.sharpScore > 0 ? { label: "Sharp Score", value: `${pick.sharpScore}/100` } : null,
-              pick.publicBetPct != null ? { label: "Public Bets", value: `${Math.round(pick.publicBetPct)}%` } : null,
-              pick.total != null ? { label: "Total", value: `O/U ${pick.total}` } : null,
-            ].filter(Boolean).map((stat: any, i: number) => (
-              <div key={i} style={{ background: "rgba(19,35,58,0.05)", borderRadius: 8, padding: "5px 10px" }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>{stat.label}</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: stat.color ?? NAVY }}>{stat.value}</div>
-              </div>
-            ))}
+              market.impliedWinPct ? { label: "Implied Win%", value: `${market.impliedWinPct}%` } : null,
+              pick.total != null ? { label: "O/U", value: `${pick.total}` } : null,
+            ]} />
           </div>
 
+          {/* Sharp Money */}
+          {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
+            <Section title="Sharp Money" icon="💰">
+              <div style={{ background: sharp.sharpScore >= 65 ? "rgba(34,197,94,0.06)" : "rgba(19,35,58,0.04)",
+                borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : NAVY }}>
+                      {sharp.sharpDirection ?? "Neutral"}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#6b7280" }}>Sharp Direction</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: sharp.sharpScore >= 65 ? "#16a34a" : sharp.sharpScore >= 40 ? GOLD_COLOR : "#dc2626" }}>
+                      {sharp.sharpScore ?? 0}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#6b7280" }}>Sharp Score /100</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+                  {sharp.publicBetPct != null && <div style={{ fontSize: 10, color: MUTED }}>Public Bets: <b>{Math.round(sharp.publicBetPct)}%</b></div>}
+                  {sharp.publicMoneyPct != null && <div style={{ fontSize: 10, color: MUTED }}>Public Money: <b>{Math.round(sharp.publicMoneyPct)}%</b></div>}
+                  {sharp.rlmDetected && <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 700 }}>⚡ RLM: {sharp.rlmSide}</div>}
+                  {sharp.pinnacleML != null && <div style={{ fontSize: 10, color: MUTED }}>Pinnacle: <b>{mlFmt(sharp.pinnacleML)}</b></div>}
+                  {sharp.spreadDivergence != null && Math.abs(sharp.spreadDivergence) >= 0.5 &&
+                    <div style={{ fontSize: 10, color: MUTED }}>Spread Div: <b>{sharp.spreadDivergence > 0 ? "+" : ""}{sharp.spreadDivergence}</b></div>}
+                </div>
+                {sharp.sharpSignals && sharp.sharpSignals.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {sharp.sharpSignals.map((sig: string, i: number) => (
+                      <span key={i} style={{ fontSize: 9, fontWeight: 700, background: "rgba(19,35,58,0.08)",
+                        borderRadius: 6, padding: "2px 7px", color: NAVY }}>{sig}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Offense vs Defense */}
+          {(pickStats.ppg || oppStats.ppgAllowed) && (
+            <Section title="Offense vs Defense" icon="🏈">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ background: "rgba(212,168,67,0.06)", borderRadius: 10, padding: "10px 11px",
+                  border: "1px solid rgba(212,168,67,0.15)" }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: GOLD_COLOR, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
+                    {pick.pickTeam} Offense
+                  </div>
+                  {pickStats.ppg && <StatRow label="Points/G" value={pickStats.ppg} />}
+                  {pickStats.passingYpg && <StatRow label="Pass Yds/G" value={pickStats.passingYpg} />}
+                  {pickStats.rushingYpg && <StatRow label="Rush Yds/G" value={pickStats.rushingYpg} />}
+                  {pickStats.completionPct != null && <StatRow label="Comp%" value={`${pickStats.completionPct}%`} />}
+                  {pickStats.turnovers != null && <StatRow label="Turnovers" value={`${pickStats.turnovers}`} />}
+                </div>
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 11px" }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>
+                    Opp Defense
+                  </div>
+                  {oppStats.ppgAllowed && <StatRow label="PPG Allowed" value={oppStats.ppgAllowed} />}
+                  {oppStats.yardsAllowedPerGame && <StatRow label="Yds Allowed/G" value={oppStats.yardsAllowedPerGame} />}
+                  {oppStats.sacks != null && <StatRow label="Sacks" value={`${oppStats.sacks}`} />}
+                  {oppStats.interceptions != null && <StatRow label="INTs" value={`${oppStats.interceptions}`} />}
+                  {oppStats.turnovers != null && <StatRow label="Opp TO" value={`${oppStats.turnovers}`} />}
+                </div>
+              </div>
+            </Section>
+          )}
+
+          {/* Injuries */}
+          {((injuries.pickInjuries && injuries.pickInjuries.length > 0) ||
+            (injuries.oppInjuries && injuries.oppInjuries.length > 0)) && (
+            <Section title="Injury Report" icon="⚠️">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {injuries.pickInjuries && injuries.pickInjuries.length > 0 && (
+                  <div style={{ background: "rgba(239,68,68,0.05)", borderRadius: 10, padding: "8px 11px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#dc2626", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
+                      {pick.pickTeam} Injuries
+                    </div>
+                    {injuries.pickInjuries.slice(0, 5).map((inj: string, i: number) => (
+                      <div key={i} style={{ fontSize: 10, color: MUTED, padding: "2px 0" }}>• {inj}</div>
+                    ))}
+                  </div>
+                )}
+                {injuries.oppInjuries && injuries.oppInjuries.length > 0 && (
+                  <div style={{ background: "rgba(239,68,68,0.04)", borderRadius: 10, padding: "8px 11px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
+                      Opp Injuries
+                    </div>
+                    {injuries.oppInjuries.slice(0, 5).map((inj: string, i: number) => (
+                      <div key={i} style={{ fontSize: 10, color: MUTED, padding: "2px 0" }}>• {inj}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Home Field */}
+          {homeField.pickSide && (
+            <Section title="Home Field" icon="🏟️">
+              <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 12px", display: "flex", flexWrap: "wrap", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Playing</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: NAVY }}>{homeField.pickSide}</div>
+                </div>
+                {homeField.homeRecord && <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Home Record</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#16a34a" }}>{homeField.homeRecord}</div>
+                </div>}
+                {homeField.roadRecord && <div>
+                  <div style={{ fontSize: 9, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 }}>Road Record</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>{homeField.roadRecord}</div>
+                </div>}
+              </div>
+            </Section>
+          )}
+
           {/* Weather */}
-          {pick.weatherNote && (
-            <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 13 }}>🌤️</span>
-              <span style={{ fontSize: 11, color: MUTED }}>{pick.weatherNote}</span>
-            </div>
+          {weather && (
+            <Section title="Stadium Weather" icon="🌤️">
+              {weather.isDome ? (
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "8px 12px" }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>🏟️ Dome / Retractable Roof — weather neutral</span>
+                </div>
+              ) : (
+                <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: MUTED }}>🌡️ <b>{weather.tempF}°F</b></div>
+                    <div style={{ fontSize: 11, color: MUTED }}>💨 <b>{weather.windMph}mph {weather.windDir}</b></div>
+                    {weather.precipInches > 0 && <div style={{ fontSize: 11, color: MUTED }}>🌧️ <b>{weather.precipInches}"</b></div>}
+                    <div style={{ fontSize: 11, color: MUTED }}>☁️ <b>{weather.cloudPct}%</b></div>
+                    <div style={{ fontSize: 11, color: MUTED }}>💧 <b>{weather.humidity}%</b></div>
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED }}>{weather.description}</div>
+                  {weather.windMph >= 15 && (
+                    <div style={{ marginTop: 5, fontSize: 10, fontWeight: 700, color: "#dc2626" }}>
+                      ⚡ High wind ({weather.windMph}mph) — passing game impact
+                    </div>
+                  )}
+                  {weather.precipInches > 0.1 && (
+                    <div style={{ marginTop: 3, fontSize: 10, fontWeight: 700, color: "#dc2626" }}>
+                      🌧️ Precipitation — favors rushing game
+                    </div>
+                  )}
+                  {weather.tempF < 32 && (
+                    <div style={{ marginTop: 3, fontSize: 10, fontWeight: 700, color: "#3b82f6" }}>
+                      ❄️ Freezing temps — ball-handling impact
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
           )}
 
-          {/* Injury */}
-          {pick.injuryNote && (
-            <div style={{ background: "rgba(239,68,68,0.05)", borderRadius: 8, padding: "6px 10px", marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 13 }}>⚠️</span>
-              <span style={{ fontSize: 11, color: "#dc2626" }}>{pick.injuryNote}</span>
-            </div>
-          )}
-
-          {/* Reasons */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: NAVY, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Why this pick</div>
+          {/* Edge Summary / Reasons */}
+          <Section title="Edge Summary" icon="📋">
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {(pick.reasons ?? []).map((reason: string, i: number) => {
                 const isNeg = /caution|injury|wind|rain|snow|cold|extreme|public heavily/i.test(reason);
@@ -1976,11 +2153,11 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
                 );
               })}
             </div>
-          </div>
+          </Section>
 
           {isRunnerUp && (
             <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
-              <p style={{ fontSize: 10, color: MUTED, fontStyle: "italic" }}>Runner-up pick — not graded unless primary pick also fires.</p>
+              <p style={{ fontSize: 10, color: MUTED, fontStyle: "italic", margin: 0 }}>Runner-up pick — not graded unless primary pick also fires.</p>
             </div>
           )}
 
