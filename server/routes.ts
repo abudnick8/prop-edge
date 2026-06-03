@@ -18106,6 +18106,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
     // 1. ML-implied public lean
     //    Public bettors heavily back favorites — implied prob from ML is a good proxy.
+    //    If both MLs are null (corrupt/absent), skip this block — ESPN BPI below will carry it.
     if (mlHome !== null && mlAway !== null) {
       const rawHome = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
       const rawAway = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
@@ -18242,10 +18243,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     } catch { /* non-fatal — ESPN BPI is best-effort */ }
 
-    // 4. Baseline note if we have very little
+    // 4. Baseline note — always shown so the section is never empty
     if (signals.length === 0) {
-      signals.push(`Line data: ${pickTeam} ML ${mlHome !== null ? (mlHome > 0 ? "+" : "") + mlHome : "N/A"} | spread ${spread ?? "N/A"} | total ${total ?? "N/A"}`);
-      signals.push("Live sharp money data unavailable — estimate derived from market odds & line movement");
+      signals.push(`Odds: ${pickTeam} ML ${mlHome !== null ? (mlHome > 0 ? "+" : "") + mlHome : "N/A (corrupt/missing)"} | spread ${spread ?? "N/A"} | total ${total ?? "N/A"}`);
+      signals.push("Live sharp money data unavailable — estimate from ESPN BPI & line movement");
+      // Give a minimum score so the section shows rather than displaying 0
+      score = Math.max(score, 8);
+      if (direction === "neutral") direction = pickSide; // default to pick team direction
     } else {
       signals.push("Sharp estimate: derived from market odds & ESPN line movement (live bet% unavailable)");
     }
@@ -18459,6 +18463,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // ── Score each game ────────────────────────────────────────────────
       const scoredGames: any[] = [];
 
+      // Sanitize an American ML value — reject anything beyond ±2500 as corrupt
+      const sanitizeML = (v: number | null): number | null => {
+        if (v === null || v === undefined) return null;
+        if (Math.abs(v) > 2500) return null; // absurd value — Odds API artifact
+        return v;
+      };
+
       for (const game of mlbGames) {
         const homeTeam = game.home_team ?? "";
         const awayTeam = game.away_team ?? "";
@@ -18470,8 +18481,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const spreads  = bk.markets?.find((m: any) => m.key === "spreads");
           const totals   = bk.markets?.find((m: any) => m.key === "totals");
           if (h2h?.outcomes?.length >= 2) {
-            mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
-            mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
+            mlHome = sanitizeML(h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null);
+            mlAway = sanitizeML(h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null);
           }
           if (spreads?.outcomes?.length) spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
           if (totals?.outcomes?.length)  total      = totals.outcomes.find((o: any) => o.name === "Over")?.point ?? null;
@@ -19112,12 +19123,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const spreads = bk.markets?.find((m: any) => m.key === "spreads");
           const totals  = bk.markets?.find((m: any) => m.key === "totals");
           if (h2h?.outcomes?.length >= 2) {
-            mlHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
-            mlAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
+            // Sanitize: NFL moneylines should never exceed ±600 in a real game.
+            // Anything beyond that is a corrupt Odds API artifact (e.g. -7000, -410 pre-season).
+            const rawHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
+            const rawAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
+            mlHome = rawHome !== null && Math.abs(rawHome) <= 600 ? rawHome : null;
+            mlAway = rawAway !== null && Math.abs(rawAway) <= 600 ? rawAway : null;
           }
           if (spreads?.outcomes?.length) spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
           if (totals?.outcomes?.length)  total      = totals.outcomes.find((o: any)  => o.name === "Over")?.point ?? null;
           if (mlHome !== null) break;
+        }
+
+        // Skip this game entirely if no valid ML odds found — means data is too corrupt/thin
+        // to produce a meaningful pick. Don’t push to scoredNfl.
+        if (mlHome === null && mlAway === null && spreadHome === null) {
+          console.log(`[NFL Pick] Skipping ${homeTeam} vs ${awayTeam} — no valid ML/spread data`);
+          continue;
         }
 
         let pickSide: "home" | "away" = "home";
@@ -19362,6 +19384,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         score = Math.min(97, Math.max(20, score));
         const grade = score >= 83 ? "A" : score >= 73 ? "B+" : score >= 63 ? "B" : score >= 53 ? "C+" : "C";
+
+        // Don’t publish picks with a raw score below 35 — that means both ML odds and
+        // sharp data were missing/corrupt and the pick has no analytical foundation.
+        if (score < 35 && mlHome === null && mlAway === null) {
+          console.log(`[NFL Pick] Suppressing low-confidence pick: ${pickTeam} (score ${score}) — insufficient data`);
+          continue;
+        }
 
         scoredNfl.push({
           homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
