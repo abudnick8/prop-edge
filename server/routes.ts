@@ -18940,6 +18940,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const TTL = 60 * 60 * 1000;
       const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before earliest game
 
+      // ── WEEKLY LOCK: once this week's picks are saved to history, serve them frozen ──
+      if (nflWeeklyPicksHistory[weekLabel]) {
+        const weekEntry = nflWeeklyPicksHistory[weekLabel];
+        const frozenNfl = {
+          week: weekLabel,
+          primary:  weekEntry.primary  ?? null,
+          runnerUp: weekEntry.runnerUp ?? null,
+          gamesAnalyzed: weekEntry.gamesAnalyzed ?? 2,
+          fetchedAt: weekEntry.fetchedAt ?? new Date().toISOString(),
+          liveData: true,
+        };
+        if (!_nflWeeklyPickCache || _nflWeeklyPickCache.week !== weekLabel) {
+          _nflWeeklyPickCache = { data: frozenNfl, ts: now, week: weekLabel };
+        }
+        return res.json({ ...frozenNfl, history: nflWeeklyPicksHistory, locked: true });
+      }
+
       if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel) {
         const cachedData = _nflWeeklyPickCache.data;
         const allGames: any[] = [
