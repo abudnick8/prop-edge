@@ -953,8 +953,38 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
 
   return (
     <>
-    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
-      background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+    {/* Result-aware colors matching BTS player pick cards */}
+    <div style={{
+      borderRadius: 14, overflow: "hidden",
+      border: pick.result === "win" ? "1.5px solid rgba(34,197,94,0.35)"
+            : pick.result === "loss" ? "1.5px solid rgba(239,68,68,0.30)"
+            : pick.result === "push" ? "1.5px solid rgba(250,204,21,0.35)"
+            : isRunnerUp ? "1.5px solid rgba(19,35,58,0.10)" : "1.5px solid rgba(212,168,67,0.35)",
+      background: pick.result === "win" ? "rgba(34,197,94,0.04)"
+                : pick.result === "loss" ? "rgba(239,68,68,0.03)"
+                : pick.result === "push" ? "rgba(250,204,21,0.04)"
+                : isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)",
+    }}>
+
+      {/* Result banner — shows above header when graded */}
+      {pick.result && pick.result !== "pending" && (
+        <div style={{
+          background: pick.result === "win" ? "rgba(34,197,94,0.12)" : pick.result === "loss" ? "rgba(239,68,68,0.10)" : "rgba(250,204,21,0.12)",
+          borderBottom: pick.result === "win" ? "1px solid rgba(34,197,94,0.25)" : pick.result === "loss" ? "1px solid rgba(239,68,68,0.20)" : "1px solid rgba(250,204,21,0.25)",
+          padding: "5px 14px", display: "flex", alignItems: "center", justifyContent: "space-between"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 13 }}>{pick.result === "win" ? "✅" : pick.result === "loss" ? "❌" : "➡️"}</span>
+            <span style={{ fontSize: 12, fontWeight: 900, color: pick.result === "win" ? "#16a34a" : pick.result === "loss" ? "#dc2626" : "#b8930a" }}>
+              {pick.result.toUpperCase()}
+            </span>
+            {pick.finalScore && (
+              <span style={{ fontSize: 10, color: "#3D4B58", fontWeight: 600 }}>— {pick.finalScore}</span>
+            )}
+          </div>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "#6b7280" }}>Grade {pick.grade} · {pick.score}/100</span>
+        </div>
+      )}
 
       {/* Header row */}
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
@@ -972,9 +1002,19 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(pick.grade) }}>{pick.grade}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58" }}>{pick.score}/100</div>
-          {resultBadge(pick.result ?? "pending")}
+          {/* Only show grade/score in header; result shown in banner above */}
+          {(!pick.result || pick.result === "pending") && (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 900, color: gradeColor(pick.grade) }}>{pick.grade}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58" }}>{pick.score}/100</div>
+              {resultBadge("pending")}
+            </>
+          )}
+          {pick.result && pick.result !== "pending" && (
+            <div style={{ fontSize: 18, fontWeight: 900, color: pick.result === "win" ? "#16a34a" : pick.result === "loss" ? "#dc2626" : "#b8930a" }}>
+              {pick.grade}
+            </div>
+          )}
         </div>
         {open ? <ChevronUp size={14} style={{ color: "#6b7280", flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: "#6b7280", flexShrink: 0 }} />}
       </div>
@@ -1378,8 +1418,10 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
   );
 }
 
-function DailyPickPanel() {
+function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boolean }) {
   const [showHistory, setShowHistory] = useState(false);
+  // In the dedicated Team Pick tab, history is always expanded
+  const historyVisible = alwaysShowHistory || showHistory;
   const { isOwner } = useAuth();
   const queryClient = useQueryClient();
 
@@ -1425,11 +1467,13 @@ function DailyPickPanel() {
               {wins}W-{losses}L{pct !== null ? ` (${pct}%)` : ""}
             </span>
           )}
-          <button onClick={() => setShowHistory(h => !h)}
-            style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
-              border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
-            {showHistory ? "Hide History" : "History"}
-          </button>
+          {!alwaysShowHistory && (
+            <button onClick={() => setShowHistory(h => !h)}
+              style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
+                border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
+              {showHistory ? "Hide History" : "History"}
+            </button>
+          )}
         </div>
       </div>
       {isPickLocked && (
@@ -1439,6 +1483,90 @@ function DailyPickPanel() {
           <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>Pick locked — within 15 min of first pitch. No further updates.</span>
         </div>
       )}
+
+      {/* ── Record Summary Card (matches BTS hitter record widget) ── */}
+      {(() => {
+        const CTZ = "America/Chicago";
+        const todayStr = (() => {
+          const ct = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
+          const [m, d, y] = ct.split("/");
+          return `${y}-${m}-${d}`;
+        })();
+        // Today stats
+        const todayEntry = history[todayStr] ?? {};
+        let todayW = 0, todayL = 0, todayP = 0;
+        for (const which of ["primary", "runnerUp"] as const) {
+          const p = todayEntry[which];
+          if (!p) continue;
+          if (p.result === "win") todayW++;
+          else if (p.result === "loss") todayL++;
+          else todayP++;
+        }
+        // Season stats — all history entries
+        let seasonW = 0, seasonL = 0, seasonP = 0;
+        for (const entry of Object.values(history) as any[]) {
+          for (const which of ["primary", "runnerUp"] as const) {
+            const p = (entry as any)[which];
+            if (!p) continue;
+            if (p.result === "win") seasonW++;
+            else if (p.result === "loss") seasonL++;
+            else seasonP++;
+          }
+        }
+        const todayPct   = (todayW + todayL) > 0 ? Math.round(todayW / (todayW + todayL) * 100) : null;
+        const seasonPct  = (seasonW + seasonL) > 0 ? Math.round(seasonW / (seasonW + seasonL) * 100) : null;
+        return (
+          <div style={{ background: "rgba(19,35,58,0.03)", borderBottom: "1px solid rgba(19,35,58,0.08)",
+            padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", gap: 24 }}>
+              {/* Today */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <BarChart2 size={12} style={{ color: "#60a5fa" }} />
+                  <span style={{ fontSize: 9, fontWeight: 800, color: "#131A24", textTransform: "uppercase", letterSpacing: 0.8 }}>Today</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#16a34a" }}>{todayW}W</span>
+                  <span style={{ fontSize: 13, color: "#6b7280" }}>/</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#f87171" }}>{todayL}L</span>
+                  {todayP > 0 && <span style={{ fontSize: 11, color: "#6b7280" }}>· {todayP} pending</span>}
+                  {todayPct !== null && (
+                    <span style={{ fontSize: 11, fontWeight: 800, background: todayPct >= 60 ? "rgba(34,197,94,0.15)" : todayPct >= 40 ? "rgba(250,204,21,0.15)" : "rgba(239,68,68,0.12)",
+                      color: todayPct >= 60 ? "#16a34a" : todayPct >= 40 ? "#b8930a" : "#dc2626",
+                      borderRadius: 20, padding: "2px 9px" }}>{todayPct}%</span>
+                  )}
+                </div>
+              </div>
+              {/* Season */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <TrendingUp size={12} style={{ color: "#22c55e" }} />
+                  <span style={{ fontSize: 9, fontWeight: 800, color: "#131A24", textTransform: "uppercase", letterSpacing: 0.8 }}>Season Record</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#16a34a" }}>{seasonW}W</span>
+                  <span style={{ fontSize: 13, color: "#6b7280" }}>/</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#f87171" }}>{seasonL}L</span>
+                  {seasonPct !== null && (
+                    <span style={{ fontSize: 11, fontWeight: 800, background: seasonPct >= 60 ? "rgba(34,197,94,0.15)" : seasonPct >= 40 ? "rgba(250,204,21,0.15)" : "rgba(239,68,68,0.12)",
+                      color: seasonPct >= 60 ? "#16a34a" : seasonPct >= 40 ? "#b8930a" : "#dc2626",
+                      borderRadius: 20, padding: "2px 9px" }}>{seasonPct}% win</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* View picks toggle — only in non-alwaysShowHistory mode */}
+            {!alwaysShowHistory && (
+              <button onClick={() => setShowHistory(h => !h)}
+                style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
+                  color: "#131A24", background: "transparent", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                {historyVisible ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                {historyVisible ? "Hide picks" : "View picks"}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <div style={{ padding: 14 }}>
         {isLoading && <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>Analyzing today's MLB slate…</div>}
@@ -1479,7 +1607,7 @@ function DailyPickPanel() {
         )}
 
         {/* History */}
-        {showHistory && (
+        {historyVisible && (
           <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
             <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
             {histEntries.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>No historical picks yet.</p>}
@@ -1991,6 +2119,7 @@ export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [btsTab, setBtsTab] = useState<"hitters" | "team">("hitters");
   const [reanalyzeMsg, setReanalyzeMsg] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { isOwner } = useAuth();
@@ -2151,6 +2280,28 @@ export default function BTS() {
           {data?.dataLimited > 0 && <span className="ml-2 text-amber-500">⚠ {data.dataLimited} games missing probable pitcher</span>}
         </p>
       )}
+
+      {/* ── Tab Navigation ───────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", gap: 4, background: "rgba(19,35,58,0.05)", borderRadius: 14,
+        padding: 4, border: "1px solid rgba(19,35,58,0.08)"
+      }}>
+        {(["hitters", "team"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setBtsTab(tab)}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, border: "none",
+              fontSize: 12, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
+              background: btsTab === tab ? "#13233A" : "transparent",
+              color: btsTab === tab ? "#F6F1E7" : "#3D4B58",
+              boxShadow: btsTab === tab ? "0 1px 4px rgba(19,35,58,0.18)" : "none",
+            }}
+          >
+            {tab === "hitters" ? "⚾ Hitter Picks" : "🏆 Team Pick"}
+          </button>
+        ))}
+      </div>
 
       {/* Deadline / lineup status banner */}
       {!isLoading && data && (
@@ -2466,14 +2617,17 @@ export default function BTS() {
           </div>
         </div>
       )}
-      {/* MLB Pick of the Day */}
-      <DailyPickPanel />
+      {/* ── Team Pick Tab ─────────────────────────────────────────── */}
+      {btsTab === "team" && (
+        <>
+          <DailyPickPanel alwaysShowHistory />
+          <BtsAnalyticsPanel />
+          <HowToReadBTS />
+        </>
+      )}
 
-      {/* Pick Analytics */}
-      <BtsAnalyticsPanel />
-
-      {/* How to Read Glossary */}
-      <HowToReadBTS />
+      {/* ── Hitter Picks Tab ────────────────────────────────────────── */}
+      {btsTab === "hitters" && (<>
 
       {/* Today's Slate */}
       {!isLoading && slate.length > 0 && (
@@ -2608,6 +2762,8 @@ export default function BTS() {
         <p className="font-bold text-foreground text-[11px] mb-1">⚠ Before you play</p>
         Confirm lineups and late scratches at game time. Monitor weather and wind shifts. Even a 70% edge fails ~3 times in 10 — baseball variance is real. Data limited to free sources (MLB Stats API, Baseball Savant, ESPN odds). Lineups may not be confirmed until 60–90 min before first pitch.
       </div>
+
+      </>)}{/* end hitters tab */}
     </div>
   );
 }

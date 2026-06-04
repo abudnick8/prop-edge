@@ -1942,8 +1942,37 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
 
   return (
     <>
-    <div style={{ borderRadius: 14, border: `1.5px solid ${isRunnerUp ? "rgba(19,35,58,0.10)" : "rgba(212,168,67,0.35)"}`,
-      background: isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)", overflow: "hidden" }}>
+    <div style={{
+      borderRadius: 14, overflow: "hidden",
+      border: pick.result === "win"  ? "1.5px solid rgba(34,197,94,0.35)"
+            : pick.result === "loss" ? "1.5px solid rgba(239,68,68,0.30)"
+            : pick.result === "push" ? "1.5px solid rgba(250,204,21,0.35)"
+            : isRunnerUp ? "1.5px solid rgba(19,35,58,0.10)" : "1.5px solid rgba(212,168,67,0.35)",
+      background: pick.result === "win"  ? "rgba(34,197,94,0.04)"
+                : pick.result === "loss" ? "rgba(239,68,68,0.03)"
+                : pick.result === "push" ? "rgba(250,204,21,0.04)"
+                : isRunnerUp ? "rgba(19,35,58,0.02)" : "rgba(212,168,67,0.04)",
+    }}>
+
+      {/* Result banner — shows above header when graded */}
+      {pick.result && pick.result !== "pending" && (
+        <div style={{
+          background: pick.result === "win" ? "rgba(34,197,94,0.12)" : pick.result === "loss" ? "rgba(239,68,68,0.10)" : "rgba(250,204,21,0.12)",
+          borderBottom: pick.result === "win" ? "1px solid rgba(34,197,94,0.25)" : pick.result === "loss" ? "1px solid rgba(239,68,68,0.20)" : "1px solid rgba(250,204,21,0.25)",
+          padding: "5px 14px", display: "flex", alignItems: "center", justifyContent: "space-between"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 13 }}>{pick.result === "win" ? "✅" : pick.result === "loss" ? "❌" : "➡️"}</span>
+            <span style={{ fontSize: 12, fontWeight: 900, color: pick.result === "win" ? "#16a34a" : pick.result === "loss" ? "#dc2626" : "#b8930a" }}>
+              {pick.result.toUpperCase()}
+            </span>
+            {pick.finalScore && (
+              <span style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>— {pick.finalScore}</span>
+            )}
+          </div>
+          <span style={{ fontSize: 9, fontWeight: 700, color: MUTED }}>Grade {pick.grade} · {pick.score}/100</span>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
@@ -1962,9 +1991,18 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 900, color: nflGradeColor(pick.grade) }}>{pick.grade}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>{pick.score}/100</div>
-          {nflResultBadge(pick.result ?? "pending")}
+          {(!pick.result || pick.result === "pending") && (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 900, color: nflGradeColor(pick.grade) }}>{pick.grade}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>{pick.score}/100</div>
+              {nflResultBadge("pending")}
+            </>
+          )}
+          {pick.result && pick.result !== "pending" && (
+            <div style={{ fontSize: 18, fontWeight: 900, color: pick.result === "win" ? "#16a34a" : pick.result === "loss" ? "#dc2626" : "#b8930a" }}>
+              {pick.grade}
+            </div>
+          )}
         </div>
         {open ? <ChevronUp size={14} style={{ color: MUTED, flexShrink: 0 }} /> : <ChevronDown size={14} style={{ color: MUTED, flexShrink: 0 }} />}
       </div>
