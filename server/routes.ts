@@ -18740,10 +18740,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const result = { date: todayStr, primary, runnerUp, gamesAnalyzed: scoredGames.length, fetchedAt: new Date().toISOString(), liveData: mlbGames.length > 0 };
 
       if (primary && mlbGames.length > 0 && !mlbDailyPicksHistory[todayStr]) {
+        const mlbPickSnap = (p: any) => p ? ({
+          pickTeam: p.pickTeam, oppTeam: p.oppTeam, homeTeam: p.homeTeam, awayTeam: p.awayTeam,
+          pickSide: p.pickSide, pickML: p.pickML, spread: p.spread, total: p.total,
+          grade: p.grade, score: p.score, result: "pending",
+          reasons: p.reasons ?? [],
+          commenceTime: p.commenceTime ?? null,
+          weatherNote: p.weatherNote ?? null,
+          sharpScore: p.sharpScore ?? 0,
+          sharpDirection: p.sharpDirection ?? null,
+          analysis: p.analysis ?? null,
+        }) : null;
         mlbDailyPicksHistory[todayStr] = {
           date: todayStr,
-          primary: { pickTeam: primary.pickTeam, grade: primary.grade, score: primary.score, result: "pending", homeTeam: primary.homeTeam, awayTeam: primary.awayTeam },
-          runnerUp: runnerUp ? { pickTeam: runnerUp.pickTeam, grade: runnerUp.grade, score: runnerUp.score, result: "pending", homeTeam: runnerUp.homeTeam, awayTeam: runnerUp.awayTeam } : null,
+          primary: mlbPickSnap(primary),
+          runnerUp: mlbPickSnap(runnerUp),
         };
         await saveMlbDailyPicks();
       }
@@ -18789,6 +18800,118 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       try { await storage.upsertMlDataFile("nfl_weekly_picks.json", JSON.stringify(nflWeeklyPicksHistory, null, 2)); } catch { /* non-fatal */ }
     } catch (e: any) { console.error("[NFL Pick] save error:", e.message); }
   }
+
+
+  // ── AUTO-GRADE BACKGROUND JOB ───────────────────────────────────────────
+  // Runs every 15 minutes. Checks ESPN for final scores of any pending MLB/NFL
+  // team picks and grades them automatically.
+  async function autoGradeTeamPicks() {
+    // ── MLB: check all pending picks ──────────────────────────────────────
+    for (const [dateStr, entry] of Object.entries(mlbDailyPicksHistory) as [string, any][]) {
+      if (!entry) continue;
+      for (const which of ["primary", "runnerUp"] as const) {
+        const pick = entry[which];
+        if (!pick || pick.result !== "pending") continue;
+        try {
+          const espnDateNum = dateStr.replace(/-/g, "");
+          const r = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDateNum}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!r.ok) continue;
+          const d: any = await r.json();
+          const events: any[] = d?.events ?? [];
+          // Find the game matching this pick's teams
+          for (const ev of events) {
+            const comp = ev.competitions?.[0];
+            const competitors: any[] = comp?.competitors ?? [];
+            const teamNames = competitors.map((c: any) => c.team?.displayName ?? "");
+            const matchesHome = teamNames.some((t: string) => t.includes(pick.homeTeam?.split(" ").pop() ?? "XX"));
+            const matchesAway = teamNames.some((t: string) => t.includes(pick.awayTeam?.split(" ").pop() ?? "XX"));
+            if (!matchesHome || !matchesAway) continue;
+            const status = ev.status?.type?.description ?? "";
+            if (status !== "Final") continue; // not done yet
+            // Game is final — determine winner
+            const homeComp = competitors.find((c: any) => c.homeAway === "home");
+            const awayComp = competitors.find((c: any) => c.homeAway === "away");
+            const homeScore = parseInt(homeComp?.score ?? "0", 10);
+            const awayScore = parseInt(awayComp?.score ?? "0", 10);
+            const homeWon = homeScore > awayScore;
+            const awayWon = awayScore > homeScore;
+            const pickIsHome = pick.pickSide === "home";
+            let gradeResult: string;
+            if (homeScore === awayScore) gradeResult = "push";
+            else if ((pickIsHome && homeWon) || (!pickIsHome && awayWon)) gradeResult = "win";
+            else gradeResult = "loss";
+            pick.result = gradeResult;
+            pick.finalScore = `${awayComp?.team?.displayName ?? pick.awayTeam} ${awayScore} - ${homeScore} ${homeComp?.team?.displayName ?? pick.homeTeam}`;
+            console.log(`[AutoGrade][MLB] ${dateStr} ${which} → ${gradeResult} (${pick.finalScore})`);
+          }
+        } catch (e: any) {
+          console.error(`[AutoGrade][MLB] ${dateStr} error:`, e.message);
+        }
+      }
+    }
+    await saveMlbDailyPicks();
+    _mlbDailyPickCache = null; // bust so next request gets fresh data
+
+    // ── NFL: check all pending picks ──────────────────────────────────────
+    for (const [weekKey, entry] of Object.entries(nflWeeklyPicksHistory) as [string, any][]) {
+      if (!entry) continue;
+      for (const which of ["primary", "runnerUp"] as const) {
+        const pick = entry[which];
+        if (!pick || pick.result !== "pending") continue;
+        if (!pick.commenceTime) continue;
+        // Only check after game has had time to finish (3.5h window)
+        const gameMs = new Date(pick.commenceTime).getTime();
+        if (Date.now() < gameMs + 3.5 * 3600 * 1000) continue;
+        try {
+          const gameDate = new Date(pick.commenceTime);
+          const espnDateNum = `${gameDate.getUTCFullYear()}${String(gameDate.getUTCMonth()+1).padStart(2,"0")}${String(gameDate.getUTCDate()).padStart(2,"0")}`;
+          const r = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${espnDateNum}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!r.ok) continue;
+          const d: any = await r.json();
+          const events: any[] = d?.events ?? [];
+          for (const ev of events) {
+            const comp = ev.competitions?.[0];
+            const competitors: any[] = comp?.competitors ?? [];
+            const teamNames = competitors.map((c: any) => c.team?.displayName ?? "");
+            const matchesHome = teamNames.some((t: string) => t.includes(pick.homeTeam?.split(" ").pop() ?? "XX"));
+            const matchesAway = teamNames.some((t: string) => t.includes(pick.awayTeam?.split(" ").pop() ?? "XX"));
+            if (!matchesHome || !matchesAway) continue;
+            const status = ev.status?.type?.description ?? "";
+            if (status !== "Final") continue;
+            const homeComp = competitors.find((c: any) => c.homeAway === "home");
+            const awayComp = competitors.find((c: any) => c.homeAway === "away");
+            const homeScore = parseInt(homeComp?.score ?? "0", 10);
+            const awayScore = parseInt(awayComp?.score ?? "0", 10);
+            const homeWon = homeScore > awayScore;
+            const awayWon = awayScore > homeScore;
+            const pickIsHome = pick.pickSide === "home";
+            let gradeResult: string;
+            if (homeScore === awayScore) gradeResult = "push";
+            else if ((pickIsHome && homeWon) || (!pickIsHome && awayWon)) gradeResult = "win";
+            else gradeResult = "loss";
+            pick.result = gradeResult;
+            pick.finalScore = `${awayComp?.team?.displayName ?? pick.awayTeam} ${awayScore} - ${homeScore} ${homeComp?.team?.displayName ?? pick.homeTeam}`;
+            console.log(`[AutoGrade][NFL] ${weekKey} ${which} → ${gradeResult} (${pick.finalScore})`);
+          }
+        } catch (e: any) {
+          console.error(`[AutoGrade][NFL] ${weekKey} error:`, e.message);
+        }
+      }
+    }
+    await saveNflWeeklyPicks();
+    _nflWeeklyPickCache = null;
+  }
+
+  // Start auto-grade interval — every 15 minutes
+  setInterval(() => { autoGradeTeamPicks().catch(e => console.error("[AutoGrade] error:", e.message)); }, 15 * 60 * 1000);
+  // Also run once on startup after 2 min delay (let server warm up first)
+  setTimeout(() => { autoGradeTeamPicks().catch(e => console.error("[AutoGrade] startup error:", e.message)); }, 2 * 60 * 1000);
 
   // Helper: get NFL week label based on actual 2026 NFL season dates
   // Week 1 = Sept 9, 2026 (Wednesday kickoff). Each week runs Wed–Tue.
@@ -19417,10 +19540,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const nflResult = { week: weekLabel, primary: nflPrimary, runnerUp: nflRunnerUp, gamesAnalyzed: scoredNfl.length, fetchedAt: new Date().toISOString(), liveData: nflGames.length > 0 };
 
       if (nflPrimary && nflGames.length > 0 && !nflWeeklyPicksHistory[weekLabel]) {
+        const nflPickSnap = (p: any) => p ? ({
+          pickTeam: p.pickTeam, oppTeam: p.oppTeam, homeTeam: p.homeTeam, awayTeam: p.awayTeam,
+          pickSide: p.pickSide, pickML: p.pickML, spread: p.spread, total: p.total,
+          grade: p.grade, score: p.score, result: "pending",
+          reasons: p.reasons ?? [],
+          commenceTime: p.commenceTime ?? null,
+          sharpScore: p.sharpScore ?? 0,
+          sharpDirection: p.sharpDirection ?? null,
+          analysis: p.analysis ?? null,
+        }) : null;
         nflWeeklyPicksHistory[weekLabel] = {
           week: weekLabel,
-          primary: { pickTeam: nflPrimary.pickTeam, grade: nflPrimary.grade, score: nflPrimary.score, result: "pending", homeTeam: nflPrimary.homeTeam, awayTeam: nflPrimary.awayTeam },
-          runnerUp: nflRunnerUp ? { pickTeam: nflRunnerUp.pickTeam, grade: nflRunnerUp.grade, score: nflRunnerUp.score, result: "pending", homeTeam: nflRunnerUp.homeTeam, awayTeam: nflRunnerUp.awayTeam } : null,
+          primary: nflPickSnap(nflPrimary),
+          runnerUp: nflPickSnap(nflRunnerUp),
         };
         await saveNflWeeklyPicks();
       }

@@ -2660,27 +2660,39 @@ function NflPickOfWeekPanel() {
           <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
             <p style={{ fontSize: 11, fontWeight: 800, color: NAVY, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
             {histEntries.length === 0 && <p style={{ fontSize: 11, color: MUTED }}>No historical picks yet — picks accumulate each week.</p>}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {histEntries.map((entry: any) => (
-                <div key={entry.week} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "rgba(19,35,58,0.03)", borderRadius: 10, padding: "8px 12px" }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: NAVY }}>{entry.primary?.pickTeam ?? "—"}</div>
-                    <div style={{ fontSize: 10, color: MUTED }}>{entry.week} · Grade {entry.primary?.grade} · {entry.primary?.score}/100</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {nflResultBadge(entry.primary?.result ?? "pending")}
-                    {isOwner && entry.primary?.result === "pending" && (
-                      <>
-                        <button onClick={() => gradeMutation.mutate({ week: entry.week, result: "win", which: "primary" })}
-                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(34,197,94,0.12)", color: "#16a34a", cursor: "pointer", fontWeight: 700 }}>W</button>
-                        <button onClick={() => gradeMutation.mutate({ week: entry.week, result: "loss", which: "primary" })}
-                          style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.10)", color: "#dc2626", cursor: "pointer", fontWeight: 700 }}>L</button>
-                      </>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {histEntries.map((entry: any) => {
+                const mergePick = (p: any, which: "primary" | "runnerUp") =>
+                  p ? { ...p, result: entry[which]?.result ?? "pending" } : null;
+                const histPrimary = mergePick(entry.primary, "primary");
+                const histRunnerUp = mergePick(entry.runnerUp, "runnerUp");
+                return (
+                  <div key={entry.week} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+                    {histPrimary && (
+                      <NflPickCard
+                        pick={histPrimary}
+                        label={`${entry.week} — Primary`}
+                        isRunnerUp={false}
+                        isOwner={isOwner}
+                        sport="NFL"
+                        onGrade={(which, result) => gradeMutation.mutate({ week: entry.week, result, which })}
+                      />
+                    )}
+                    {histRunnerUp && (
+                      <div style={{ borderTop: "1px solid rgba(19,35,58,0.07)" }}>
+                        <NflPickCard
+                          pick={histRunnerUp}
+                          label={`${entry.week} — Runner-Up`}
+                          isRunnerUp={true}
+                          isOwner={isOwner}
+                          sport="NFL"
+                          onGrade={(which, result) => gradeMutation.mutate({ week: entry.week, result, which })}
+                        />
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
