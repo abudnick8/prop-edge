@@ -120,10 +120,11 @@ interface Slip {
   rr_combos?: { id: number; child_status: string; child_payout: number; legs: SlipLeg[] }[];
 }
 
+interface InsightsRow { type?: string; sport?: string; statType?: string; stake: number; profit: number; count: number; wins: number; roi: number; winPct: number; }
 interface InsightsData {
-  roiByType: Record<string, number>;
-  roiBySport: Record<string, number>;
-  roiByStatType: Record<string, number>;
+  roiByType: InsightsRow[];
+  roiBySport: InsightsRow[];
+  roiByStatType: InsightsRow[];
   bankrollCurve: { ts: string; balance: number; type: string }[];
   tips: string[];
 }
@@ -2912,36 +2913,39 @@ function InsightsTab({
             <BankrollSVG curve={data.bankrollCurve} />
           </div>
 
-          {Object.keys(data.roiByType ?? {}).length > 0 && (
+          {(data.roiByType ?? []).length > 0 && (
             <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
                 <TrendingUp size={15} color={GOLD} /> ROI by Bet Type
               </div>
-              {Object.entries(data.roiByType).map(([k, v]) => (
-                <ROIBar key={k} label={k.charAt(0).toUpperCase() + k.slice(1)} value={v} />
-              ))}
+              {(data.roiByType).map((row) => {
+                const label = (row.type ?? "unknown");
+                return <ROIBar key={label} label={label.charAt(0).toUpperCase() + label.slice(1)} value={row.roi} />;
+              })}
             </div>
           )}
 
-          {Object.keys(data.roiBySport ?? {}).length > 0 && (
+          {(data.roiBySport ?? []).length > 0 && (
             <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
                 <Trophy size={15} color={GOLD} /> ROI by Sport
               </div>
-              {Object.entries(data.roiBySport).map(([k, v]) => (
-                <ROIBar key={k} label={k.toUpperCase()} value={v} />
-              ))}
+              {(data.roiBySport).map((row) => {
+                const label = (row.sport ?? "unknown").toUpperCase();
+                return <ROIBar key={label} label={label} value={row.roi} />;
+              })}
             </div>
           )}
 
-          {Object.keys(data.roiByStatType ?? {}).length > 0 && (
+          {(data.roiByStatType ?? []).length > 0 && (
             <div style={{ background: CARD_BG, borderRadius: 14, padding: "14px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: FG, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
                 <BarChart2 size={15} color={GOLD} /> ROI by Prop Type
               </div>
-              {Object.entries(data.roiByStatType).map(([k, v]) => (
-                <ROIBar key={k} label={k} value={v} />
-              ))}
+              {(data.roiByStatType).map((row) => {
+                const label = row.statType ?? "unknown";
+                return <ROIBar key={label} label={label} value={row.roi} />;
+              })}
             </div>
           )}
 
