@@ -18703,8 +18703,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         let pickTeam   = pickSide === "home" ? homeTeam : awayTeam;
         let oppTeam    = pickSide === "home" ? awayTeam : homeTeam;
-        const pickML     = pickSide === "home" ? mlHome : mlAway;
-        const pickImplied = pickSide === "home" ? homeImplied : awayImplied;
+        let pickML     = pickSide === "home" ? mlHome : mlAway;
+        let pickImplied = pickSide === "home" ? homeImplied : awayImplied;
 
         // Fetch team stats in parallel — always fetch home/away so we can use for no-odds pick selection
         const homeId = getEspnMlbId(homeTeam);
@@ -18849,6 +18849,28 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           pickSide, total, weatherData, sims: 100,
         });
 
+        // ── SIM SANITY CHECK — swap pick/opp if sim strongly disagrees ───────
+        // If the Monte Carlo says the opponent wins MORE sims than the pick team,
+        // the selected pick is contradicted by the simulation. Flip the pick so
+        // the predicted score always shows the pick team winning (or at least close).
+        if (sim.oppWinPct > sim.pickWinPct + 5) {
+          // Swap teams, stats, and market context to the better side
+          const tmp = pickTeam; pickTeam = oppTeam; oppTeam = tmp;
+          const tmpS = pickStats; pickStats = oppStats; oppStats = tmpS;
+          pickSide = pickSide === "home" ? "away" : "home";
+          // Recalculate market-derived values for new pick side
+          pickML      = pickSide === "home" ? mlHome : mlAway;
+          pickImplied = pickSide === "home" ? homeImplied : awayImplied;
+          console.log("[MLB pick] Sim flip: new pick=" + pickTeam + " (sim was " + sim.oppWinPct + "% vs " + sim.pickWinPct + "%)");
+        }
+        // Re-run simulation with (possibly corrected) pick orientation
+        const simFinal = simulateMLBGame({
+          pickTeam, oppTeam, pickStats, oppStats,
+          pickStarter: starterMap.get(pickTeam) ?? null,
+          oppStarter:  starterMap.get(oppTeam)  ?? null,
+          pickSide, total, weatherData, sims: 100,
+        });
+
         // ── SCORING ENGINE ────────────────────────────────────────────────
         // Start from 30; simulation win% anchors the base score
         let score = 30;
@@ -18857,22 +18879,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         // 0. SIMULATION (100-game Monte Carlo — primary confidence driver)
         analysis.simulation = {
-          pickWinPct: sim.pickWinPct, oppWinPct: sim.oppWinPct, pushPct: sim.pushPct,
-          simPickAvg: sim.simPickAvg, simOppAvg: sim.simOppAvg,
-          predictedPickScore: sim.predictedPickScore, predictedOppScore: sim.predictedOppScore,
-          sims: sim.sims,
+          pickWinPct: simFinal.pickWinPct, oppWinPct: simFinal.oppWinPct, pushPct: simFinal.pushPct,
+          simPickAvg: simFinal.simPickAvg, simOppAvg: simFinal.simOppAvg,
+          predictedPickScore: simFinal.predictedPickScore, predictedOppScore: simFinal.predictedOppScore,
+          sims: simFinal.sims,
         };
-        if (sim.pickWinPct >= 68) { score += 20; reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 simulated games (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
-        else if (sim.pickWinPct >= 58) { score += 14; reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 sims (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
-        else if (sim.pickWinPct >= 50) { score += 8;  reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 sims (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
-        else if (sim.pickWinPct >= 42) { score += 2;  reasons.push(`Simulation: close game — ${pickTeam} wins ${sim.pickWinPct}% vs ${sim.oppWinPct}% (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
-        else { score -= 5; reasons.push(`Simulation: ${oppTeam} wins more sims (${sim.oppWinPct}%) — underdog pick requires strong other signals`); }
+        if (simFinal.pickWinPct >= 68) { score += 20; reasons.push(`Simulation: ${pickTeam} wins ${simFinal.pickWinPct}% of 100 simulated games (predicted ${simFinal.predictedPickScore}-${simFinal.predictedOppScore})`); }
+        else if (simFinal.pickWinPct >= 58) { score += 14; reasons.push(`Simulation: ${pickTeam} wins ${simFinal.pickWinPct}% of 100 sims (predicted ${simFinal.predictedPickScore}-${simFinal.predictedOppScore})`); }
+        else if (simFinal.pickWinPct >= 50) { score += 8;  reasons.push(`Simulation: ${pickTeam} wins ${simFinal.pickWinPct}% of 100 sims (predicted ${simFinal.predictedPickScore}-${simFinal.predictedOppScore})`); }
+        else if (simFinal.pickWinPct >= 42) { score += 2;  reasons.push(`Simulation: close game — ${pickTeam} wins ${simFinal.pickWinPct}% vs ${simFinal.oppWinPct}% (predicted ${simFinal.predictedPickScore}-${simFinal.predictedOppScore})`); }
+        else { score -= 5; reasons.push(`Simulation: ${oppTeam} wins more sims (${simFinal.oppWinPct}%) — underdog pick requires strong other signals`); }
 
         // 1. MONEYLINE / MARKET IMPLIED PROBABILITY
         const impliedPct = Math.round(pickImplied * 100);
         analysis.market = { impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome, spread: spreadHome, total };
         // Cross-validate: if simulation and market agree → confidence boost
-        const simAndMarketAgree = (sim.pickWinPct >= 52 && pickImplied >= 0.52) || (sim.pickWinPct < 48 && pickImplied < 0.48);
+        const simAndMarketAgree = (simFinal.pickWinPct >= 52 && pickImplied >= 0.52) || (simFinal.pickWinPct < 48 && pickImplied < 0.48);
         if (pickImplied >= 0.63) {
           score += simAndMarketAgree ? 14 : 9;
           reasons.push(`Heavy favorite: market gives ${pickTeam} ${impliedPct}% implied win probability${simAndMarketAgree ? " — confirmed by simulation" : ""}`);
@@ -19032,9 +19054,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             else if (bpiDiff < -0.02) { score -= 4; reasons.push(`ESPN BPI slight lean vs pick: ${pickTeam} ${bpiPct}% vs ${Math.round(oppBpi * 100)}%`); }
 
             // If BPI, simulation AND market all agree — strong convergence bonus
-            const allAgree = (pickBpi > oppBpi) && (sim.pickWinPct >= 52) && (pickImplied >= 0.50);
-            if (allAgree && bpiDiff >= 0.05 && sim.pickWinPct >= 55) {
-              score += 8; reasons.push(`All three models agree: BPI ${bpiPct}%, simulation ${sim.pickWinPct}%, market ${Math.round(pickImplied * 100)}% — high convergence`);
+            const allAgree = (pickBpi > oppBpi) && (simFinal.pickWinPct >= 52) && (pickImplied >= 0.50);
+            if (allAgree && bpiDiff >= 0.05 && simFinal.pickWinPct >= 55) {
+              score += 8; reasons.push(`All three models agree: BPI ${bpiPct}%, simulation ${simFinal.pickWinPct}%, market ${Math.round(pickImplied * 100)}% — high convergence`);
             }
           }
         }
@@ -19089,11 +19111,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           commenceTime: game.commence_time ?? null,
           // Predicted score from Monte Carlo simulation
           predictedScore: {
-            pick: sim.predictedPickScore,
-            opp:  sim.predictedOppScore,
-            pickAvg: sim.simPickAvg,
-            oppAvg:  sim.simOppAvg,
-            simWinPct: sim.pickWinPct,
+            pick: simFinal.predictedPickScore,
+            opp:  simFinal.predictedOppScore,
+            pickAvg: simFinal.simPickAvg,
+            oppAvg:  simFinal.simOppAvg,
+            simWinPct: simFinal.pickWinPct,
           },
           // Deep analysis object — used in frontend drawer
           analysis: {
