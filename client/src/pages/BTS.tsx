@@ -1,9 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useHashLocation, navigate as wouterNavigate } from "wouter/use-hash-location";
 import ShareCard from "@/components/ShareCard";
+import html2canvas from "html2canvas";
 import { useAuth } from "@/context/AuthContext";
 import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search, Share2, Star, TrendingDown, Minus } from "lucide-react";
 
@@ -902,6 +903,9 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
   const [open, setOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shareImgUrl, setShareImgUrl] = useState<string | null>(null);
+  const [shareRendering, setShareRendering] = useState(false);
+  const shareCardRef = useRef<HTMLDivElement>(null);
   const which = isRunnerUp ? "runnerUp" : "primary";
   const mlFmt = (ml: number | null | undefined) => ml == null ? "" : ml > 0 ? `+${ml}` : `${ml}`;
   const spreadFmt = (s: number | null | undefined) => s == null ? "" : s > 0 ? `+${s}` : `${s}`;
@@ -949,7 +953,28 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
     </div>
   );
 
-  const handleShare = () => setShowShareModal(true);
+  const handleShare = () => {
+    setShareImgUrl(null);
+    setShowShareModal(true);
+    // After modal opens, render the card to canvas
+    setTimeout(async () => {
+      if (!shareCardRef.current) return;
+      setShareRendering(true);
+      try {
+        const canvas = await html2canvas(shareCardRef.current, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#F6F1E7",
+          logging: false,
+        });
+        setShareImgUrl(canvas.toDataURL("image/png"));
+      } catch (e) {
+        console.error("html2canvas error:", e);
+      } finally {
+        setShareRendering(false);
+      }
+    }, 120);
+  };
 
   return (
     <>
@@ -1274,12 +1299,37 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
       <div style={{
         position: "fixed", inset: 0, zIndex: 9999,
         background: "rgba(10,16,28,0.82)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
         overflowY: "auto", padding: "20px 16px 40px",
       }} onClick={e => { if (e.target === e.currentTarget) setShowShareModal(false); }}>
-        <div style={{
+
+        {/* Long-press image — shown once canvas is rendered */}
+        {shareImgUrl && (
+          <div style={{ width: "100%", maxWidth: 420, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.6)", textAlign: "center", marginBottom: 6, letterSpacing: 0.5 }}>
+              📲 Long-press image to save
+            </div>
+            <img
+              src={shareImgUrl}
+              alt="Share card"
+              style={{ width: "100%", borderRadius: 16, display: "block", boxShadow: "0 8px 32px rgba(0,0,0,0.35)" }}
+            />
+          </div>
+        )}
+
+        {shareRendering && !shareImgUrl && (
+          <div style={{ color: "rgba(246,241,231,0.7)", fontSize: 12, marginBottom: 10 }}>Generating image…</div>
+        )}
+
+        {/* Source card — used for html2canvas rendering, hidden after image ready */}
+        <div ref={shareCardRef} style={{
           background: "#F6F1E7", borderRadius: 22, width: "100%", maxWidth: 420,
           boxShadow: "0 24px 60px rgba(0,0,0,0.40)", overflow: "hidden",
+          // Once image is ready, visually hide source card but keep in DOM for re-renders
+          opacity: shareImgUrl ? 0 : 1,
+          pointerEvents: shareImgUrl ? "none" : "auto",
+          position: shareImgUrl ? "absolute" : "relative",
+          left: shareImgUrl ? "-9999px" : "auto",
         }}>
           {/* Modal Header */}
           <div style={{ background: NAVY_COLOR, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
