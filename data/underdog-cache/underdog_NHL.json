@@ -870,7 +870,7 @@
       "updated_at": "2026-06-08T04:54:21Z"
     },
     {
-      "id": "9d43dbbd-72c3-4c43-af73-7041a652f530",
+      "id": "425e52e5-b7ff-47f7-aa9b-5fcfbeb3724d",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -881,17 +881,17 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "0538c75d-fc82-486d-8e31-f2e8d590f042",
-          "american_price": "+100",
+          "id": "4582af0e-6cea-40cc-b149-230ee0a859a2",
+          "american_price": "+103",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2",
+          "decimal_price": "2.03",
           "grouping_id": null,
-          "over_under_line_id": "9d43dbbd-72c3-4c43-af73-7041a652f530",
+          "over_under_line_id": "425e52e5-b7ff-47f7-aa9b-5fcfbeb3724d",
           "payout_multiplier": "1.03",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -899,28 +899,28 @@
           "selection_subheader": "Higher 1.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T07:43:39Z"
+          "updated_at": "2026-06-08T18:35:39Z"
         },
         {
-          "id": "5e30bc71-5027-4933-b0a3-fce4f468a14e",
-          "american_price": "-122",
+          "id": "9c75d168-2e6f-4458-90b0-382255861057",
+          "american_price": "-125",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.82",
+          "decimal_price": "1.8",
           "grouping_id": null,
-          "over_under_line_id": "9d43dbbd-72c3-4c43-af73-7041a652f530",
-          "payout_multiplier": "0.94",
+          "over_under_line_id": "425e52e5-b7ff-47f7-aa9b-5fcfbeb3724d",
+          "payout_multiplier": "0.88",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Ivan Barbashev",
           "selection_subheader": "Lower 1.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T07:43:39Z"
+          "updated_at": "2026-06-08T18:35:39Z"
         }
       ],
       "over_under": {
@@ -946,13 +946,13 @@
         "title": "Ivan Barbashev Shots on Goal O/U"
       },
       "over_under_id": "fcb29276-b8ec-411f-b0b5-5503b6ee92c2",
-      "provider_id": "swish",
+      "provider_id": "manual",
       "rank": 1101991990300,
       "sort_by": null,
       "stable_id": "fcb29276-b8ec-411f-b0b5-5503b6ee92c2|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-06-08T04:54:21Z"
+      "updated_at": "2026-06-08T18:36:19Z"
     },
     {
       "id": "b1393c22-8fa2-4deb-aa08-595abac69031",
@@ -1805,7 +1805,7 @@
       "updated_at": "2026-06-08T04:54:22Z"
     },
     {
-      "id": "c9dabf65-9003-4786-8adb-fe177109c97a",
+      "id": "45457c46-ceb8-42f2-97a4-b25b769de75e",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -1816,46 +1816,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "ee7ee212-b267-41f3-ab23-b5f6fad64228",
-          "american_price": "+102",
+          "id": "604aabfd-4ef9-4475-a7aa-020ec2061090",
+          "american_price": "+103",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "3+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.02",
+          "decimal_price": "2.03",
           "grouping_id": null,
-          "over_under_line_id": "c9dabf65-9003-4786-8adb-fe177109c97a",
-          "payout_multiplier": "1.04",
+          "over_under_line_id": "45457c46-ceb8-42f2-97a4-b25b769de75e",
+          "payout_multiplier": "1.03",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Nikolaj Ehlers",
           "selection_subheader": "Higher 2.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T07:43:39Z"
+          "updated_at": "2026-06-08T18:34:25Z"
         },
         {
-          "id": "b34c821c-eaa1-444a-8756-e0f312fc5e6e",
-          "american_price": "-124",
+          "id": "d09854b0-a65b-4841-9962-9e841338103a",
+          "american_price": "-125",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "2-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.81",
+          "decimal_price": "1.8",
           "grouping_id": null,
-          "over_under_line_id": "c9dabf65-9003-4786-8adb-fe177109c97a",
-          "payout_multiplier": "0.94",
+          "over_under_line_id": "45457c46-ceb8-42f2-97a4-b25b769de75e",
+          "payout_multiplier": "0.88",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Nikolaj Ehlers",
           "selection_subheader": "Lower 2.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T07:43:39Z"
+          "updated_at": "2026-06-08T18:34:25Z"
         }
       ],
       "over_under": {
@@ -1881,13 +1881,13 @@
         "title": "Nikolaj Ehlers Shots on Goal O/U"
       },
       "over_under_id": "b5cbe997-52e9-47e8-be73-91c38ebab0c3",
-      "provider_id": "swish",
+      "provider_id": "manual",
       "rank": 1101991990300,
       "sort_by": null,
       "stable_id": "b5cbe997-52e9-47e8-be73-91c38ebab0c3|balanced",
       "stat_value": "2.5",
       "status": "active",
-      "updated_at": "2026-06-08T04:54:21Z"
+      "updated_at": "2026-06-08T18:34:32Z"
     },
     {
       "id": "860707a2-ecb0-4d9f-a0dd-b51187cf459b",
@@ -2230,7 +2230,7 @@
       "updated_at": "2026-06-08T04:54:13Z"
     },
     {
-      "id": "897535ca-a276-4d8a-8f81-a1f9cfea775b",
+      "id": "2f84cba7-b3eb-44f1-963f-05bd6ff4aa60",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -2241,46 +2241,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "817b5811-19cf-45b5-b0a1-e4ce99480346",
-          "american_price": "-103",
+          "id": "5b77ce7b-66cb-4190-b655-72a1ab60d20c",
+          "american_price": "+102",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.98",
+          "decimal_price": "2.02",
           "grouping_id": null,
-          "over_under_line_id": "897535ca-a276-4d8a-8f81-a1f9cfea775b",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "2f84cba7-b3eb-44f1-963f-05bd6ff4aa60",
+          "payout_multiplier": "1.02",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jordan Martinook",
           "selection_subheader": "Higher 1.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T06:46:35Z"
+          "updated_at": "2026-06-08T18:33:45Z"
         },
         {
-          "id": "ae19fa21-d8a5-41a2-b687-5af95a0752cf",
-          "american_price": "-121",
+          "id": "874e5d94-b26d-43b3-85b1-67b9f75d4a4e",
+          "american_price": "-125",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.83",
+          "decimal_price": "1.8",
           "grouping_id": null,
-          "over_under_line_id": "897535ca-a276-4d8a-8f81-a1f9cfea775b",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "2f84cba7-b3eb-44f1-963f-05bd6ff4aa60",
+          "payout_multiplier": "0.89",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jordan Martinook",
           "selection_subheader": "Lower 1.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T06:46:35Z"
+          "updated_at": "2026-06-08T18:33:45Z"
         }
       ],
       "over_under": {
@@ -2312,7 +2312,7 @@
       "stable_id": "952989ab-5f26-441a-8a22-1cc47bc54931|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-06-08T06:47:01Z"
+      "updated_at": "2026-06-08T18:34:03Z"
     },
     {
       "id": "5cd9404a-0f34-49c2-b7af-4e0f0759c615",
@@ -2570,7 +2570,7 @@
       "updated_at": "2026-06-08T04:54:21Z"
     },
     {
-      "id": "17d304b0-125d-440b-a1d3-cde7e1462ecb",
+      "id": "ecf5a1b1-8cbb-4b2a-adb2-66bc0db755bd",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -2581,46 +2581,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "32b79f83-fc2c-4594-9f1f-a305865b654d",
-          "american_price": "+145",
+          "id": "1fed978c-37db-4fab-a84e-75f635b96d72",
+          "american_price": "+151",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "3+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.45",
+          "decimal_price": "2.51",
           "grouping_id": null,
-          "over_under_line_id": "17d304b0-125d-440b-a1d3-cde7e1462ecb",
-          "payout_multiplier": "1.07",
+          "over_under_line_id": "ecf5a1b1-8cbb-4b2a-adb2-66bc0db755bd",
+          "payout_multiplier": "1.1",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Taylor Hall",
           "selection_subheader": "Higher 2.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T13:29:31Z"
+          "updated_at": "2026-06-08T18:35:08Z"
         },
         {
-          "id": "46f82fba-3a24-49b5-8b17-19158df96f41",
-          "american_price": "-179",
+          "id": "a8a66756-2bc7-4296-a2e3-b8e521c917a5",
+          "american_price": "-189",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "2-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.56",
+          "decimal_price": "1.53",
           "grouping_id": null,
-          "over_under_line_id": "17d304b0-125d-440b-a1d3-cde7e1462ecb",
-          "payout_multiplier": "0.77",
+          "over_under_line_id": "ecf5a1b1-8cbb-4b2a-adb2-66bc0db755bd",
+          "payout_multiplier": "0.75",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Taylor Hall",
           "selection_subheader": "Lower 2.5 Shots on Goal",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T13:29:31Z"
+          "updated_at": "2026-06-08T18:35:08Z"
         }
       ],
       "over_under": {
@@ -2646,13 +2646,13 @@
         "title": "Taylor Hall Shots on Goal O/U"
       },
       "over_under_id": "91c27c67-bc0a-4163-931d-5fe0b7b96888",
-      "provider_id": "swish",
+      "provider_id": "manual",
       "rank": 1101991990300,
       "sort_by": null,
       "stable_id": "91c27c67-bc0a-4163-931d-5fe0b7b96888|balanced",
       "stat_value": "2.5",
       "status": "active",
-      "updated_at": "2026-06-08T04:54:20Z"
+      "updated_at": "2026-06-08T18:35:38Z"
     },
     {
       "id": "9d83625d-86c6-499b-8a92-7a26afe346a1",
@@ -17669,6 +17669,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-06-08T18:20:15Z",
+  "cached_at": "2026-06-08T20:37:21Z",
   "sport": "NHL"
 }
