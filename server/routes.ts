@@ -18739,7 +18739,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const result = { date: todayStr, primary, runnerUp, gamesAnalyzed: scoredGames.length, fetchedAt: new Date().toISOString(), liveData: mlbGames.length > 0 };
 
-      if (primary && mlbGames.length > 0 && !mlbDailyPicksHistory[todayStr]) {
+      // Only save if we have a valid primary pick AND there isn't already a valid entry for today
+      const existingToday = mlbDailyPicksHistory[todayStr];
+      if (primary?.pickTeam && mlbGames.length > 0 && (!existingToday || !existingToday.primary?.pickTeam)) {
         const mlbPickSnap = (p: any) => p ? ({
           pickTeam: p.pickTeam, oppTeam: p.oppTeam, homeTeam: p.homeTeam, awayTeam: p.awayTeam,
           pickSide: p.pickSide, pickML: p.pickML, spread: p.spread, total: p.total,
