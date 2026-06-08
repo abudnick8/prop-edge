@@ -11183,7 +11183,7 @@
       "updated_at": "2026-06-08T04:54:22Z"
     },
     {
-      "id": "6a2c40ff-2201-4799-965d-ffd17263fc6c",
+      "id": "754efd57-4555-4bd8-946d-929cd65d333c",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -11194,46 +11194,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "45a7888e-a1b9-4e03-80ed-f5d6df64a412",
-          "american_price": "-113",
+          "id": "0a4d3eae-5548-41a1-a912-1bd3d1aaec5b",
+          "american_price": "+104",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "5+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.89",
+          "decimal_price": "2.04",
           "grouping_id": null,
-          "over_under_line_id": "6a2c40ff-2201-4799-965d-ffd17263fc6c",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "754efd57-4555-4bd8-946d-929cd65d333c",
+          "payout_multiplier": "1.03",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Cole Smith",
           "selection_subheader": "Higher 4.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T14:15:36Z"
+          "updated_at": "2026-06-08T21:08:06Z"
         },
         {
-          "id": "590dd2f8-7827-4261-82f3-f65fed216b98",
-          "american_price": "-109",
+          "id": "bccc903b-2a2b-4b82-a99a-30c08830a482",
+          "american_price": "-127",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "4-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.92",
+          "decimal_price": "1.79",
           "grouping_id": null,
-          "over_under_line_id": "6a2c40ff-2201-4799-965d-ffd17263fc6c",
-          "payout_multiplier": "1.0",
+          "over_under_line_id": "754efd57-4555-4bd8-946d-929cd65d333c",
+          "payout_multiplier": "0.88",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Cole Smith",
           "selection_subheader": "Lower 4.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T14:15:36Z"
+          "updated_at": "2026-06-08T21:08:06Z"
         }
       ],
       "over_under": {
@@ -11259,13 +11259,13 @@
         "title": "Cole Smith Hits O/U"
       },
       "over_under_id": "7691a9e7-cce8-4a15-abbb-ab6614fee744",
-      "provider_id": "swish",
+      "provider_id": "manual",
       "rank": 1101991991000,
       "sort_by": null,
       "stable_id": "7691a9e7-cce8-4a15-abbb-ab6614fee744|balanced",
       "stat_value": "4.5",
       "status": "active",
-      "updated_at": "2026-06-08T14:15:36Z"
+      "updated_at": "2026-06-08T21:08:10Z"
     },
     {
       "id": "40086fdc-04e4-438c-b7bd-323f889589ae",
@@ -17669,6 +17669,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-06-08T20:37:21Z",
+  "cached_at": "2026-06-08T22:20:00Z",
   "sport": "NHL"
 }

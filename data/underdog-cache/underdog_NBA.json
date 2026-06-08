@@ -276,7 +276,7 @@
       "title": "SAS @ NYK",
       "title_suffix": null,
       "type": "Game",
-      "updated_at": "2026-06-08T19:30:01Z",
+      "updated_at": "2026-06-08T22:01:01Z",
       "year": 2025
     }
   ],
@@ -5727,7 +5727,7 @@
       "updated_at": "2026-06-08T19:52:58Z"
     },
     {
-      "id": "5ec057d6-aa67-4884-a956-307bc49c3adb",
+      "id": "8fd05ba9-b5c8-4d02-852c-404d3c062c6e",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -5738,46 +5738,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "df681a4e-05c0-42d3-a75f-aa8af9201e38",
-          "american_price": "-176",
+          "id": "d86eadae-2a6c-432a-8107-ea0b9cd6c616",
+          "american_price": "-186",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.57",
+          "decimal_price": "1.54",
           "grouping_id": null,
-          "over_under_line_id": "5ec057d6-aa67-4884-a956-307bc49c3adb",
-          "payout_multiplier": "0.77",
+          "over_under_line_id": "8fd05ba9-b5c8-4d02-852c-404d3c062c6e",
+          "payout_multiplier": "0.76",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jalen Brunson",
           "selection_subheader": "Higher 0.5 Steals",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T00:26:34Z"
+          "updated_at": "2026-06-08T21:00:11Z"
         },
         {
-          "id": "fd0754dd-b197-4a2a-ba00-5404340093fa",
-          "american_price": "+143",
+          "id": "cf44c0f1-41b0-4016-8d3d-5ad83207691f",
+          "american_price": "+149",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.43",
+          "decimal_price": "2.49",
           "grouping_id": null,
-          "over_under_line_id": "5ec057d6-aa67-4884-a956-307bc49c3adb",
-          "payout_multiplier": "1.07",
+          "over_under_line_id": "8fd05ba9-b5c8-4d02-852c-404d3c062c6e",
+          "payout_multiplier": "1.09",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jalen Brunson",
           "selection_subheader": "Lower 0.5 Steals",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T00:26:34Z"
+          "updated_at": "2026-06-08T21:00:11Z"
         }
       ],
       "over_under": {
@@ -5809,7 +5809,7 @@
       "stable_id": "42a29dc7-fa11-4d65-b61c-da9bd59ef7fc|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-06-07T12:17:13Z"
+      "updated_at": "2026-06-08T21:00:43Z"
     },
     {
       "id": "556f4ef8-20a0-4555-b1ff-951502109ff0",
@@ -9524,25 +9524,25 @@
           "updated_at": "2026-06-08T20:13:40Z"
         },
         {
-          "id": "ec0eae62-ab27-4fc3-96e9-5a39a0f1f742",
-          "american_price": "-152",
+          "id": "f2f99362-930c-40e1-a51f-c3413ceddefc",
+          "american_price": "-145",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "4-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.66",
+          "decimal_price": "1.69",
           "grouping_id": null,
           "over_under_line_id": "934d0b9c-f7aa-411c-af6b-3d951d40af04",
-          "payout_multiplier": "0.82",
+          "payout_multiplier": "0.83",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "De'Aaron Fox",
           "selection_subheader": "Lower 4.5 3s Attempted",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T14:22:09Z"
+          "updated_at": "2026-06-08T20:56:40Z"
         }
       ],
       "over_under": {
@@ -9574,7 +9574,7 @@
       "stable_id": "014525ea-ce8a-4971-bbca-9b855174a593|balanced",
       "stat_value": "4.5",
       "status": "active",
-      "updated_at": "2026-06-08T20:13:40Z"
+      "updated_at": "2026-06-08T20:56:40Z"
     },
     {
       "id": "6f759456-5b90-42bd-87c5-c4342a7bfed4",
@@ -10594,7 +10594,7 @@
       "stable_id": "56518d8c-b02a-4f7b-8740-f6ddd6c1dafa|balanced",
       "stat_value": "3.5",
       "status": "active",
-      "updated_at": "2026-06-08T20:13:40Z"
+      "updated_at": "2026-06-08T20:56:40Z"
     },
     {
       "id": "3387707c-59b7-46b0-8bf7-b15c3c9ec886",
@@ -12427,7 +12427,7 @@
       "updated_at": "2026-06-08T19:02:16Z"
     },
     {
-      "id": "4d46a89b-fdc0-4702-bca8-66f95a4d75a0",
+      "id": "0b42975e-7c4a-4c39-bb0e-7cc4c3e7db8d",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -12438,46 +12438,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "b7435bcc-91d9-4819-8fc2-e36c1be47244",
-          "american_price": "-127",
+          "id": "bfe2961d-0739-4e6f-86b4-1cc6a3fa7cd2",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "14+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.79",
+          "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "4d46a89b-fdc0-4702-bca8-66f95a4d75a0",
-          "payout_multiplier": "0.88",
+          "over_under_line_id": "0b42975e-7c4a-4c39-bb0e-7cc4c3e7db8d",
+          "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dylan Harper",
           "selection_subheader": "Higher 13.5 Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T15:31:44Z"
+          "updated_at": "2026-06-08T20:50:10Z"
         },
         {
-          "id": "b3a359aa-bd84-43c9-a306-7fb28c89d98f",
-          "american_price": "+103",
+          "id": "fd3e4b8a-9563-410d-8515-592bafe9eb54",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "13-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.03",
+          "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "4d46a89b-fdc0-4702-bca8-66f95a4d75a0",
-          "payout_multiplier": "1.03",
+          "over_under_line_id": "0b42975e-7c4a-4c39-bb0e-7cc4c3e7db8d",
+          "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dylan Harper",
           "selection_subheader": "Lower 13.5 Points",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T15:31:44Z"
+          "updated_at": "2026-06-08T20:50:10Z"
         }
       ],
       "over_under": {
@@ -12509,7 +12509,7 @@
       "stable_id": "eb92b2ae-26b3-4f97-b276-1fdfa7c776f2|balanced",
       "stat_value": "13.5",
       "status": "active",
-      "updated_at": "2026-06-08T15:31:59Z"
+      "updated_at": "2026-06-08T20:50:14Z"
     },
     {
       "id": "921cd169-59b4-4c24-b4cb-9f867c2ee1ea",
@@ -12594,7 +12594,7 @@
       "stable_id": "eb0a92f6-0253-4fd1-bf12-06b45dc052fa|balanced",
       "stat_value": "22.5",
       "status": "active",
-      "updated_at": "2026-06-08T14:22:12Z"
+      "updated_at": "2026-06-08T20:56:42Z"
     },
     {
       "id": "43a7a454-1e90-4493-b274-0fb3372fd471",
@@ -13373,46 +13373,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "24077d4b-4d34-4099-a7e9-7f42280db0d8",
-          "american_price": "-218",
+          "id": "320d9498-dec6-44a9-bd9d-b3d576fed87f",
+          "american_price": "-197",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.46",
+          "decimal_price": "1.51",
           "grouping_id": null,
           "over_under_line_id": "d5fe5a83-bb84-4bfb-8861-d7c79ce573df",
-          "payout_multiplier": "0.72",
+          "payout_multiplier": "0.74",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dylan Harper",
           "selection_subheader": "Higher 0.5 3-Pointers Made",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T20:07:43Z"
+          "updated_at": "2026-06-08T20:56:42Z"
         },
         {
-          "id": "e0993353-2816-4929-ab04-6a264f4ea0d2",
-          "american_price": "+173",
+          "id": "d6bdf8c2-9e89-4997-9120-93973d9bb873",
+          "american_price": "+158",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.73",
+          "decimal_price": "2.58",
           "grouping_id": null,
           "over_under_line_id": "d5fe5a83-bb84-4bfb-8861-d7c79ce573df",
-          "payout_multiplier": "1.21",
+          "payout_multiplier": "1.14",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dylan Harper",
           "selection_subheader": "Lower 0.5 3-Pointers Made",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-08T20:07:43Z"
+          "updated_at": "2026-06-08T20:56:42Z"
         }
       ],
       "over_under": {
@@ -13444,7 +13444,7 @@
       "stable_id": "87a3b424-f034-47ad-b34b-6550a7d3f768|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-06-08T20:07:43Z"
+      "updated_at": "2026-06-08T20:56:42Z"
     },
     {
       "id": "e9e69492-b8ab-4907-8604-87a8de458829",
@@ -15252,7 +15252,7 @@
       "stable_id": "42ef89a0-6164-433c-aa88-045ee21ee5b8|balanced",
       "stat_value": "6.5",
       "status": "active",
-      "updated_at": "2026-06-08T19:22:30Z"
+      "updated_at": "2026-06-08T20:56:40Z"
     },
     {
       "id": "d04ebf6b-bbd9-436d-8ae1-0f120954dccc",
@@ -15850,7 +15850,7 @@
       "updated_at": "2026-06-07T12:17:10Z"
     },
     {
-      "id": "c09e8432-770c-4d5a-a8de-ef226038bb14",
+      "id": "98435e61-93be-4007-a1ec-a9de2f67b089",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -15861,46 +15861,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "d10a1a40-d458-449a-8ff7-de574dc2b400",
-          "american_price": "+100",
+          "id": "1327a7f5-73d4-4e64-b1cb-a1017df63a33",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "29+",
+          "choice_display_name_shorter": "28+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2",
+          "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "c09e8432-770c-4d5a-a8de-ef226038bb14",
-          "payout_multiplier": "1.03",
+          "over_under_line_id": "98435e61-93be-4007-a1ec-a9de2f67b089",
+          "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Stephon Castle",
-          "selection_subheader": "Higher 28.5 Pts + Rebs + Asts",
+          "selection_subheader": "Higher 27.5 Pts + Rebs + Asts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T21:41:45Z"
+          "updated_at": "2026-06-08T21:34:49Z"
         },
         {
-          "id": "1eee4905-fddd-4786-9d09-55af33b61424",
-          "american_price": "-122",
+          "id": "939615ed-048f-40a6-8690-7f1158c7e5a4",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "28-",
+          "choice_display_name_shorter": "27-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.82",
+          "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "c09e8432-770c-4d5a-a8de-ef226038bb14",
-          "payout_multiplier": "0.94",
+          "over_under_line_id": "98435e61-93be-4007-a1ec-a9de2f67b089",
+          "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Stephon Castle",
-          "selection_subheader": "Lower 28.5 Pts + Rebs + Asts",
+          "selection_subheader": "Lower 27.5 Pts + Rebs + Asts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-06-07T21:41:45Z"
+          "updated_at": "2026-06-08T21:34:49Z"
         }
       ],
       "over_under": {
@@ -15930,9 +15930,9 @@
       "rank": 1001011100400,
       "sort_by": null,
       "stable_id": "d5dac32f-a19e-4745-bcad-76a57b3fb233|balanced",
-      "stat_value": "28.5",
+      "stat_value": "27.5",
       "status": "active",
-      "updated_at": "2026-06-07T21:42:02Z"
+      "updated_at": "2026-06-08T21:35:11Z"
     },
     {
       "id": "0d2fb4d7-dd59-4837-ae2a-ec0f9672120a",
@@ -20782,6 +20782,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-06-08T20:37:21Z",
+  "cached_at": "2026-06-08T22:20:00Z",
   "sport": "NBA"
 }
