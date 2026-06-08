@@ -18681,32 +18681,101 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (mlHome !== null) break;
         }
 
-        // Pick side by implied probability
+        // ── Pick side: use ALL available signals to determine best pick ──
         let pickSide: "home" | "away" = "home";
         let homeImplied = 0.5, awayImplied = 0.5;
+        let oddsAvailable = false;
+
         if (mlHome !== null && mlAway !== null) {
+          oddsAvailable = true;
           homeImplied = mlHome < 0 ? Math.abs(mlHome) / (Math.abs(mlHome) + 100) : 100 / (mlHome + 100);
           awayImplied = mlAway < 0 ? Math.abs(mlAway) / (Math.abs(mlAway) + 100) : 100 / (mlAway + 100);
+          // Odds are primary — pick the implied favorite
           pickSide = awayImplied > homeImplied ? "away" : "home";
         } else if (spreadHome !== null) {
+          oddsAvailable = true;
           pickSide = spreadHome > 0 ? "away" : "home";
+        } else {
+          // No odds — must determine pick from stats: fetch team stats early for both teams
+          // We'll fetch stats below and use them; default home for now, override after stats fetch
+          pickSide = "home"; // temporary — overridden after multi-signal scoring below
         }
-        const pickTeam   = pickSide === "home" ? homeTeam : awayTeam;
-        const oppTeam    = pickSide === "home" ? awayTeam : homeTeam;
+
+        let pickTeam   = pickSide === "home" ? homeTeam : awayTeam;
+        let oppTeam    = pickSide === "home" ? awayTeam : homeTeam;
         const pickML     = pickSide === "home" ? mlHome : mlAway;
         const pickImplied = pickSide === "home" ? homeImplied : awayImplied;
 
-        // Fetch team stats in parallel
-        const pickId = getEspnMlbId(pickTeam);
-        const oppId  = getEspnMlbId(oppTeam);
-        const [pickStats, oppStats] = await Promise.all([
-          pickId ? fetchMlbTeamStats(pickId, pickTeam) : Promise.resolve(null),
-          oppId  ? fetchMlbTeamStats(oppId,  oppTeam)  : Promise.resolve(null),
+        // Fetch team stats in parallel — always fetch home/away so we can use for no-odds pick selection
+        const homeId = getEspnMlbId(homeTeam);
+        const awayId = getEspnMlbId(awayTeam);
+        const [homeStats, awayStats] = await Promise.all([
+          homeId ? fetchMlbTeamStats(homeId, homeTeam) : Promise.resolve(null),
+          awayId ? fetchMlbTeamStats(awayId, awayTeam) : Promise.resolve(null),
         ]);
+        // Assign pick/opp stats based on current pickSide (may be overridden below for no-odds games)
+        let pickStats: any = pickSide === "home" ? homeStats : awayStats;
+        let oppStats:  any = pickSide === "home" ? awayStats : homeStats;
+
+        // ── When no odds, determine pick side using BPI + ERA + record + home field ──
+        if (!oddsAvailable && homeStats && awayStats) {
+          const homeStatsX = homeStats as any;
+          const awayStatsX = awayStats as any;
+          let homeScore = 0, awayScore = 0;
+
+          // BPI win probability (most reliable signal)
+          const homeBpi = homeStatsX.bpiWinPct ?? 0.5;
+          const awayBpi = awayStatsX.bpiWinPct ?? 0.5;
+          if (homeBpi > awayBpi + 0.04) homeScore += 3;
+          else if (awayBpi > homeBpi + 0.04) awayScore += 3;
+
+          // Starting pitcher ERA (critical — best indicator of single-game outcome)
+          const homeStarter = starterMap.get(homeTeam);
+          const awayStarter = starterMap.get(awayTeam);
+          const homeStartEra = homeStarter?.era && homeStarter.era !== "—" ? parseFloat(homeStarter.era) || 4.5 : 4.5;
+          const awayStartEra = awayStarter?.era && awayStarter.era !== "—" ? parseFloat(awayStarter.era) || 4.5 : 4.5;
+          // Pitcher ERA: lower = better. Compare home starter ERA vs away starter ERA
+          // Pick the team whose starter gives up fewer runs
+          if (homeStartEra < awayStartEra - 0.75) homeScore += 4; // home starter significantly better
+          else if (awayStartEra < homeStartEra - 0.75) awayScore += 4; // away starter significantly better
+          else if (homeStartEra < awayStartEra - 0.30) homeScore += 2;
+          else if (awayStartEra < homeStartEra - 0.30) awayScore += 2;
+
+          // Season win percentage
+          const homeWinPct = homeStatsX.winPct ?? 0.5;
+          const awayWinPct = awayStatsX.winPct ?? 0.5;
+          if (homeWinPct > awayWinPct + 0.08) homeScore += 2;
+          else if (awayWinPct > homeWinPct + 0.08) awayScore += 2;
+
+          // Team ERA (pitching staff quality)
+          const homeTeamEra = parseFloat(homeStatsX.teamEra || "4.50") || 4.50;
+          const awayTeamEra = parseFloat(awayStatsX.teamEra || "4.50") || 4.50;
+          if (homeTeamEra < awayTeamEra - 0.5) homeScore += 2;
+          else if (awayTeamEra < homeTeamEra - 0.5) awayScore += 2;
+
+          // Runs per game offense
+          const homeRpg = homeStatsX.runsPerGame ?? 4.55;
+          const awayRpg = awayStatsX.runsPerGame ?? 4.55;
+          if (homeRpg > awayRpg + 0.5) homeScore += 1;
+          else if (awayRpg > homeRpg + 0.5) awayScore += 1;
+
+          // Home field bump (smaller weight — home teams win ~54% in MLB)
+          homeScore += 1;
+
+          // Set pick side based on multi-signal composite
+          pickSide = homeScore >= awayScore ? "home" : "away";
+          pickTeam = pickSide === "home" ? homeTeam : awayTeam;
+          oppTeam  = pickSide === "home" ? awayTeam : homeTeam;
+          console.log("[MLB pick] No-odds pick: " + pickTeam + " (" + homeScore + " vs " + awayScore + ")");
+        }
 
         // Get starters
         const pickStarter = starterMap.get(pickTeam) ?? null;
         const oppStarter  = starterMap.get(oppTeam)  ?? null;
+
+        // Re-assign pickStats/oppStats if pickSide was overridden by no-odds logic
+        pickStats = pickSide === "home" ? homeStats : awayStats;
+        oppStats  = pickSide === "home" ? awayStats : homeStats;
 
         // Find sharp data
         const sharpMatch = sharpGames.find((sg: any) => {
@@ -18718,6 +18787,61 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Weather
         let weatherData: any = null;
         try { weatherData = await fetchStructuredWeather(homeTeam, "MLB"); } catch { /* non-fatal */ }
+
+        // ── Fetch ESPN BPI win probability for this specific matchup ─────────
+        let homeBpiWinPct: number | null = null;
+        let awayBpiWinPct: number | null = null;
+        try {
+          const espnDateBpi = todayStr.replace(/-/g, "");
+          const sbR = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDateBpi}`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (sbR.ok) {
+            const sbD: any = await sbR.json();
+            const homePop  = homeTeam.split(" ").pop() ?? "";
+            const awayPop  = awayTeam.split(" ").pop() ?? "";
+            const matchEvt = (sbD?.events ?? []).find((ev: any) => {
+              const names: string[] = (ev.competitions?.[0]?.competitors ?? []).map((c: any) => c.team?.displayName ?? "");
+              return names.some((n: string) => n === homeTeam || n.includes(homePop)) &&
+                     names.some((n: string) => n === awayTeam  || n.includes(awayPop));
+            });
+            if (matchEvt?.id) {
+              const evtId: string = matchEvt.id;
+              const predR = await fetch(
+                `https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/events/${evtId}/competitions/${evtId}/predictor`,
+                { signal: AbortSignal.timeout(5000) }
+              );
+              if (predR.ok) {
+                const predD: any = await predR.json();
+                // ESPN predictor shape: { homeTeam: { statistics: [{name:"gameProjection", displayValue:"56.2"}] } }
+                const extractPct = (item: any): number | null => {
+                  if (!item) return null;
+                  const s = (item.statistics ?? []).find((x: any) => x.name === "gameProjection");
+                  const raw = s?.displayValue ?? s?.value ?? item.gameProjection ?? item.chance ?? null;
+                  if (raw === null || raw === undefined) return null;
+                  const v = parseFloat(String(raw));
+                  return isNaN(v) ? null : v > 1 ? v / 100 : v;
+                };
+                homeBpiWinPct = extractPct(predD?.homeTeam);
+                awayBpiWinPct = extractPct(predD?.awayTeam);
+                if (homeBpiWinPct === null && awayBpiWinPct !== null) homeBpiWinPct = 1 - awayBpiWinPct;
+                if (awayBpiWinPct === null && homeBpiWinPct !== null) awayBpiWinPct = 1 - homeBpiWinPct;
+                if (homeBpiWinPct !== null) {
+                  console.log("[MLB BPI] " + homeTeam + " " + (homeBpiWinPct*100).toFixed(1) + "% vs " + awayTeam + " " + ((awayBpiWinPct??0)*100).toFixed(1) + "%");
+                }
+              }
+            }
+          }
+        } catch (bpiErr: any) { console.warn("[MLB BPI] fetch error:", bpiErr.message); }
+
+        // Attach BPI to stats objects for scoring engine
+        const pickBpiWinPct = pickSide === "home" ? homeBpiWinPct : awayBpiWinPct;
+        const oppBpiWinPct  = pickSide === "home" ? awayBpiWinPct : homeBpiWinPct;
+        if (pickStats) (pickStats as any).bpiWinPct = pickBpiWinPct;
+        if (oppStats)  (oppStats  as any).bpiWinPct = oppBpiWinPct;
+        if (homeStats) (homeStats as any).bpiWinPct = homeBpiWinPct;
+        if (awayStats) (awayStats as any).bpiWinPct = awayBpiWinPct;
 
         // ── MONTE CARLO SIMULATION ────────────────────────────────────────
         const sim = simulateMLBGame({
@@ -18893,6 +19017,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (pickWinPct >= 0.580) { score += 5; reasons.push(`${pickTeam} winning ${Math.round(pickWinPct * 100)}% of games — elite record`); }
           else if (pickWinPct >= 0.530) { score += 2; reasons.push(`${pickTeam} record: ${pickStats.wins}-${pickStats.losses} (${Math.round(pickWinPct * 100)}% win rate)`); }
           else if (pickWinPct <= 0.430) { score -= 5; reasons.push(`${pickTeam} struggling: ${pickStats.wins}-${pickStats.losses} (${Math.round(pickWinPct * 100)}% win rate)`); }
+
+          // BPI win probability — ESPN's predictive model (very strong signal)
+          const pickBpi = (pickStats as any).bpiWinPct ?? null;
+          const oppBpi  = (oppStats as any).bpiWinPct ?? null;
+          if (pickBpi !== null && oppBpi !== null) {
+            const bpiPct = Math.round(pickBpi * 100);
+            const bpiDiff = pickBpi - oppBpi;
+            analysis.bpi = { pickBpiWinPct: bpiPct, oppBpiWinPct: Math.round(oppBpi * 100) };
+            if (bpiDiff >= 0.15) { score += 10; reasons.push(`ESPN BPI strongly favors ${pickTeam}: ${bpiPct}% vs ${Math.round(oppBpi * 100)}% win probability`); }
+            else if (bpiDiff >= 0.07) { score += 6; reasons.push(`ESPN BPI favors ${pickTeam}: ${bpiPct}% vs ${Math.round(oppBpi * 100)}%`); }
+            else if (bpiDiff >= 0.02) { score += 3; reasons.push(`ESPN BPI slight lean: ${pickTeam} ${bpiPct}% vs ${Math.round(oppBpi * 100)}%`); }
+            else if (bpiDiff <= -0.07) { score -= 8; reasons.push(`⚠ ESPN BPI disfavors ${pickTeam}: only ${bpiPct}% vs ${oppTeam} ${Math.round(oppBpi * 100)}% — pick against the model`); }
+            else if (bpiDiff < -0.02) { score -= 4; reasons.push(`ESPN BPI slight lean vs pick: ${pickTeam} ${bpiPct}% vs ${Math.round(oppBpi * 100)}%`); }
+
+            // If BPI, simulation AND market all agree — strong convergence bonus
+            const allAgree = (pickBpi > oppBpi) && (sim.pickWinPct >= 52) && (pickImplied >= 0.50);
+            if (allAgree && bpiDiff >= 0.05 && sim.pickWinPct >= 55) {
+              score += 8; reasons.push(`All three models agree: BPI ${bpiPct}%, simulation ${sim.pickWinPct}%, market ${Math.round(pickImplied * 100)}% — high convergence`);
+            }
+          }
         }
 
         // 5. HOME FIELD ADVANTAGE
