@@ -1033,6 +1033,41 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
             ].filter(Boolean) as any} />
           </div>
 
+          {/* Simulation Results */}
+          {a.simulation && (
+            <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(19,35,58,0.04)", borderRadius: 12, border: "1px solid rgba(19,35,58,0.08)" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 13 }}>🎲</span> 100-Game Monte Carlo Simulation
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#16a34a" }}>{pick.pickTeam} {a.simulation.pickWinPct}%</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626" }}>{pick.oppTeam} {a.simulation.oppWinPct}%</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 4, background: "rgba(239,68,68,0.20)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 4, transition: "width 0.4s",
+                    width: `${a.simulation.pickWinPct}%`,
+                    background: a.simulation.pickWinPct >= 55 ? "#16a34a" : a.simulation.pickWinPct >= 45 ? "#D4A843" : "#dc2626",
+                  }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                <div style={{ textAlign: "center", padding: "6px 4px", background: "rgba(34,197,94,0.07)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>Pred. Score</div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: "#131A24" }}>{a.simulation.predictedPickScore}–{a.simulation.predictedOppScore}</div>
+                </div>
+                <div style={{ textAlign: "center", padding: "6px 4px", background: "rgba(19,35,58,0.04)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>Avg Runs</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#131A24" }}>{a.simulation.simPickAvg} / {a.simulation.simOppAvg}</div>
+                </div>
+                <div style={{ textAlign: "center", padding: "6px 4px", background: "rgba(19,35,58,0.04)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase" }}>Tie%</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#131A24" }}>{a.simulation.pushPct}%</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sharp Money */}
           {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
             <Section title={sharp.isFallback ? "Sharp Money (Est.)" : "Sharp Money"} icon="💰">

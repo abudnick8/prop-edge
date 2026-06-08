@@ -18512,6 +18512,146 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         fetchTodayStarters(),
       ]);
 
+
+      // ══════════════════════════════════════════════════════════════════
+      // MONTE CARLO SIMULATION ENGINE — 100 game simulations per matchup
+      // Uses Poisson distribution for run scoring based on:
+      //   - Team runs/game (season), adjusted for starter ERA vs team ERA,
+      //     park factor, home field, weather, and bullpen quality.
+      // Returns { pickWinPct, oppWinPct, simPickAvg, simOppAvg,
+      //           picksWon, pushes, totalSims, predictedPickScore, predictedOppScore }
+      // ══════════════════════════════════════════════════════════════════
+
+      // Park run factors (1.0 = neutral). Hitter-friendly > 1, pitcher-friendly < 1.
+      const MLB_PARK_FACTORS: Record<string, number> = {
+        "Colorado Rockies":    1.18, "Boston Red Sox":      1.12, "Cincinnati Reds":     1.11,
+        "Texas Rangers":       1.09, "Chicago Cubs":        1.08, "Philadelphia Phillies":1.07,
+        "Baltimore Orioles":   1.06, "New York Yankees":    1.05, "Toronto Blue Jays":   1.05,
+        "Cleveland Guardians": 1.03, "Houston Astros":      1.02, "Los Angeles Dodgers": 1.01,
+        "Kansas City Royals":  1.01, "Washington Nationals":1.01, "Detroit Tigers":      0.99,
+        "Miami Marlins":       0.97, "Tampa Bay Rays":      0.97, "Chicago White Sox":   0.97,
+        "Oakland Athletics":   0.97, "Pittsburgh Pirates":  0.97, "Minnesota Twins":     0.98,
+        "Seattle Mariners":    0.95, "San Diego Padres":    0.95, "New York Mets":       0.98,
+        "San Francisco Giants":0.94, "Los Angeles Angels":  0.99, "St. Louis Cardinals": 0.99,
+        "Arizona Diamondbacks":1.04, "Atlanta Braves":      1.02, "Milwaukee Brewers":   0.98,
+      };
+
+      // Poisson random variate (Knuth algorithm)
+      function poissonRand(lambda: number): number {
+        if (lambda <= 0) return 0;
+        const L = Math.exp(-lambda);
+        let k = 0, p = 1.0;
+        do { k++; p *= Math.random(); } while (p > L);
+        return k - 1;
+      }
+
+      interface SimResult {
+        pickWinPct: number; oppWinPct: number; pushPct: number;
+        simPickAvg: number; simOppAvg: number;
+        predictedPickScore: number; predictedOppScore: number;
+        simWinPctLabel: string; sims: number;
+      }
+
+      function simulateMLBGame(params: {
+        pickTeam: string; oppTeam: string;
+        pickStats: any; oppStats: any;
+        pickStarter: any; oppStarter: any;
+        pickSide: "home" | "away";
+        total: number | null; weatherData: any;
+        sims?: number;
+      }): SimResult {
+        const N = params.sims ?? 100;
+        const { pickTeam, oppTeam, pickStats, oppStats, pickStarter, oppStarter, pickSide, total, weatherData } = params;
+
+        // ── Base run expectancy ────────────────────────────────────────
+        // Use team runs/game, fallback to league average (4.55 R/G)
+        const leagueAvg = 4.55;
+        const pickBaseRpg = (pickStats?.runsPerGame && pickStats.runsPerGame > 0) ? pickStats.runsPerGame : leagueAvg;
+        const oppBaseRpg  = (oppStats?.runsPerGame  && oppStats.runsPerGame  > 0) ? oppStats.runsPerGame  : leagueAvg;
+
+        // ── Starter ERA adjustment ────────────────────────────────────
+        // Starter suppresses scoring relative to team ERA baseline (4.50)
+        const leagueEra  = 4.50;
+        const pickStartEra = (pickStarter?.era && pickStarter.era !== "—") ? parseFloat(pickStarter.era) || leagueEra : leagueEra;
+        const oppStartEra  = (oppStarter?.era  && oppStarter.era  !== "—") ? parseFloat(oppStarter.era)  || leagueEra : leagueEra;
+
+        // Opponent scores fewer runs when facing a good starter
+        // Adjustment: ERA above/below league avg shifts lambda by ~0.4 per ERA point
+        const pickStarterSuppress = (leagueEra - oppStartEra) * 0.40; // opponent's starter vs pick's offense
+        const oppStarterSuppress  = (leagueEra - pickStartEra) * 0.40; // pick's starter vs opp's offense
+
+        // ── Park factor ───────────────────────────────────────────────
+        const homeTeam = pickSide === "home" ? pickTeam : oppTeam;
+        const parkFactor = MLB_PARK_FACTORS[homeTeam] ?? 1.0;
+
+        // ── Home field bump ───────────────────────────────────────────
+        const pickHomeBump = pickSide === "home" ? 0.18 : -0.08;
+        const oppHomeBump  = pickSide === "away" ? 0.18 : -0.08;
+
+        // ── Weather adjustments ───────────────────────────────────────
+        let weatherAdj = 0;
+        if (weatherData && !weatherData.isDome) {
+          if (weatherData.windIn  && weatherData.windMph >= 10) weatherAdj -= 0.25;
+          if (weatherData.windOut && weatherData.windMph >= 10) weatherAdj += 0.25;
+          if (weatherData.tempF <= 45) weatherAdj -= 0.30;
+          if (weatherData.tempF >= 85) weatherAdj += 0.15;
+          if ((weatherData.precipInches ?? 0) >= 0.1) weatherAdj -= 0.40;
+        }
+
+        // ── Team ERA / bullpen quality ────────────────────────────────
+        const pickTeamEra  = (pickStats?.teamEra  && pickStats.teamEra  !== "—") ? parseFloat(pickStats.teamEra)  || leagueEra : leagueEra;
+        const oppTeamEra   = (oppStats?.teamEra   && oppStats.teamEra   !== "—") ? parseFloat(oppStats.teamEra)   || leagueEra : leagueEra;
+        // Bullpen quality: team ERA vs league avg adjusts run allowed beyond starter
+        const pickBullpenAdj = (leagueEra - pickTeamEra) * 0.15;
+        const oppBullpenAdj  = (leagueEra - oppTeamEra)  * 0.15;
+
+        // ── Total line context ─────────────────────────────────────────
+        // If market total is set, nudge lambdas so combined expectations are reasonable
+        let totalScaleAdj = 1.0;
+        if (total !== null && total > 0) {
+          const rawCombined = (pickBaseRpg + pickStarterSuppress + pickHomeBump + pickBullpenAdj + weatherAdj)
+                            + (oppBaseRpg  + oppStarterSuppress  + oppHomeBump  + oppBullpenAdj  + weatherAdj);
+          if (rawCombined > 0) totalScaleAdj = (total / rawCombined) * 0.5 + 0.5; // blend 50/50 with raw
+        }
+
+        // ── Final Poisson lambdas ──────────────────────────────────────
+        const pickLambda = Math.max(2.0, (pickBaseRpg + pickStarterSuppress + pickHomeBump + pickBullpenAdj + weatherAdj) * parkFactor * totalScaleAdj);
+        const oppLambda  = Math.max(2.0, (oppBaseRpg  + oppStarterSuppress  + oppHomeBump  + oppBullpenAdj  + weatherAdj) * parkFactor * totalScaleAdj);
+
+        // ── Run 100 simulations ───────────────────────────────────────
+        let pickWins = 0, oppWins = 0, pushes = 0;
+        const pickScores: number[] = [], oppScores: number[] = [];
+        for (let i = 0; i < N; i++) {
+          const ps = poissonRand(pickLambda);
+          const os = poissonRand(oppLambda);
+          pickScores.push(ps);
+          oppScores.push(os);
+          if (ps > os) pickWins++;
+          else if (os > ps) oppWins++;
+          else pushes++;
+        }
+
+        // Median scores (sorted mid-point)
+        const sortedPick = [...pickScores].sort((a, b) => a - b);
+        const sortedOpp  = [...oppScores].sort((a, b) => a - b);
+        const medPick = sortedPick[Math.floor(N / 2)];
+        const medOpp  = sortedOpp[Math.floor(N / 2)];
+        const avgPick = parseFloat((pickScores.reduce((s, v) => s + v, 0) / N).toFixed(1));
+        const avgOpp  = parseFloat((oppScores.reduce((s, v) => s + v, 0) / N).toFixed(1));
+
+        const pickWinPct = parseFloat(((pickWins / N) * 100).toFixed(1));
+        const oppWinPct  = parseFloat(((oppWins  / N) * 100).toFixed(1));
+        const pushPct    = parseFloat(((pushes   / N) * 100).toFixed(1));
+
+        return {
+          pickWinPct, oppWinPct, pushPct,
+          simPickAvg: avgPick, simOppAvg: avgOpp,
+          predictedPickScore: medPick, predictedOppScore: medOpp,
+          simWinPctLabel: `${pickWinPct}% (${pickWins}/${N} sims)`,
+          sims: N,
+        };
+      }
+
       // ── Score each game ────────────────────────────────────────────────
       const scoredGames: any[] = [];
 
@@ -18579,18 +18719,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         let weatherData: any = null;
         try { weatherData = await fetchStructuredWeather(homeTeam, "MLB"); } catch { /* non-fatal */ }
 
+        // ── MONTE CARLO SIMULATION ────────────────────────────────────────
+        const sim = simulateMLBGame({
+          pickTeam, oppTeam, pickStats, oppStats, pickStarter, oppStarter,
+          pickSide, total, weatherData, sims: 100,
+        });
+
         // ── SCORING ENGINE ────────────────────────────────────────────────
+        // Start from 30; simulation win% anchors the base score
         let score = 30;
         const reasons: string[] = [];
         const analysis: Record<string, any> = {};
 
+        // 0. SIMULATION (100-game Monte Carlo — primary confidence driver)
+        analysis.simulation = {
+          pickWinPct: sim.pickWinPct, oppWinPct: sim.oppWinPct, pushPct: sim.pushPct,
+          simPickAvg: sim.simPickAvg, simOppAvg: sim.simOppAvg,
+          predictedPickScore: sim.predictedPickScore, predictedOppScore: sim.predictedOppScore,
+          sims: sim.sims,
+        };
+        if (sim.pickWinPct >= 68) { score += 20; reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 simulated games (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
+        else if (sim.pickWinPct >= 58) { score += 14; reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 sims (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
+        else if (sim.pickWinPct >= 50) { score += 8;  reasons.push(`Simulation: ${pickTeam} wins ${sim.pickWinPct}% of 100 sims (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
+        else if (sim.pickWinPct >= 42) { score += 2;  reasons.push(`Simulation: close game — ${pickTeam} wins ${sim.pickWinPct}% vs ${sim.oppWinPct}% (predicted ${sim.predictedPickScore}-${sim.predictedOppScore})`); }
+        else { score -= 5; reasons.push(`Simulation: ${oppTeam} wins more sims (${sim.oppWinPct}%) — underdog pick requires strong other signals`); }
+
         // 1. MONEYLINE / MARKET IMPLIED PROBABILITY
         const impliedPct = Math.round(pickImplied * 100);
         analysis.market = { impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome, spread: spreadHome, total };
-        if (pickImplied >= 0.63) { score += 16; reasons.push(`Heavy favorite: market gives ${pickTeam} ${impliedPct}% implied win probability`); }
-        else if (pickImplied >= 0.55) { score += 10; reasons.push(`Solid favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
-        else if (pickImplied >= 0.50) { score += 5; reasons.push(`Slight favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
-        else { score += 2; reasons.push(`Underdog pick: ${impliedPct}% implied — value must come from other signals`); }
+        // Cross-validate: if simulation and market agree → confidence boost
+        const simAndMarketAgree = (sim.pickWinPct >= 52 && pickImplied >= 0.52) || (sim.pickWinPct < 48 && pickImplied < 0.48);
+        if (pickImplied >= 0.63) {
+          score += simAndMarketAgree ? 14 : 9;
+          reasons.push(`Heavy favorite: market gives ${pickTeam} ${impliedPct}% implied win probability${simAndMarketAgree ? " — confirmed by simulation" : ""}`);
+        } else if (pickImplied >= 0.55) {
+          score += simAndMarketAgree ? 9 : 6;
+          reasons.push(`Solid favorite: ${pickTeam} at ${impliedPct}% implied${simAndMarketAgree ? " — model agrees" : ""}`);
+        } else if (pickImplied >= 0.50) {
+          score += simAndMarketAgree ? 5 : 3;
+          reasons.push(`Slight favorite: ${pickTeam} at ${impliedPct}% implied`);
+        } else {
+          score += simAndMarketAgree ? 3 : 1;
+          reasons.push(`Underdog pick: ${impliedPct}% implied — relying on simulation + other signals`);
+        }
 
         // 2. SHARP MONEY (highest weight)
         let sharpScore = 0, sharpDirection: string | null = null, publicBetPct: number | null = null;
@@ -18772,6 +18943,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
           score, grade, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
           commenceTime: game.commence_time ?? null,
+          // Predicted score from Monte Carlo simulation
+          predictedScore: {
+            pick: sim.predictedPickScore,
+            opp:  sim.predictedOppScore,
+            pickAvg: sim.simPickAvg,
+            oppAvg:  sim.simOppAvg,
+            simWinPct: sim.pickWinPct,
+          },
           // Deep analysis object — used in frontend drawer
           analysis: {
             ...analysis,
