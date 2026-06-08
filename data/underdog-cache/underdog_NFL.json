@@ -7207,7 +7207,7 @@
       "updated_at": "2026-04-19T16:14:55Z"
     },
     {
-      "id": "7395dfd2-7af3-4244-983c-3ee14dd1cc5d",
+      "id": "cc274252-cddd-4b48-8c88-dd7a259f77ac",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -7218,46 +7218,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "eabbb690-de20-47f5-bbb9-065f58cdd754",
+          "id": "9d0dec1a-3842-4500-a936-cdad220278cf",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "H 1249.5",
+          "choice_display_name_shorter": "1230+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "7395dfd2-7af3-4244-983c-3ee14dd1cc5d",
+          "over_under_line_id": "cc274252-cddd-4b48-8c88-dd7a259f77ac",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jahmyr Gibbs",
-          "selection_subheader": "Higher 1249.5 Season Rush Yards",
+          "selection_subheader": "Higher 1229.5 Season Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-03-11T19:11:28Z"
+          "updated_at": "2026-06-08T18:18:59Z"
         },
         {
-          "id": "bcb86182-8519-4cf6-b1b5-35a9f2a7211a",
+          "id": "27a3f04e-afdb-4a10-a440-7c1c73521cdb",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "L 1249.5",
+          "choice_display_name_shorter": "1229-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "7395dfd2-7af3-4244-983c-3ee14dd1cc5d",
+          "over_under_line_id": "cc274252-cddd-4b48-8c88-dd7a259f77ac",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jahmyr Gibbs",
-          "selection_subheader": "Lower 1249.5 Season Rush Yards",
+          "selection_subheader": "Lower 1229.5 Season Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-03-11T19:11:28Z"
+          "updated_at": "2026-06-08T18:18:59Z"
         }
       ],
       "over_under": {
@@ -7287,9 +7287,9 @@
       "rank": 2801991043800,
       "sort_by": null,
       "stable_id": "c9201aa7-759a-438c-ab10-95268d4902c1|balanced",
-      "stat_value": "1249.5",
+      "stat_value": "1229.5",
       "status": "active",
-      "updated_at": "2026-04-19T16:14:44Z"
+      "updated_at": "2026-06-08T18:18:59Z"
     },
     {
       "id": "876eaf3a-0aa6-43ef-a260-cf58b83d91e4",
@@ -25339,6 +25339,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-06-08T15:34:26Z",
+  "cached_at": "2026-06-08T18:20:15Z",
   "sport": "NFL"
 }
