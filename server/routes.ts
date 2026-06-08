@@ -18445,20 +18445,67 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       let mlbGames: any[] = [];
       if (oddsKey) {
         try {
-          const r = await fetch(
-            `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=1`,
-            { signal: AbortSignal.timeout(10000) }
-          );
-          if (r.ok) mlbGames = await r.json();
-        } catch { /* non-fatal */ }
+          // Use explicit commenceTimeFrom/To — far more reliable than daysFrom
+          const todayMidnightUTC = new Date(todayStr + "T00:00:00");
+          const ctOffset = 5 * 60 * 60 * 1000; // CDT = UTC-5 (close enough for midnight boundary)
+          const fromISO = new Date(todayMidnightUTC.getTime() + ctOffset).toISOString();
+          const toISO   = new Date(todayMidnightUTC.getTime() + ctOffset + 24 * 60 * 60 * 1000).toISOString();
+          const oddsUrl = `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&commenceTimeFrom=${encodeURIComponent(fromISO)}&commenceTimeTo=${encodeURIComponent(toISO)}`;
+          const r = await fetch(oddsUrl, { signal: AbortSignal.timeout(10000) });
+          if (r.ok) {
+            const raw = await r.json();
+            mlbGames = Array.isArray(raw) ? raw : [];
+            console.log(`[MLB pick] Odds API → ${mlbGames.length} games for ${todayStr}`);
+          } else {
+            console.warn(`[MLB pick] Odds API ${r.status} — will try ESPN fallback`);
+          }
+        } catch (e: any) {
+          console.error("[MLB pick] Odds API error:", e.message);
+        }
       }
-      // Filter to today CT
+
+      // Keep only today CT games
       mlbGames = mlbGames.filter((g: any) => {
         if (!g.commence_time) return false;
         const ct = new Date(g.commence_time).toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
         const [m2, d2, y2] = ct.split("/");
         return `${y2}-${m2}-${d2}` === todayStr;
       });
+
+      // ── ESPN fallback: if Odds API returned nothing, build game list from ESPN ──
+      if (mlbGames.length === 0) {
+        console.warn(`[MLB pick] Odds API gave 0 games — using ESPN scoreboard fallback`);
+        try {
+          const espnDate = todayStr.replace(/-/g, "");
+          const espnR = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDate}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (espnR.ok) {
+            const espnD: any = await espnR.json();
+            for (const ev of (espnD?.events ?? [])) {
+              const comp = ev.competitions?.[0];
+              const competitors: any[] = comp?.competitors ?? [];
+              const homeComp = competitors.find((c: any) => c.homeAway === "home");
+              const awayComp = competitors.find((c: any) => c.homeAway === "away");
+              if (!homeComp || !awayComp) continue;
+              const status = ev.status?.type?.description ?? "";
+              if (status === "Final" || status === "In Progress") continue;
+              mlbGames.push({
+                id: ev.id,
+                sport_key: "baseball_mlb",
+                home_team: homeComp.team?.displayName ?? "",
+                away_team: awayComp.team?.displayName ?? "",
+                commence_time: ev.date ?? new Date().toISOString(),
+                bookmakers: [],
+              });
+            }
+            console.log(`[MLB pick] ESPN fallback → ${mlbGames.length} games`);
+          }
+        } catch (e: any) {
+          console.error("[MLB pick] ESPN fallback error:", e.message);
+        }
+      }
 
       const [sharpGames, starterMap] = await Promise.all([
         fetchSharpMoneyBySport("MLB").catch(() => [] as any[]),
