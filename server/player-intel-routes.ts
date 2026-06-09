@@ -353,14 +353,22 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
         raw["FT%"] = (parseFloat(m ?? "0") / parseFloat(a) * 100).toFixed(1);
     }
 
-    // ── MLB: derive Total Bases per game ──
-    if (raw["H"] != null) {
+    // ── MLB: derive Total Bases per game (hitters only) ──
+    if (raw["H"] != null && raw["IP"] == null) {
       const h  = parseFloat(raw["H"]  ?? "0") || 0;
       const d  = parseFloat(raw["2B"] ?? "0") || 0;
       const t  = parseFloat(raw["3B"] ?? "0") || 0;
       const hr = parseFloat(raw["HR"] ?? "0") || 0;
       const singles = Math.max(0, h - d - t - hr);
       raw["TB"] = String(singles + 2 * d + 3 * t + 4 * hr);
+    }
+    // ── MLB pitcher: normalize K alias from SO ──
+    if (raw["IP"] != null) {
+      if (raw["SO"] != null && raw["K"] == null) raw["K"] = raw["SO"];
+      // ESPN v3 pitcher labels: IP ER R H BB SO HR ERA WHIP (already mapped via labels.forEach)
+      // H_allowed alias so client can show hits allowed separately from H (batting)
+      if (raw["H"] != null) { raw["H_allowed"] = raw["H"]; delete raw["H"]; }
+      if (raw["HR"] != null) { raw["HR_allowed"] = raw["HR"]; delete raw["HR"]; }
     }
 
     // ── NHL: shots alias (ESPN label "S") ──
@@ -388,7 +396,7 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
     const yr = (g.date_game ?? "").slice(0, 4);
     return yr === String(cfg.seasons[0]);
   });
-  const season = buildSeasonStats(currentSeasonGames.length > 0 ? currentSeasonGames : allGames, sport);
+  const season = buildSeasonStats(currentSeasonGames.length > 0 ? currentSeasonGames : allGames, sport, position ?? undefined);
 
   // ── Step 5: Last 10 gamelog ───────────────────────────────────────────────
   const gamelog = allGames.slice(-10);
@@ -449,7 +457,7 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
 }
 
 /** Build season aggregate stats from game entries, returning client-expected keys */
-function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
+function buildSeasonStats(games: any[], sport: Sport, position?: string | null): Record<string, any> {
   if (games.length === 0) return {};
   const sums: Record<string, number> = {};
   const counts: Record<string, number> = {};
@@ -487,8 +495,35 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
   switch (sport) {
     case "MLB": {
       const s = agg;
-      // IP is stored as decimal innings (e.g. 50.3 meaning 50 1/3 IP) — round display
+      const PITCHER_POS = new Set(["SP", "RP", "P", "CP", "MR"]);
+      const isPitcher = position != null && PITCHER_POS.has(position.toUpperCase());
+      // IP is stored as decimal innings — round display
       const ipVal = s.IP != null ? Math.round(s.IP * 10) / 10 : null;
+
+      if (isPitcher) {
+        // Pitching stats: ERA/WHIP are rate keys → already averaged
+        const gp = s.gamesPlayed || 1;
+        const kPerGame = s.K != null ? +(s.K / gp).toFixed(1) : null;
+        return {
+          gamesPlayed: s.gamesPlayed,
+          isPitcher: true,
+          IP:          ipVal,          ip: ipVal,
+          ERA:         s.ERA ?? null,  era: s.ERA ?? null,
+          WHIP:        s.WHIP ?? null, whip: s.WHIP ?? null,
+          K:           s.K   ?? null,  k:   s.K   ?? null,
+          BB:          s.BB  ?? null,  bb:  s.BB  ?? null,
+          ER:          s.ER  ?? null,  er:  s.ER  ?? null,
+          R:           s.R   ?? null,  r:   s.R   ?? null,
+          H_allowed:   s.H_allowed ?? null,
+          HR_allowed:  s.HR_allowed ?? null,
+          kPerGame,
+          // Wins/Losses are not in v3 gamelog — left null
+          W:  null,
+          L:  null,
+          SV: s.SV ?? null,
+        };
+      }
+
       return {
         gamesPlayed: s.gamesPlayed,
         // Batting
@@ -501,15 +536,12 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
         H:   s.H   ?? null,  h:   s.H   ?? null,
         BB:  s.BB  ?? null,  bb:  s.BB  ?? null,
         SO:  s.SO  ?? null,  so:  s.SO  ?? null,
-        K:   s.K  ?? s.SO ?? null,  // pitchers use K label, batters use SO
+        K:   s.K  ?? s.SO ?? null,
         SB:  s.SB  ?? null,  sb:  s.SB  ?? null,
         TB:  s.TB  ?? null,  tb:  s.TB  ?? null,
         "2B": s["2B"] ?? null,
         "3B": s["3B"] ?? null,
         AB:  s.AB  ?? null,
-        // Pitching
-        IP:  ipVal,  ip: ipVal,
-        ER:  s.ER  ?? null,  er: s.ER  ?? null,
       };
     }
     case "NBA": {
@@ -544,11 +576,36 @@ function buildSeasonStats(games: any[], sport: Sport): Record<string, any> {
     }
     case "NHL": {
       const gp = agg.gamesPlayed || 1;
+      const GOALIE_POS = new Set(["G", "GT", "GK"]);
+      const isGoalie = position != null && GOALIE_POS.has(position.toUpperCase());
       // TOI/G comes in as per-game string "20:52" — keep as-is (averaged via rateKeys)
       const toiPerGame = agg["TOI/G"] ?? agg.TOI ?? null;
       const pim = agg.PIM ?? null;
       const shots = agg.S ?? null;
       const sogPerGame = shots != null ? +(shots / gp).toFixed(1) : null;
+
+      if (isGoalie) {
+        // Goalie stats: GA, SA, SV, SV%, GAA, SO (shutouts)
+        // ESPN v3 goalie labels: GA SA SV SV% GAA SO MIN W L OTL
+        const svPct = agg["SV%"] ?? agg.SVPCT ?? null;
+        const gaa = agg.GAA ?? null;
+        return {
+          gamesPlayed: agg.gamesPlayed,
+          isGoalie: true,
+          W:    agg.W   ?? null,
+          L:    agg.L   ?? null,
+          OTL:  agg.OTL ?? null,
+          GA:   agg.GA  ?? null,
+          SA:   agg.SA  ?? null,
+          SV:   agg.SV  ?? null,
+          "SV%": svPct,  sv_pct: svPct,
+          GAA:  gaa,  gaa: gaa,
+          SO:   agg.SO ?? agg.SHO ?? null,
+          MIN:  agg.MIN ?? null,
+          TOI:  toiPerGame,  toi: toiPerGame,
+        };
+      }
+
       return {
         gamesPlayed: agg.gamesPlayed,
         G:   agg.G   ?? null,

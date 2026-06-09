@@ -742,7 +742,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
   const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
   const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
@@ -2595,7 +2595,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
     const dir = path.join(__dirname, "ml_data");
-    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json"];
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
     const result: Record<string, any> = {};
     const errors: Record<string, string> = {};
     for (const f of files) {

@@ -498,7 +498,7 @@ function OverviewTab({ player }: { player: PlayerData }) {
             gap: "0.5rem",
           }}
         >
-          {sport === "MLB" && (
+          {sport === "MLB" && !s.isPitcher && (
             <>
               <StatChip label="AVG" value={fmtAvg(s.avg ?? s.AVG)} />
               <StatChip label="OBP" value={fmtAvg(s.obp ?? s.OBP)} />
@@ -520,6 +520,19 @@ function OverviewTab({ player }: { player: PlayerData }) {
               )}
             </>
           )}
+          {sport === "MLB" && s.isPitcher && (
+            <>
+              <StatChip label="ERA"  value={fmtNum(s.era ?? s.ERA, 2)}  highlight={parseFloat(String(s.era ?? s.ERA ?? 99)) < 3.5} danger={parseFloat(String(s.era ?? s.ERA ?? 0)) > 5.0} />
+              <StatChip label="WHIP" value={fmtNum(s.whip ?? s.WHIP, 2)} highlight={parseFloat(String(s.whip ?? s.WHIP ?? 99)) < 1.2} danger={parseFloat(String(s.whip ?? s.WHIP ?? 0)) > 1.5} />
+              <StatChip label="IP"   value={fmtNum(s.ip ?? s.IP, 1)} />
+              <StatChip label="K"    value={fmtNum(s.k ?? s.K)}    highlight={parseInt(String(s.k ?? s.K ?? 0)) > 80} />
+              <StatChip label="BB"   value={fmtNum(s.bb ?? s.BB)} />
+              <StatChip label="H"    value={fmtNum(s.H_allowed ?? s.h_allowed)} />
+              <StatChip label="HR"   value={fmtNum(s.HR_allowed ?? s.hr_allowed)} />
+              <StatChip label="ER"   value={fmtNum(s.er ?? s.ER)} />
+              {s.SV != null && <StatChip label="SV" value={fmtNum(s.SV)} highlight={parseInt(String(s.SV ?? 0)) >= 10} />}
+            </>
+          )}
           {sport === "NBA" && (
             <>
               <StatChip label="PPG" value={fmtNum(s.ppg ?? s.PTS, 1)} highlight={parseFloat(String(s.ppg ?? s.PTS ?? 0)) >= 20} />
@@ -533,7 +546,7 @@ function OverviewTab({ player }: { player: PlayerData }) {
               <StatChip label="MIN" value={fmtNum(s.min ?? s.MIN, 1)} />
             </>
           )}
-          {sport === "NHL" && (
+          {sport === "NHL" && !s.isGoalie && (
             <>
               <StatChip label="G" value={fmtNum(s.g ?? s.G)} highlight={parseInt(String(s.g ?? s.G ?? 0)) >= 20} />
               <StatChip label="A" value={fmtNum(s.a ?? s.A)} />
@@ -542,6 +555,17 @@ function OverviewTab({ player }: { player: PlayerData }) {
               <StatChip label="PIM" value={fmtNum(s.pim ?? s.PIM)} />
               <StatChip label="SOG/G" value={fmtNum(s.sog_per_game ?? s.SOG_G, 1)} />
               <StatChip label="TOI" value={String(s.toi ?? s.TOI ?? "—")} />
+            </>
+          )}
+          {sport === "NHL" && s.isGoalie && (
+            <>
+              <StatChip label="W"    value={fmtNum(s.W)}   highlight={parseInt(String(s.W ?? 0)) >= 20} />
+              <StatChip label="L"    value={fmtNum(s.L)} />
+              <StatChip label="OTL"  value={fmtNum(s.OTL)} />
+              <StatChip label="GAA"  value={fmtNum(s.gaa ?? s.GAA, 2)} highlight={parseFloat(String(s.gaa ?? s.GAA ?? 99)) < 2.5} danger={parseFloat(String(s.gaa ?? s.GAA ?? 0)) > 3.5} />
+              <StatChip label="SV%"  value={fmtAvg(s["SV%"] ?? s.sv_pct)} highlight={parseFloat(String(s["SV%"] ?? s.sv_pct ?? 0)) >= 0.91} />
+              <StatChip label="SV"   value={fmtNum(s.SV)} />
+              <StatChip label="SO"   value={fmtNum(s.SO)} highlight={parseInt(String(s.SO ?? 0)) >= 3} />
             </>
           )}
           {sport === "NFL" && (
@@ -636,13 +660,19 @@ function OverviewTab({ player }: { player: PlayerData }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  {sport === "MLB" && ["Date", "Opp", "H", "AB", "HR", "RBI", "R"].map((h) => (
+                  {sport === "MLB" && !s.isPitcher && ["Date", "Opp", "H", "AB", "HR", "RBI", "R"].map((h) => (
+                    <th key={h} style={{ textAlign: h === "Date" || h === "Opp" ? "left" : "center", padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid rgba(19,35,58,0.08)", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                  {sport === "MLB" && s.isPitcher && ["Date", "Opp", "IP", "ER", "H", "BB", "K", "ERA"].map((h) => (
                     <th key={h} style={{ textAlign: h === "Date" || h === "Opp" ? "left" : "center", padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid rgba(19,35,58,0.08)", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                   {sport === "NBA" && ["Date", "Opp", "PTS", "REB", "AST", "MIN"].map((h) => (
                     <th key={h} style={{ textAlign: h === "Date" || h === "Opp" ? "left" : "center", padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid rgba(19,35,58,0.08)", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
-                  {sport === "NHL" && ["Date", "Opp", "G", "A", "PTS", "+/-"].map((h) => (
+                  {sport === "NHL" && !s.isGoalie && ["Date", "Opp", "G", "A", "PTS", "+/-"].map((h) => (
+                    <th key={h} style={{ textAlign: h === "Date" || h === "Opp" ? "left" : "center", padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid rgba(19,35,58,0.08)", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                  {sport === "NHL" && s.isGoalie && ["Date", "Opp", "Dec", "GA", "SA", "SV", "SV%"].map((h) => (
                     <th key={h} style={{ textAlign: h === "Date" || h === "Opp" ? "left" : "center", padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid rgba(19,35,58,0.08)", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                   {sport === "NFL" && (player.position === "QB"
@@ -658,7 +688,7 @@ function OverviewTab({ player }: { player: PlayerData }) {
               <tbody>
                 {gamelog.map((g, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(19,35,58,0.02)" }}>
-                    {sport === "MLB" && (
+                    {sport === "MLB" && !s.isPitcher && (
                       <>
                         <td style={{ padding: "5px 8px", color: "#3D4B58", fontSize: 11, whiteSpace: "nowrap" }}>{(g.date_game ?? g.date ?? "").slice(5, 10)}</td>
                         <td style={{ padding: "5px 8px", color: "#131A24", fontWeight: 600, fontSize: 12 }}>{g.opp ?? "—"}</td>
@@ -667,6 +697,18 @@ function OverviewTab({ player }: { player: PlayerData }) {
                         <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700, color: parseInt(String(g.HR ?? 0)) > 0 ? "#D4A843" : "#131A24" }}>{g.HR ?? "—"}</td>
                         <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.RBI ?? "—"}</td>
                         <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.R ?? "—"}</td>
+                      </>
+                    )}
+                    {sport === "MLB" && s.isPitcher && (
+                      <>
+                        <td style={{ padding: "5px 8px", color: "#3D4B58", fontSize: 11, whiteSpace: "nowrap" }}>{(g.date_game ?? g.date ?? "").slice(5, 10)}</td>
+                        <td style={{ padding: "5px 8px", color: "#131A24", fontWeight: 600, fontSize: 12 }}>{g.opp ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700 }}>{g.IP ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", color: parseInt(String(g.ER ?? 0)) >= 4 ? "#ef4444" : parseInt(String(g.ER ?? 0)) === 0 ? "#22c55e" : "#131A24", fontWeight: 700 }}>{g.ER ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.H_allowed ?? g.H ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.BB ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700, color: parseInt(String(g.K ?? g.SO ?? 0)) >= 8 ? "#D4A843" : "#131A24" }}>{g.K ?? g.SO ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: parseFloat(String(g.ERA ?? 99)) < 3.5 ? "#22c55e" : parseFloat(String(g.ERA ?? 0)) > 5.0 ? "#ef4444" : "#131A24" }}>{g.ERA ?? "—"}</td>
                       </>
                     )}
                     {sport === "NBA" && (
@@ -679,7 +721,7 @@ function OverviewTab({ player }: { player: PlayerData }) {
                         <td style={{ padding: "5px 8px", textAlign: "center", color: "#3D4B58" }}>{g.MIN ?? "—"}</td>
                       </>
                     )}
-                    {sport === "NHL" && (
+                    {sport === "NHL" && !s.isGoalie && (
                       <>
                         <td style={{ padding: "5px 8px", color: "#3D4B58", fontSize: 11, whiteSpace: "nowrap" }}>{(g.date_game ?? g.date ?? "").slice(5, 10)}</td>
                         <td style={{ padding: "5px 8px", color: "#131A24", fontWeight: 600, fontSize: 12 }}>{g.opp ?? "—"}</td>
@@ -687,6 +729,17 @@ function OverviewTab({ player }: { player: PlayerData }) {
                         <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.A ?? "—"}</td>
                         <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700 }}>{g.PTS ?? "—"}</td>
                         <td style={{ padding: "5px 8px", textAlign: "center", color: parseInt(String(g["+/-"] ?? 0)) > 0 ? "#22c55e" : parseInt(String(g["+/-"] ?? 0)) < 0 ? "#ef4444" : "#131A24" }}>{g["+/-"] ?? "—"}</td>
+                      </>
+                    )}
+                    {sport === "NHL" && s.isGoalie && (
+                      <>
+                        <td style={{ padding: "5px 8px", color: "#3D4B58", fontSize: 11, whiteSpace: "nowrap" }}>{(g.date_game ?? g.date ?? "").slice(5, 10)}</td>
+                        <td style={{ padding: "5px 8px", color: "#131A24", fontWeight: 600, fontSize: 12 }}>{g.opp ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700, color: g.result?.startsWith("W") ? "#22c55e" : g.result?.startsWith("L") ? "#ef4444" : "#131A24" }}>{g.result?.split(" ")[0] ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700, color: parseInt(String(g.GA ?? 0)) >= 4 ? "#ef4444" : parseInt(String(g.GA ?? 0)) <= 1 ? "#22c55e" : "#131A24" }}>{g.GA ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.SA ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center" }}>{g.SV ?? "—"}</td>
+                        <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: parseFloat(String(g["SV%"] ?? 0)) >= 0.930 ? "#22c55e" : parseFloat(String(g["SV%"] ?? 0)) < 0.880 ? "#ef4444" : "#131A24" }}>{g["SV%"] ?? "—"}</td>
                       </>
                     )}
                     {sport === "NFL" && player.position === "QB" && (
@@ -2038,11 +2091,30 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
   const gamelog = player.gamelog ?? [];
 
   // Primary stat key per sport/position
-  const primaryKey = isMlb ? "H" : player.sport === "NBA" ? "PTS" : player.sport === "NHL" ? "G" : "YDS";
-  const primaryLabel = isMlb ? "Hits" : player.sport === "NBA" ? "Points" : player.sport === "NHL" ? "Goals" : "Yards";
+  const PITCHER_POS = new Set(["SP", "RP", "P", "CP", "MR"]);
+  const GOALIE_POS  = new Set(["G", "GT", "GK"]);
+  const isPitcher = isMlb && PITCHER_POS.has((player.position ?? "").toUpperCase());
+  const isGoalie  = player.sport === "NHL" && GOALIE_POS.has((player.position ?? "").toUpperCase());
+
+  const primaryKey = isPitcher ? "K"
+    : isGoalie ? "SV"
+    : isMlb ? "H"
+    : player.sport === "NBA" ? "PTS"
+    : player.sport === "NHL" ? "G"
+    : "YDS";
+  const primaryLabel = isPitcher ? "Strikeouts"
+    : isGoalie ? "Saves"
+    : isMlb ? "Hits"
+    : player.sport === "NBA" ? "Points"
+    : player.sport === "NHL" ? "Goals"
+    : "Yards";
 
   // Secondary stat keys for multi-stat comparison
-  const secondaryKeys: { key: string; label: string }[] = isMlb
+  const secondaryKeys: { key: string; label: string }[] = isPitcher
+    ? [{ key: "IP", label: "IP" }, { key: "ER", label: "ER" }, { key: "BB", label: "BB" }]
+    : isGoalie
+    ? [{ key: "GA", label: "GA" }, { key: "SA", label: "SA" }]
+    : isMlb
     ? [{ key: "HR", label: "HR" }, { key: "RBI", label: "RBI" }, { key: "TB", label: "TB" }]
     : player.sport === "NBA"
     ? [{ key: "REB", label: "REB" }, { key: "AST", label: "AST" }]
@@ -2076,7 +2148,7 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
   const careerHighGame = allVals.length ? full[allVals.indexOf(careerHigh)] : null;
 
   // Consistency: % of games where primary stat >= floor threshold
-  const threshold = isMlb ? 1 : player.sport === "NBA" ? 10 : player.sport === "NHL" ? 1 : 50;
+  const threshold = isPitcher ? 5 : isGoalie ? 25 : isMlb ? 1 : player.sport === "NBA" ? 10 : player.sport === "NHL" ? 1 : 50;
   const consistencyGames = full.length ? full.filter(g => (parseFloat(String(g[primaryKey] ?? "0")) || 0) >= threshold).length : 0;
   const consistencyPct = full.length ? (consistencyGames / full.length) * 100 : 0;
 
