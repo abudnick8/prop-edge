@@ -2010,8 +2010,10 @@ export default function BTS() {
     queryKey: ["/api/bts-picks", today],
     queryFn: () => apiRequest("GET", `/api/bts-picks`).then(r => r.json()),
     staleTime: 0,
-    refetchInterval: 15 * 60_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: 5 * 60_000,   // refresh every 5 min (was 15)
+    refetchOnMount: "always",       // always fetch fresh on mount
+    refetchOnWindowFocus: true,     // refetch when tab regains focus
+    retry: 2,
   });
 
   // Lightweight live-stats poll — updates hits/ab/result every 30s without
