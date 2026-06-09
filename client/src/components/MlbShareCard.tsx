@@ -118,7 +118,8 @@ function AnalyticsTemplate({ pick }: { pick: any }) {
               {[{ s: ps, team: pick.pickTeam, isPick: true }, { s: os, team: pick.oppTeam, isPick: false }].map(({ s, team, isPick }) => (
                 <div key={team} style={{ background: isPick ? "rgba(212,168,67,0.10)" : "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px",
                   border: isPick ? "1px solid rgba(212,168,67,0.25)" : "1px solid transparent" }}>
-                  <div style={{ fontSize: 8, fontWeight: 800, color: isPick ? GOLD : "#6b7280", textTransform: "uppercase", marginBottom: 2 }}>{isPick ? "▶ Pick" : "Opp"}</div>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: isPick ? GOLD : "#6b7280", textTransform: "uppercase", marginBottom: 1 }}>{isPick ? "▶ Pick" : "Opp"}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: isPick ? NAVY : "#3D4B58", marginBottom: 2 }}>{team}</div>
                   <div style={{ fontSize: 11, fontWeight: 900, color: NAVY }}>{s.name ?? "TBD"}</div>
                   <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>ERA {s.era ?? "—"} · WHIP {s.whip ?? "—"} · W-L {s.wins ?? 0}-{s.losses ?? 0}</div>
                 </div>
@@ -338,6 +339,7 @@ function SummaryTemplate({ pick }: { pick: any }) {
         {ps.name && (
           <div style={{ textAlign: "center", background: "rgba(212,168,67,0.08)", borderRadius: 10, padding: "8px 6px", border: "1px solid rgba(212,168,67,0.18)" }}>
             <div style={{ fontSize: 8, fontWeight: 700, color: GOLD, textTransform: "uppercase", marginBottom: 2 }}>⚾ Starter</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: NAVY, marginBottom: 1 }}>{pick.pickTeam}</div>
             <div style={{ fontSize: 11, fontWeight: 900, color: NAVY, lineHeight: 1.2 }}>{ps.name?.split(" ").pop()}</div>
             <div style={{ fontSize: 9, color: MUTED }}>ERA {ps.era ?? "—"}</div>
           </div>

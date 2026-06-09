@@ -1122,9 +1122,10 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
                 {[{ team: pick.pickTeam, s: pickStarter, isPick: true }, { team: pick.oppTeam ?? (pick.pickTeam === pick.homeTeam ? pick.awayTeam : pick.homeTeam), s: oppStarter, isPick: false }].map(({ team, s, isPick }) => (
                   <div key={team} style={{ background: isPick ? "rgba(212,168,67,0.08)" : "rgba(19,35,58,0.04)",
                     borderRadius: 10, padding: "10px 11px", border: isPick ? "1px solid rgba(212,168,67,0.2)" : "1px solid transparent" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: isPick ? "#D4A843" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: isPick ? "#D4A843" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 1 }}>
                       {isPick ? "▶ Pick" : "Opp"}
                     </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: isPick ? "#131A24" : "#3D4B58", marginBottom: 4, letterSpacing: 0.3 }}>{team}</div>
                     <div style={{ fontSize: 12, fontWeight: 900, color: "#131A24", marginBottom: 5 }}>{s.name ?? "TBD"}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 10, color: "#3D4B58" }}>ERA: <b style={{ color: s.era != null && parseFloat(s.era) < 3.5 ? "#16a34a" : s.era != null && parseFloat(s.era) > 5.0 ? "#dc2626" : "#131A24" }}>{s.era ?? "—"}</b></div>
