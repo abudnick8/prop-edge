@@ -62,24 +62,30 @@ function Pill({ label, value, good, accent }: { label: string; value: string; go
   );
 }
 
-function KV({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function KV({ label, value, highlight, lightBg }: { label: string; value: string; highlight?: boolean; lightBg?: boolean }) {
+  const labelColor = lightBg ? "#3D4B58" : "rgba(246,241,231,0.50)";
+  const valueColor = lightBg
+    ? (highlight ? "#16a34a" : "#131A24")
+    : (highlight ? "#facc15" : "#F6F1E7");
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(246,241,231,0.45)" }}>{label}</span>
-      <span style={{ fontSize: 10, fontWeight: 900, color: highlight ? "#facc15" : "#F6F1E7" }}>{value}</span>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 2 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: labelColor }}>{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 900, color: valueColor }}>{value}</span>
     </div>
   );
 }
 
-function BulletLine({ text }: { text: string }) {
+function BulletLine({ text, lightBg }: { text: string; lightBg?: boolean }) {
   const parts = text.replace(/^[•\-] /, "").split(/(\*\*[^*]+\*\*)/g);
+  const textColor = lightBg ? "#3D4B58" : "rgba(246,241,231,0.75)";
+  const boldColor = lightBg ? "#131A24" : "#F6F1E7";
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
       <span style={{ fontSize: 10, marginTop: 1, flexShrink: 0, color: GOLD }}>▸</span>
-      <p style={{ fontSize: 10, lineHeight: 1.4, color: "rgba(246,241,231,0.75)", margin: 0 }}>
+      <p style={{ fontSize: 10, lineHeight: 1.4, color: textColor, margin: 0 }}>
         {parts.map((p, i) =>
           p.startsWith("**") && p.endsWith("**")
-            ? <strong key={i} style={{ color: "#F6F1E7" }}>{p.slice(2, -2)}</strong>
+            ? <strong key={i} style={{ color: boldColor }}>{p.slice(2, -2)}</strong>
             : <span key={i}>{p}</span>
         )}
       </p>
@@ -194,34 +200,34 @@ function BTSAnalytics({ pick }: { pick: any }) {
           {/* Batter */}
           <div style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)", borderRadius: 10, padding: "8px 10px" }}>
             <div style={{ fontSize: 8, fontWeight: 800, color: "#2563eb", textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>🏏 Batter</div>
-            {s.avg14 > 0    && <KV label="14d BA"    value={fmtAvg(s.avg14)}                       highlight={(s.avg14 ?? 0) >= 0.280} />}
-            {s.avg7 > 0     && <KV label="7d BA"     value={fmtAvg(s.avg7)}                        highlight={(s.avg7 ?? 0) >= 0.300} />}
-            {s.avgSeason > 0 && <KV label="Season BA" value={fmtAvg(s.avgSeason)} />}
-            {s.xba > 0      && <KV label="xBA"       value={fmtAvg(s.xba)}                         highlight={(s.xba ?? 0) >= 0.300} />}
-            {s.xwoba > 0    && <KV label="xwOBA"     value={fmtAvg(s.xwoba)}                       highlight={(s.xwoba ?? 0) >= 0.350} />}
-            {s.ghp14 > 0    && <KV label="GHP (L14)" value={fmtPct(s.ghp14)}                       highlight={(s.ghp14 ?? 0) >= 0.70} />}
-            {s.hardHitPct > 0 && <KV label="Hard Hit%" value={`${s.hardHitPct.toFixed(0)}%`}       highlight={(s.hardHitPct ?? 0) >= 42} />}
-            {s.barrelPct > 0  && <KV label="Barrel%"  value={`${s.barrelPct.toFixed(1)}%`}         highlight={(s.barrelPct ?? 0) >= 8} />}
-            {s.kPct > 0       && <KV label="K%"       value={fmtPct(s.kPct)} />}
-            {s.hitStreak > 0  && <KV label="Streak"   value={`${s.hitStreak}G`}                    highlight={(s.hitStreak ?? 0) >= 4} />}
+            {s.avg14 > 0    && <KV lightBg label="14d BA"    value={fmtAvg(s.avg14)}                       highlight={(s.avg14 ?? 0) >= 0.280} />}
+            {s.avg7 > 0     && <KV lightBg label="7d BA"     value={fmtAvg(s.avg7)}                        highlight={(s.avg7 ?? 0) >= 0.300} />}
+            {s.avgSeason > 0 && <KV lightBg label="Season BA" value={fmtAvg(s.avgSeason)} />}
+            {s.xba > 0      && <KV lightBg label="xBA"       value={fmtAvg(s.xba)}                         highlight={(s.xba ?? 0) >= 0.300} />}
+            {s.xwoba > 0    && <KV lightBg label="xwOBA"     value={fmtAvg(s.xwoba)}                       highlight={(s.xwoba ?? 0) >= 0.350} />}
+            {s.ghp14 > 0    && <KV lightBg label="GHP (L14)" value={fmtPct(s.ghp14)}                       highlight={(s.ghp14 ?? 0) >= 0.70} />}
+            {s.hardHitPct > 0 && <KV lightBg label="Hard Hit%" value={`${s.hardHitPct.toFixed(0)}%`}       highlight={(s.hardHitPct ?? 0) >= 42} />}
+            {s.barrelPct > 0  && <KV lightBg label="Barrel%"  value={`${s.barrelPct.toFixed(1)}%`}         highlight={(s.barrelPct ?? 0) >= 8} />}
+            {s.kPct > 0       && <KV lightBg label="K%"       value={fmtPct(s.kPct)} />}
+            {s.hitStreak > 0  && <KV lightBg label="Streak"   value={`${s.hitStreak}G`}                    highlight={(s.hitStreak ?? 0) >= 4} />}
             {bvp.ab >= 5 && bvp.avg != null && (
-              <KV label={`BvP (${bvp.ab} AB)`} value={fmtAvg(bvp.avg)} highlight={(bvp.avg ?? 0) >= 0.270} />
+              <KV lightBg label={`BvP (${bvp.ab} AB)`} value={fmtAvg(bvp.avg)} highlight={(bvp.avg ?? 0) >= 0.270} />
             )}
           </div>
           {/* Pitcher */}
           <div style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.12)", borderRadius: 10, padding: "8px 10px" }}>
             <div style={{ fontSize: 8, fontWeight: 800, color: "#dc2626", textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>⚾ Pitcher</div>
             {pitcherAvg != null && (
-              <KV label={`BA vs ${bats === "L" ? "LHB" : "RHB"}`} value={fmtAvg(pitcherAvg)} highlight={pitcherAvg >= 0.270} />
+              <KV lightBg label={`BA vs ${bats === "L" ? "LHB" : "RHB"}`} value={fmtAvg(pitcherAvg)} highlight={pitcherAvg >= 0.270} />
             )}
-            {ps.era    != null && <KV label="ERA"    value={ps.era.toFixed(2)} />}
-            {ps.last5ERA != null && <KV label="L5 ERA" value={ps.last5ERA.toFixed(2)} highlight={ps.last5ERA >= 5.0} />}
-            {ps.whip   != null && <KV label="WHIP"   value={ps.whip.toFixed(2)} />}
-            {ps.k9     != null && <KV label="K/9"    value={ps.k9.toFixed(1)} />}
-            {ps.xwoba  != null && <KV label="xwOBA"  value={ps.xwoba.toFixed(3)} highlight={ps.xwoba >= 0.340} />}
-            {ps.swStrPct != null && <KV label="SwStr%" value={`${ps.swStrPct.toFixed(1)}%`} />}
+            {ps.era    != null && <KV lightBg label="ERA"    value={ps.era.toFixed(2)} />}
+            {ps.last5ERA != null && <KV lightBg label="L5 ERA" value={ps.last5ERA.toFixed(2)} highlight={ps.last5ERA >= 5.0} />}
+            {ps.whip   != null && <KV lightBg label="WHIP"   value={ps.whip.toFixed(2)} />}
+            {ps.k9     != null && <KV lightBg label="K/9"    value={ps.k9.toFixed(1)} />}
+            {ps.xwoba  != null && <KV lightBg label="xwOBA"  value={ps.xwoba.toFixed(3)} highlight={ps.xwoba >= 0.340} />}
+            {ps.swStrPct != null && <KV lightBg label="SwStr%" value={`${ps.swStrPct.toFixed(1)}%`} />}
             {ps.leashProbability != null && (
-              <KV label="Leash" value={`${Math.round(ps.leashProbability * 100)}%`} />
+              <KV lightBg label="Leash" value={`${Math.round(ps.leashProbability * 100)}%`} />
             )}
           </div>
         </div>
@@ -283,7 +289,7 @@ function BTSAnalytics({ pick }: { pick: any }) {
             <div style={{ fontSize: 8, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>📋 Analysis</div>
             {opener && <p style={{ fontSize: 9, fontWeight: 600, color: NAVY, lineHeight: 1.4, margin: "0 0 4px" }}>{opener}</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {bullets.slice(0, 3).map((b, i) => <BulletLine key={i} text={b} />)}
+              {bullets.slice(0, 3).map((b, i) => <BulletLine lightBg key={i} text={b} />)}
             </div>
           </div>
         )}
