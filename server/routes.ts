@@ -9509,7 +9509,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       let pitcherSavantMap: Record<string, any> = {}; // keyed by mlbam player_id
       try {
         const pSavantResp = await axios.get(
-          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,exit_velocity_avg,hard_hit_percent,barrel_batted_rate,groundballs_percent,flyballs_percent,bb_percent,k_percent,whiff_percent,p_swinging_strike_perc&csv=true`,
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher&filter=&sort=4&sortDir=desc&min=1&selections=xba,xwoba,xera,exit_velocity_avg,hard_hit_percent,barrel_batted_rate,groundballs_percent,flyballs_percent,bb_percent,k_percent,whiff_percent,p_swinging_strike_perc&csv=true`,
           { headers: { "Accept": "text/csv" } }
         );
         const pCsvText: string = pSavantResp.data;
@@ -9579,10 +9579,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       async function getPitcherSeasonStats(pitcherId: number) {
         if (pitcherSeasonCache[pitcherId]) return pitcherSeasonCache[pitcherId];
         try {
-          const [rSeason, rLog] = await Promise.allSettled([
+          const [rSeason, rLog, rPerson] = await Promise.allSettled([
             axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season&group=pitching&season=2026`),
             axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=gameLog&group=pitching&season=2026&limit=5`),
+            axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}`),
           ]);
+          const personData = rPerson.status === "fulfilled" ? (rPerson.value.data?.people?.[0] ?? {}) : {};
+          const pitchHand: string = personData?.pitchHand?.code ?? "R"; // "L" or "R"
           const stat   = rSeason.status === "fulfilled" ? (rSeason.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}) : {};
           const splits = rLog.status === "fulfilled"    ? (rLog.value.data?.stats?.[0]?.splits ?? [])              : [];
 
@@ -9632,13 +9635,42 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             leashProbability = Math.max(0.20, Math.min(0.95, leashProbability));
           }
 
-          const result = { era, k9, whip, ip, last5ERA, last3ERA, last3AvgIP, last3H9, leashProbability };
+          const result = { era, k9, whip, ip, last5ERA, last3ERA, last3AvgIP, last3H9, leashProbability, pitchHand };
           pitcherSeasonCache[pitcherId] = result;
           return result;
-        } catch { return { era: null, k9: null, whip: null, ip: 0, last5ERA: null, last3ERA: null, last3AvgIP: null, last3H9: null, leashProbability: 0.85 }; }
+        } catch { return { era: null, k9: null, whip: null, ip: 0, last5ERA: null, last3ERA: null, last3AvgIP: null, last3H9: null, leashProbability: 0.85, pitchHand: "R" }; }
       }
 
       // ── 4. Helper: fetch pitcher vs LHB/RHB splits (BA + xwOBA + PA count) ──
+      // ── Platoon OBP split score (Step 2 from upgrade guide) ─────────────────
+      // Returns 0-1 score reflecting hitter OBP advantage vs this pitcher's hand.
+      // Cached per hitter to avoid redundant fetches within the same slate build.
+      const platoonSplitCache: Record<string, number> = {};
+      async function getPlatoonSplitScore(mlbamId: number, pitcherHand: string): Promise<number> {
+        const key = `${mlbamId}_${pitcherHand}`;
+        if (platoonSplitCache[key] !== undefined) return platoonSplitCache[key];
+        try {
+          const url = `https://statsapi.mlb.com/api/v1/people?personIds=${mlbamId}` +
+            `&hydrate=stats(group=[hitting],type=[statSplits],sitCodes=[vr,vl],season=2026)`;
+          const resp = await axios.get(url, { timeout: 4000 });
+          const splits = resp.data?.people?.[0]?.stats?.[0]?.splits ?? [];
+          const targetCode = pitcherHand === "L" ? "vl" : "vr";
+          const vsSplit  = splits.find((s: any) => s.split?.code === targetCode);
+          const totSplit = splits.find((s: any) => !s.split?.code);
+          if (!vsSplit || !totSplit) { platoonSplitCache[key] = 0.50; return 0.50; }
+          const obpVs  = parseFloat(vsSplit.stat?.onBasePercentage  ?? "0.310") || 0.310;
+          const obpTot = parseFloat(totSplit.stat?.onBasePercentage ?? "0.310") || 0.310;
+          const delta  = obpVs - obpTot; // +.030 = big edge, -.020 = disadvantage
+          // +.030 → 95, 0 → 50, -.020 → 20
+          const score = Math.min(1.0, Math.max(0, 0.50 + delta * 15));
+          platoonSplitCache[key] = score;
+          return score;
+        } catch {
+          platoonSplitCache[key] = 0.50;
+          return 0.50;
+        }
+      }
+
       async function getPitcherSplits(pitcherId: number) {
         try {
           const r = await axios.get(
@@ -9988,6 +10020,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         bullpenEra: number | null,       // opposing bullpen ERA this season
         bullpenWhip: number | null,      // opposing bullpen WHIP this season
         sprintSpeed: number | null,      // Savant sprint speed (ft/sec) — infield hit predictor
+        // Phase 4 additions (BTS upgrade):
+        pitcherXera: number | null,      // Baseball Savant xERA for opposing starter
+        platoonSplitScore: number,       // OBP-delta platoon score 0-1 (vs this hand)
+        pitcherBarrelAllowed: number,    // pitcher's barrel rate allowed (from Savant)
       ): number {
         const bats = hitter.bats;
         const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
@@ -10219,13 +10255,40 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Multiplicative: park × temp × wind × precip
         const envRaw  = parkBoostRaw * tempMult * windMult * precipPenalty;
         const envScore = Math.min(1.0, Math.max(0.1, envRaw));
+        // ── Phase 4: xERA signal — replaces pure ERA in matchup quality ─────────
+        // xERA from Savant removes luck/defense noise — more predictive than actual ERA.
+        // Blend xERA score 60% + existing ERA form 40% when xERA is available.
+        let xeraScore = 0.50; // neutral fallback
+        if (pitcherXera !== null && pitcherXera > 0) {
+          // xERA scale: ≤2.50=elite(bad for hitters), ≥5.50=vulnerable(good for hitters)
+          if (pitcherXera <= 2.50) xeraScore = 0.15;
+          else if (pitcherXera <= 3.25) xeraScore = 0.30;
+          else if (pitcherXera <= 4.00) xeraScore = 0.50;
+          else if (pitcherXera <= 4.75) xeraScore = 0.65;
+          else if (pitcherXera <= 5.50) xeraScore = 0.80;
+          else xeraScore = 0.95;
+        }
+        // Blend: xERA available → 60% xERA + 40% form; no xERA → 100% form
+        const blendedPitcherScore = pitcherXera !== null
+          ? xeraScore * 0.60 + pitcherFormScore * 0.40
+          : pitcherFormScore;
+
+        // ── Phase 4: Barrel rate differential ────────────────────────────────
+        // (hitterBarrel - leagueAvg) + (pitcherBarrelAllowed - leagueAvg) → edge
+        const hitterBarrelPct  = parseFloat(savant?.barrel_batted_rate ?? "0") || 8;
+        const leagueAvgBarrel  = 8.0;
+        const barrelEdge = ((hitterBarrelPct - leagueAvgBarrel) + (pitcherBarrelAllowed - leagueAvgBarrel)) / 2;
+        const barrelDiffScore  = Math.min(1.0, Math.max(0, 0.50 + barrelEdge / 20));
+        // (hitter at 14%, pitcher allows 12% → edge=(3+2)/2=2.5 → 0.625 score)
+
         const matchup = (
-          pitcherHittability * 0.33 +  // starter hittability
-          pitcherFormScore   * 0.24 +  // starter recent form
-          totalBoost         * 0.17 +  // game total environment
-          envScore           * 0.13 +  // park × weather
-          bullpenScore       * 0.08 +  // bullpen quality (new)
-          Math.min(1, 0.50 + ttoBonus) * 0.05  // TTO interaction (new)
+          pitcherHittability       * 0.28 +  // starter hittability (reduced slightly)
+          blendedPitcherScore      * 0.26 +  // xERA-blended form (was 0.24 ERA only)
+          totalBoost               * 0.17 +  // game total environment
+          envScore                 * 0.13 +  // park × weather
+          bullpenScore             * 0.08 +  // bullpen quality
+          Math.min(1, 0.50 + ttoBonus) * 0.04 + // TTO
+          barrelDiffScore          * 0.04    // barrel differential (new)
         );
 
         // ══ COMPONENT 5: Opportunity / Lineup Slot + EPA (20%) ══
@@ -10255,6 +10318,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const opportunity = Math.max(0, Math.min(1,
           rawSlotScore + impliedBoost + splitAdj - epaGatePenalty + leashBonus
         ));
+
+        // ══ PHASE 4: Platoon Split Score (OBP-based) — 4% ══
+        // OBP delta vs pitcher's hand — already computed async before scoreHitter is called.
+        // Score 0-1: 1.0 = big platoon advantage, 0.5 = neutral, 0 = big disadvantage.
+        const platoonComponent = platoonSplitScore; // passed in pre-computed
 
         // ══ COMPONENT 6: BvP + Vs-Team ── (dynamic 6–18%) ══
         // BvP is now tiered: elite / strong / weak / none.
@@ -10346,20 +10414,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const formW     = Math.max(0.10, 0.15 - extraBvp * 0.40);
         const matchupW  = Math.max(0.19, 0.25 - extraBvp * 0.60);
         const rawNom = (
-          form            * formW     +   // 15% base (form + streak + D/N)
-          contact         * 0.16      +   // 16% (xBA, xwOBA, zCon, ozCon, sprint, K%)
-          hardContact     * 0.08      +   // 8%  (HH%, barrel%, launch angle)
-          matchup         * matchupW  +   // 25% base (starter + bullpen + TTO + env)
-          opportunity     * 0.18      +   // 18% (lineup slot, leash, home/away)
-          bvpScore        * bvpWeight +   // 6-18% dynamic
-          venueScore      * 0.05      +   // 5%  (career park splits)
-          battedBallBonus * 0.03      +   // 3%  (GB/FB vs pitcher type)
-          stabilityScore  * 0.05          // 5%  anchor
+          form             * formW     +   // 15% base (form + streak + D/N)
+          contact          * 0.16      +   // 16% (xBA, xwOBA, zCon, ozCon, sprint, K%)
+          hardContact      * 0.08      +   // 8%  (HH%, barrel%, launch angle)
+          matchup          * matchupW  +   // 25% base (xERA+form+bullpen+barrel+env)
+          opportunity      * 0.18      +   // 18% (lineup slot, leash, home/away)
+          bvpScore         * bvpWeight +   // 6-18% dynamic
+          platoonComponent * 0.04      +   // 4%  (OBP platoon split vs pitcher hand)
+          venueScore       * 0.04      +   // 4%  (career park splits, reduced by 1%)
+          battedBallBonus  * 0.02      +   // 2%  (GB/FB vs pitcher type, reduced by 1%)
+          stabilityScore   * 0.05          // 5%  anchor
         );
         // Normalize by actual weight sum so output stays in 0-1 range
-        const totalW = formW + 0.16 + 0.08 + matchupW + 0.18 + bvpWeight + 0.05 + 0.03 + 0.05;
+        const totalW = formW + 0.16 + 0.08 + matchupW + 0.18 + bvpWeight + 0.04 + 0.04 + 0.02 + 0.05;
         const raw = rawNom / totalW;
-        return Math.max(0, Math.min(1, raw));
+        const clampedRaw = Math.max(0, Math.min(1, raw));
+        return clampedRaw;
       }
 
 
@@ -10730,6 +10800,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               // ── Sprint speed from Savant ───────────────────────────────
               const sprintSpeed = parseFloat(savant?.sprint_speed ?? "0") || null;
 
+              // ── Phase 4: pitcher xERA, barrel allowed, platoon split ───────
+              const pitcherXera = opponentPitcherId
+                ? (parseFloat(pitcherSavantMap[String(opponentPitcherId)]?.xera ?? "0") || null)
+                : null;
+              const pitcherBarrelAllowed = parseFloat(
+                pitcherSavantMap[String(opponentPitcherId ?? 0)]?.barrel_batted_rate ?? "8"
+              ) || 8;
+              let platoonSplitScore = 0.5; // neutral default
+              try {
+                const pitcherHand = oppPitcherSeasonStats?.pitchHand ?? "R";
+                platoonSplitScore = await getPlatoonSplitScore(pid, pitcherHand);
+              } catch { /* non-blocking — neutral fallback */ }
+
               const rawScore = scoreHitter(
                 { ...stats, bats },
                 pitcherSplits,
@@ -10757,6 +10840,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 bullpenEra,
                 bullpenWhip,
                 sprintSpeed,
+                // Phase 4 additions:
+                pitcherXera,
+                platoonSplitScore,
+                pitcherBarrelAllowed,
               );
 
               // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
@@ -10878,8 +10965,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 isScratched,
                 isOverridePick,
                 opponentPitcher: side === "home"
-                  ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: "R" }
-                  : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: "R" },
+                  ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: oppPitcherSeasonStats?.pitchHand ?? "R" }
+                  : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: oppPitcherSeasonStats?.pitchHand ?? "R" },
                 pitcherAvgAllowed: pitcherAvgVsMe,
                 bvp: { avg: bvp.avg, hits: bvp.hits, ab: bvp.ab, signal: bvp.signal },
                 pitcherStats: {
@@ -10962,6 +11049,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   },
                 },
                 rawScore,
+                subScores: {
+                  rawScore,
+                  hitProbabilityBase: Math.min(0.80, (() => {
+                    const logit = 5.0 * (rawScore - 0.50);
+                    const sig = 1 / (1 + Math.exp(-logit));
+                    return 0.45 + sig * 0.37;
+                  })()),
+                  pitcherXera:           pitcherXera,
+                  platoonSplitScore:     parseFloat(platoonSplitScore.toFixed(3)),
+                  pitcherBarrelAllowed:  pitcherBarrelAllowed,
+                  analyticsBoostMult:    parseFloat(analyticsBoostMult.toFixed(3)),
+                },
                 hitProbability:  hitProbabilityPct,
                 impliedProb:     impliedProb !== null ? Math.round(impliedProb * 100) : null,
                 edge:            edge !== null ? Math.round(edge * 100) : null,
@@ -11056,6 +11155,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             pitchTypeMatchup:p.stats?.pitchTypeMatchup,       // Phase 2
             venue:           p.game?.venue,
             gameTotal:       p.game?.total,
+            // Phase 4 sub-scores (Step 9)
+            subScores:       p.subScores ?? null,
+            pitcherXera:     p.subScores?.pitcherXera ?? null,
+            platoonSplitScore: p.subScores?.platoonSplitScore ?? null,
+            pitcherBarrelAllowed: p.subScores?.pitcherBarrelAllowed ?? null,
             result:          "pending",
             hits:            null,
             ab:              null,
@@ -18279,22 +18383,54 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ═══════════════════════════════════════════════════════════════════════════
   const MLB_DAILY_PICKS_FILE = path.join(ML_DATA_DIR, "mlb_daily_picks.json");
 
-  // Load existing MLB daily picks from disk on startup
+  // Load existing MLB daily picks from disk + Postgres on startup
   let mlbDailyPicksHistory: Record<string, any> = {};
   try {
     if (fs.existsSync(MLB_DAILY_PICKS_FILE)) {
       mlbDailyPicksHistory = JSON.parse(fs.readFileSync(MLB_DAILY_PICKS_FILE, "utf-8"));
     }
   } catch { mlbDailyPicksHistory = {}; }
+  // Async Postgres load runs after disk — merges in any picks saved since last disk write
+  _mlPullPromise.then(() => loadMlbDailyPicksFromDB()).catch(() => loadMlbDailyPicksFromDB());
 
   async function saveMlbDailyPicks() {
+    const json = JSON.stringify(mlbDailyPicksHistory, null, 2);
+    // 1. Local disk
+    try { fs.writeFileSync(MLB_DAILY_PICKS_FILE, json); } catch { /* non-fatal */ }
+    // 2. Postgres ml_data_store (survives redeploy)
     try {
-      fs.writeFileSync(MLB_DAILY_PICKS_FILE, JSON.stringify(mlbDailyPicksHistory, null, 2));
-      // Also persist to Postgres
-      try {
-        await storage.upsertMlDataFile("mlb_daily_picks.json", JSON.stringify(mlbDailyPicksHistory, null, 2));
-      } catch { /* non-fatal */ }
-    } catch (e: any) { console.error("[MLB Pick] save error:", e.message); }
+      await db.query(
+        `INSERT INTO ml_data_store (filename, content, updated_at)
+         VALUES ('mlb_daily_picks.json', $1, NOW())
+         ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+        [json]
+      );
+    } catch (e: any) { console.warn("[MLB Pick] DB save error:", e.message); }
+    // 3. Debounced GitHub sync
+    setTimeout(() => syncMLDataToGitHub().catch(() => {}), 5_000);
+  }
+
+  async function loadMlbDailyPicksFromDB() {
+    try {
+      const row = await db.query(`SELECT content FROM ml_data_store WHERE filename='mlb_daily_picks.json'`);
+      if (row.rows?.[0]?.content) {
+        const parsed = JSON.parse(row.rows[0].content);
+        // Merge: DB graded result always wins over disk
+        for (const [date, entry] of Object.entries(parsed) as [string, any][]) {
+          if (!mlbDailyPicksHistory[date]) {
+            mlbDailyPicksHistory[date] = entry;
+          } else {
+            // Keep graded result from either source, prefer non-null
+            const existing = mlbDailyPicksHistory[date];
+            if (!existing.primary?.result && entry.primary?.result)
+              existing.primary = entry.primary;
+            if (!existing.runnerUp?.result && entry.runnerUp?.result)
+              existing.runnerUp = entry.runnerUp;
+          }
+        }
+        console.log(`[MLB Pick] Merged ${Object.keys(parsed).length} days from Postgres`);
+      }
+    } catch (e: any) { console.warn("[MLB Pick] Postgres load error:", e.message); }
   }
 
   app.get("/api/mlb/pick-of-day", async (req: Request, res: Response) => {
@@ -19187,12 +19323,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       nflWeeklyPicksHistory = JSON.parse(fs.readFileSync(NFL_WEEKLY_PICKS_FILE, "utf-8"));
     }
   } catch { nflWeeklyPicksHistory = {}; }
+  _mlPullPromise.then(() => loadNflWeeklyPicksFromDB()).catch(() => loadNflWeeklyPicksFromDB());
 
   async function saveNflWeeklyPicks() {
+    const json = JSON.stringify(nflWeeklyPicksHistory, null, 2);
+    // 1. Local disk
+    try { fs.writeFileSync(NFL_WEEKLY_PICKS_FILE, json); } catch { /* non-fatal */ }
+    // 2. Postgres ml_data_store
     try {
-      fs.writeFileSync(NFL_WEEKLY_PICKS_FILE, JSON.stringify(nflWeeklyPicksHistory, null, 2));
-      try { await storage.upsertMlDataFile("nfl_weekly_picks.json", JSON.stringify(nflWeeklyPicksHistory, null, 2)); } catch { /* non-fatal */ }
-    } catch (e: any) { console.error("[NFL Pick] save error:", e.message); }
+      await db.query(
+        `INSERT INTO ml_data_store (filename, content, updated_at)
+         VALUES ('nfl_weekly_picks.json', $1, NOW())
+         ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+        [json]
+      );
+    } catch (e: any) { console.warn("[NFL Pick] DB save error:", e.message); }
+    setTimeout(() => syncMLDataToGitHub().catch(() => {}), 5_000);
+  }
+
+  async function loadNflWeeklyPicksFromDB() {
+    try {
+      const row = await db.query(`SELECT content FROM ml_data_store WHERE filename='nfl_weekly_picks.json'`);
+      if (row.rows?.[0]?.content) {
+        const parsed = JSON.parse(row.rows[0].content);
+        for (const [week, entry] of Object.entries(parsed) as [string, any][]) {
+          if (!nflWeeklyPicksHistory[week]) {
+            nflWeeklyPicksHistory[week] = entry;
+          } else {
+            const existing = nflWeeklyPicksHistory[week];
+            if (!existing.primary?.result && entry.primary?.result)
+              existing.primary = entry.primary;
+          }
+        }
+        console.log(`[NFL Pick] Merged ${Object.keys(parsed).length} weeks from Postgres`);
+      }
+    } catch (e: any) { console.warn("[NFL Pick] Postgres load error:", e.message); }
   }
 
 

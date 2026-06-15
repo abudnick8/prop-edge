@@ -568,13 +568,16 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Scoring Model</p>
             <div className="space-y-1">
               {[
-                { label: "Recent Form (13%)", w: 0.13 },
-                { label: "Contact Quality (19%)", w: 0.19 },
-                { label: "Hard Contact (10%)", w: 0.10 },
-                { label: "Pitcher Matchup (24%)", w: 0.24 },
-                { label: "Opportunity (20%)", w: 0.20 },
-                { label: "BvP History (5%)", w: 0.05 },
-                { label: "Stability (9%)", w: 0.09 },
+                { label: "Recent Form (15%)", w: 0.15 },
+                { label: "Contact Quality (16%)", w: 0.16 },
+                { label: "Hard Contact (8%)", w: 0.08 },
+                { label: "Pitcher Matchup (25%)", w: 0.25 },
+                { label: "Opportunity (18%)", w: 0.18 },
+                { label: "BvP History (6–18%)", w: 0.06 },
+                { label: "Platoon Split (4%)", w: 0.04 },
+                { label: "Venue History (4%)", w: 0.04 },
+                { label: "Batted-Ball (2%)", w: 0.02 },
+                { label: "Stability (5%)", w: 0.05 },
               ].map(c => (
                 <div key={c.label} className="flex items-center gap-2 text-[11px]">
                   <span className="flex-1 text-muted-foreground">{c.label}</span>
@@ -593,6 +596,97 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
               )}
             </div>
           </div>
+
+          {/* ── Matchup Edge Breakdown (Phase 4) ───────────────────── */}
+          {pick.subScores && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                🔬 Matchup Edge Breakdown
+              </p>
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.10)" }}>
+                {/* xERA row */}
+                {(() => {
+                  const xera = pick.subScores.pitcherXera;
+                  if (xera == null || xera <= 0) return (
+                    <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.02)" }}>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p>
+                        <p className="text-[10px] text-muted-foreground">Expected ERA (Baseball Savant)</p>
+                      </div>
+                      <span className="text-[11px] font-bold text-muted-foreground">N/A</span>
+                    </div>
+                  );
+                  const label = xera <= 2.50 ? "Elite — tough" : xera <= 3.25 ? "Good — challenging" : xera <= 4.00 ? "Average" : xera <= 4.75 ? "Below avg — favorable" : "Vulnerable — ideal";
+                  const color = xera <= 2.50 ? "#f87171" : xera <= 3.25 ? "#fb923c" : xera <= 4.00 ? "#facc15" : xera <= 4.75 ? "#86efac" : "#22c55e";
+                  return (
+                    <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.02)" }}>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p>
+                        <p className="text-[10px] text-muted-foreground">{label}</p>
+                      </div>
+                      <span className="text-sm font-black" style={{ color }}>{xera.toFixed(2)}</span>
+                    </div>
+                  );
+                })()}
+
+                {/* Platoon split row */}
+                {(() => {
+                  const ps = pick.subScores.platoonSplitScore;
+                  const hand = pick.opponentPitcher?.hand ?? "R";
+                  const bats = pick.bats ?? "R";
+                  const matchStr = `${bats === "L" ? "LHB" : bats === "S" ? "Switch" : "RHB"} vs ${hand === "L" ? "LHP" : "RHP"}`;
+                  const advantageLabel = ps >= 0.65 ? "Platoon advantage" : ps <= 0.38 ? "Platoon disadvantage" : "Neutral matchup";
+                  const color = ps >= 0.65 ? "#22c55e" : ps <= 0.38 ? "#f87171" : "#facc15";
+                  return (
+                    <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Platoon Split</p>
+                        <p className="text-[10px] text-muted-foreground">{matchStr} · {advantageLabel}</p>
+                      </div>
+                      <span className="text-sm font-black" style={{ color }}>{Math.round((ps ?? 0.5) * 100)}%</span>
+                    </div>
+                  );
+                })()}
+
+                {/* Barrel rate row */}
+                {(() => {
+                  const hitterBarrel = pick.stats?.barrelPct ?? null;
+                  const pitcherBarrel = pick.subScores.pitcherBarrelAllowed ?? 8;
+                  const edge = hitterBarrel != null ? (hitterBarrel - 8) + (pitcherBarrel - 8) : null;
+                  const edgeLabel = edge == null ? "—" : edge >= 4 ? "Strong barrel edge" : edge >= 1 ? "Slight barrel edge" : edge <= -4 ? "Barrel disadvantage" : "Neutral";
+                  const color = edge == null ? "#9ca3af" : edge >= 4 ? "#22c55e" : edge >= 1 ? "#86efac" : edge <= -4 ? "#f87171" : "#facc15";
+                  return (
+                    <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.01)" }}>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Barrel Rate Edge</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Hitter {hitterBarrel != null ? hitterBarrel.toFixed(1) + "%" : "—"} · Pitcher allows {pitcherBarrel.toFixed(1)}%
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-bold" style={{ color }}>{edgeLabel}</span>
+                    </div>
+                  );
+                })()}
+
+                {/* Analytics boost row */}
+                {pick.subScores.analyticsBoostMult != null && pick.subScores.analyticsBoostMult !== 1 && (() => {
+                  const boost = pick.subScores.analyticsBoostMult;
+                  const pct = ((boost - 1) * 100);
+                  const label = pct >= 4 ? "Strong boost — multiple tailwinds" : pct >= 1 ? "Mild boost" : pct <= -4 ? "Significant drag — headwinds" : "Mild drag";
+                  const color = pct > 0 ? "#22c55e" : "#f87171";
+                  return (
+                    <div className="flex items-center justify-between px-3 py-2" style={{ background: "rgba(19,35,58,0.02)" }}>
+                      <div>
+                        <p className="text-[11px] font-semibold text-foreground">Analytics Layer</p>
+                        <p className="text-[10px] text-muted-foreground">{label}</p>
+                      </div>
+                      <span className="text-sm font-black" style={{ color }}>{pct > 0 ? "+" : ""}{pct.toFixed(1)}%</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
 
           {/* MLB Analytics Layer */}
           {(pick.analyticsNote || pick.steamerProjection || pick.projectedGameStats) && (
