@@ -475,144 +475,325 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
       {showShare && <ShareCard type="bts" data={pick} onClose={() => setShowShare(false)} />}
 
       {expanded && (
-        <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
-          {/* Full stat grid */}
+        <div className="px-4 py-3 space-y-4 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+
+          {/* ── 1. Score & probability ── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Full Stats</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Score & Probability</p>
             <div className="grid grid-cols-3 gap-1.5">
-              <Chip label="7d BA" value={fmtAvg(pick.stats?.avg7)} />
-              <Chip label="30d BA" value={fmtAvg(pick.stats?.avg30)} />
-              <Chip label="Season BA" value={fmtAvg(pick.stats?.avgSeason)} />
-              <Chip label="xwOBA" value={pick.stats?.xwoba ? ("." + Math.round(pick.stats.xwoba * 1000).toString().padStart(3, "0")) : "—"} />
-              <Chip label="Hard Hit%" value={pick.stats?.hardHitPct ? pick.stats.hardHitPct.toFixed(0) + "%" : "—"} />
-              <Chip label="BB%" value={fmtPct(pick.stats?.bbPct)} />
+              <Chip label="Raw Score" value={(pick.rawScore * 100).toFixed(1)} highlight={(pick.rawScore ?? 0) >= 0.58} />
+              <Chip label="Hit Prob" value={`${pick.hitProbability}%`} highlight={(pick.hitProbability ?? 0) >= 65} />
+              {pick.impliedProb != null && <Chip label="Implied%" value={`${pick.impliedProb}%`} />}
+              {pick.edge != null && <Chip label="Edge" value={`${pick.edge > 0 ? "+" : ""}${pick.edge}%`} highlight={(pick.edge ?? 0) >= 5} />}
+              <Chip label="Conf Tier" value={pick.confidenceTier ?? "—"} highlight={pick.confidenceTier === "A" || pick.confidenceTier === "A+"} />
+              <Chip label="Lineup Slot" value={`#${pick.lineupSlot}`} highlight={(pick.lineupSlot ?? 9) <= 4} />
             </div>
           </div>
 
-          {/* Pitcher matchup — full detail */}
+          {/* ── 2. Scoring model component bars ── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">⚾ Pitcher Matchup</p>
-            <p className="text-xs mb-2">
-              <span className="font-bold text-foreground">{pick.opponentPitcher?.name ?? "TBD"}</span> allows{" "}
-              <span
-                className="font-black"
-                style={{ color: pick.pitcherAvgAllowed >= 0.280 ? "#22c55e" : pick.pitcherAvgAllowed >= 0.260 ? "#facc15" : "#f87171" }}
-              >
-                {fmtAvg(pick.pitcherAvgAllowed)}
-              </span>
-              {" "}BA vs {pick.bats === "L" ? "left-handed" : "right-handed"} batters
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">⚖️ Component Weights</p>
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.08)" }}>
+              {[
+                { label: "Pitcher Matchup", w: 0.25, key: "matchup" },
+                { label: "Opportunity (slot/leash)", w: 0.18, key: "opportunity" },
+                { label: "Contact Quality (xBA/xwOBA)", w: 0.16, key: "contact" },
+                { label: "Recent Form", w: 0.15, key: "form" },
+                { label: "Hard Contact (HH%/barrel)", w: 0.08, key: "hard" },
+                { label: "BvP History", w: 0.06, key: "bvp" },
+                { label: "Stability Anchor", w: 0.05, key: "stab" },
+                { label: "Platoon Split", w: 0.04, key: "plat" },
+                { label: "Venue History", w: 0.04, key: "venue" },
+                { label: "Batted-Ball Profile", w: 0.02, key: "bb" },
+              ].map((c, i) => (
+                <div key={c.key} className="flex items-center gap-2 px-3 py-1.5" style={{ background: i % 2 === 0 ? "rgba(19,35,58,0.02)" : "transparent", borderBottom: i < 9 ? "1px solid rgba(19,35,58,0.05)" : "none" }}>
+                  <span className="text-[10px] text-muted-foreground flex-1 min-w-0 truncate">{c.label}</span>
+                  <div className="flex-shrink-0 h-1.5 rounded-full" style={{ width: 80, background: "rgba(19,35,58,0.07)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.round(c.w * 400)}%`, maxWidth: "100%", background: "#D4A843" }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-muted-foreground flex-shrink-0 w-8 text-right">{Math.round(c.w * 100)}%</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              Raw score: <strong>{(pick.rawScore * 100).toFixed(1)}</strong> → logistic → <strong>{pick.hitProbability}%</strong> hit probability
+              {pick.analyticsBoost != null && pick.analyticsBoost !== 1 && (
+                <span className="ml-1 font-bold" style={{ color: pick.analyticsBoost > 1 ? "#22c55e" : "#f87171" }}>
+                  {" "}· Analytics layer: {pick.analyticsBoost > 1 ? "+" : ""}{((pick.analyticsBoost - 1) * 100).toFixed(1)}%
+                </span>
+              )}
             </p>
-            {/* Pitcher stat chips */}
+          </div>
+
+          {/* ── 3. Hitter Stats — full ── */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">🏏 Hitter Stats</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              <Chip label="7d BA" value={fmtAvg(pick.stats?.avg7)} highlight={(pick.stats?.avg7 ?? 0) >= 0.300} />
+              <Chip label="14d BA" value={fmtAvg(pick.stats?.avg14)} highlight={(pick.stats?.avg14 ?? 0) >= 0.280} />
+              <Chip label="30d BA" value={fmtAvg(pick.stats?.avg30)} highlight={(pick.stats?.avg30 ?? 0) >= 0.260} />
+              <Chip label="Season BA" value={fmtAvg(pick.stats?.avgSeason)} />
+              <Chip label="GHP (L14)" value={fmtPct(pick.stats?.ghp14)} highlight={(pick.stats?.ghp14 ?? 0) >= 0.70} />
+              <Chip label="Hit Streak" value={pick.stats?.hitStreak ? `${pick.stats.hitStreak}G` : "—"} highlight={(pick.stats?.hitStreak ?? 0) >= 4} />
+              <Chip label="xBA" value={fmtAvg(pick.stats?.xba)} highlight={(pick.stats?.xba ?? 0) >= 0.300} />
+              <Chip label="xwOBA" value={pick.stats?.xwoba ? ("." + Math.round(pick.stats.xwoba * 1000).toString().padStart(3, "0")) : "—"} highlight={(pick.stats?.xwoba ?? 0) >= 0.350} />
+              <Chip label="Hard Hit%" value={pick.stats?.hardHitPct ? pick.stats.hardHitPct.toFixed(0) + "%" : "—"} highlight={(pick.stats?.hardHitPct ?? 0) >= 42} />
+              <Chip label="Barrel%" value={pick.stats?.barrelPct ? pick.stats.barrelPct.toFixed(1) + "%" : "—"} highlight={(pick.stats?.barrelPct ?? 0) >= 8} />
+              <Chip label="K%" value={fmtPct(pick.stats?.kPct)} />
+              <Chip label="BB%" value={fmtPct(pick.stats?.bbPct)} />
+              <Chip label="Whiff%" value={pick.stats?.whiffPct ? pick.stats.whiffPct.toFixed(0) + "%" : "—"} />
+              <Chip label="Z-Contact%" value={pick.stats?.zContactPct ? pick.stats.zContactPct.toFixed(0) + "%" : "—"} highlight={(pick.stats?.zContactPct ?? 0) >= 85} />
+              <Chip label="Launch Angle" value={pick.stats?.launchAngle ? pick.stats.launchAngle.toFixed(1) + "°" : "—"} />
+              {pick.stats?.sprintSpeed > 0 && <Chip label="Sprint Spd" value={pick.stats.sprintSpeed.toFixed(1)} highlight={pick.stats.sprintSpeed >= 28} />}
+            </div>
+            {/* Rolling Statcast trend */}
+            {(pick.stats?.xba15d > 0 || pick.stats?.xwoba15d > 0) && (
+              <div className="mt-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">📈 Statcast Trend (15d → 30d → Season)</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {pick.stats?.xba15d > 0 && (
+                    <div className="rounded-lg px-2 py-1.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">xBA trend</p>
+                      <p className="text-[11px] font-bold text-foreground">
+                        {fmtAvg(pick.stats.xba15d)}
+                        {pick.stats?.xba30d > 0 && <span className="text-muted-foreground"> → {fmtAvg(pick.stats.xba30d)}</span>}
+                        {pick.stats?.xba > 0 && <span className="text-muted-foreground"> → {fmtAvg(pick.stats.xba)}</span>}
+                      </p>
+                    </div>
+                  )}
+                  {pick.stats?.xwoba15d > 0 && (
+                    <div className="rounded-lg px-2 py-1.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase">xwOBA trend</p>
+                      <p className="text-[11px] font-bold text-foreground">
+                        .{Math.round((pick.stats.xwoba15d)*1000).toString().padStart(3,"0")}
+                        {pick.stats?.xwoba30d > 0 && <span className="text-muted-foreground"> → .{Math.round(pick.stats.xwoba30d*1000).toString().padStart(3,"0")}</span>}
+                        {pick.stats?.xwoba > 0 && <span className="text-muted-foreground"> → .{Math.round(pick.stats.xwoba*1000).toString().padStart(3,"0")}</span>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Home/Away + Day/Night splits */}
+            {(pick.stats?.avgHome > 0 || pick.stats?.avgDay > 0) && (
+              <div className="mt-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Situation Splits</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {pick.stats?.avgHome > 0 && <Chip label="vs Home" value={fmtAvg(pick.stats.avgHome)} />}
+                  {pick.stats?.avgAway > 0 && <Chip label="vs Away" value={fmtAvg(pick.stats.avgAway)} />}
+                  {pick.stats?.avgDay > 0 && <Chip label="Day" value={fmtAvg(pick.stats.avgDay)} />}
+                  {pick.stats?.avgNight > 0 && <Chip label="Night" value={fmtAvg(pick.stats.avgNight)} />}
+                </div>
+              </div>
+            )}
+            {/* Venue + vs-team career */}
+            {(pick.stats?.venueCareerAvg > 0 || pick.stats?.vsTeamAvg > 0) && (
+              <div className="mt-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Career at Venue / vs Team</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {pick.stats?.venueCareerAvg > 0 && (
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">Venue AVG</p>
+                      <p className="text-xs font-black" style={{ color: (pick.stats.venueCareerAvg ?? 0) >= 0.280 ? "#22c55e" : "#facc15" }}>
+                        {fmtAvg(pick.stats.venueCareerAvg)}
+                      </p>
+                      {pick.stats.venueCareerAB > 0 && <p className="text-[8px] text-muted-foreground">{pick.stats.venueCareerAB} AB</p>}
+                    </div>
+                  )}
+                  {pick.stats?.venueCareerSlg > 0 && (
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">Venue SLG</p>
+                      <p className="text-xs font-black">{fmtAvg(pick.stats.venueCareerSlg)}</p>
+                    </div>
+                  )}
+                  {pick.stats?.vsTeamAvg > 0 && (
+                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">vs Team AVG</p>
+                      <p className="text-xs font-black" style={{ color: (pick.stats.vsTeamAvg ?? 0) >= 0.280 ? "#22c55e" : "#facc15" }}>
+                        {fmtAvg(pick.stats.vsTeamAvg)}
+                      </p>
+                      {pick.stats.vsTeamAB > 0 && <p className="text-[8px] text-muted-foreground">{pick.stats.vsTeamAB} AB</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Pitch type matchup score */}
+            {pick.stats?.pitchTypeMatchup != null && (
+              <div className="mt-1.5 flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <span className="text-[10px] text-muted-foreground flex-1">Pitch-Type Matchup Score</span>
+                <span className="text-[11px] font-black" style={{ color: pick.stats.pitchTypeMatchup >= 60 ? "#22c55e" : pick.stats.pitchTypeMatchup >= 40 ? "#facc15" : "#f87171" }}>
+                  {pick.stats.pitchTypeMatchup}/100
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── 4. BvP History ── */}
+          {pick.bvp && pick.bvp.ab >= 5 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">⚔️ Batter vs Pitcher</p>
+              <div className="rounded-xl px-3 py-2.5 flex items-center justify-between" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <div>
+                  <p className="text-xs font-bold text-foreground">{pick.name} vs {pick.opponentPitcher?.name ?? "today's starter"}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {pick.bvp.hits ?? "—"}-for-{pick.bvp.ab} career ({pick.bvp.ab} AB)
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-black" style={{
+                    color: pick.bvp.signal === "elite" ? "#22c55e" : pick.bvp.signal === "strong" ? "#86efac" : pick.bvp.signal === "weak" ? "#f87171" : "#facc15"
+                  }}>
+                    {pick.bvp.avg != null ? fmtAvg(pick.bvp.avg) : "—"}
+                  </p>
+                  <p className="text-[9px] font-black uppercase" style={{
+                    color: pick.bvp.signal === "elite" ? "#16a34a" : pick.bvp.signal === "strong" ? "#22c55e" : pick.bvp.signal === "weak" ? "#dc2626" : "#b8930a"
+                  }}>
+                    {pick.bvp.signal ?? "neutral"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 5. Pitcher — deep stats ── */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">⚾ Pitcher Deep Stats</p>
+            <p className="text-xs font-bold text-foreground mb-1.5">
+              {pick.opponentPitcher?.name ?? "TBD"}
+              {pick.pitcherAvgAllowed != null && (
+                <span className="ml-1.5 font-black" style={{ color: pick.pitcherAvgAllowed >= 0.280 ? "#22c55e" : pick.pitcherAvgAllowed >= 0.260 ? "#facc15" : "#f87171" }}>
+                  {fmtAvg(pick.pitcherAvgAllowed)} vs {pick.bats === "L" ? "LHB" : "RHB"}
+                </span>
+              )}
+            </p>
             <div className="grid grid-cols-3 gap-1.5">
               {pick.pitcherStats?.era != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
-                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">ERA</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.era <= 3.50 ? "#f87171" : pick.pitcherStats.era <= 4.50 ? "#facc15" : "#22c55e" }}>
-                    {pick.pitcherStats.era.toFixed(2)}
-                  </p>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Season ERA</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.era <= 3.50 ? "#f87171" : pick.pitcherStats.era <= 4.50 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.era.toFixed(2)}</p>
                 </div>
               )}
-              {pick.pitcherStats?.xba != null && (
+              {pick.pitcherStats?.last5ERA != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
-                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">xBA Allowed</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.xba >= 0.290 ? "#22c55e" : pick.pitcherStats.xba >= 0.260 ? "#facc15" : "#f87171" }}>
-                    {fmtAvg(pick.pitcherStats.xba)}
-                  </p>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">L5 ERA</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.last5ERA <= 3.00 ? "#f87171" : pick.pitcherStats.last5ERA <= 4.50 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.last5ERA.toFixed(2)}</p>
+                </div>
+              )}
+              {pick.pitcherStats?.last3ERA != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">L3 ERA</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.last3ERA <= 3.00 ? "#f87171" : pick.pitcherStats.last3ERA <= 4.50 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.last3ERA.toFixed(2)}</p>
                 </div>
               )}
               {pick.pitcherStats?.k9 != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">K/9</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.k9 >= 9.0 ? "#f87171" : pick.pitcherStats.k9 >= 7.0 ? "#facc15" : "#22c55e" }}>
-                    {pick.pitcherStats.k9.toFixed(1)}
-                  </p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.k9 >= 9.0 ? "#f87171" : pick.pitcherStats.k9 >= 7.0 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.k9.toFixed(1)}</p>
                 </div>
               )}
               {pick.pitcherStats?.whip != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">WHIP</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.whip <= 1.10 ? "#f87171" : pick.pitcherStats.whip <= 1.30 ? "#facc15" : "#22c55e" }}>
-                    {pick.pitcherStats.whip.toFixed(2)}
-                  </p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.whip <= 1.10 ? "#f87171" : pick.pitcherStats.whip <= 1.30 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.whip.toFixed(2)}</p>
                 </div>
               )}
               {pick.pitcherStats?.xwoba != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">xwOBA</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.xwoba >= 0.350 ? "#22c55e" : pick.pitcherStats.xwoba >= 0.310 ? "#facc15" : "#f87171" }}>
-                    {pick.pitcherStats.xwoba.toFixed(3)}
-                  </p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.xwoba >= 0.350 ? "#22c55e" : pick.pitcherStats.xwoba >= 0.310 ? "#facc15" : "#f87171" }}>{pick.pitcherStats.xwoba.toFixed(3)}</p>
                 </div>
               )}
               {pick.pitcherStats?.hardHitPct != null && (
                 <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Hard Hit%</p>
-                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.hardHitPct >= 42 ? "#22c55e" : pick.pitcherStats.hardHitPct >= 35 ? "#facc15" : "#f87171" }}>
-                    {pick.pitcherStats.hardHitPct.toFixed(0)}%
-                  </p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.hardHitPct >= 42 ? "#22c55e" : pick.pitcherStats.hardHitPct >= 35 ? "#facc15" : "#f87171" }}>{pick.pitcherStats.hardHitPct.toFixed(0)}%</p>
+                </div>
+              )}
+              {pick.pitcherStats?.swStrPct != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">SwStr%</p>
+                  <p className="text-xs font-black" style={{ color: pick.pitcherStats.swStrPct >= 12 ? "#f87171" : pick.pitcherStats.swStrPct >= 8 ? "#facc15" : "#22c55e" }}>{pick.pitcherStats.swStrPct.toFixed(1)}%</p>
+                </div>
+              )}
+              {pick.pitcherStats?.gbPct != null && (
+                <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">GB%</p>
+                  <p className="text-xs font-black">{pick.pitcherStats.gbPct.toFixed(0)}%</p>
                 </div>
               )}
             </div>
+            {/* Leash indicator */}
+            {pick.pitcherStats?.leashProbability != null && (
+              <div className="mt-1.5 flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <span className="text-[10px] text-muted-foreground flex-1">Starter Leash (prob. finishes 6+ IP)</span>
+                <span className="text-[11px] font-black" style={{ color: pick.pitcherStats.leashProbability >= 0.70 ? "#22c55e" : pick.pitcherStats.leashProbability >= 0.50 ? "#facc15" : "#f87171" }}>
+                  {Math.round(pick.pitcherStats.leashProbability * 100)}%
+                </span>
+              </div>
+            )}
+            {pick.pitcherStats?.last3AvgIP != null && (
+              <div className="mt-1.5 flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <span className="text-[10px] text-muted-foreground flex-1">Avg IP (last 3 starts)</span>
+                <span className="text-[11px] font-black text-foreground">{pick.pitcherStats.last3AvgIP.toFixed(1)}</span>
+              </div>
+            )}
           </div>
 
-          {/* Game log */}
+          {/* ── 6. Game log (last 5) ── */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-              Last {pick.gamelog?.length ?? 0} games
+              Last {pick.gamelog?.length ?? 0} Games
             </p>
             <GameLogDots log={pick.gamelog ?? []} />
           </div>
 
-          {/* Score breakdown */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Scoring Model</p>
-            <div className="space-y-1">
-              {[
-                { label: "Recent Form (15%)", w: 0.15 },
-                { label: "Contact Quality (16%)", w: 0.16 },
-                { label: "Hard Contact (8%)", w: 0.08 },
-                { label: "Pitcher Matchup (25%)", w: 0.25 },
-                { label: "Opportunity (18%)", w: 0.18 },
-                { label: "BvP History (6–18%)", w: 0.06 },
-                { label: "Platoon Split (4%)", w: 0.04 },
-                { label: "Venue History (4%)", w: 0.04 },
-                { label: "Batted-Ball (2%)", w: 0.02 },
-                { label: "Stability (5%)", w: 0.05 },
-              ].map(c => (
-                <div key={c.label} className="flex items-center gap-2 text-[11px]">
-                  <span className="flex-1 text-muted-foreground">{c.label}</span>
-                  <div className="h-1.5 rounded-full flex-shrink-0" style={{ width: Math.round(c.w * 120), background: "rgba(212,168,67,0.50)" }} />
+          {/* ── 7. Weather & environment ── */}
+          {pick.game?.weather && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">🌤️ Weather & Environment</p>
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.08)" }}>
+                <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.06)", background: "rgba(19,35,58,0.02)" }}>
+                  <span className="text-[10px] text-muted-foreground">Conditions</span>
+                  <span className="text-[11px] font-bold text-foreground">
+                    {pick.game.weather.isDome ? "🏟️ Dome" : `${pick.game.weather.tempF}°F · ${pick.game.weather.wind || "calm"}`}
+                  </span>
                 </div>
-              ))}
+                {pick.game.weather.impactLabel && !pick.game.weather.isDome && (
+                  <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.06)" }}>
+                    <span className="text-[10px] text-muted-foreground">Impact</span>
+                    <span className="text-[11px] font-semibold text-foreground">{pick.game.weather.impactLabel}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.06)", background: "rgba(19,35,58,0.01)" }}>
+                  <span className="text-[10px] text-muted-foreground">O/U Total</span>
+                  <span className="text-[11px] font-black" style={{ color: (pick.game?.total ?? 0) >= 9.5 ? "#22c55e" : "inherit" }}>{pick.game?.total ?? "—"}</span>
+                </div>
+                {(pick.stats?.bullpenEra != null || pick.stats?.bullpenWhip != null) && (
+                  <div className="flex items-center justify-between px-3 py-2" style={{ background: "rgba(19,35,58,0.01)" }}>
+                    <span className="text-[10px] text-muted-foreground">Opp Bullpen</span>
+                    <span className="text-[11px] font-bold text-foreground">
+                      {pick.stats.bullpenEra != null ? `ERA ${pick.stats.bullpenEra.toFixed(2)}` : ""}
+                      {pick.stats.bullpenWhip != null ? ` · WHIP ${pick.stats.bullpenWhip.toFixed(2)}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-              <p className="text-[10px] text-muted-foreground">
-                Base score: {(pick.rawScore * 100).toFixed(1)} → Logistic → {pick.hitProbability}%
-              </p>
-              {pick.analyticsBoost != null && pick.analyticsBoost !== 1 && (
-                <p className="text-[10px] font-bold" style={{ color: pick.analyticsBoost > 1 ? "#22c55e" : "#f87171" }}>
-                  Analytics: {pick.analyticsBoost > 1 ? "+" : ""}{((pick.analyticsBoost - 1) * 100).toFixed(1)}%
-                </p>
-              )}
-            </div>
-          </div>
+          )}
 
-          {/* ── Matchup Edge Breakdown (Phase 4) ───────────────────── */}
+          {/* ── 8. Matchup Edge Breakdown (Phase 4) ── */}
           {pick.subScores && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
                 🔬 Matchup Edge Breakdown
               </p>
               <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.10)" }}>
-                {/* xERA row */}
                 {(() => {
                   const xera = pick.subScores.pitcherXera;
                   if (xera == null || xera <= 0) return (
                     <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.02)" }}>
-                      <div>
-                        <p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p>
-                        <p className="text-[10px] text-muted-foreground">Expected ERA (Baseball Savant)</p>
-                      </div>
+                      <div><p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p><p className="text-[10px] text-muted-foreground">Expected ERA (Baseball Savant)</p></div>
                       <span className="text-[11px] font-bold text-muted-foreground">N/A</span>
                     </div>
                   );
@@ -620,16 +801,11 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   const color = xera <= 2.50 ? "#f87171" : xera <= 3.25 ? "#fb923c" : xera <= 4.00 ? "#facc15" : xera <= 4.75 ? "#86efac" : "#22c55e";
                   return (
                     <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.02)" }}>
-                      <div>
-                        <p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p>
-                        <p className="text-[10px] text-muted-foreground">{label}</p>
-                      </div>
+                      <div><p className="text-[11px] font-semibold text-foreground">Pitcher xERA</p><p className="text-[10px] text-muted-foreground">{label}</p></div>
                       <span className="text-sm font-black" style={{ color }}>{xera.toFixed(2)}</span>
                     </div>
                   );
                 })()}
-
-                {/* Platoon split row */}
                 {(() => {
                   const ps = pick.subScores.platoonSplitScore;
                   const hand = pick.opponentPitcher?.hand ?? "R";
@@ -639,16 +815,11 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   const color = ps >= 0.65 ? "#22c55e" : ps <= 0.38 ? "#f87171" : "#facc15";
                   return (
                     <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)" }}>
-                      <div>
-                        <p className="text-[11px] font-semibold text-foreground">Platoon Split</p>
-                        <p className="text-[10px] text-muted-foreground">{matchStr} · {advantageLabel}</p>
-                      </div>
+                      <div><p className="text-[11px] font-semibold text-foreground">Platoon Split</p><p className="text-[10px] text-muted-foreground">{matchStr} · {advantageLabel}</p></div>
                       <span className="text-sm font-black" style={{ color }}>{Math.round((ps ?? 0.5) * 100)}%</span>
                     </div>
                   );
                 })()}
-
-                {/* Barrel rate row */}
                 {(() => {
                   const hitterBarrel = pick.stats?.barrelPct ?? null;
                   const pitcherBarrel = pick.subScores.pitcherBarrelAllowed ?? 8;
@@ -659,16 +830,12 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                     <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "rgba(19,35,58,0.07)", background: "rgba(19,35,58,0.01)" }}>
                       <div>
                         <p className="text-[11px] font-semibold text-foreground">Barrel Rate Edge</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Hitter {hitterBarrel != null ? hitterBarrel.toFixed(1) + "%" : "—"} · Pitcher allows {pitcherBarrel.toFixed(1)}%
-                        </p>
+                        <p className="text-[10px] text-muted-foreground">Hitter {hitterBarrel != null ? hitterBarrel.toFixed(1) + "%" : "—"} · Pitcher allows {pitcherBarrel.toFixed(1)}%</p>
                       </div>
                       <span className="text-[11px] font-bold" style={{ color }}>{edgeLabel}</span>
                     </div>
                   );
                 })()}
-
-                {/* Analytics boost row */}
                 {pick.subScores.analyticsBoostMult != null && pick.subScores.analyticsBoostMult !== 1 && (() => {
                   const boost = pick.subScores.analyticsBoostMult;
                   const pct = ((boost - 1) * 100);
@@ -676,10 +843,7 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   const color = pct > 0 ? "#22c55e" : "#f87171";
                   return (
                     <div className="flex items-center justify-between px-3 py-2" style={{ background: "rgba(19,35,58,0.02)" }}>
-                      <div>
-                        <p className="text-[11px] font-semibold text-foreground">Analytics Layer</p>
-                        <p className="text-[10px] text-muted-foreground">{label}</p>
-                      </div>
+                      <div><p className="text-[11px] font-semibold text-foreground">Analytics Layer</p><p className="text-[10px] text-muted-foreground">{label}</p></div>
                       <span className="text-sm font-black" style={{ color }}>{pct > 0 ? "+" : ""}{pct.toFixed(1)}%</span>
                     </div>
                   );
@@ -688,22 +852,16 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
             </div>
           )}
 
-          {/* MLB Analytics Layer */}
+          {/* ── 9. MLB Analytics (Steamer projections + per-game) ── */}
           {(pick.analyticsNote || pick.steamerProjection || pick.projectedGameStats) && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Analytics Context</p>
-
-              {/* Analytics note */}
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📐 Season Projections</p>
               {pick.analyticsNote && (
-                <p className="text-[11px] font-semibold mb-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.05)", color: "var(--foreground)" }}>
-                  {pick.analyticsNote}
-                </p>
+                <p className="text-[11px] font-semibold mb-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(19,35,58,0.05)", color: "var(--foreground)" }}>{pick.analyticsNote}</p>
               )}
-
-              {/* Steamer projections */}
               {pick.steamerProjection && (
                 <div className="mb-2">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Season Projection (Steamer)</p>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Steamer Season Projection</p>
                   <div className="grid grid-cols-4 gap-1">
                     {pick.steamerProjection.projAVG > 0 && (
                       <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
@@ -738,17 +896,13 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   </div>
                 </div>
               )}
-
-              {/* Projected per-game stats */}
               {pick.projectedGameStats && pick.projectedGameStats.projH > 0 && (
                 <div>
                   <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Proj Per-Game (Park + Pitcher Adj)</p>
                   <div className="grid grid-cols-4 gap-1">
                     <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                       <p className="text-[9px] text-muted-foreground uppercase font-semibold">H/G</p>
-                      <p className="text-xs font-black" style={{ color: pick.projectedGameStats.parkAdjProjH >= 1.0 ? "#22c55e" : pick.projectedGameStats.parkAdjProjH >= 0.8 ? "#facc15" : "#f87171" }}>
-                        {pick.projectedGameStats.parkAdjProjH.toFixed(2)}
-                      </p>
+                      <p className="text-xs font-black" style={{ color: pick.projectedGameStats.parkAdjProjH >= 1.0 ? "#22c55e" : pick.projectedGameStats.parkAdjProjH >= 0.8 ? "#facc15" : "#f87171" }}>{pick.projectedGameStats.parkAdjProjH.toFixed(2)}</p>
                     </div>
                     <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.10)" }}>
                       <p className="text-[9px] text-muted-foreground uppercase font-semibold">HR/G</p>
@@ -763,9 +917,7 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                       <p className="text-xs font-black">{pick.projectedGameStats.projRBI.toFixed(2)}</p>
                     </div>
                   </div>
-                  {pick.projectedGameStats.note && (
-                    <p className="text-[9px] text-muted-foreground mt-1">{pick.projectedGameStats.note}</p>
-                  )}
+                  {pick.projectedGameStats.note && <p className="text-[9px] text-muted-foreground mt-1">{pick.projectedGameStats.note}</p>}
                 </div>
               )}
             </div>
@@ -1220,10 +1372,56 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
 
       {/* Expanded breakdown */}
       {open && (
-        <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
-          {/* Score comparison */}
+        <div className="px-4 py-3 space-y-4 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+
+          {/* ── Monte Carlo Simulation ── */}
+          {pick.simulation && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">🎲 100-Game Monte Carlo Simulation</p>
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.10)" }}>
+                {/* Win bar */}
+                <div className="px-3 pt-2.5 pb-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-black" style={{ color: "#22c55e" }}>{pick.pickTeam.split(" ").pop()} {pick.simulation.pickWinPct}%</span>
+                    <span className="text-[11px] font-black" style={{ color: "#f87171" }}>{pick.oppTeam.split(" ").pop()} {pick.simulation.oppWinPct}%</span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(248,113,113,0.25)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${pick.simulation.pickWinPct}%`, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
+                  </div>
+                  {pick.simulation.pushPct > 0 && (
+                    <p className="text-[9px] text-muted-foreground mt-0.5 text-center">Tie: {pick.simulation.pushPct}%</p>
+                  )}
+                </div>
+                {/* Predicted score + avg runs */}
+                <div className="grid grid-cols-3 divide-x mt-1" style={{ borderTop: "1px solid rgba(19,35,58,0.06)", divideColor: "rgba(19,35,58,0.06)" }}>
+                  <div className="px-2 py-2 text-center">
+                    <p className="text-[9px] text-muted-foreground uppercase font-semibold">Pred Score</p>
+                    <p className="text-xs font-black text-foreground">{pick.simulation.predictedPickScore}–{pick.simulation.predictedOppScore}</p>
+                  </div>
+                  <div className="px-2 py-2 text-center">
+                    <p className="text-[9px] text-muted-foreground uppercase font-semibold">Avg Runs</p>
+                    <p className="text-xs font-black text-foreground">{pick.simulation.simPickAvg} / {pick.simulation.simOppAvg}</p>
+                  </div>
+                  <div className="px-2 py-2 text-center">
+                    <p className="text-[9px] text-muted-foreground uppercase font-semibold">Sims</p>
+                    <p className="text-xs font-black text-foreground">{pick.simulation.sims}</p>
+                  </div>
+                </div>
+              </div>
+              {/* Sim coherence note */}
+              {pick.simulation.pickWinPct >= 58 ? (
+                <p className="text-[10px] mt-1" style={{ color: "#22c55e" }}>✅ Simulation strongly supports this pick</p>
+              ) : pick.simulation.pickWinPct >= 50 ? (
+                <p className="text-[10px] mt-1" style={{ color: "#facc15" }}>⚡ Simulation leans toward this pick</p>
+              ) : (
+                <p className="text-[10px] mt-1" style={{ color: "#fb923c" }}>⚠️ Close game — simulation slightly favors pick</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Score comparison (pick vs opp) ── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Score Breakdown</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Composite Score Breakdown</p>
             <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.10)" }}>
               <div className="flex" style={{ background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)", padding: "6px 12px" }}>
                 <span className="flex-1 text-[10px] font-black text-foreground">{pick.pickTeam}</span>
@@ -1231,56 +1429,92 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
                 <span className="flex-1 text-[10px] font-black text-foreground text-right">{pick.oppTeam}</span>
               </div>
               {[
-                { label: "Starter Edge (30%)", home: homeSub?.starterEdge, away: awaySub?.starterEdge },
-                { label: "Bullpen (20%)",       home: homeSub?.bullpenScore, away: awaySub?.bullpenScore },
-                { label: "Offense vs Hand (20%)", home: homeSub?.offenseVsHand, away: awaySub?.offenseVsHand },
-                { label: "Lineup Edge (10%)",    home: homeSub?.lineupEdge, away: awaySub?.lineupEdge },
-                { label: "Market Edge (15%)",    home: homeSub?.marketScore, away: awaySub?.marketScore },
-                { label: "Environment (5%)",     home: homeSub?.envScore, away: awaySub?.envScore },
-              ].map(({ label: lbl, home: hv, away: av }) => {
-                const homeVal = pick.pickSide === "home" ? hv : av;
-                const awayVal = pick.pickSide === "home" ? av : hv;
-                const pickWins = (homeVal ?? 0) >= (awayVal ?? 0);
+                { label: "Starter Edge (30%)", pickVal: (pick.pickSide === "home" ? homeSub?.starterEdge : awaySub?.starterEdge), oppVal: (pick.pickSide === "home" ? awaySub?.starterEdge : homeSub?.starterEdge) },
+                { label: "Bullpen (20%)",       pickVal: (pick.pickSide === "home" ? homeSub?.bullpenScore : awaySub?.bullpenScore), oppVal: (pick.pickSide === "home" ? awaySub?.bullpenScore : homeSub?.bullpenScore) },
+                { label: "Offense vs Hand (20%)", pickVal: (pick.pickSide === "home" ? homeSub?.offenseVsHand : awaySub?.offenseVsHand), oppVal: (pick.pickSide === "home" ? awaySub?.offenseVsHand : homeSub?.offenseVsHand) },
+                { label: "Lineup Edge (10%)",    pickVal: (pick.pickSide === "home" ? homeSub?.lineupEdge : awaySub?.lineupEdge), oppVal: (pick.pickSide === "home" ? awaySub?.lineupEdge : homeSub?.lineupEdge) },
+                { label: "Market Edge (15%)",    pickVal: (pick.pickSide === "home" ? homeSub?.marketScore : awaySub?.marketScore), oppVal: (pick.pickSide === "home" ? awaySub?.marketScore : homeSub?.marketScore) },
+                { label: "Environment (5%)",     pickVal: (pick.pickSide === "home" ? homeSub?.envScore : awaySub?.envScore), oppVal: (pick.pickSide === "home" ? awaySub?.envScore : homeSub?.envScore) },
+              ].map(({ label: lbl, pickVal: pv, oppVal: ov }) => {
+                const pickWins = (pv ?? 0) >= (ov ?? 0);
                 return (
                   <div key={lbl} className="flex items-center px-3 py-1.5 gap-2" style={{ borderBottom: "1px solid rgba(19,35,58,0.05)" }}>
-                    <span className="text-[9px] font-bold w-7 text-right" style={{ color: pickWins ? "#22c55e" : "#f87171" }}>{homeVal ?? "—"}</span>
-                    <span className="flex-1 text-[10px] text-muted-foreground text-center">{lbl}</span>
-                    <span className="text-[9px] font-bold w-7" style={{ color: !pickWins ? "#22c55e" : "#f87171" }}>{awayVal ?? "—"}</span>
+                    <span className="text-[9px] font-black w-7 text-right" style={{ color: pickWins ? "#22c55e" : "#f87171" }}>{pv ?? "—"}</span>
+                    <div className="flex-1 text-center">
+                      <span className="text-[10px] text-muted-foreground">{lbl}</span>
+                      {/* Mini bar comparing pick vs opp */}
+                      {pv != null && ov != null && (
+                        <div className="flex h-1 rounded-full overflow-hidden mt-0.5 mx-4" style={{ background: "rgba(19,35,58,0.07)" }}>
+                          <div style={{ width: `${(pv / 100) * 50}%`, background: "#22c55e", marginLeft: `${50 - (pv / 100) * 50}%` }} />
+                          <div style={{ width: `${(ov / 100) * 50}%`, background: "#f87171" }} />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[9px] font-black w-7" style={{ color: !pickWins ? "#22c55e" : "#f87171" }}>{ov ?? "—"}</span>
                   </div>
                 );
               })}
               <div className="flex items-center px-3 py-2 gap-2" style={{ background: "rgba(19,35,58,0.03)" }}>
                 <span className="text-sm font-black w-7 text-right" style={{ color: "#D4A843" }}>{pick.winnerScore}</span>
-                <span className="flex-1 text-[10px] font-black text-foreground text-center uppercase tracking-wider">TOTAL</span>
+                <span className="flex-1 text-[10px] font-black text-foreground text-center uppercase tracking-wider">TOTAL SCORE</span>
                 <span className="text-sm font-black w-7" style={{ color: "#94a3b8" }}>{pick.loserScore}</span>
               </div>
             </div>
           </div>
 
-          {/* Market & weather */}
-          <div className="grid grid-cols-2 gap-2">
-            {pick.pickML != null && (
-              <div className="rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Moneyline</p>
-                <p className="text-sm font-black" style={{ color: (pick.pickML ?? 0) > 0 ? "#22c55e" : "#94a3b8" }}>
-                  {pick.pickML > 0 ? `+${pick.pickML}` : pick.pickML}
-                </p>
-                {pick.impliedWinProb != null && (
-                  <p className="text-[9px] text-muted-foreground">Implied {pick.impliedWinProb}%</p>
-                )}
-              </div>
-            )}
-            {pick.weather?.tempF > 0 && (
-              <div className="rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+          {/* ── Both starters — full stats ── */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">⚾ Starter Duel — Full Stats</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { starter: starterForPick, teamLabel: pick.pickTeam, isPick: true },
+                { starter: oppStarter, teamLabel: pick.oppTeam, isPick: false },
+              ].map(({ starter: s, teamLabel, isPick }) => (
+                <div key={teamLabel} className="rounded-xl px-3 py-2.5" style={{ background: isPick ? "rgba(34,197,94,0.04)" : "rgba(19,35,58,0.04)", border: `1px solid ${isPick ? "rgba(34,197,94,0.18)" : "rgba(19,35,58,0.08)"}` }}>
+                  <p className="text-[9px] font-black uppercase tracking-wider mb-0.5" style={{ color: isPick ? "#16a34a" : "#3D4B58" }}>{isPick ? "✅ PICK" : "OPP"}</p>
+                  <p className="text-[12px] font-bold text-foreground truncate">{s?.name ?? "TBD"}</p>
+                  <p className="text-[9px] text-muted-foreground mb-1">{s?.hand === "L" ? "LHP" : "RHP"}</p>
+                  <div className="space-y-0.5">
+                    {s?.era != null && <div className="flex justify-between text-[10px]"><span className="text-muted-foreground">ERA</span><span className="font-black" style={{ color: s.era <= 3.50 ? "#f87171" : s.era <= 4.50 ? "#facc15" : "#22c55e" }}>{s.era.toFixed(2)}</span></div>}
+                    {s?.xera != null && <div className="flex justify-between text-[10px]"><span className="text-muted-foreground">xERA</span><span className="font-black" style={{ color: s.xera <= 3.25 ? "#f87171" : s.xera <= 4.50 ? "#facc15" : "#22c55e" }}>{s.xera.toFixed(2)}</span></div>}
+                    {s?.k9 != null && <div className="flex justify-between text-[10px]"><span className="text-muted-foreground">K/9</span><span className="font-black" style={{ color: s.k9 >= 9 ? "#f87171" : s.k9 >= 7 ? "#facc15" : "#22c55e" }}>{s.k9.toFixed(1)}</span></div>}
+                    {s?.whip != null && <div className="flex justify-between text-[10px]"><span className="text-muted-foreground">WHIP</span><span className="font-black" style={{ color: s.whip <= 1.10 ? "#f87171" : s.whip <= 1.30 ? "#facc15" : "#22c55e" }}>{s.whip.toFixed(2)}</span></div>}
+                    {s?.kPct != null && <div className="flex justify-between text-[10px]"><span className="text-muted-foreground">K%</span><span className="font-bold">{s.kPct.toFixed(0)}%</span></div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Market + Environment ── */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">💰 Market & Environment</p>
+            <div className="grid grid-cols-2 gap-2">
+              {pick.pickML != null && (
+                <div className="rounded-xl px-3 py-2.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Moneyline</p>
+                  <p className="text-base font-black" style={{ color: (pick.pickML ?? 0) > 0 ? "#22c55e" : "#94a3b8" }}>{pick.pickML > 0 ? `+${pick.pickML}` : pick.pickML}</p>
+                  {pick.impliedWinProb != null && <p className="text-[10px] text-muted-foreground">Implied win: {pick.impliedWinProb}%</p>}
+                </div>
+              )}
+              <div className="rounded-xl px-3 py-2.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
                 <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Weather</p>
-                <p className="text-xs font-bold text-foreground">
-                  {pick.weather.isDome ? "Dome" : `${pick.weather.tempF}°F`}
-                </p>
-                {pick.weather.windMph > 0 && !pick.weather.isDome && (
-                  <p className="text-[9px] text-muted-foreground">{pick.weather.windMph} mph wind</p>
-                )}
+                <p className="text-xs font-bold text-foreground">{pick.weather?.isDome ? "🏟️ Dome — neutral" : pick.weather?.tempF > 0 ? `${pick.weather.tempF}°F` : "—"}</p>
+                {pick.weather?.windMph > 0 && !pick.weather?.isDome && <p className="text-[10px] text-muted-foreground">{pick.weather.windMph} mph wind</p>}
               </div>
-            )}
+              {pick.parkFactor != null && pick.parkFactor !== 1.0 && (
+                <div className="rounded-xl px-3 py-2.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Park Factor</p>
+                  <p className="text-base font-black" style={{ color: pick.parkFactor >= 1.08 ? "#22c55e" : pick.parkFactor <= 0.93 ? "#f87171" : "inherit" }}>{pick.parkFactor.toFixed(2)}</p>
+                  <p className="text-[9px] text-muted-foreground">{pick.parkFactor >= 1.05 ? "Hitter-friendly" : pick.parkFactor <= 0.95 ? "Pitcher-friendly" : "Neutral park"}</p>
+                </div>
+              )}
+              <div className="rounded-xl px-3 py-2.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Location</p>
+                <p className="text-xs font-bold text-foreground">{pick.pickSide === "home" ? "🏠 Home" : "✈️ Away"}</p>
+                <p className="text-[9px] text-muted-foreground truncate">{pick.venue}</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

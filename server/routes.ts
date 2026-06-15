@@ -19814,8 +19814,115 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
           if (tier === "PASS") continue;
 
-          const pickML = homeWins ? (homeOdds?.ml ?? null) : (awayOdds?.ml ?? null);
-          const impliedWinProb = homeWins ? (homeOdds?.impliedProb ?? 0.50) : (awayOdds?.impliedProb ?? 0.50);
+          // ── Monte Carlo simulation coherence gate ──────────────────────
+          // Build minimal stat objects for the simulation
+          const pickSimStats = {
+            runsPerGame: homeWins ? (homeLineupEdge / 20 + 4.0) : (awayLineupEdge / 20 + 4.0),
+            teamEra: homeWins ? (6.0 - (homeBullpenScore / 100) * 3.5) : (6.0 - (awayBullpenScore / 100) * 3.5),
+          };
+          const oppSimStats = {
+            runsPerGame: homeWins ? (awayLineupEdge / 20 + 4.0) : (homeLineupEdge / 20 + 4.0),
+            teamEra: homeWins ? (6.0 - (awayBullpenScore / 100) * 3.5) : (6.0 - (homeBullpenScore / 100) * 3.5),
+          };
+          const pickStarterForSim = homeWins
+            ? { era: homePitcherStats?.era ?? null, name: homePitcherName }
+            : { era: awayPitcherStats?.era ?? null, name: awayPitcherName };
+          const oppStarterForSim = homeWins
+            ? { era: awayPitcherStats?.era ?? null, name: awayPitcherName }
+            : { era: homePitcherStats?.era ?? null, name: homePitcherName };
+
+          const simResult = simulateMLBGame({
+            pickTeam,
+            oppTeam,
+            pickStats: pickSimStats,
+            oppStats: oppSimStats,
+            pickStarter: pickStarterForSim,
+            oppStarter: oppStarterForSim,
+            pickSide,
+            total: null,
+            weatherData: { tempF, windMph, isDome, windIn: false, windOut: false, precipInches: 0 },
+            sims: 100,
+          });
+
+          // Coherence gate: if simulation strongly disagrees, flip pick to the better side
+          // Disqualify if even after potential flip the sim win% is below 42%
+          let finalPickTeam = pickTeam;
+          let finalOppTeam = oppTeam;
+          let finalPickSide: "home" | "away" = pickSide;
+          let finalWinnerScore = winnerScore;
+          let finalLoserScore = loserScore;
+          let finalPickML = homeWins ? (homeOdds?.ml ?? null) : (awayOdds?.ml ?? null);
+          let finalImpliedWinProb = homeWins ? (homeOdds?.impliedProb ?? 0.50) : (awayOdds?.impliedProb ?? 0.50);
+          let finalPickSub = homeWins ? {
+            starterEdge: homeStarterEdge, bullpenScore: homeBullpenScore,
+            offenseVsHand: homeOffenseScore, lineupEdge: homeLineupEdge,
+            marketScore: homeMarketScore, envScore: homeEnvScore, total: homeScore,
+          } : {
+            starterEdge: awayStarterEdge, bullpenScore: awayBullpenScore,
+            offenseVsHand: awayOffenseScore, lineupEdge: awayLineupEdge,
+            marketScore: awayMarketScore, envScore: awayEnvScore, total: awayScore,
+          };
+          let finalOppSub = homeWins ? {
+            starterEdge: awayStarterEdge, bullpenScore: awayBullpenScore,
+            offenseVsHand: awayOffenseScore, lineupEdge: awayLineupEdge,
+            marketScore: awayMarketScore, envScore: awayEnvScore, total: awayScore,
+          } : {
+            starterEdge: homeStarterEdge, bullpenScore: homeBullpenScore,
+            offenseVsHand: homeOffenseScore, lineupEdge: homeLineupEdge,
+            marketScore: homeMarketScore, envScore: homeEnvScore, total: homeScore,
+          };
+          let usedSimResult = simResult;
+
+          if (simResult.oppWinPct > simResult.pickWinPct + 8) {
+            // Sim says opposite team wins more — flip to the team the sim supports
+            console.log(`[TeamWin] Sim flip: ${pickTeam} had ${simResult.pickWinPct}% vs ${oppTeam} ${simResult.oppWinPct}% — flipping pick`);
+            finalPickTeam = oppTeam;
+            finalOppTeam  = pickTeam;
+            finalPickSide = pickSide === "home" ? "away" : "home";
+            finalWinnerScore = loserScore;
+            finalLoserScore  = winnerScore;
+            finalPickML = finalPickSide === "home" ? (homeOdds?.ml ?? null) : (awayOdds?.ml ?? null);
+            finalImpliedWinProb = finalPickSide === "home" ? (homeOdds?.impliedProb ?? 0.50) : (awayOdds?.impliedProb ?? 0.50);
+            finalPickSub = finalPickSide === "home" ? {
+              starterEdge: homeStarterEdge, bullpenScore: homeBullpenScore,
+              offenseVsHand: homeOffenseScore, lineupEdge: homeLineupEdge,
+              marketScore: homeMarketScore, envScore: homeEnvScore, total: homeScore,
+            } : {
+              starterEdge: awayStarterEdge, bullpenScore: awayBullpenScore,
+              offenseVsHand: awayOffenseScore, lineupEdge: awayLineupEdge,
+              marketScore: awayMarketScore, envScore: awayEnvScore, total: awayScore,
+            };
+            finalOppSub = finalPickSide === "home" ? {
+              starterEdge: awayStarterEdge, bullpenScore: awayBullpenScore,
+              offenseVsHand: awayOffenseScore, lineupEdge: awayLineupEdge,
+              marketScore: awayMarketScore, envScore: awayEnvScore, total: awayScore,
+            } : {
+              starterEdge: homeStarterEdge, bullpenScore: homeBullpenScore,
+              offenseVsHand: homeOffenseScore, lineupEdge: homeLineupEdge,
+              marketScore: homeMarketScore, envScore: homeEnvScore, total: homeScore,
+            };
+            // Re-run sim with flipped orientation so pickWinPct is correctly the NEW pick
+            usedSimResult = simulateMLBGame({
+              pickTeam: finalPickTeam, oppTeam: finalOppTeam,
+              pickStats: oppSimStats, oppStats: pickSimStats,
+              pickStarter: oppStarterForSim, oppStarter: pickStarterForSim,
+              pickSide: finalPickSide, total: null,
+              weatherData: { tempF, windMph, isDome, windIn: false, windOut: false, precipInches: 0 },
+              sims: 100,
+            });
+          }
+
+          // Hard disqualify: sim win% below 42% even after potential flip = not a credible pick
+          if (usedSimResult.pickWinPct < 42) {
+            console.log(`[TeamWin] DISQUALIFIED ${finalPickTeam} — sim win% only ${usedSimResult.pickWinPct}% (below 42% floor)`);
+            continue;
+          }
+
+          const finalTier = mlbTeamWinConfTier(finalWinnerScore, finalWinnerScore - finalLoserScore);
+          if (finalTier === "PASS") continue;
+
+          const pickML = finalPickML;
+          const impliedWinProb = finalImpliedWinProb;
 
           scoredGames.push({
             gamePk,
@@ -19823,17 +19930,27 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             homeTeam,
             awayTeam,
             venue,
-            pickTeam,
-            oppTeam,
-            pickSide,
-            winnerScore,
-            loserScore,
-            edge,
-            tier,
+            pickTeam: finalPickTeam,
+            oppTeam:  finalOppTeam,
+            pickSide: finalPickSide,
+            winnerScore: finalWinnerScore,
+            loserScore:  finalLoserScore,
+            edge: finalWinnerScore - finalLoserScore,
+            tier: finalTier,
             pickML,
             impliedWinProb: Math.round(impliedWinProb * 100),
             result: "pending",
             finalScore: null,
+            simulation: {
+              pickWinPct:          usedSimResult.pickWinPct,
+              oppWinPct:           usedSimResult.oppWinPct,
+              pushPct:             usedSimResult.pushPct,
+              simPickAvg:          usedSimResult.simPickAvg,
+              simOppAvg:           usedSimResult.simOppAvg,
+              predictedPickScore:  usedSimResult.predictedPickScore,
+              predictedOppScore:   usedSimResult.predictedOppScore,
+              sims:                usedSimResult.sims,
+            },
             subScores: {
               home: {
                 starterEdge: homeStarterEdge,
@@ -19853,6 +19970,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 envScore: awayEnvScore,
                 total: awayScore,
               },
+              pick: finalPickSub,
+              opp: finalOppSub,
             },
             starters: {
               home: { name: homePitcherName, id: homePitcherId, hand: homePitcherStats?.pitchHand ?? "R",
