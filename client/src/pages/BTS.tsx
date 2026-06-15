@@ -990,6 +990,446 @@ function resultBadge(result: string) {
   return <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(19,35,58,0.06)", color: "#6b7280", borderRadius: 10, padding: "2px 7px" }}>PENDING</span>;
 }
 
+// ─── Team Win Card — used by TeamWinPanel ────────────────────────────────────
+function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
+  pick: any; slot: "pick1" | "pick2"; isOwner?: boolean;
+  onGrade?: (slot: "pick1" | "pick2", result: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!pick) return null;
+
+  const isWin  = pick.result === "win";
+  const isLoss = pick.result === "loss";
+  const isPush = pick.result === "push";
+  const isPend = !pick.result || pick.result === "pending";
+
+  const tierColor: Record<string, { bg: string; text: string; border: string }> = {
+    A: { bg: "rgba(34,197,94,0.15)",   text: "#16a34a", border: "rgba(34,197,94,0.40)" },
+    B: { bg: "rgba(250,204,21,0.15)",  text: "#b8930a", border: "rgba(250,204,21,0.40)" },
+    C: { bg: "rgba(147,197,253,0.15)", text: "#3b82f6", border: "rgba(147,197,253,0.40)" },
+  };
+  const tc = tierColor[pick.tier ?? "C"] ?? tierColor["C"];
+
+  const mlFmt = (ml: number | null | undefined) => ml == null ? "—" : ml > 0 ? `+${ml}` : `${ml}`;
+  const numFmt = (v: number | null | undefined, dec = 1) => v == null ? "—" : v.toFixed(dec);
+
+  const sub = pick.subScores;
+  const homeSub = sub?.home;
+  const awaySub = sub?.away;
+  const pickSub = pick.pickSide === "home" ? homeSub : awaySub;
+
+  const starterForPick = pick.pickSide === "home" ? pick.starters?.home : pick.starters?.away;
+  const oppStarter     = pick.pickSide === "home" ? pick.starters?.away : pick.starters?.home;
+
+  const cardBg    = isWin ? "rgba(34,197,94,0.04)"  : isLoss ? "rgba(239,68,68,0.03)"  : isPush ? "rgba(250,204,21,0.04)" : "#fff";
+  const cardBorder= isWin ? "rgba(34,197,94,0.30)"  : isLoss ? "rgba(239,68,68,0.25)"  : isPush ? "rgba(250,204,21,0.30)" : slot === "pick1" ? "rgba(212,168,67,0.40)" : "rgba(19,35,58,0.10)";
+
+  const ScoreBar = ({ label: lbl, value, max = 100, color }: { label: string; value: number | null; max?: number; color: string }) => {
+    if (value == null) return null;
+    const pct = Math.round((value / max) * 100);
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground flex-1 min-w-0 truncate">{lbl}</span>
+        <div className="flex-shrink-0 h-1.5 rounded-full" style={{ width: 80, background: "rgba(19,35,58,0.08)" }}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+        </div>
+        <span className="text-[10px] font-bold flex-shrink-0 w-7 text-right" style={{ color }}>{value}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden transition-all"
+      style={{ background: cardBg, borderColor: cardBorder,
+        boxShadow: slot === "pick1" ? "0 0 18px rgba(212,168,67,0.12)" : "none" }}
+    >
+      {/* Result banner */}
+      {!isPend && (
+        <div style={{
+          background: isWin ? "rgba(34,197,94,0.12)" : isLoss ? "rgba(239,68,68,0.10)" : "rgba(250,204,21,0.12)",
+          borderBottom: `1px solid ${isWin ? "rgba(34,197,94,0.25)" : isLoss ? "rgba(239,68,68,0.20)" : "rgba(250,204,21,0.25)"}`,
+          padding: "5px 14px", display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">{isWin ? "✅" : isLoss ? "❌" : "➡️"}</span>
+            <span className="text-xs font-black" style={{ color: isWin ? "#16a34a" : isLoss ? "#dc2626" : "#b8930a" }}>
+              {isWin ? "WIN" : isLoss ? "LOSS" : "PUSH"}
+            </span>
+            {pick.finalScore && <span className="text-[10px] text-muted-foreground ml-1">{pick.finalScore}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {slot === "pick1" && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "#D4A843", color: "#1a1a1a" }}>
+                🏆 TOP PICK
+              </span>
+            )}
+            {slot === "pick2" && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(19,35,58,0.08)", color: "#3D4B58" }}>
+                #2 PICK
+              </span>
+            )}
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+              style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
+              {pick.tier} Tier
+            </span>
+          </div>
+          <p className="font-black text-base text-foreground mt-1">{pick.pickTeam}</p>
+          <p className="text-[11px] text-muted-foreground">
+            vs {pick.oppTeam} · {pick.pickSide === "home" ? "Home" : "Away"}
+            {pick.pickML != null && (
+              <span className="ml-1.5 font-bold" style={{ color: (pick.pickML ?? 0) > 0 ? "#22c55e" : "#94a3b8" }}>
+                ML {mlFmt(pick.pickML)}
+              </span>
+            )}
+          </p>
+        </div>
+        {/* Win score ring */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+          <div
+            className="rounded-full flex items-center justify-center font-black text-sm"
+            style={{
+              width: 48, height: 48,
+              background: `conic-gradient(${pick.winnerScore >= 68 ? "#22c55e" : pick.winnerScore >= 60 ? "#facc15" : "#94a3b8"} ${pick.winnerScore * 3.6}deg, rgba(19,35,58,0.08) 0deg)`,
+              boxShadow: "0 0 0 3px #F6F1E7",
+              color: "#131A24",
+            }}
+          >
+            <div className="rounded-full flex items-center justify-center text-[13px] font-black"
+              style={{ width: 38, height: 38, background: "#F6F1E7" }}>
+              {pick.winnerScore}
+            </div>
+          </div>
+          <span className="text-[9px] font-bold text-muted-foreground">Score</span>
+        </div>
+      </div>
+
+      {/* Starter row */}
+      <div className="px-4 pb-2 flex items-start gap-3 flex-wrap">
+        <div className="flex-1 min-w-0 rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
+            {pick.pickTeam.split(" ").pop()} Starter
+          </p>
+          <p className="text-[12px] font-bold text-foreground truncate">{starterForPick?.name ?? "TBD"}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {starterForPick?.xera != null && (
+              <span className="text-[10px] text-muted-foreground">
+                xERA <span className="font-black" style={{ color: starterForPick.xera <= 3.25 ? "#f87171" : starterForPick.xera <= 4.50 ? "#facc15" : "#22c55e" }}>
+                  {starterForPick.xera.toFixed(2)}
+                </span>
+              </span>
+            )}
+            {starterForPick?.era != null && (
+              <span className="text-[10px] text-muted-foreground">
+                ERA <span className="font-black" style={{ color: starterForPick.era <= 3.50 ? "#f87171" : starterForPick.era <= 4.50 ? "#facc15" : "#22c55e" }}>
+                  {starterForPick.era.toFixed(2)}
+                </span>
+              </span>
+            )}
+            {starterForPick?.kPct != null && (
+              <span className="text-[10px] text-muted-foreground">
+                K% <span className="font-bold">{starterForPick.kPct.toFixed(0)}%</span>
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex-shrink-0 text-center flex flex-col items-center justify-center">
+          <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Edge</p>
+          <p className="text-base font-black" style={{ color: pick.edge >= 12 ? "#22c55e" : pick.edge >= 8 ? "#facc15" : "#94a3b8" }}>
+            +{pick.edge}
+          </p>
+        </div>
+        <div className="flex-1 min-w-0 rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+          <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">
+            {pick.oppTeam.split(" ").pop()} Starter
+          </p>
+          <p className="text-[12px] font-bold text-foreground truncate">{oppStarter?.name ?? "TBD"}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {oppStarter?.xera != null && (
+              <span className="text-[10px] text-muted-foreground">
+                xERA <span className="font-black" style={{ color: oppStarter.xera <= 3.25 ? "#f87171" : oppStarter.xera <= 4.50 ? "#facc15" : "#22c55e" }}>
+                  {oppStarter.xera.toFixed(2)}
+                </span>
+              </span>
+            )}
+            {oppStarter?.era != null && (
+              <span className="text-[10px] text-muted-foreground">
+                ERA <span className="font-black" style={{ color: oppStarter.era <= 3.50 ? "#f87171" : oppStarter.era <= 4.50 ? "#facc15" : "#22c55e" }}>
+                  {oppStarter.era.toFixed(2)}
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick sub-scores */}
+      {pickSub && (
+        <div className="px-4 pb-3 grid grid-cols-3 gap-1.5">
+          {[
+            { label: "Starter", val: pickSub.starterEdge },
+            { label: "Bullpen", val: pickSub.bullpenScore },
+            { label: "Offense", val: pickSub.offenseVsHand },
+            { label: "Lineup",  val: pickSub.lineupEdge },
+            { label: "Market",  val: pickSub.marketScore },
+            { label: "Park/Env",val: pickSub.envScore },
+          ].map(({ label: lbl, val }) => (
+            <div key={lbl} className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+              <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold">{lbl}</p>
+              <p className="text-xs font-black" style={{ color: (val ?? 0) >= 60 ? "#22c55e" : (val ?? 0) >= 45 ? "#facc15" : "#f87171" }}>
+                {val ?? "—"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Expand / grade row */}
+      <div className="flex border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex-1 px-4 py-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground"
+          style={{ background: "rgba(19,35,58,0.02)" }}
+        >
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {open ? "Less" : "Full breakdown"}
+        </button>
+        {isOwner && isPend && onGrade && (
+          <>
+            <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
+            <button
+              onClick={() => onGrade(slot, "win")}
+              className="px-3 py-2 text-[10px] font-black"
+              style={{ background: "rgba(34,197,94,0.06)", color: "#16a34a" }}
+            >✅ Win</button>
+            <div style={{ width: 1, background: "rgba(19,35,58,0.08)" }} />
+            <button
+              onClick={() => onGrade(slot, "loss")}
+              className="px-3 py-2 text-[10px] font-black"
+              style={{ background: "rgba(239,68,68,0.06)", color: "#dc2626" }}
+            >❌ Loss</button>
+          </>
+        )}
+      </div>
+
+      {/* Expanded breakdown */}
+      {open && (
+        <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "rgba(19,35,58,0.08)" }}>
+          {/* Score comparison */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Score Breakdown</p>
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(19,35,58,0.10)" }}>
+              <div className="flex" style={{ background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)", padding: "6px 12px" }}>
+                <span className="flex-1 text-[10px] font-black text-foreground">{pick.pickTeam}</span>
+                <span className="text-[10px] font-black text-muted-foreground">vs</span>
+                <span className="flex-1 text-[10px] font-black text-foreground text-right">{pick.oppTeam}</span>
+              </div>
+              {[
+                { label: "Starter Edge (30%)", home: homeSub?.starterEdge, away: awaySub?.starterEdge },
+                { label: "Bullpen (20%)",       home: homeSub?.bullpenScore, away: awaySub?.bullpenScore },
+                { label: "Offense vs Hand (20%)", home: homeSub?.offenseVsHand, away: awaySub?.offenseVsHand },
+                { label: "Lineup Edge (10%)",    home: homeSub?.lineupEdge, away: awaySub?.lineupEdge },
+                { label: "Market Edge (15%)",    home: homeSub?.marketScore, away: awaySub?.marketScore },
+                { label: "Environment (5%)",     home: homeSub?.envScore, away: awaySub?.envScore },
+              ].map(({ label: lbl, home: hv, away: av }) => {
+                const homeVal = pick.pickSide === "home" ? hv : av;
+                const awayVal = pick.pickSide === "home" ? av : hv;
+                const pickWins = (homeVal ?? 0) >= (awayVal ?? 0);
+                return (
+                  <div key={lbl} className="flex items-center px-3 py-1.5 gap-2" style={{ borderBottom: "1px solid rgba(19,35,58,0.05)" }}>
+                    <span className="text-[9px] font-bold w-7 text-right" style={{ color: pickWins ? "#22c55e" : "#f87171" }}>{homeVal ?? "—"}</span>
+                    <span className="flex-1 text-[10px] text-muted-foreground text-center">{lbl}</span>
+                    <span className="text-[9px] font-bold w-7" style={{ color: !pickWins ? "#22c55e" : "#f87171" }}>{awayVal ?? "—"}</span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center px-3 py-2 gap-2" style={{ background: "rgba(19,35,58,0.03)" }}>
+                <span className="text-sm font-black w-7 text-right" style={{ color: "#D4A843" }}>{pick.winnerScore}</span>
+                <span className="flex-1 text-[10px] font-black text-foreground text-center uppercase tracking-wider">TOTAL</span>
+                <span className="text-sm font-black w-7" style={{ color: "#94a3b8" }}>{pick.loserScore}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Market & weather */}
+          <div className="grid grid-cols-2 gap-2">
+            {pick.pickML != null && (
+              <div className="rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Moneyline</p>
+                <p className="text-sm font-black" style={{ color: (pick.pickML ?? 0) > 0 ? "#22c55e" : "#94a3b8" }}>
+                  {pick.pickML > 0 ? `+${pick.pickML}` : pick.pickML}
+                </p>
+                {pick.impliedWinProb != null && (
+                  <p className="text-[9px] text-muted-foreground">Implied {pick.impliedWinProb}%</p>
+                )}
+              </div>
+            )}
+            {pick.weather?.tempF > 0 && (
+              <div className="rounded-xl px-3 py-2" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Weather</p>
+                <p className="text-xs font-bold text-foreground">
+                  {pick.weather.isDome ? "Dome" : `${pick.weather.tempF}°F`}
+                </p>
+                {pick.weather.windMph > 0 && !pick.weather.isDome && (
+                  <p className="text-[9px] text-muted-foreground">{pick.weather.windMph} mph wind</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Team Win Panel ──────────────────────────────────────────────────────────
+function TeamWinPanel() {
+  const queryClient = useQueryClient();
+  const { isOwner } = useAuth();
+  const [showHistory, setShowHistory] = useState(false);
+
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["/api/mlb/team-wins-today"],
+    staleTime: 20 * 60 * 1000,
+    refetchInterval: (query) => (query.state.data?.locked ? false : 20 * 60 * 1000),
+  });
+
+  const gradeMutation = useMutation({
+    mutationFn: ({ date, result, which }: any) =>
+      fetch("/api/mlb/team-wins-today/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, result, which }),
+      }).then(r => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/mlb/team-wins-today"] }),
+  });
+
+  const history: Record<string, any> = data?.history ?? {};
+  const histEntries = Object.values(history).sort((a: any, b: any) => b.date > a.date ? 1 : -1);
+
+  // Season record
+  let seasonW = 0, seasonL = 0;
+  for (const entry of histEntries) {
+    for (const slot of ["pick1", "pick2"] as const) {
+      const p = (entry as any)[slot];
+      if (!p) continue;
+      if (p.result === "win") seasonW++;
+      else if (p.result === "loss") seasonL++;
+    }
+  }
+  const seasonPct = (seasonW + seasonL) > 0 ? Math.round(seasonW / (seasonW + seasonL) * 100) : null;
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ background: "#13233A", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Swords size={15} style={{ color: "#D4A843" }} />
+          <span style={{ fontSize: 14, fontWeight: 900, color: "#F6F1E7" }}>Top 2 Teams to Win Today</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {seasonPct !== null && (
+            <span style={{ fontSize: 11, fontWeight: 800,
+              color: seasonPct >= 60 ? "#4ade80" : seasonPct >= 40 ? "#fbbf24" : "#f87171" }}>
+              {seasonW}W-{seasonL}L ({seasonPct}%)
+            </span>
+          )}
+          <button
+            onClick={() => setShowHistory(h => !h)}
+            style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
+              border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
+            {showHistory ? "Hide History" : "History"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding: 14 }}>
+        {isLoading && (
+          <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>
+            Scoring today's MLB slate…
+          </div>
+        )}
+        {error && (
+          <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>
+            Unable to load team picks — check back shortly.
+          </div>
+        )}
+        {!isLoading && !error && !data?.pick1 && (
+          <div style={{ textAlign: "center", padding: "16px 0", color: "#6b7280", fontSize: 12 }}>
+            No qualifying team picks for today yet.
+          </div>
+        )}
+
+        {/* Pick 1 */}
+        {data?.pick1 && (
+          <div style={{ marginBottom: 10 }}>
+            <TeamWinCard
+              pick={{ ...data.pick1, result: history[data.date]?.pick1?.result ?? "pending" }}
+              slot="pick1"
+              isOwner={isOwner}
+              onGrade={(slot, result) => gradeMutation.mutate({ date: data.date, result, which: slot })}
+            />
+          </div>
+        )}
+        {/* Pick 2 */}
+        {data?.pick2 && (
+          <TeamWinCard
+            pick={{ ...data.pick2, result: history[data.date]?.pick2?.result ?? "pending" }}
+            slot="pick2"
+            isOwner={isOwner}
+            onGrade={(slot, result) => gradeMutation.mutate({ date: data.date, result, which: slot })}
+          />
+        )}
+
+        {data?.gamesAnalyzed > 0 && (
+          <p style={{ fontSize: 10, color: "#6b7280", marginTop: 10, textAlign: "center" }}>
+            {data.gamesAnalyzed} games scored · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) + " CT" : ""}
+          </p>
+        )}
+
+        {/* History */}
+        {showHistory && (
+          <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
+            {histEntries.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>No historical picks yet.</p>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {histEntries.map((entry: any) => (
+                <div key={entry.date} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+                  <div style={{ padding: "6px 12px", background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)" }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#131A24" }}>
+                      {new Date(entry.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                  {(["pick1", "pick2"] as const).map(slot => {
+                    const p = entry[slot];
+                    if (!p) return null;
+                    return (
+                      <div key={slot} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+                        <TeamWinCard
+                          pick={p}
+                          slot={slot}
+                          isOwner={isOwner}
+                          onGrade={(s, result) => gradeMutation.mutate({ date: entry.date, result, which: s })}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGrade }: {
   pick: any; label: string; isRunnerUp?: boolean; isOwner?: boolean;
   onGrade?: (which: "primary" | "runnerUp", result: string) => void;
@@ -2576,6 +3016,7 @@ export default function BTS() {
       {/* ── Team Pick Tab ─────────────────────────────────────────── */}
       {btsTab === "team" && (
         <>
+          <TeamWinPanel />
           <DailyPickPanel alwaysShowHistory />
           <BtsAnalyticsPanel />
           <HowToReadBTS />

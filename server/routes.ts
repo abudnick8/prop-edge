@@ -73,7 +73,7 @@ function mlSaveJSON(filePath: string, data: any): void {
 async function mlPullFromDB(): Promise<void> {
   const files = [
     "bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json",
-    "ml_insights.json", "graded_ids.json", "bts_picks.json", "mlb_daily_picks.json", "nfl_weekly_picks.json",
+    "ml_insights.json", "graded_ids.json", "bts_picks.json", "mlb_daily_picks.json", "nfl_weekly_picks.json", "mlb_team_wins.json",
     "bts_ml_weights.json", "bts_ml_learning_log.json",
   ];
   let pulled = 0;
@@ -637,7 +637,7 @@ async function syncMLDataToGitHub(): Promise<void> {
   console.log(`[MLSync] Starting sync to ${repo} branch=${branch} token=${token.slice(0,8)}...`);
 
   const DATA_DIR = path.join(__dirname, "ml_data");
-  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
+  const files    = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json", "mlb_team_wins.json"];
 
   for (const filename of files) {
     const filepath = path.join(DATA_DIR, filename);
@@ -742,7 +742,7 @@ async function pullMLDataFromGitHub(): Promise<void> {
   const DATA_DIR = path.join(__dirname, "ml_data");
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
+  const files = ["bet_outcome_log.json", "pick_snapshots.json", "ml_weights.json", "ml_insights.json", "graded_ids.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json", "mlb_team_wins.json"];
   const ghHeaders = { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clubhouse-iq-ml-sync" };
 
   for (const filename of files) {
@@ -2595,7 +2595,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/ml/export — dump all ml_data files as JSON for backup
   app.get("/api/ml/export", (_req, res) => {
     const dir = path.join(__dirname, "ml_data");
-    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json"];
+    const files = ["pick_snapshots.json", "bet_outcome_log.json", "graded_ids.json", "ml_weights.json", "ml_insights.json", "bts_picks.json", "bts_ml_weights.json", "bts_ml_learning_log.json", "mlb_daily_picks.json", "nfl_weekly_picks.json", "mlb_team_wins.json"];
     const result: Record<string, any> = {};
     const errors: Record<string, string> = {};
     for (const f of files) {
@@ -19467,8 +19467,507 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     _nflWeeklyPickCache = null;
   }
 
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── GET /api/mlb/team-wins-today — Top 2 MLB Team Win Picks ───────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  const MLB_TEAM_WINS_FILE = path.join(ML_DATA_DIR, "mlb_team_wins.json");
+  let mlbTeamWinsHistory: Record<string, any> = {};
+  try {
+    if (fs.existsSync(MLB_TEAM_WINS_FILE)) {
+      mlbTeamWinsHistory = JSON.parse(fs.readFileSync(MLB_TEAM_WINS_FILE, "utf-8"));
+    }
+  } catch { mlbTeamWinsHistory = {}; }
+  _mlPullPromise.then(() => loadMlbTeamWinsFromDB()).catch(() => loadMlbTeamWinsFromDB());
+
+  async function saveMlbTeamWins() {
+    const json = JSON.stringify(mlbTeamWinsHistory, null, 2);
+    try { fs.writeFileSync(MLB_TEAM_WINS_FILE, json); } catch { /* non-fatal */ }
+    try {
+      await db.query(
+        `INSERT INTO ml_data_store (filename, content, updated_at)
+         VALUES ('mlb_team_wins.json', $1, NOW())
+         ON CONFLICT (filename) DO UPDATE SET content=EXCLUDED.content, updated_at=NOW()`,
+        [json]
+      );
+    } catch (e: any) { console.warn("[TeamWin] DB save error:", e.message); }
+    setTimeout(() => syncMLDataToGitHub().catch(() => {}), 5_000);
+  }
+
+  async function loadMlbTeamWinsFromDB() {
+    try {
+      const row = await db.query(`SELECT content FROM ml_data_store WHERE filename='mlb_team_wins.json'`);
+      if (row.rows?.[0]?.content) {
+        const parsed = JSON.parse(row.rows[0].content);
+        for (const [date, entry] of Object.entries(parsed) as [string, any][]) {
+          if (!mlbTeamWinsHistory[date]) {
+            mlbTeamWinsHistory[date] = entry;
+          } else {
+            // Prefer graded results from either source
+            const ex = mlbTeamWinsHistory[date];
+            for (const slot of ["pick1", "pick2"] as const) {
+              if (!ex[slot]?.result && (parsed[date] as any)[slot]?.result)
+                ex[slot] = (parsed[date] as any)[slot];
+            }
+          }
+        }
+        console.log(`[TeamWin] Merged ${Object.keys(parsed).length} days from Postgres`);
+      }
+    } catch (e: any) { console.warn("[TeamWin] Postgres load error:", e.message); }
+  }
+
+  let _mlbTeamWinsCache: { data: any; ts: number; date: string } | null = null;
+
+  // ── scoring helpers ────────────────────────────────────────────────────────
+  function scoreStarterEdge(savant: any): number {
+    // xERA: elite <=2.50→100, avg 4.00→50, terrible >=5.50→0
+    const xera = parseFloat(savant?.xera ?? "0") || null;
+    const xeraScore = xera !== null
+      ? Math.max(0, Math.min(100, Math.round((5.50 - xera) / (5.50 - 2.50) * 100)))
+      : 50;
+    // K%: elite >=28→100, avg 20→50, poor <=12→0
+    const kPct = parseFloat(savant?.k_percent ?? "0") || 0;
+    const kScore = Math.max(0, Math.min(100, Math.round((kPct - 12) / (28 - 12) * 100)));
+    // Barrel allowed: low is good. <=4%→100, avg 8%→50, >=14%→0
+    const barrel = parseFloat(savant?.barrel_batted_rate ?? "8") || 8;
+    const barrelScore = Math.max(0, Math.min(100, Math.round((14 - barrel) / (14 - 4) * 100)));
+    return Math.round(xeraScore * 0.50 + kScore * 0.30 + barrelScore * 0.20);
+  }
+
+  function impliedProbFromML(ml: number): number {
+    if (ml === 0) return 0.50;
+    if (ml > 0) return 100 / (ml + 100);
+    return Math.abs(ml) / (Math.abs(ml) + 100);
+  }
+
+  function mlbTeamWinConfTier(score: number, edge: number): string {
+    if (score >= 68 && edge >= 12) return "A";
+    if (score >= 68 && edge >= 8)  return "B";
+    if (score >= 65 && edge >= 5)  return "C";
+    return "PASS";
+  }
+
+  app.get("/api/mlb/team-wins-today", async (req: Request, res: Response) => {
+    try {
+      const CTZ = "America/Chicago";
+      const todayStr = (() => {
+        const ct = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
+        const [m, d, y] = ct.split("/");
+        return `${y}-${m}-${d}`;
+      })();
+      const now = Date.now();
+      const TTL = 20 * 60 * 1000;
+
+      // Cache check
+      if (_mlbTeamWinsCache && _mlbTeamWinsCache.date === todayStr) {
+        const allPicks = [_mlbTeamWinsCache.data.pick1, _mlbTeamWinsCache.data.pick2].filter(Boolean);
+        const earliestMs = allPicks.reduce((min: number, p: any) => {
+          const t = p.commenceTime ? new Date(p.commenceTime).getTime() : Infinity;
+          return t < min ? t : min;
+        }, Infinity);
+        const isLocked = isFinite(earliestMs) && now >= earliestMs - 15 * 60 * 1000;
+        if (isLocked || (now - _mlbTeamWinsCache.ts) < TTL) {
+          return res.json({ ..._mlbTeamWinsCache.data, history: mlbTeamWinsHistory, locked: isLocked });
+        }
+      }
+
+      // ── 1. Daily slate ────────────────────────────────────────────────────
+      const slateResp = await axios.get(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=probablePitcher,lineups,venue,weather,team`,
+        { timeout: 10000 }
+      );
+      const mlbGames: any[] = (slateResp.data?.dates ?? []).flatMap((d: any) => d.games ?? []);
+      const futureGames = mlbGames.filter((g: any) => {
+        const st = g.status?.abstractGameState ?? "";
+        return st !== "Final" && st !== "Live";
+      });
+      if (futureGames.length === 0) {
+        return res.json({ pick1: null, pick2: null, date: todayStr, gamesAnalyzed: 0, history: mlbTeamWinsHistory, locked: false });
+      }
+
+      // ── 2. Savant pitcher CSV (reuse existing pitcherSavantMap if available, else fetch) ──
+      let localPitcherSavant: Record<string, any> = {};
+      try {
+        const csvResp = await axios.get(
+          `https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher&filter=&sort=4&sortDir=desc&min=25&selections=xera,xwoba,k_percent,barrel_batted_rate,whiff_percent&csv=true`,
+          { timeout: 12000, responseType: "text" }
+        );
+        const csvLines = (csvResp.data as string).split("\n").filter(Boolean);
+        const headers = csvLines[0].split(",").map((h: string) => h.trim().replace(/^"|"$/g, ""));
+        for (let i = 1; i < csvLines.length; i++) {
+          const vals = csvLines[i].split(",").map((v: string) => v.trim().replace(/^"|"$/g, ""));
+          const obj: Record<string, string> = {};
+          headers.forEach((h: string, j: number) => { obj[h] = vals[j] ?? ""; });
+          const pid = obj["pitcher_id"] ?? obj["player_id"] ?? obj["mlbam_id"] ?? "";
+          if (pid && !isNaN(Number(pid))) localPitcherSavant[pid] = obj;
+        }
+      } catch (e: any) { console.warn("[TeamWin] Savant CSV error:", e.message); }
+
+      // ── 3. Odds API moneylines ────────────────────────────────────────────
+      const oddsApiKey = process.env.ODDS_API_KEY ?? "";
+      let oddsMap: Record<string, { ml: number | null; impliedProb: number }> = {};
+      try {
+        if (oddsApiKey) {
+          const oddsResp = await axios.get(
+            `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&oddsFormat=american&apiKey=${oddsApiKey}`,
+            { timeout: 8000 }
+          );
+          for (const game of (oddsResp.data ?? [])) {
+            const bookmaker = (game.bookmakers ?? [])[0];
+            if (!bookmaker) continue;
+            const market = (bookmaker.markets ?? []).find((m: any) => m.key === "h2h");
+            if (!market) continue;
+            for (const outcome of (market.outcomes ?? [])) {
+              const name = (outcome.name ?? "").toLowerCase();
+              const price = outcome.price ?? 0;
+              oddsMap[name] = { ml: price, impliedProb: impliedProbFromML(price) };
+            }
+          }
+        }
+      } catch (e: any) { console.warn("[TeamWin] Odds API error:", e.message); }
+
+      // ── 4. Score each game ───────────────────────────────────────────────
+      const scoredGames: any[] = [];
+
+      for (const game of futureGames) {
+        try {
+          const homeTeamObj = game.teams?.home;
+          const awayTeamObj = game.teams?.away;
+          const homeTeam = homeTeamObj?.team?.name ?? "";
+          const awayTeam = awayTeamObj?.team?.name ?? "";
+          const venue = game.venue?.name ?? "";
+          const gamePk = game.gamePk;
+          const commenceTime = game.gameDate ?? null;
+
+          const homePitcherId = homeTeamObj?.probablePitcher?.id;
+          const awayPitcherId = awayTeamObj?.probablePitcher?.id;
+          const homePitcherName = homeTeamObj?.probablePitcher?.fullName ?? "TBD";
+          const awayPitcherName = awayTeamObj?.probablePitcher?.fullName ?? "TBD";
+
+          // Savant data for each pitcher
+          const homePSavant = homePitcherId ? (localPitcherSavant[String(homePitcherId)] ?? {}) : {};
+          const awayPSavant = awayPitcherId ? (localPitcherSavant[String(awayPitcherId)] ?? {}) : {};
+
+          // ── a. Starter Edge (30%) ──────────────────────────────────────
+          // For home team: their starter vs away batters. Home team benefits from AWAY starter's weakness
+          // Score for home team = quality of HOME starter (they face away lineup)
+          // So home team score is based on home pitcher edge (lower opp xERA = better for home)
+          // Reframed: homeStarterScore = how good home starter is (benefits home team)
+          //           awayStarterScore = how good away starter is (benefits away team)
+          const homeStarterEdge = scoreStarterEdge(homePSavant); // home starter vs away batters
+          const awayStarterEdge = scoreStarterEdge(awayPSavant); // away starter vs home batters
+
+          // ── b. Pitcher season stats (ERA, K/9, WHIP) ──────────────────
+          let homePitcherStats: any = null, awayPitcherStats: any = null;
+          try {
+            if (homePitcherId) homePitcherStats = await getPitcherSeasonStats(homePitcherId);
+          } catch { /* non-blocking */ }
+          try {
+            if (awayPitcherId) awayPitcherStats = await getPitcherSeasonStats(awayPitcherId);
+          } catch { /* non-blocking */ }
+
+          // ── c. Lineup offense vs pitcher hand (20%) ────────────────────
+          // Fetch lineup splits for both sides
+          async function getTeamOffenseVsHand(lineupPlayers: any[], pitcherHand: string): Promise<number> {
+            if (!lineupPlayers || lineupPlayers.length === 0) return 50;
+            const sitCode = pitcherHand === "L" ? "vl" : "vr";
+            let totalOps = 0, count = 0;
+            const sample = lineupPlayers.slice(0, 6);
+            await Promise.all(sample.map(async (p: any) => {
+              const pid = p.id ?? p.person?.id;
+              if (!pid) return;
+              try {
+                const r = await axios.get(
+                  `https://statsapi.mlb.com/api/v1/people?personIds=${pid}&hydrate=stats(group=[hitting],type=[statSplits],sitCodes=[${sitCode}],season=2026)`,
+                  { timeout: 6000 }
+                );
+                const splits = r.data?.people?.[0]?.stats?.[0]?.splits ?? [];
+                const stat = splits[0]?.stat;
+                if (!stat) return;
+                const obp = parseFloat(stat.obp ?? "0") || 0;
+                const slg = parseFloat(stat.slg ?? "0") || 0;
+                const ops = obp + slg;
+                if (ops > 0) { totalOps += ops; count++; }
+              } catch { /* skip */ }
+            }));
+            if (count === 0) return 50;
+            const avgOps = totalOps / count;
+            // Normalize: .600 OPS = 0, .750 = 50, .900 = 100
+            return Math.max(0, Math.min(100, Math.round((avgOps - 0.600) / (0.900 - 0.600) * 100)));
+          }
+
+          const homeLineup: any[] = game.lineups?.homePlayers ?? [];
+          const awayLineup: any[] = game.lineups?.awayPlayers ?? [];
+          const homePitcherHand = awayPitcherStats?.pitchHand ?? "R"; // away pitcher faces home batters
+          const awayPitcherHand = homePitcherStats?.pitchHand ?? "R"; // home pitcher faces away batters
+
+          // homeOffenseScore = how well home batters hit vs away pitcher's hand
+          // awayOffenseScore = how well away batters hit vs home pitcher's hand
+          const [homeOffenseScore, awayOffenseScore] = await Promise.all([
+            getTeamOffenseVsHand(homeLineup, homePitcherHand),
+            getTeamOffenseVsHand(awayLineup, awayPitcherHand),
+          ]);
+
+          // ── d. Bullpen Edge (20%) ──────────────────────────────────────
+          async function getBullpenScore(teamId: number): Promise<number> {
+            try {
+              const r = await axios.get(
+                `https://statsapi.mlb.com/api/v1/teams/${teamId}/stats?stats=season&group=pitching&season=2026&gameType=R`,
+                { timeout: 6000 }
+              );
+              const stat = r.data?.stats?.[0]?.splits?.[0]?.stat ?? {};
+              const era = parseFloat(stat.era ?? "5.00") || 5.00;
+              // Normalize: ERA 2.50→100, 4.00→50, 6.00→0
+              return Math.max(0, Math.min(100, Math.round((6.00 - era) / (6.00 - 2.50) * 100)));
+            } catch { return 50; }
+          }
+
+          const homeTeamId = homeTeamObj?.team?.id;
+          const awayTeamId = awayTeamObj?.team?.id;
+          const [homeBullpenScore, awayBullpenScore] = await Promise.all([
+            homeTeamId ? getBullpenScore(homeTeamId) : Promise.resolve(50),
+            awayTeamId ? getBullpenScore(awayTeamId) : Promise.resolve(50),
+          ]);
+
+          // ── e. Team season offense record (10% lineup edge) ──────────
+          async function getTeamOffenseRecord(teamId: number): Promise<number> {
+            try {
+              const r = await axios.get(
+                `https://statsapi.mlb.com/api/v1/teams/${teamId}/stats?stats=season&group=hitting&season=2026&gameType=R`,
+                { timeout: 6000 }
+              );
+              const stat = r.data?.stats?.[0]?.splits?.[0]?.stat ?? {};
+              const avg = parseFloat(stat.avg ?? "0.250") || 0.250;
+              const slg = parseFloat(stat.slg ?? "0.400") || 0.400;
+              const ops = avg + slg;
+              // Normalize: OPS .650→0, .750→50, .900→100
+              return Math.max(0, Math.min(100, Math.round((ops - 0.650) / (0.900 - 0.650) * 100)));
+            } catch { return 50; }
+          }
+
+          const [homeLineupEdge, awayLineupEdge] = await Promise.all([
+            homeTeamId ? getTeamOffenseRecord(homeTeamId) : Promise.resolve(50),
+            awayTeamId ? getTeamOffenseRecord(awayTeamId) : Promise.resolve(50),
+          ]);
+
+          // ── f. Market Edge (15%) ───────────────────────────────────────
+          const homeKey = homeTeam.toLowerCase();
+          const awayKey = awayTeam.toLowerCase();
+          const homeOdds = (() => {
+            for (const [k, v] of Object.entries(oddsMap)) {
+              if (homeKey.split(" ").some(w => k.includes(w.toLowerCase()))) return v;
+            }
+            return null;
+          })();
+          const awayOdds = (() => {
+            for (const [k, v] of Object.entries(oddsMap)) {
+              if (awayKey.split(" ").some(w => k.includes(w.toLowerCase()))) return v;
+            }
+            return null;
+          })();
+
+          // Market score: implied probability → 0-100
+          const homeMarketScore = homeOdds ? Math.round(homeOdds.impliedProb * 100) : 50;
+          const awayMarketScore = awayOdds ? Math.round(awayOdds.impliedProb * 100) : 50;
+
+          // ── g. Environment (5%) ────────────────────────────────────────
+          const parkFactor = await getParkFactor(venue).catch(() => 1.0);
+          const weatherData = await getStadiumWeather(venue).catch(() => null);
+          const tempF = weatherData?.tempF ?? 72;
+          const windMph = weatherData?.windMph ?? 0;
+          const isDome = weatherData?.isDome ?? false;
+
+          // Home field bonus: +5 pts for home team
+          // Park: hitter-friendly park (factor>1.05) boosts offense for BOTH; neutral for this comparison
+          // Wind: blowing out = slight offense boost; cold/rain = slight penalty
+          const homeEnvScore = 55; // base 5pt home field
+          const awayEnvScore = 45;
+
+          // ── h. Composite score ──────────────────────────────────────────
+          // Weights: starter 30%, bullpen 20%, offVsHand 20%, lineupEdge 10%, market 15%, env 5%
+          const homeScore = Math.round(
+            homeStarterEdge * 0.30 +
+            homeBullpenScore * 0.20 +
+            homeOffenseScore * 0.20 +
+            homeLineupEdge  * 0.10 +
+            homeMarketScore * 0.15 +
+            homeEnvScore    * 0.05
+          );
+          const awayScore = Math.round(
+            awayStarterEdge * 0.30 +
+            awayBullpenScore * 0.20 +
+            awayOffenseScore * 0.20 +
+            awayLineupEdge   * 0.10 +
+            awayMarketScore  * 0.15 +
+            awayEnvScore     * 0.05
+          );
+
+          // Determine winner pick
+          const homeWins = homeScore >= awayScore;
+          const pickTeam = homeWins ? homeTeam : awayTeam;
+          const oppTeam  = homeWins ? awayTeam : homeTeam;
+          const pickSide = homeWins ? "home" : "away";
+          const winnerScore = homeWins ? homeScore : awayScore;
+          const loserScore  = homeWins ? awayScore : homeScore;
+          const edge = winnerScore - loserScore;
+          const tier = mlbTeamWinConfTier(winnerScore, edge);
+
+          if (tier === "PASS") continue;
+
+          const pickML = homeWins ? (homeOdds?.ml ?? null) : (awayOdds?.ml ?? null);
+          const impliedWinProb = homeWins ? (homeOdds?.impliedProb ?? 0.50) : (awayOdds?.impliedProb ?? 0.50);
+
+          scoredGames.push({
+            gamePk,
+            commenceTime,
+            homeTeam,
+            awayTeam,
+            venue,
+            pickTeam,
+            oppTeam,
+            pickSide,
+            winnerScore,
+            loserScore,
+            edge,
+            tier,
+            pickML,
+            impliedWinProb: Math.round(impliedWinProb * 100),
+            result: "pending",
+            finalScore: null,
+            subScores: {
+              home: {
+                starterEdge: homeStarterEdge,
+                bullpenScore: homeBullpenScore,
+                offenseVsHand: homeOffenseScore,
+                lineupEdge: homeLineupEdge,
+                marketScore: homeMarketScore,
+                envScore: homeEnvScore,
+                total: homeScore,
+              },
+              away: {
+                starterEdge: awayStarterEdge,
+                bullpenScore: awayBullpenScore,
+                offenseVsHand: awayOffenseScore,
+                lineupEdge: awayLineupEdge,
+                marketScore: awayMarketScore,
+                envScore: awayEnvScore,
+                total: awayScore,
+              },
+            },
+            starters: {
+              home: { name: homePitcherName, id: homePitcherId, hand: homePitcherStats?.pitchHand ?? "R",
+                      era: homePitcherStats?.era ?? null, k9: homePitcherStats?.k9 ?? null, whip: homePitcherStats?.whip ?? null,
+                      xera: parseFloat(homePSavant?.xera ?? "0") || null, kPct: parseFloat(homePSavant?.k_percent ?? "0") || null },
+              away: { name: awayPitcherName, id: awayPitcherId, hand: awayPitcherStats?.pitchHand ?? "R",
+                      era: awayPitcherStats?.era ?? null, k9: awayPitcherStats?.k9 ?? null, whip: awayPitcherStats?.whip ?? null,
+                      xera: parseFloat(awayPSavant?.xera ?? "0") || null, kPct: parseFloat(awayPSavant?.k_percent ?? "0") || null },
+            },
+            weather: { tempF, windMph, isDome, venue },
+            parkFactor,
+          });
+        } catch (gameErr: any) {
+          console.warn(`[TeamWin] game error:`, gameErr.message);
+        }
+      }
+
+      // Sort by winnerScore desc, take top 2
+      scoredGames.sort((a, b) => b.winnerScore - a.winnerScore || b.edge - a.edge);
+      const pick1 = scoredGames[0] ?? null;
+      const pick2 = scoredGames[1] ?? null;
+
+      const result = { date: todayStr, pick1, pick2, gamesAnalyzed: futureGames.length, fetchedAt: new Date().toISOString() };
+
+      // Save to history (once per day, don't overwrite)
+      const existingToday = mlbTeamWinsHistory[todayStr];
+      if (pick1?.pickTeam && (!existingToday?.pick1?.pickTeam)) {
+        mlbTeamWinsHistory[todayStr] = {
+          date: todayStr,
+          pick1: pick1 ? { ...pick1, result: "pending" } : null,
+          pick2: pick2 ? { ...pick2, result: "pending" } : null,
+        };
+        await saveMlbTeamWins();
+      }
+
+      _mlbTeamWinsCache = { data: result, ts: now, date: todayStr };
+      return res.json({ ...result, history: mlbTeamWinsHistory, locked: false });
+    } catch (e: any) {
+      console.error("[TeamWin] error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/mlb/team-wins-today/grade ────────────────────────────────────
+  app.post("/api/mlb/team-wins-today/grade", requireOwner, async (req: Request, res: Response) => {
+    try {
+      const { date, result, which } = req.body ?? {};
+      if (!date || !result || !which) return res.status(400).json({ error: "date, result, which required" });
+      if (!mlbTeamWinsHistory[date]) return res.status(404).json({ error: "No picks for that date" });
+      const pick = mlbTeamWinsHistory[date][which];
+      if (!pick) return res.status(404).json({ error: `No ${which} pick for that date` });
+      pick.result = result;
+      await saveMlbTeamWins();
+      _mlbTeamWinsCache = null;
+      return res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Hook team-win auto-grader into existing autoGradeTeamPicks() ─────────
+  // (injected below the existing function definition)
+
   // Start auto-grade interval — every 15 minutes
+  // ── Auto-grade mlbTeamWinsHistory in the same interval ──────────────────
+  async function autoGradeTeamWins() {
+    for (const [dateStr, entry] of Object.entries(mlbTeamWinsHistory) as [string, any][]) {
+      if (!entry) continue;
+      let changed = false;
+      for (const which of ["pick1", "pick2"] as const) {
+        const pick = entry[which];
+        if (!pick || pick.result !== "pending") continue;
+        if (!pick.commenceTime) continue;
+        const gameMs = new Date(pick.commenceTime).getTime();
+        if (Date.now() < gameMs + 3.5 * 3600 * 1000) continue;
+        try {
+          const espnDate = dateStr.replace(/-/g, "");
+          const r = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDate}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!r.ok) continue;
+          const d: any = await r.json();
+          for (const ev of (d?.events ?? [])) {
+            const comp = ev.competitions?.[0];
+            const competitors: any[] = comp?.competitors ?? [];
+            const teamNames = competitors.map((c: any) => c.team?.displayName ?? "");
+            const matchesHome = teamNames.some((t: string) => t.includes(pick.homeTeam?.split(" ").pop() ?? "XX"));
+            const matchesAway = teamNames.some((t: string) => t.includes(pick.awayTeam?.split(" ").pop() ?? "XX"));
+            if (!matchesHome || !matchesAway) continue;
+            if (ev.status?.type?.description !== "Final") continue;
+            const homeComp = competitors.find((c: any) => c.homeAway === "home");
+            const awayComp = competitors.find((c: any) => c.homeAway === "away");
+            const homeScore = parseInt(homeComp?.score ?? "0", 10);
+            const awayScore = parseInt(awayComp?.score ?? "0", 10);
+            const pickIsHome = pick.pickSide === "home";
+            let gradeResult: string;
+            if (homeScore === awayScore) gradeResult = "push";
+            else if ((pickIsHome && homeScore > awayScore) || (!pickIsHome && awayScore > homeScore)) gradeResult = "win";
+            else gradeResult = "loss";
+            pick.result = gradeResult;
+            pick.finalScore = `${awayComp?.team?.displayName ?? pick.awayTeam} ${awayScore} - ${homeScore} ${homeComp?.team?.displayName ?? pick.homeTeam}`;
+            console.log(`[AutoGrade][TeamWin] ${dateStr} ${which} -> ${gradeResult} (${pick.finalScore})`);
+            changed = true;
+          }
+        } catch (e: any) { console.error(`[AutoGrade][TeamWin] ${dateStr} error:`, e.message); }
+      }
+      if (changed) await saveMlbTeamWins();
+    }
+    _mlbTeamWinsCache = null;
+  }
+
   setInterval(() => { autoGradeTeamPicks().catch(e => console.error("[AutoGrade] error:", e.message)); }, 15 * 60 * 1000);
+  setInterval(() => { autoGradeTeamWins().catch(e => console.error("[AutoGrade][TeamWin] error:", e.message)); }, 15 * 60 * 1000);
+  setTimeout(() => { autoGradeTeamWins().catch(() => {}); }, 3 * 60 * 1000);
   // Also run once on startup after 2 min delay (let server warm up first)
   setTimeout(() => { autoGradeTeamPicks().catch(e => console.error("[AutoGrade] startup error:", e.message)); }, 2 * 60 * 1000);
 
