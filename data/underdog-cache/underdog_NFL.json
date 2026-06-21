@@ -3709,7 +3709,7 @@
       "updated_at": "2026-04-24T02:13:15Z"
     },
     {
-      "id": "ddc02a9a-f11b-4d7d-a5e7-7ecf14d5f03a",
+      "id": "d4978257-c6ed-4714-ad19-1d38ecb69e38",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -3720,46 +3720,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "f89de0e0-0cf1-4f2f-b387-9e1dd99cdd0c",
+          "id": "275d50d8-6456-43cf-b070-911fe1a08129",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "6+",
+          "choice_display_name_shorter": "7+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "ddc02a9a-f11b-4d7d-a5e7-7ecf14d5f03a",
+          "over_under_line_id": "d4978257-c6ed-4714-ad19-1d38ecb69e38",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Shedeur Sanders",
-          "selection_subheader": "Higher 5.5 Regular Season Games Started",
+          "selection_subheader": "Higher 6.5 Regular Season Games Started",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-29T16:19:23Z"
+          "updated_at": "2026-06-21T13:16:57Z"
         },
         {
-          "id": "1ec7ff2b-586a-4f41-b08b-c25e46ff9b41",
+          "id": "d2babefe-1811-42ff-a93d-e7ce35da0fee",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "5-",
+          "choice_display_name_shorter": "6-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "ddc02a9a-f11b-4d7d-a5e7-7ecf14d5f03a",
+          "over_under_line_id": "d4978257-c6ed-4714-ad19-1d38ecb69e38",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Shedeur Sanders",
-          "selection_subheader": "Lower 5.5 Regular Season Games Started",
+          "selection_subheader": "Lower 6.5 Regular Season Games Started",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-04-29T16:19:23Z"
+          "updated_at": "2026-06-21T13:16:57Z"
         }
       ],
       "over_under": {
@@ -3789,9 +3789,9 @@
       "rank": 1201991995000,
       "sort_by": null,
       "stable_id": "9873c6c4-59eb-41fe-8156-727467011ee4|balanced",
-      "stat_value": "5.5",
+      "stat_value": "6.5",
       "status": "active",
-      "updated_at": "2026-04-29T16:19:23Z"
+      "updated_at": "2026-06-21T13:16:57Z"
     },
     {
       "id": "892d1664-d82b-40bc-a906-430093779267",
@@ -25140,6 +25140,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-06-21T11:58:18Z",
+  "cached_at": "2026-06-21T14:13:28Z",
   "sport": "NFL"
 }
