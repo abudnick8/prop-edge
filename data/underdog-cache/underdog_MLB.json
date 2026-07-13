@@ -529,25 +529,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "5cb6c990-9095-4018-beb6-69f08abde15c",
-          "american_price": "+115",
+          "id": "76f8232b-0f94-465f-8870-b82bb94991d0",
+          "american_price": "+119",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.15",
+          "decimal_price": "2.19",
           "grouping_id": null,
           "over_under_line_id": "924bf4c6-4f16-4daf-a370-46fe0366f880",
-          "payout_multiplier": "1.06",
+          "payout_multiplier": "1.07",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Chase DeLauter",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:40Z"
+          "updated_at": "2026-07-13T22:15:36Z"
         },
         {
           "id": "53fbf947-db99-4e6f-a1ac-3de246ad0168",
@@ -600,7 +600,7 @@
       "stable_id": "4acb593e-12ad-476d-9f58-ef46942fdc57|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:40Z"
+      "updated_at": "2026-07-13T22:15:36Z"
     },
     {
       "id": "d5f1487e-a516-48a3-8711-68d13e4c8396",
@@ -1422,25 +1422,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "baeba8ad-2aaf-4485-9211-330416f28916",
-          "american_price": "+474",
+          "id": "10bb382a-8120-4d38-be5a-bd806d57c4ea",
+          "american_price": "+478",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "5.74",
+          "decimal_price": "5.78",
           "grouping_id": null,
           "over_under_line_id": "2d371732-db6b-42db-a163-f0ba214c66c7",
-          "payout_multiplier": "2.64",
+          "payout_multiplier": "2.67",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kyle Manzardo",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:39Z"
+          "updated_at": "2026-07-13T22:33:42Z"
         }
       ],
       "over_under": {
@@ -1472,7 +1472,7 @@
       "stable_id": "f2135259-4411-4ce3-828a-5a64956f57a6|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:39Z"
+      "updated_at": "2026-07-13T22:33:42Z"
     },
     {
       "id": "7f33341a-0d4b-4adb-a99f-af55c128469a",
@@ -1847,25 +1847,25 @@
           "updated_at": "2026-07-13T21:02:35Z"
         },
         {
-          "id": "668520c0-3182-44f0-9559-12388e0a880c",
-          "american_price": "+114",
+          "id": "0f6d35a5-b75e-4dea-928f-0daf77fe7a1a",
+          "american_price": "+110",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.14",
+          "decimal_price": "2.1",
           "grouping_id": null,
           "over_under_line_id": "373ac805-b1b0-4965-ae78-3633cb66e5cc",
-          "payout_multiplier": "1.09",
+          "payout_multiplier": "1.07",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Patrick Bailey",
           "selection_subheader": "Lower 0.5 Hits + Runs + RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:35Z"
+          "updated_at": "2026-07-13T22:21:50Z"
         }
       ],
       "over_under": {
@@ -1897,7 +1897,7 @@
       "stable_id": "5d2183b1-09e7-4e3b-b0b1-255c1ccb7653|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:35Z"
+      "updated_at": "2026-07-13T22:21:50Z"
     },
     {
       "id": "7b32fd1d-0848-492b-8c19-ffca2f60c481",
@@ -1911,15 +1911,15 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "51e05819-4417-4e72-8716-75379aedf453",
-          "american_price": "-105",
+          "id": "8d24f5ae-2b9d-440c-ae9d-487b5582d310",
+          "american_price": "-102",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.96",
+          "decimal_price": "1.99",
           "grouping_id": null,
           "over_under_line_id": "7b32fd1d-0848-492b-8c19-ffca2f60c481",
           "payout_multiplier": "1.03",
@@ -1929,7 +1929,7 @@
           "selection_subheader": "Higher 1.5 Hits + Runs + RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:36Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         },
         {
           "id": "57f2f073-ef0e-47ed-b5b0-04fcfec8c5d5",
@@ -1982,7 +1982,7 @@
       "stable_id": "a8af8ecb-ebd5-4aaa-ac70-cc48a567670c|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:36Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
@@ -1996,25 +1996,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "298b9d17-73ee-490c-8b8e-8f437791ae49",
-          "american_price": "+910",
+          "id": "80b72680-f3aa-4638-9f0e-25fa54bdffdc",
+          "american_price": "+920",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "10.1",
+          "decimal_price": "10.2",
           "grouping_id": null,
           "over_under_line_id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
-          "payout_multiplier": "4.82",
+          "payout_multiplier": "4.89",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Brayan Rocchio",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:36Z"
+          "updated_at": "2026-07-13T22:33:42Z"
         }
       ],
       "over_under": {
@@ -2046,7 +2046,7 @@
       "stable_id": "21ec12e7-df81-425e-a556-540792183e85|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:36Z"
+      "updated_at": "2026-07-13T22:33:42Z"
     },
     {
       "id": "394f9a06-bd09-4c4a-8ac0-1a6368901901",
@@ -2060,25 +2060,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "fb5d03db-69d9-4e19-9771-4980378285f7",
-          "american_price": "+910",
+          "id": "cb945d7f-9af1-41bf-b5e3-87bc8b033de4",
+          "american_price": "+960",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "10.1",
+          "decimal_price": "10.6",
           "grouping_id": null,
           "over_under_line_id": "394f9a06-bd09-4c4a-8ac0-1a6368901901",
-          "payout_multiplier": "4.85",
+          "payout_multiplier": "5.11",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Patrick Bailey",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:35Z"
+          "updated_at": "2026-07-13T22:21:50Z"
         }
       ],
       "over_under": {
@@ -2110,7 +2110,7 @@
       "stable_id": "cbb2e4b5-a3fa-4392-ad79-d45e2094896e|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:35Z"
+      "updated_at": "2026-07-13T22:21:50Z"
     },
     {
       "id": "d3761fde-194a-43ba-aa09-73c0fa870cee",
@@ -2145,25 +2145,25 @@
           "updated_at": "2026-07-13T21:02:36Z"
         },
         {
-          "id": "fe732e73-dc55-48c2-a110-dc35ed024287",
-          "american_price": "+145",
+          "id": "6042e933-d06b-4353-9b2a-637b6dbb1bb9",
+          "american_price": "+141",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.45",
+          "decimal_price": "2.41",
           "grouping_id": null,
           "over_under_line_id": "d3761fde-194a-43ba-aa09-73c0fa870cee",
-          "payout_multiplier": "1.1",
+          "payout_multiplier": "1.08",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Brayan Rocchio",
           "selection_subheader": "Lower 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:36Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         }
       ],
       "over_under": {
@@ -2195,7 +2195,7 @@
       "stable_id": "27813f5c-f875-4895-a011-8994bc3404d8|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:36Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "9956c1aa-cdc5-4cac-b180-2080a608ef6e",
@@ -2294,25 +2294,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "596c5ce9-4466-4785-9231-75b4f23b40c6",
-          "american_price": "+127",
+          "id": "cbf5bb03-40bc-4724-8fa1-29c8a6400e09",
+          "american_price": "+131",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.27",
+          "decimal_price": "2.31",
           "grouping_id": null,
           "over_under_line_id": "a7e08a42-3097-41ec-addb-8ba98087e1c1",
-          "payout_multiplier": "1.04",
+          "payout_multiplier": "1.06",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Brayan Rocchio",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:36Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         },
         {
           "id": "bb5e0a36-fbe5-490b-ad78-9fcada88cdc7",
@@ -2365,7 +2365,7 @@
       "stable_id": "9e8e9577-2b2a-4de3-8f0f-d5ef76c47408|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:36Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "ebf329ec-4235-4eb2-8fcf-22b8e311bcf4",
@@ -2464,25 +2464,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "b63d697b-8ceb-438e-a959-b70996e58f26",
-          "american_price": "+281",
+          "id": "265a6f03-3363-4772-9dd6-03203dd3f9f5",
+          "american_price": "+292",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "3.81",
+          "decimal_price": "3.92",
           "grouping_id": null,
           "over_under_line_id": "52ed66dc-f4b6-41cc-b595-c05a4d6324d2",
-          "payout_multiplier": "1.68",
+          "payout_multiplier": "1.73",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Patrick Bailey",
           "selection_subheader": "Higher 0.5 RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:35Z"
+          "updated_at": "2026-07-13T22:21:50Z"
         },
         {
           "id": "437f7371-4564-4994-af9b-25debe613b42",
@@ -2535,7 +2535,7 @@
       "stable_id": "0a7a2494-8317-4ac4-8586-0f282cc9166c|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:35Z"
+      "updated_at": "2026-07-13T22:21:50Z"
     },
     {
       "id": "a302dc6b-e836-422f-928e-e4861f4bc352",
@@ -3676,25 +3676,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "0454fffb-3904-470e-8343-54dc5409c424",
-          "american_price": "+586",
+          "id": "fd530454-8a89-4be3-b9cf-16536514aa65",
+          "american_price": "+608",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "6.86",
+          "decimal_price": "7.08",
           "grouping_id": null,
           "over_under_line_id": "c6bf720b-6edb-414e-b692-95f4b7004e81",
-          "payout_multiplier": "3.23",
+          "payout_multiplier": "3.35",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Travis Bazzana",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:37Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         }
       ],
       "over_under": {
@@ -3726,7 +3726,7 @@
       "stable_id": "e93df617-457f-434c-bbef-74d54ba70d47|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:37Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "9970cdca-5537-4fc7-95dd-e97d5c8c2adf",
@@ -3889,25 +3889,25 @@
           "updated_at": "2026-07-13T21:02:38Z"
         },
         {
-          "id": "ca72a893-348b-49e3-bc20-ac1328b50062",
-          "american_price": "-104",
+          "id": "cc55685f-11d3-4422-a620-7d8d8b20aa82",
+          "american_price": "-107",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.97",
+          "decimal_price": "1.94",
           "grouping_id": null,
           "over_under_line_id": "b3e7fec8-cd15-4645-8ed7-be664aa25f5f",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Petey Halpin",
           "selection_subheader": "Lower 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:38Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         }
       ],
       "over_under": {
@@ -3939,7 +3939,7 @@
       "stable_id": "ad386a4d-4fdb-4013-b946-5db164de5409|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:38Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
@@ -4293,25 +4293,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "ee1b4965-2479-4a9c-9f6e-17a95a15f894",
-          "american_price": "+107",
+          "id": "3fb66b93-a673-45f8-a0cd-30b0fdbffb3a",
+          "american_price": "+110",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.07",
+          "decimal_price": "2.1",
           "grouping_id": null,
           "over_under_line_id": "782e0410-20bd-4fe6-8090-42d687e49b9e",
-          "payout_multiplier": "1.08",
+          "payout_multiplier": "1.03",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Travis Bazzana",
           "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:38Z"
+          "updated_at": "2026-07-13T22:15:35Z"
         },
         {
           "id": "c9aa1760-539b-44a1-8d70-700a606eac88",
@@ -4364,7 +4364,7 @@
       "stable_id": "48600be3-b8d4-4e69-9bfa-e08c1f737432|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:38Z"
+      "updated_at": "2026-07-13T22:15:35Z"
     },
     {
       "id": "0a4a5702-06c7-404c-881a-ab2bb6f5c131",
@@ -4822,27 +4822,6 @@
           "status": "active",
           "type": "OverUnderOption",
           "updated_at": "2026-07-13T21:02:38Z"
-        },
-        {
-          "id": "bb92ee45-ce5a-4eed-90ac-c6aeb9ffff9d",
-          "american_price": "-477",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "0-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.21",
-          "grouping_id": null,
-          "over_under_line_id": "aed17244-d3cb-4690-b40a-6f8d0dc18a50",
-          "payout_multiplier": "0.6",
-          "raw_probability": null,
-          "rfq_combinable": true,
-          "selection_header": "Petey Halpin",
-          "selection_subheader": "Lower 0.5 Batter Walks",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:38Z"
         }
       ],
       "over_under": {
@@ -4874,7 +4853,7 @@
       "stable_id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:38Z"
+      "updated_at": "2026-07-13T22:15:36Z"
     },
     {
       "id": "2e875fa1-aca3-4b93-8e18-842ac86bfde9",
@@ -5216,6 +5195,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-07-13T21:48:33Z",
+  "cached_at": "2026-07-13T22:48:33Z",
   "sport": "MLB"
 }
