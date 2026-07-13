@@ -13960,7 +13960,7 @@
       "updated_at": "2026-07-05T18:01:14Z"
     },
     {
-      "id": "7cc42526-98b8-411f-b648-7ac1eceee883",
+      "id": "f084a755-560e-4fd8-b01b-0dd814d4e6de",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -13971,46 +13971,46 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "b60ab7ad-bbce-4c28-9354-e242e89332e0",
+          "id": "f59541ac-d00e-43a0-b5b7-5de492fb6969",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "1031+",
+          "choice_display_name_shorter": "1037+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "7cc42526-98b8-411f-b648-7ac1eceee883",
+          "over_under_line_id": "f084a755-560e-4fd8-b01b-0dd814d4e6de",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Ashton Jeanty",
-          "selection_subheader": "Higher 1030.5 Season Rush Yards",
+          "selection_subheader": "Higher 1036.5 Season Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-08T06:32:57Z"
+          "updated_at": "2026-07-13T23:21:57Z"
         },
         {
-          "id": "a3a2b590-7ed0-4446-81a5-b56b3a13fa6a",
+          "id": "16d0777c-b018-47f1-bcd9-6acf5e01d8bc",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "1030-",
+          "choice_display_name_shorter": "1036-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
-          "over_under_line_id": "7cc42526-98b8-411f-b648-7ac1eceee883",
+          "over_under_line_id": "f084a755-560e-4fd8-b01b-0dd814d4e6de",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Ashton Jeanty",
-          "selection_subheader": "Lower 1030.5 Season Rush Yards",
+          "selection_subheader": "Lower 1036.5 Season Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-05-08T06:32:57Z"
+          "updated_at": "2026-07-13T23:21:57Z"
         }
       ],
       "over_under": {
@@ -14040,9 +14040,9 @@
       "rank": 2801991053800,
       "sort_by": null,
       "stable_id": "fdf767e5-519a-4af8-a071-ada0bd6ce80b|balanced",
-      "stat_value": "1030.5",
+      "stat_value": "1036.5",
       "status": "active",
-      "updated_at": "2026-05-08T06:32:57Z"
+      "updated_at": "2026-07-13T23:21:57Z"
     },
     {
       "id": "744bd7ca-f410-4fed-acff-a8d1fbb1dee4",
@@ -83893,6 +83893,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-07-13T22:48:33Z",
+  "cached_at": "2026-07-13T23:45:14Z",
   "sport": "NFL"
 }
