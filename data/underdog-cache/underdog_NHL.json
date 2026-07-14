@@ -1,10 +1,1 @@
-{
-  "appearances": [],
-  "games": [],
-  "opened_lines_count": 0,
-  "over_under_lines": [],
-  "players": [],
-  "solo_games": [],
-  "cached_at": "2026-07-14T19:06:33Z",
-  "sport": "NHL"
-}
+{"over_under_lines":[],"appearances":[],"players":[],"games":[],"solo_games":[],"cached_at":"2026-07-14T20:34:58Z","sport":"NHL","error":"HTTP 403"}
