@@ -2060,7 +2060,7 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "acac5853-5054-4602-8a09-ef17b0c34d50",
+          "id": "440dd56d-0762-4dfd-b936-0ff4fe7e6b41",
           "american_price": "+980",
           "appearance_id": null,
           "choice": "higher",
@@ -2078,7 +2078,7 @@
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:39:25Z"
+          "updated_at": "2026-07-14T00:27:37Z"
         }
       ],
       "over_under": {
@@ -2110,7 +2110,7 @@
       "stable_id": "cbb2e4b5-a3fa-4392-ad79-d45e2094896e|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T23:39:25Z"
+      "updated_at": "2026-07-14T00:27:37Z"
     },
     {
       "id": "d3761fde-194a-43ba-aa09-73c0fa870cee",
@@ -2889,25 +2889,25 @@
           "updated_at": "2026-07-13T23:16:34Z"
         },
         {
-          "id": "09095209-3085-44fc-b2e1-d8cd584d43ef",
-          "american_price": "+131",
+          "id": "3d664176-7367-4f5c-9f6b-8b1cacb21ea5",
+          "american_price": "+127",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.31",
+          "decimal_price": "2.27",
           "grouping_id": null,
           "over_under_line_id": "ae4b18e8-754f-40a6-ad8d-74b8c342b7b5",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.09",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Gabriel Arias",
           "selection_subheader": "Lower 0.5 Hits + Runs + RBIs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:28:30Z"
+          "updated_at": "2026-07-14T00:16:23Z"
         }
       ],
       "over_under": {
@@ -2939,7 +2939,7 @@
       "stable_id": "57841dc4-3f7b-41c4-8187-a1dd6bf30801|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T23:28:30Z"
+      "updated_at": "2026-07-14T00:16:23Z"
     },
     {
       "id": "63400a50-c333-4966-aafe-5edc225f3c69",
@@ -5195,6 +5195,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-07-13T23:45:14Z",
+  "cached_at": "2026-07-14T01:48:25Z",
   "sport": "MLB"
 }
