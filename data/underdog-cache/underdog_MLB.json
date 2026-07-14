@@ -1985,70 +1985,6 @@
       "updated_at": "2026-07-13T22:21:50Z"
     },
     {
-      "id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "entry_stable_id": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "80b72680-f3aa-4638-9f0e-25fa54bdffdc",
-          "american_price": "+920",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "10.2",
-          "grouping_id": null,
-          "over_under_line_id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
-          "payout_multiplier": "4.89",
-          "raw_probability": null,
-          "rfq_combinable": true,
-          "selection_header": "Brayan Rocchio",
-          "selection_subheader": "Higher 0.5 Home Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-07-13T22:33:42Z"
-        }
-      ],
-      "over_under": {
-        "id": "21ec12e7-df81-425e-a556-540792183e85",
-        "appearance_stat": {
-          "id": "e6f580cf-960c-43b5-b006-45c9e067bf9b-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "appearance_id": "e6f580cf-960c-43b5-b006-45c9e067bf9b",
-          "display_stat": "Home Runs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
-          "rank": 6,
-          "stat": "home_runs"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Brayan Rocchio Home Runs O/U"
-      },
-      "over_under_id": "21ec12e7-df81-425e-a556-540792183e85",
-      "provider_id": "swish",
-      "rank": 150199142006099,
-      "sort_by": null,
-      "stable_id": "21ec12e7-df81-425e-a556-540792183e85|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-07-13T22:33:42Z"
-    },
-    {
       "id": "394f9a06-bd09-4c4a-8ac0-1a6368901901",
       "contract_terms_url": null,
       "contract_url": null,
@@ -2111,6 +2047,70 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-07-14T06:21:28Z"
+    },
+    {
+      "id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "entry_stable_id": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "80b72680-f3aa-4638-9f0e-25fa54bdffdc",
+          "american_price": "+920",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "10.2",
+          "grouping_id": null,
+          "over_under_line_id": "dae16eb4-29e9-4bdd-af46-64faaf8f4f0e",
+          "payout_multiplier": "4.89",
+          "raw_probability": null,
+          "rfq_combinable": true,
+          "selection_header": "Brayan Rocchio",
+          "selection_subheader": "Higher 0.5 Home Runs",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-07-13T22:33:42Z"
+        }
+      ],
+      "over_under": {
+        "id": "21ec12e7-df81-425e-a556-540792183e85",
+        "appearance_stat": {
+          "id": "e6f580cf-960c-43b5-b006-45c9e067bf9b-53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "appearance_id": "e6f580cf-960c-43b5-b006-45c9e067bf9b",
+          "display_stat": "Home Runs",
+          "graded_by": "high_score",
+          "pickem_stat_id": "53a72b17-e0a3-4d28-b98a-3ce5f7d58d92",
+          "rank": 6,
+          "stat": "home_runs"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Brayan Rocchio Home Runs O/U"
+      },
+      "over_under_id": "21ec12e7-df81-425e-a556-540792183e85",
+      "provider_id": "swish",
+      "rank": 150199142006099,
+      "sort_by": null,
+      "stable_id": "21ec12e7-df81-425e-a556-540792183e85|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-07-13T22:33:42Z"
     },
     {
       "id": "9956c1aa-cdc5-4cac-b180-2080a608ef6e",
@@ -2804,25 +2804,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "a6842c83-be5f-4acd-97c3-ce7d5071530b",
-          "american_price": "+639",
+          "id": "10fe4ce1-6e0a-42d3-b378-8284bb9c4599",
+          "american_price": "+622",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "7.39",
+          "decimal_price": "7.22",
           "grouping_id": null,
           "over_under_line_id": "5b891455-9c02-4302-939d-eee8c9d736fe",
-          "payout_multiplier": "3.61",
+          "payout_multiplier": "3.64",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Brayan Rocchio",
           "selection_subheader": "Higher 0.5 Stolen Bases",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:36Z"
+          "updated_at": "2026-07-14T10:28:38Z"
         }
       ],
       "over_under": {
@@ -2854,7 +2854,7 @@
       "stable_id": "f89111f3-99e2-4797-a223-7230211e5246|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T21:02:36Z"
+      "updated_at": "2026-07-14T10:28:38Z"
     },
     {
       "id": "ae4b18e8-754f-40a6-ad8d-74b8c342b7b5",
@@ -2953,25 +2953,25 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "063df434-af7b-419e-91d0-4397ceb85cac",
-          "american_price": "+665",
+          "id": "06d700cd-215d-4f3c-9ab7-8414430c1d2a",
+          "american_price": "+644",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "7.65",
+          "decimal_price": "7.44",
           "grouping_id": null,
           "over_under_line_id": "63400a50-c333-4966-aafe-5edc225f3c69",
-          "payout_multiplier": "3.65",
+          "payout_multiplier": "3.53",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Gabriel Arias",
           "selection_subheader": "Higher 0.5 Home Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:39:26Z"
+          "updated_at": "2026-07-14T10:28:37Z"
         }
       ],
       "over_under": {
@@ -3003,7 +3003,7 @@
       "stable_id": "f392babf-b1f2-4e78-9531-5238a3c03857|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T23:39:26Z"
+      "updated_at": "2026-07-14T10:28:37Z"
     },
     {
       "id": "ab9a4275-1c08-465f-8d49-786cd8b55e6d",
@@ -3038,25 +3038,25 @@
           "updated_at": "2026-07-13T21:02:35Z"
         },
         {
-          "id": "c0834b99-aad7-4594-a77a-13a15d1cf1ce",
-          "american_price": "+100",
+          "id": "a62560a4-5279-4bd6-9d69-bba43a65cb4c",
+          "american_price": "+103",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2",
+          "decimal_price": "2.03",
           "grouping_id": null,
           "over_under_line_id": "ab9a4275-1c08-465f-8d49-786cd8b55e6d",
-          "payout_multiplier": "1.03",
+          "payout_multiplier": "1.05",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Gabriel Arias",
           "selection_subheader": "Lower 0.5 Hits",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:16:34Z"
+          "updated_at": "2026-07-14T10:28:37Z"
         }
       ],
       "over_under": {
@@ -3088,7 +3088,7 @@
       "stable_id": "ed132c18-98ea-4901-b442-58f93b336120|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T23:16:34Z"
+      "updated_at": "2026-07-14T10:28:37Z"
     },
     {
       "id": "89db1718-bd8a-46e1-8c16-455d7cf81576",
@@ -3857,6 +3857,91 @@
       "updated_at": "2026-07-13T22:15:35Z"
     },
     {
+      "id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "entry_stable_id": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "56c090b9-56a5-4048-9934-58c340f35909",
+          "american_price": "-137",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "1.73",
+          "grouping_id": null,
+          "over_under_line_id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
+          "payout_multiplier": "0.87",
+          "raw_probability": null,
+          "rfq_combinable": true,
+          "selection_header": "Kahlil Watson",
+          "selection_subheader": "Higher 0.5 Hits",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-07-13T21:02:38Z"
+        },
+        {
+          "id": "13c45ffb-fbcf-41ca-b9c6-e9657827cb89",
+          "american_price": "-103",
+          "appearance_id": null,
+          "choice": "lower",
+          "choice_display": "Lower",
+          "choice_display_name_shorter": "0-",
+          "choice_display_short": "Lower",
+          "choice_id": "under__",
+          "decimal_price": "1.98",
+          "grouping_id": null,
+          "over_under_line_id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
+          "payout_multiplier": "1.03",
+          "raw_probability": null,
+          "rfq_combinable": true,
+          "selection_header": "Kahlil Watson",
+          "selection_subheader": "Lower 0.5 Hits",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-07-13T23:39:26Z"
+        }
+      ],
+      "over_under": {
+        "id": "807b471d-abaf-407d-86d5-743285aaff9c",
+        "appearance_stat": {
+          "id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3-f932798a-04cf-4718-b620-d1a42bdce97e",
+          "appearance_id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3",
+          "display_stat": "Hits",
+          "graded_by": "high_score",
+          "pickem_stat_id": "f932798a-04cf-4718-b620-d1a42bdce97e",
+          "rank": 14,
+          "stat": "hits"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Kahlil Watson Hits O/U"
+      },
+      "over_under_id": "807b471d-abaf-407d-86d5-743285aaff9c",
+      "provider_id": "swish",
+      "rank": 150199199014099,
+      "sort_by": null,
+      "stable_id": "807b471d-abaf-407d-86d5-743285aaff9c|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-07-13T23:39:26Z"
+    },
+    {
       "id": "b3e7fec8-cd15-4645-8ed7-be664aa25f5f",
       "contract_terms_url": null,
       "contract_url": null,
@@ -4027,7 +4112,7 @@
       "updated_at": "2026-07-13T21:02:37Z"
     },
     {
-      "id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
+      "id": "c40b3cda-3eb5-4821-924c-599d716c416e",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -4038,58 +4123,58 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "56c090b9-56a5-4048-9934-58c340f35909",
-          "american_price": "-137",
+          "id": "5b8459fb-205d-4db4-b7ed-bacdf2ef124e",
+          "american_price": "+185",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.73",
+          "decimal_price": "2.85",
           "grouping_id": null,
-          "over_under_line_id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
-          "payout_multiplier": "0.87",
+          "over_under_line_id": "c40b3cda-3eb5-4821-924c-599d716c416e",
+          "payout_multiplier": "1.34",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kahlil Watson",
-          "selection_subheader": "Higher 0.5 Hits",
+          "selection_subheader": "Higher 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:38Z"
+          "updated_at": "2026-07-13T21:02:39Z"
         },
         {
-          "id": "13c45ffb-fbcf-41ca-b9c6-e9657827cb89",
-          "american_price": "-103",
+          "id": "f17ed396-4016-4c63-8628-b21a97af4d09",
+          "american_price": "-286",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.98",
+          "decimal_price": "1.35",
           "grouping_id": null,
-          "over_under_line_id": "e425dcd1-c429-46f8-9df8-e7c4484e720e",
-          "payout_multiplier": "1.03",
+          "over_under_line_id": "c40b3cda-3eb5-4821-924c-599d716c416e",
+          "payout_multiplier": "0.68",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kahlil Watson",
-          "selection_subheader": "Lower 0.5 Hits",
+          "selection_subheader": "Lower 0.5 Runs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:39:26Z"
+          "updated_at": "2026-07-13T21:02:39Z"
         }
       ],
       "over_under": {
-        "id": "807b471d-abaf-407d-86d5-743285aaff9c",
+        "id": "95390434-31e2-4a80-9718-8b6de642b416",
         "appearance_stat": {
-          "id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3-f932798a-04cf-4718-b620-d1a42bdce97e",
+          "id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3-349c9245-79da-45e9-b1c0-9d8977c23ce4",
           "appearance_id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3",
-          "display_stat": "Hits",
+          "display_stat": "Runs",
           "graded_by": "high_score",
-          "pickem_stat_id": "f932798a-04cf-4718-b620-d1a42bdce97e",
-          "rank": 14,
-          "stat": "hits"
+          "pickem_stat_id": "349c9245-79da-45e9-b1c0-9d8977c23ce4",
+          "rank": 15,
+          "stat": "runs"
         },
         "boost": null,
         "category": "player_prop",
@@ -4100,16 +4185,16 @@
         "prediction_market": false,
         "scoring_type_id": null,
         "team_divider": null,
-        "title": "Kahlil Watson Hits O/U"
+        "title": "Kahlil Watson Runs O/U"
       },
-      "over_under_id": "807b471d-abaf-407d-86d5-743285aaff9c",
+      "over_under_id": "95390434-31e2-4a80-9718-8b6de642b416",
       "provider_id": "swish",
-      "rank": 150199199014099,
+      "rank": 150199199015099,
       "sort_by": null,
-      "stable_id": "807b471d-abaf-407d-86d5-743285aaff9c|balanced",
+      "stable_id": "95390434-31e2-4a80-9718-8b6de642b416|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-07-13T23:39:26Z"
+      "updated_at": "2026-07-13T21:02:39Z"
     },
     {
       "id": "782e0410-20bd-4fe6-8090-42d687e49b9e",
@@ -4280,91 +4365,6 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-07-13T21:02:38Z"
-    },
-    {
-      "id": "c40b3cda-3eb5-4821-924c-599d716c416e",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "entry_stable_id": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "5b8459fb-205d-4db4-b7ed-bacdf2ef124e",
-          "american_price": "+185",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "2.85",
-          "grouping_id": null,
-          "over_under_line_id": "c40b3cda-3eb5-4821-924c-599d716c416e",
-          "payout_multiplier": "1.34",
-          "raw_probability": null,
-          "rfq_combinable": true,
-          "selection_header": "Kahlil Watson",
-          "selection_subheader": "Higher 0.5 Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:39Z"
-        },
-        {
-          "id": "f17ed396-4016-4c63-8628-b21a97af4d09",
-          "american_price": "-286",
-          "appearance_id": null,
-          "choice": "lower",
-          "choice_display": "Lower",
-          "choice_display_name_shorter": "0-",
-          "choice_display_short": "Lower",
-          "choice_id": "under__",
-          "decimal_price": "1.35",
-          "grouping_id": null,
-          "over_under_line_id": "c40b3cda-3eb5-4821-924c-599d716c416e",
-          "payout_multiplier": "0.68",
-          "raw_probability": null,
-          "rfq_combinable": true,
-          "selection_header": "Kahlil Watson",
-          "selection_subheader": "Lower 0.5 Runs",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-07-13T21:02:39Z"
-        }
-      ],
-      "over_under": {
-        "id": "95390434-31e2-4a80-9718-8b6de642b416",
-        "appearance_stat": {
-          "id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3-349c9245-79da-45e9-b1c0-9d8977c23ce4",
-          "appearance_id": "941bcfdf-37c3-44a2-b442-8d17353d7fe3",
-          "display_stat": "Runs",
-          "graded_by": "high_score",
-          "pickem_stat_id": "349c9245-79da-45e9-b1c0-9d8977c23ce4",
-          "rank": 15,
-          "stat": "runs"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Kahlil Watson Runs O/U"
-      },
-      "over_under_id": "95390434-31e2-4a80-9718-8b6de642b416",
-      "provider_id": "swish",
-      "rank": 150199199015099,
-      "sort_by": null,
-      "stable_id": "95390434-31e2-4a80-9718-8b6de642b416|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-07-13T21:02:39Z"
     },
     {
       "id": "0a4a5702-06c7-404c-881a-ab2bb6f5c131",
@@ -4622,70 +4622,6 @@
       "updated_at": "2026-07-13T23:16:35Z"
     },
     {
-      "id": "aed17244-d3cb-4690-b40a-6f8d0dc18a50",
-      "contract_terms_url": null,
-      "contract_url": null,
-      "entry_stable_id": null,
-      "expires_at": null,
-      "line_type": "balanced",
-      "live_event": false,
-      "live_event_stat": null,
-      "non_discounted_stat_value": null,
-      "options": [
-        {
-          "id": "f1c12b2a-4cf2-4cd8-98e2-778d2cb3279c",
-          "american_price": "+356",
-          "appearance_id": null,
-          "choice": "higher",
-          "choice_display": "Higher",
-          "choice_display_name_shorter": "1+",
-          "choice_display_short": "Higher",
-          "choice_id": "over__",
-          "decimal_price": "4.56",
-          "grouping_id": null,
-          "over_under_line_id": "aed17244-d3cb-4690-b40a-6f8d0dc18a50",
-          "payout_multiplier": "1.96",
-          "raw_probability": null,
-          "rfq_combinable": true,
-          "selection_header": "Petey Halpin",
-          "selection_subheader": "Higher 0.5 Batter Walks",
-          "status": "active",
-          "type": "OverUnderOption",
-          "updated_at": "2026-07-13T23:21:37Z"
-        }
-      ],
-      "over_under": {
-        "id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602",
-        "appearance_stat": {
-          "id": "7f096c8f-ca48-4bf2-9e7d-ea8c0323083c-4fa6097e-0614-45af-96c2-de1cf8fdc97f",
-          "appearance_id": "7f096c8f-ca48-4bf2-9e7d-ea8c0323083c",
-          "display_stat": "Batter Walks",
-          "graded_by": "high_score",
-          "pickem_stat_id": "4fa6097e-0614-45af-96c2-de1cf8fdc97f",
-          "rank": 19,
-          "stat": "walks"
-        },
-        "boost": null,
-        "category": "player_prop",
-        "display_mode": "default",
-        "grid_display_title": null,
-        "has_alternates": false,
-        "option_priority": "none",
-        "prediction_market": false,
-        "scoring_type_id": null,
-        "team_divider": null,
-        "title": "Petey Halpin Batter Walks O/U"
-      },
-      "over_under_id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602",
-      "provider_id": "swish",
-      "rank": 150199199019099,
-      "sort_by": null,
-      "stable_id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602|balanced",
-      "stat_value": "0.5",
-      "status": "active",
-      "updated_at": "2026-07-13T23:21:37Z"
-    },
-    {
       "id": "030ace41-0ac3-4af0-abe1-1c9360a4b3a2",
       "contract_terms_url": null,
       "contract_url": null,
@@ -4769,6 +4705,70 @@
       "stat_value": "0.5",
       "status": "active",
       "updated_at": "2026-07-13T21:02:38Z"
+    },
+    {
+      "id": "aed17244-d3cb-4690-b40a-6f8d0dc18a50",
+      "contract_terms_url": null,
+      "contract_url": null,
+      "entry_stable_id": null,
+      "expires_at": null,
+      "line_type": "balanced",
+      "live_event": false,
+      "live_event_stat": null,
+      "non_discounted_stat_value": null,
+      "options": [
+        {
+          "id": "f1c12b2a-4cf2-4cd8-98e2-778d2cb3279c",
+          "american_price": "+356",
+          "appearance_id": null,
+          "choice": "higher",
+          "choice_display": "Higher",
+          "choice_display_name_shorter": "1+",
+          "choice_display_short": "Higher",
+          "choice_id": "over__",
+          "decimal_price": "4.56",
+          "grouping_id": null,
+          "over_under_line_id": "aed17244-d3cb-4690-b40a-6f8d0dc18a50",
+          "payout_multiplier": "1.96",
+          "raw_probability": null,
+          "rfq_combinable": true,
+          "selection_header": "Petey Halpin",
+          "selection_subheader": "Higher 0.5 Batter Walks",
+          "status": "active",
+          "type": "OverUnderOption",
+          "updated_at": "2026-07-13T23:21:37Z"
+        }
+      ],
+      "over_under": {
+        "id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602",
+        "appearance_stat": {
+          "id": "7f096c8f-ca48-4bf2-9e7d-ea8c0323083c-4fa6097e-0614-45af-96c2-de1cf8fdc97f",
+          "appearance_id": "7f096c8f-ca48-4bf2-9e7d-ea8c0323083c",
+          "display_stat": "Batter Walks",
+          "graded_by": "high_score",
+          "pickem_stat_id": "4fa6097e-0614-45af-96c2-de1cf8fdc97f",
+          "rank": 19,
+          "stat": "walks"
+        },
+        "boost": null,
+        "category": "player_prop",
+        "display_mode": "default",
+        "grid_display_title": null,
+        "has_alternates": false,
+        "option_priority": "none",
+        "prediction_market": false,
+        "scoring_type_id": null,
+        "team_divider": null,
+        "title": "Petey Halpin Batter Walks O/U"
+      },
+      "over_under_id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602",
+      "provider_id": "swish",
+      "rank": 150199199019099,
+      "sort_by": null,
+      "stable_id": "0dbaee38-caaf-4dd4-b903-a9bb2d867602|balanced",
+      "stat_value": "0.5",
+      "status": "active",
+      "updated_at": "2026-07-13T23:21:37Z"
     },
     {
       "id": "35fefe2b-3eb1-44d8-a83a-e79e3896ef31",
@@ -5195,6 +5195,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-07-14T09:21:38Z",
+  "cached_at": "2026-07-14T11:03:02Z",
   "sport": "MLB"
 }
