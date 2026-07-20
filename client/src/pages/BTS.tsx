@@ -3353,6 +3353,8 @@ export default function BTS() {
       {/* ── Hitter Picks Tab ────────────────────────────────────────── */}
       {btsTab === "hitters" && (<>
 
+      <BtsAnalyticsPanel />
+
       {/* Today's Slate */}
       {!isLoading && slate.length > 0 && (
         <div>
