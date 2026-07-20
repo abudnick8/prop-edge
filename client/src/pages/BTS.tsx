@@ -6,7 +6,7 @@ import { useHashLocation, navigate as wouterNavigate } from "wouter/use-hash-loc
 import ShareCard from "@/components/ShareCard";
 import MlbShareCard from "@/components/MlbShareCard";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search, Share2, Star, TrendingDown, Minus } from "lucide-react";
+import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search, Share2, Star, TrendingDown, Minus, History } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 function fmtAvg(v: number | null | undefined) {
@@ -1526,7 +1526,7 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
 function TeamWinPanel() {
   const queryClient = useQueryClient();
   const { isOwner } = useAuth();
-  const [showHistory, setShowHistory] = useState(false);
+  const [showOlderHistory, setShowOlderHistory] = useState(false);
 
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["/api/mlb/team-wins-today"],
@@ -1547,6 +1547,20 @@ function TeamWinPanel() {
   const history: Record<string, any> = data?.history ?? {};
   const histEntries = Object.values(history).sort((a: any, b: any) => b.date > a.date ? 1 : -1);
 
+  // Compute today + yesterday date strings
+  const todayStr = (() => {
+    const ct = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+    const [m, d, y] = ct.split("/"); return `${y}-${m}-${d}`;
+  })();
+  const yesterdayStr = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    const ct = d.toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+    const [m, dy, y] = ct.split("/"); return `${y}-${m}-${dy}`;
+  })();
+
+  const recentEntries = histEntries.filter((e: any) => e.date === todayStr || e.date === yesterdayStr);
+  const olderEntries  = histEntries.filter((e: any) => e.date !== todayStr && e.date !== yesterdayStr);
+
   // Season record
   let seasonW = 0, seasonL = 0;
   for (const entry of histEntries) {
@@ -1559,6 +1573,32 @@ function TeamWinPanel() {
   }
   const seasonPct = (seasonW + seasonL) > 0 ? Math.round(seasonW / (seasonW + seasonL) * 100) : null;
 
+  const renderHistoryEntry = (entry: any) => (
+    <div key={entry.date} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+      <div style={{ padding: "6px 12px", background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#131A24" }}>
+          {new Date(entry.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+        </span>
+        {entry.date === todayStr && <span style={{ fontSize: 9, fontWeight: 800, color: "#16a34a", background: "rgba(34,197,94,0.12)", borderRadius: 8, padding: "2px 7px" }}>TODAY</span>}
+        {entry.date === yesterdayStr && <span style={{ fontSize: 9, fontWeight: 700, color: "#6b7280", background: "rgba(107,114,128,0.10)", borderRadius: 8, padding: "2px 7px" }}>YESTERDAY</span>}
+      </div>
+      {(["pick1", "pick2"] as const).map(slot => {
+        const p = entry[slot];
+        if (!p) return null;
+        return (
+          <div key={slot} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
+            <TeamWinCard
+              pick={p}
+              slot={slot}
+              isOwner={isOwner}
+              onGrade={(s, result) => gradeMutation.mutate({ date: entry.date, result, which: s })}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div style={{ background: "#fff", borderRadius: 16, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
       {/* Header */}
@@ -1567,20 +1607,12 @@ function TeamWinPanel() {
           <Swords size={15} style={{ color: "#D4A843" }} />
           <span style={{ fontSize: 14, fontWeight: 900, color: "#F6F1E7" }}>Top 2 Teams to Win Today</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {seasonPct !== null && (
-            <span style={{ fontSize: 11, fontWeight: 800,
-              color: seasonPct >= 60 ? "#4ade80" : seasonPct >= 40 ? "#fbbf24" : "#f87171" }}>
-              {seasonW}W-{seasonL}L ({seasonPct}%)
-            </span>
-          )}
-          <button
-            onClick={() => setShowHistory(h => !h)}
-            style={{ fontSize: 10, fontWeight: 700, color: "rgba(246,241,231,0.7)", background: "rgba(246,241,231,0.08)",
-              border: "none", borderRadius: 12, padding: "4px 10px", cursor: "pointer" }}>
-            {showHistory ? "Hide History" : "History"}
-          </button>
-        </div>
+        {seasonPct !== null && (
+          <span style={{ fontSize: 11, fontWeight: 800,
+            color: seasonPct >= 60 ? "#4ade80" : seasonPct >= 40 ? "#fbbf24" : "#f87171" }}>
+            {seasonW}W-{seasonL}L ({seasonPct}%)
+          </span>
+        )}
       </div>
 
       <div style={{ padding: 14 }}>
@@ -1600,7 +1632,7 @@ function TeamWinPanel() {
           </div>
         )}
 
-        {/* Pick 1 */}
+        {/* Today's picks */}
         {data?.pick1 && (
           <div style={{ marginBottom: 10 }}>
             <TeamWinCard
@@ -1611,7 +1643,6 @@ function TeamWinPanel() {
             />
           </div>
         )}
-        {/* Pick 2 */}
         {data?.pick2 && (
           <TeamWinCard
             pick={{ ...data.pick2, result: history[data.date]?.pick2?.result ?? "pending" }}
@@ -1627,36 +1658,35 @@ function TeamWinPanel() {
           </p>
         )}
 
-        {/* History */}
-        {showHistory && (
+        {/* Yesterday's picks — always visible */}
+        {recentEntries.filter((e: any) => e.date === yesterdayStr).length > 0 && (
           <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
-            {histEntries.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>No historical picks yet.</p>}
+            <p style={{ fontSize: 10, fontWeight: 800, color: "#3D4B58", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Yesterday</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {histEntries.map((entry: any) => (
-                <div key={entry.date} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
-                  <div style={{ padding: "6px 12px", background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)" }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: "#131A24" }}>
-                      {new Date(entry.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                    </span>
-                  </div>
-                  {(["pick1", "pick2"] as const).map(slot => {
-                    const p = entry[slot];
-                    if (!p) return null;
-                    return (
-                      <div key={slot} style={{ borderBottom: "1px solid rgba(19,35,58,0.06)" }}>
-                        <TeamWinCard
-                          pick={p}
-                          slot={slot}
-                          isOwner={isOwner}
-                          onGrade={(s, result) => gradeMutation.mutate({ date: entry.date, result, which: s })}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+              {recentEntries.filter((e: any) => e.date === yesterdayStr).map(renderHistoryEntry)}
             </div>
+          </div>
+        )}
+
+        {/* Older history — collapsible drawer */}
+        {olderEntries.length > 0 && (
+          <div style={{ marginTop: 12, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 10 }}>
+            <button
+              onClick={() => setShowOlderHistory(v => !v)}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)",
+                borderRadius: 10, padding: "9px 14px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <History size={13} style={{ color: "#3D4B58" }} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>Past Picks ({olderEntries.length} days)</span>
+              </div>
+              {showOlderHistory ? <ChevronUp size={14} style={{ color: "#3D4B58" }} /> : <ChevronDown size={14} style={{ color: "#3D4B58" }} />}
+            </button>
+            {showOlderHistory && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                {olderEntries.map(renderHistoryEntry)}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2048,6 +2078,7 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
 
 function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boolean }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [showOlderHistory, setShowOlderHistory] = useState(false);
   // In the dedicated Team Pick tab, history is always expanded
   const historyVisible = alwaysShowHistory || showHistory;
   const { isOwner } = useAuth();
@@ -2074,6 +2105,19 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
   const losses = histEntries.filter((e: any) => e.primary?.result === "loss").length;
   const graded = wins + losses;
   const pct    = graded > 0 ? Math.round((wins / graded) * 100) : null;
+
+  // Today + yesterday date strings
+  const dpTodayStr = (() => {
+    const ct = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+    const [m, d, y] = ct.split("/"); return `${y}-${m}-${d}`;
+  })();
+  const dpYesterdayStr = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    const ct = d.toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+    const [m, dy, y] = ct.split("/"); return `${y}-${m}-${dy}`;
+  })();
+  const dpOlderEntries = histEntries.filter((e: any) => e.date !== dpTodayStr && e.date !== dpYesterdayStr);
+  const dpYesterdayEntry = histEntries.find((e: any) => e.date === dpYesterdayStr);
 
   return (
     <div style={{ background: "#fff", borderRadius: 16, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
@@ -2234,46 +2278,95 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
           </p>
         )}
 
-        {/* History */}
-        {historyVisible && (
-          <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Historical Picks</p>
-            {histEntries.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>No historical picks yet.</p>}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {histEntries.map((entry: any) => {
-                // Merge result from history into the pick object so card shows correct badge
-                const mergePick = (p: any, which: "primary" | "runnerUp") =>
-                  p ? { ...p, result: entry[which]?.result ?? "pending" } : null;
-                const histPrimary = mergePick(entry.primary, "primary");
-                const histRunnerUp = mergePick(entry.runnerUp, "runnerUp");
-                return (
-                  <div key={entry.date} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
-                    {/* Primary pick full card */}
-                    {histPrimary && (
-                      <PickOfDayCard
-                        pick={histPrimary}
-                        label={`${entry.date} — Primary`}
-                        isRunnerUp={false}
-                        isOwner={isOwner}
-                        onGrade={(which, result) => gradeMutation.mutate({ date: entry.date, result, which })}
-                      />
-                    )}
-                    {/* Runner-up pick full card */}
-                    {histRunnerUp && (
-                      <div style={{ borderTop: "1px solid rgba(19,35,58,0.07)" }}>
+        {/* Yesterday's pick — always visible */}
+        {dpYesterdayEntry && (() => {
+          const entry = dpYesterdayEntry;
+          const mergePick = (p: any, which: "primary" | "runnerUp") =>
+            p ? { ...p, result: entry[which]?.result ?? "pending" } : null;
+          const histPrimary = mergePick(entry.primary, "primary");
+          const histRunnerUp = mergePick(entry.runnerUp, "runnerUp");
+          return (
+            <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 12 }}>
+              <p style={{ fontSize: 10, fontWeight: 800, color: "#3D4B58", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Yesterday</p>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+                {histPrimary && (
+                  <PickOfDayCard
+                    pick={histPrimary}
+                    label={`${entry.date} — Primary`}
+                    isRunnerUp={false}
+                    isOwner={isOwner}
+                    onGrade={(which, result) => gradeMutation.mutate({ date: entry.date, result, which })}
+                  />
+                )}
+                {histRunnerUp && (
+                  <div style={{ borderTop: "1px solid rgba(19,35,58,0.07)" }}>
+                    <PickOfDayCard
+                      pick={histRunnerUp}
+                      label={`${entry.date} — Runner-Up`}
+                      isRunnerUp={true}
+                      isOwner={isOwner}
+                      onGrade={(which, result) => gradeMutation.mutate({ date: entry.date, result, which })}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Older history — collapsible drawer */}
+        {dpOlderEntries.length > 0 && (
+          <div style={{ marginTop: 12, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 10 }}>
+            <button
+              onClick={() => setShowOlderHistory(v => !v)}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)",
+                borderRadius: 10, padding: "9px 14px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <History size={13} style={{ color: "#3D4B58" }} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24" }}>Past Picks ({dpOlderEntries.length} days)</span>
+              </div>
+              {showOlderHistory ? <ChevronUp size={14} style={{ color: "#3D4B58" }} /> : <ChevronDown size={14} style={{ color: "#3D4B58" }} />}
+            </button>
+            {showOlderHistory && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                {dpOlderEntries.map((entry: any) => {
+                  const mergePick = (p: any, which: "primary" | "runnerUp") =>
+                    p ? { ...p, result: entry[which]?.result ?? "pending" } : null;
+                  const histPrimary = mergePick(entry.primary, "primary");
+                  const histRunnerUp = mergePick(entry.runnerUp, "runnerUp");
+                  return (
+                    <div key={entry.date} style={{ borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", overflow: "hidden" }}>
+                      <div style={{ padding: "6px 12px", background: "rgba(19,35,58,0.04)", borderBottom: "1px solid rgba(19,35,58,0.08)" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#131A24" }}>
+                          {new Date(entry.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      {histPrimary && (
                         <PickOfDayCard
-                          pick={histRunnerUp}
-                          label={`${entry.date} — Runner-Up`}
-                          isRunnerUp={true}
+                          pick={histPrimary}
+                          label={`${entry.date} — Primary`}
+                          isRunnerUp={false}
                           isOwner={isOwner}
                           onGrade={(which, result) => gradeMutation.mutate({ date: entry.date, result, which })}
                         />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      )}
+                      {histRunnerUp && (
+                        <div style={{ borderTop: "1px solid rgba(19,35,58,0.07)" }}>
+                          <PickOfDayCard
+                            pick={histRunnerUp}
+                            label={`${entry.date} — Runner-Up`}
+                            isRunnerUp={true}
+                            isOwner={isOwner}
+                            onGrade={(which, result) => gradeMutation.mutate({ date: entry.date, result, which })}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -3250,9 +3343,9 @@ export default function BTS() {
       {/* ── Team Pick Tab ─────────────────────────────────────────── */}
       {btsTab === "team" && (
         <>
-          <TeamWinPanel />
-          <DailyPickPanel alwaysShowHistory />
           <BtsAnalyticsPanel />
+          <TeamWinPanel />
+          <DailyPickPanel />
           <HowToReadBTS />
         </>
       )}
