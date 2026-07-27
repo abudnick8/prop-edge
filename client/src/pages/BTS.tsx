@@ -3665,6 +3665,7 @@ export default function BTS() {
   const [showAllPicks, setShowAllPicks] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [btsTab, setBtsTab] = useState<"hitters" | "team">("hitters");
+  const [expandedPick, setExpandedPick] = useState<string | null>(null);
   const [reanalyzeMsg, setReanalyzeMsg] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { isOwner } = useAuth();
@@ -3733,6 +3734,7 @@ export default function BTS() {
   const picks: any[] = data?.picks ?? [];
   const bestPick = data?.bestPick;
   const doubleDowns: any[] = data?.doubleDowns ?? [];
+  const mbPicks: any[] = data?.mbPicks ?? [];
   const todayRecord = data?.todayRecord ?? { wins: 0, losses: 0, pending: 0, winPct: null };
   const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
@@ -4269,6 +4271,69 @@ export default function BTS() {
                 <span className="font-semibold text-foreground">{p.name}</span>
                 <span className="text-muted-foreground">{p.team}{p.game ? ` · ${p.game.matchup?.split(" @ ")[1]}` : ""}</span>
                 <span className="font-black" style={{ color: "#60a5fa" }}>{p.hitProbability}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── MONEYBALL EXTRA PICKS ─────────────────────────────────────────── */}
+      {!isLoading && mbPicks.length > 0 && (
+        <div
+          className="rounded-2xl p-4"
+          style={{ background: "rgba(212,168,67,0.07)", border: "1px solid rgba(212,168,67,0.30)" }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span style={{ fontSize: 16 }}>💰</span>
+            <p className="text-xs font-black text-foreground">Moneyball Extra Picks</p>
+            <span
+              className="rounded-full px-2 py-0.5 text-[9px] font-black"
+              style={{ background: "#D4A843", color: "#131A24" }}
+            >
+              A &amp; B GRADES ONLY
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mb-3">
+            These players didn't rank in the top picks overall but score elite on the Moneyball analytical model. Strong secondary options with excellent data signals.
+          </p>
+          <div className="space-y-2">
+            {mbPicks.map((p: any, i: number) => (
+              <div
+                key={i}
+                className="rounded-xl p-3 cursor-pointer"
+                style={{ background: "rgba(246,241,231,0.7)", border: "1px solid rgba(212,168,67,0.25)" }}
+                onClick={() => setExpandedPick(expandedPick === `mb_${p.playerId}` ? null : `mb_${p.playerId}`)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MbGradeBadge grade={(p.mbGrade ?? "B") as MbGrade} size="sm" />
+                    <div>
+                      <p className="text-xs font-black text-foreground">{p.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{p.team} · {p.opponentPitcher?.name ?? "TBD"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {p.valueOverBaseline != null && (
+                      <span className="text-[10px] font-bold" style={{ color: p.valueOverBaseline >= 0 ? "#16a34a" : "#dc2626" }}>
+                        {p.valueOverBaseline >= 0 ? "+" : ""}{p.valueOverBaseline}pp
+                      </span>
+                    )}
+                    <span className="text-sm font-black" style={{ color: "#D4A843" }}>{p.hitProbability}%</span>
+                    <ChevronDown
+                      size={12}
+                      style={{
+                        color: "#3D4B58",
+                        transform: expandedPick === `mb_${p.playerId}` ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 0.2s",
+                      }}
+                    />
+                  </div>
+                </div>
+                {expandedPick === `mb_${p.playerId}` && (
+                  <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(212,168,67,0.20)" }}>
+                    <PickCard pick={p} onClose={() => setExpandedPick(null)} canRemove={false} />
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -11393,6 +11393,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (freshPicks.length >= 10) break;
       }
 
+      // ── Moneyball Extra Picks (up to 5, grade A or B only) ──────────────────
+      // Candidates that didn't make the main 10 but score A or B on the Moneyball
+      // grading system. Shown in a separate "Moneyball Picks" section in the UI.
+      const freshPickIds = new Set(freshPicks.map((p: any) => p.playerId));
+      const mbExtraPicks: any[] = [];
+      const mbSeenTeams = new Set(freshPicks.map((p: any) => p.team));
+      for (const p of candidatePicks) {
+        if (freshPickIds.has(p.playerId)) continue;   // already in main picks
+        if (mbSeenTeams.has(p.team)) continue;        // one player per team max
+        if (p.mbGrade !== "A" && p.mbGrade !== "B") continue;
+        if (p.isScratched) continue;
+        mbExtraPicks.push(p);
+        mbSeenTeams.add(p.team);
+        if (mbExtraPicks.length >= 5) break;
+      }
+
       // ── Merge into the daily persistent cache ──────────────────────────
       // Rule: once a player is in today's cache they stay ALL day.
       // New players from freshPicks can be added (up to the 10-cap).
@@ -11711,6 +11727,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         picks:        finalPicks,
         bestPick:     finalPicks[0] ?? null,
         doubleDowns:  finalPicks.slice(1, 4),
+        mbPicks:      mbExtraPicks,
         dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
         // Grading / record data
         todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },
