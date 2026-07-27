@@ -1743,53 +1743,101 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
             </div>
           )}
 
-          {/* Moneyball Analytics Summary — Team Pick */}
+          {/* ── Moneyball Analytics — Team Pick ── */}
           {(() => {
             const simPct  = pick.simulation?.pickWinPct;
+            const oppPct  = pick.simulation?.oppWinPct;
+            const predP   = pick.simulation?.predictedPickScore;
+            const predO   = pick.simulation?.predictedOppScore;
             const pyth    = pick.expectedRuns?.pythagoreanWinPct;
             const pickRpg = pick.expectedRuns?.pickRpg;
             const oppRpg  = pick.expectedRuns?.oppRpg;
             const ed0     = pick.edgeDrivers?.[0];
             const ed1     = pick.edgeDrivers?.[1];
+            // Pick-side starter: starters.home or starters.away depending on pickSide
             const sfp     = pick.pickSide === "home" ? pick.starters?.home : pick.starters?.away;
             const sfpEra  = sfp?.era;
             const sfpXera = sfp?.xera;
+            const sfpK9   = sfp?.k9;
+            const sfpWhip = sfp?.whip;
+            // Opp starter
+            const osp     = pick.pickSide === "home" ? pick.starters?.away : pick.starters?.home;
+            const ospEra  = osp?.era;
+            const ospXera = osp?.xera;
+            // Sub-scores for pick side
+            const sub     = pick.subScores?.pick;
+
             const lines: { icon: string; label: string; body: string }[] = [];
 
-            // Pythagorean Win%
-            if (pyth != null && pickRpg != null && oppRpg != null)
-              lines.push({ icon: "🧮", label: "Pythagorean Win%",
-                body: `${pyth}% win probability from run output (${pickRpg.toFixed(1)} vs ${oppRpg.toFixed(1)} RPG).${ pyth >= 62 ? " Strong run-scoring advantage — math backs this pick." : pyth >= 54 ? " Slight run edge. Model passed the coherence gate." : " Close game projected — pick qualified on analytical edge, not raw run margin." }` });
-
-            // Monte Carlo sim
+            // 1. Monte Carlo simulation
             if (simPct != null)
               lines.push({ icon: "🎲", label: "Monte Carlo (100 sims)",
-                body: `${simPct}% simulated win rate across 100 randomized game outcomes.${ simPct >= 58 ? " Simulation strongly backs this pick." : simPct >= 50 ? " Simulation aligns with the model pick." : " Close sim result, but analytical edge was sufficient to qualify." }` });
+                body: `${simPct}% simulated win rate (${oppPct}% for ${pick.oppTeam}).`
+                  + (predP != null && predO != null ? ` Predicted score: ${pick.pickTeam} ${predP} – ${pick.oppTeam} ${predO}.` : "")
+                  + (simPct >= 62 ? " Simulation strongly supports this pick." : simPct >= 52 ? " Simulation aligns with the model pick." : " Narrow sim margin — pick qualified on analytical edge.") });
 
-            // Top edge driver
-            if (ed0)
-              lines.push({ icon: ed0.icon, label: `Top Edge — ${ed0.name}`,
-                body: `+${ed0.gap}-point scoring advantage.${ ed0.gap >= 15 ? " Dominant gap — this category strongly tilts the matchup." : ed0.gap >= 10 ? " Meaningful edge the market likely hasn't fully priced in." : " Consistent edge across the scoring model." }${ ed1 ? ` Also: ${ed1.icon} ${ed1.name} (+${ed1.gap}).` : "" }` });
+            // 2. Pythagorean Win %
+            if (pyth != null && pickRpg != null && oppRpg != null)
+              lines.push({ icon: "🧮", label: "Pythagorean Win%",
+                body: `${pyth}% win probability based on projected run output (${pick.pickTeam} ${pickRpg.toFixed(1)} RPG vs ${pick.oppTeam} ${oppRpg.toFixed(1)} RPG).`
+                  + (pyth >= 62 ? " Strong run advantage — the math solidly backs this pick." : pyth >= 54 ? " Modest run edge. Passed coherence gate." : " Close game on paper — pick qualified on component scoring, not run margin.") });
 
-            // Starter xERA vs ERA
-            if (sfpXera != null && sfpEra != null) {
+            // 3. Pick-side starter xERA
+            if (sfpEra != null && sfpXera != null && sfpXera > 0) {
               const diff = sfpXera - sfpEra;
-              lines.push({ icon: "⚾", label: "Starter True Skill (xERA)",
-                body: `${pick.pickTeam} starter ERA ${sfpEra.toFixed(2)} / xERA ${sfpXera.toFixed(2)}.${ diff < -0.40 ? " Pitching better than ERA shows — tough for opponents to make contact." : diff > 0.40 ? " ERA flatters the starter. Expect regression, hitters will catch up." : " ERA and xERA aligned — consistent, predictable performance." }` });
+              lines.push({ icon: "🌟", label: `${pick.pickTeam} Starter (${sfp?.name ?? ""})`,
+                body: `ERA ${sfpEra.toFixed(2)} / xERA ${sfpXera.toFixed(2)}`
+                  + (sfpK9 ? ` / ${sfpK9.toFixed(1)} K⁄9` : "")
+                  + (sfpWhip ? ` / ${sfpWhip.toFixed(2)} WHIP` : ".")
+                  + (diff < -0.40 ? " xERA below ERA — pitching better than numbers show, opponents will struggle to make contact." : diff > 0.40 ? " xERA above ERA — results have been lucky, regression likely." : " ERA and xERA aligned — consistent, trustworthy performance.") });
+            } else if (sfpEra != null) {
+              lines.push({ icon: "🌟", label: `${pick.pickTeam} Starter (${sfp?.name ?? ""})`,
+                body: `ERA ${sfpEra.toFixed(2)}`
+                  + (sfpK9 ? ` / ${sfpK9.toFixed(1)} K⁄9` : "")
+                  + (sfpWhip ? ` / ${sfpWhip.toFixed(2)} WHIP` : ".") });
+            }
+
+            // 4. Opposing starter xERA (the arm pick team's batters face)
+            if (ospEra != null && ospXera != null && ospXera > 0) {
+              const diff2 = ospXera - ospEra;
+              lines.push({ icon: "⚾", label: `Opp Starter (${osp?.name ?? ""})`,
+                body: `ERA ${ospEra.toFixed(2)} / xERA ${ospXera.toFixed(2)}.`
+                  + (diff2 >= 0.40 ? ` xERA (${ospXera.toFixed(2)}) is higher than ERA — opposing starter is overperforming. ${pick.pickTeam} bats should make more contact than ERA suggests.` : diff2 <= -0.40 ? ` xERA (${ospXera.toFixed(2)}) is lower — opposing starter is elite. Tough for ${pick.pickTeam} bats.` : " ERA and xERA aligned — predictable matchup.") });
+            }
+
+            // 5. Top edge driver
+            if (ed0)
+              lines.push({ icon: ed0.icon, label: `Top Scoring Edge — ${ed0.name}`,
+                body: `+${ed0.gap}-point advantage over ${pick.oppTeam}.`
+                  + (ed0.gap >= 15 ? " Dominant gap — this category strongly tilts the matchup." : ed0.gap >= 10 ? " Meaningful edge the market likely hasn't fully priced in." : " Consistent edge across the scoring model.")
+                  + (ed1 ? ` Also backed by ${ed1.icon} ${ed1.name} (+${ed1.gap}).` : "") });
+
+            // 6. Sub-score breakdown
+            if (sub) {
+              const cats = [
+                { k: "starterEdge",   label: "Starter",         w: "30%" },
+                { k: "bullpenScore",  label: "Bullpen",          w: "20%" },
+                { k: "offenseVsHand",label: "Offense vs Hand",  w: "20%" },
+                { k: "lineupEdge",    label: "Lineup Depth",     w: "10%" },
+                { k: "marketScore",   label: "Market",           w: "15%" },
+              ];
+              const parts = cats.map(c => `${c.label} ${(sub as any)[c.k] ?? "—"}`).join(" · ");
+              lines.push({ icon: "📊", label: "Component Scores (out of 100)",
+                body: parts + " — composite = " + pick.winnerScore });
             }
 
             if (lines.length === 0) return null;
             return (
-              <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "10px 14px", marginTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13 }}>📚</span>
+              <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                  <span style={{ fontSize: 14 }}>📚</span>
                   <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {lines.map((l, i) => (
-                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                      <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
-                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+                    <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.45, margin: 0 }}>
                         <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
                       </p>
                     </div>
