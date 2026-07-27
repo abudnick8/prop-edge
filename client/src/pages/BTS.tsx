@@ -987,6 +987,84 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
               )}
             </div>
           )}
+
+          {/* ── Moneyball Analytics ── */}
+          {(() => {
+            const xba       = pick.stats?.xba;
+            const avg14     = pick.stats?.avg14;
+            const avgSeason = pick.stats?.avgSeason;
+            const xera      = pick.subScores?.pitcherXera;
+            const hh        = pick.stats?.hardHitPct;
+            const lines: { icon: string; label: string; body: string }[] = [];
+
+            if (xba != null && (avg14 != null || avgSeason != null)) {
+              const surf = avg14 ?? avgSeason ?? 0;
+              const diff = Math.round((xba - surf) * 1000);
+              const xs = "." + String(Math.round(xba * 1000)).padStart(3, "0");
+              const as_ = "." + String(Math.round(surf * 1000)).padStart(3, "0");
+              if (diff >= 30)
+                lines.push({ icon: "🔬", label: "Contact Quality",
+                  body: `xBA (${xs}) is +${diff} pts above recent avg (${as_}) — exit velocity says he’s hitting the ball harder than results show.` });
+              else if (diff <= -30)
+                lines.push({ icon: "🔬", label: "Contact Quality",
+                  body: `xBA (${xs}) trails recent avg (${as_}) by ${Math.abs(diff)} pts — some luck in current numbers, but other factors qualified this pick.` });
+              else
+                lines.push({ icon: "🔬", label: "Contact Quality",
+                  body: `xBA (${xs}) aligns with recent avg (${as_}) — exit velocity and launch angle support the surface stats.` });
+            }
+
+            if (hh != null)
+              lines.push({ icon: "🔨", label: "Hard Contact",
+                body: `${hh}% of batted balls at 95+ mph exit velocity.${
+                  hh >= 46 ? " Elite barrel rate — nearly half all contact is crushed." :
+                  hh >= 38 ? " Above-average power contact." : " Moderate hard-hit rate."}` });
+
+            if (pick.expectedPA > 0)
+              lines.push({ icon: "📋", label: "Opportunity",
+                body: `Batting #${pick.lineupSlot ?? "?"}, projected ~${pick.expectedPA} PAs today.${
+                  pick.expectedPA >= 4.5 ? " Top-order volume maximizes hit chances." :
+                  pick.expectedPA >= 4.0 ? " Solid PA volume." : " Slightly limited opportunities."}` });
+
+            if (pick.valueOverBaseline != null)
+              lines.push({ icon: "⚖️", label: "Value vs Field",
+                body: `${pick.valueOverBaseline >= 0 ? "+" : ""}${pick.valueOverBaseline}pp vs today’s slate median (${pick.slateMedian}%).${
+                  pick.valueOverBaseline >= 8 ? " Stands out as a top-tier option on today’s slate." :
+                  pick.valueOverBaseline >= 3 ? " Above average relative to today’s field." :
+                  pick.valueOverBaseline >= 0 ? " In line with the top half of today’s slate." :
+                  " Below today’s median but other factors qualified this pick."}` });
+
+            if (pick.topDrivers?.[0])
+              lines.push({ icon: pick.topDrivers[0].icon, label: `Top Signal — ${pick.topDrivers[0].name}`,
+                body: `${pick.topDrivers[0].label} — the #1 contributor to this pick’s score.${
+                  pick.topDrivers[1] ? ` Backed by ${pick.topDrivers[1].icon} ${pick.topDrivers[1].name}: ${pick.topDrivers[1].label}.` : ""}` });
+
+            if (xera != null)
+              lines.push({ icon: "⚾", label: "Pitcher True Skill",
+                body: `Opposing starter xERA ${xera.toFixed(2)}${
+                  xera >= 4.80 ? " — hittable arm. ERA likely undersells how much contact batters make." :
+                  xera >= 4.20 ? " — elevated. Hitters have an edge." :
+                  xera <= 3.20 ? " — elite starter. Tough matchup." : " — league-average arm."}` });
+
+            if (lines.length === 0) return null;
+            return (
+              <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                  <span style={{ fontSize: 14 }}>📚</span>
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {lines.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.45, margin: 0 }}>
+                        <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
