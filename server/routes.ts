@@ -11069,6 +11069,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 // MLB Analytics layer
                 analyticsBoost:  parseFloat(analyticsBoostMult.toFixed(3)),
                 analyticsNote,
+                // Phase 5: Expected plate appearances + top 3 model drivers (explanation UI)
+                // Recomputed here from in-scope raw signals (scoreHitter's internal component
+                // variables are not accessible outside its closure — this mirrors that logic
+                // using the same inputs available at candidate push time).
+                expectedPA: (lineupSlot <= 3 ? 4.6 : lineupSlot <= 5 ? 4.0 : lineupSlot <= 7 ? 3.6 : 3.2),
+                topDrivers: (() => {
+                  const norm5 = (v: number, lo: number, hi: number) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+                  const avg14ForDrv = stats.avg14 ?? 0;
+                  const avg7ForDrv  = stats.avg7  ?? 0;
+                  const formDrv     = norm5(avg14ForDrv, 0.150, 0.400) * 0.5 + norm5(avg7ForDrv, 0.150, 0.380) * 0.5;
+                  const xbaDrv      = parseFloat(savant?.xba ?? "0") || (stats.avgSeason ?? 0.250);
+                  const contactDrv  = norm5(xbaDrv, 0.200, 0.380);
+                  const hhDrv       = parseFloat(savant?.hard_hit_percent ?? "0") || 0;
+                  const barrelDrv   = parseFloat(savant?.barrel_batted_rate ?? "0") || 0;
+                  const hardContactDrv = norm5(hhDrv, 25, 55) * 0.6 + norm5(barrelDrv, 4, 18) * 0.4;
+                  const matchupDrv  = pitcherXera !== null
+                    ? (pitcherXera <= 2.50 ? 0.15 : pitcherXera <= 3.25 ? 0.30 : pitcherXera <= 4.00 ? 0.50
+                       : pitcherXera <= 4.75 ? 0.65 : pitcherXera <= 5.50 ? 0.80 : 0.95)
+                    : 0.50;
+                  const slotOppDrv  = lineupSlot <= 3 ? 0.88 : lineupSlot <= 5 ? 0.66 : lineupSlot <= 7 ? 0.44 : 0.28;
+                  const bvpDrv      = bvp.signal === "elite" ? 0.95 : bvp.signal === "strong" ? 0.80 : bvp.signal === "weak" ? 0.20 : 0.50;
+                  const platoonDrv  = platoonSplitScore;
+                  const venueDrv    = (venueCareerAvg !== null && venueCareerAB >= 20) ? norm5(venueCareerAvg, 0.180, 0.380) : 0.50;
+                  const drivers: { name: string; score: number; icon: string; label: string }[] = [
+                    { name: "Recent Form",     score: formDrv * 0.15,        icon: "📈", label: `L14 .${Math.round(avg14ForDrv*1000).toString().padStart(3,"0")} · L7 .${Math.round(avg7ForDrv*1000).toString().padStart(3,"0")}` },
+                    { name: "Contact Quality", score: contactDrv * 0.16,     icon: "🎯", label: `xBA ${savant?.xba ? "."+Math.round(xbaDrv*1000).toString().padStart(3,"0") : "—"} · K% ${stats.kPct ? Math.round(stats.kPct*100)+"%" : "—"}` },
+                    { name: "Pitcher Matchup", score: matchupDrv * 0.26,     icon: "⚾", label: pitcherXera ? `xERA ${pitcherXera.toFixed(2)}` : `ERA ${oppPitcherSeasonStats?.era?.toFixed(2) ?? "—"}` },
+                    { name: "Opportunity",     score: slotOppDrv * 0.18,     icon: "📋", label: `Slot #${lineupSlot} · ~${(lineupSlot <= 3 ? 4.6 : lineupSlot <= 5 ? 4.0 : lineupSlot <= 7 ? 3.6 : 3.2).toFixed(1)} est. PA` },
+                    { name: "BvP Edge",        score: bvpDrv * (bvp.signal === "elite" ? 0.18 : bvp.signal === "strong" ? 0.12 : 0.06), icon: "📊", label: bvp.signal === "elite" ? "Elite BvP" : bvp.signal === "strong" ? "Strong BvP" : `${bvp.ab} AB vs pitcher` },
+                    { name: "Hard Contact",    score: hardContactDrv * 0.08, icon: "💥", label: `${hhDrv.toFixed(0)}% hard hit · ${barrelDrv.toFixed(1)}% barrel` },
+                    { name: "Platoon Split",   score: platoonDrv * 0.04,     icon: "↔️", label: `${platoonSplitScore >= 0.65 ? "Favorable" : platoonSplitScore <= 0.35 ? "Unfavorable" : "Neutral"} vs ${bats === "L" ? "RHP" : "LHP"}` },
+                    { name: "Venue History",   score: venueDrv * 0.04,       icon: "🏟️", label: venueCareerAvg !== null && venueCareerAB >= 20 ? `Career .${Math.round(venueCareerAvg*1000).toString().padStart(3,"0")} (${venueCareerAB} AB)` : "Insufficient venue data" },
+                  ];
+                  return drivers.sort((a, b) => b.score - a.score).slice(0, 3).map(d => ({ name: d.name, icon: d.icon, label: d.label, score: parseFloat(d.score.toFixed(4)) }));
+                })(),
                 steamerProjection: steamerProj ? {
                   projAVG:     steamerProj.avg,
                   projOBP:     steamerProj.obp,
@@ -11270,6 +11305,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (a.isOverridePick !== b.isOverridePick) return a.isOverridePick ? 1 : -1;
         return b.hitProbability - a.hitProbability;
       });
+
+      // Phase 5: Compute value-over-baseline for each candidate
+      // Baseline = median hitProbability across all candidates on this slate
+      const allProbs = candidatePicks.map(p => p.hitProbability).filter(v => typeof v === "number" && v > 0);
+      const slateMedian = allProbs.length > 0
+        ? (() => { const sorted = [...allProbs].sort((a,b)=>a-b); return sorted[Math.floor(sorted.length/2)]; })()
+        : 0.68;
+      for (const p of candidatePicks) {
+        p.valueOverBaseline = parseFloat(((p.hitProbability - slateMedian) * 100).toFixed(1)); // in percentage points
+        p.slateMedian = parseFloat((slateMedian * 100).toFixed(1));
+      }
 
       // ── Carry-over cap ──────────────────────────────────────────────────────
       // Non-near-perfect repeat players are blocked outright (heavy formMult penalty
@@ -12012,6 +12058,51 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       }
 
+      // Phase 5: Top driver frequency analysis
+      const byDriver: Record<string, Split> = {};
+      for (const [, entries] of allDays) {
+        for (const e of (entries as any[])) {
+          const r = e.result;
+          if (r !== "win" && r !== "loss") continue;
+          const snap: any = (e as any).snapshot ?? {};
+          const drivers: any[] = snap.topDrivers ?? [];
+          for (const d of drivers) {
+            const k = d.name ?? "Unknown";
+            if (!byDriver[k]) byDriver[k] = mk();
+            add(byDriver[k], r);
+          }
+        }
+      }
+
+      // Phase 5: Value-over-baseline accuracy — did higher VOB picks win more?
+      const byVob: Record<string, Split> = {};
+      for (const [, entries] of allDays) {
+        for (const e of (entries as any[])) {
+          const r = e.result;
+          if (r !== "win" && r !== "loss") continue;
+          const snap: any = (e as any).snapshot ?? {};
+          const vob = snap.valueOverBaseline ?? null;
+          if (vob === null) continue;
+          const band = vob >= 5 ? "Above median +5%" : vob >= 0 ? "Near median" : "Below median";
+          if (!byVob[band]) byVob[band] = mk();
+          add(byVob[band], r);
+        }
+      }
+
+      // Phase 5: Team win historical record from mlbTeamWinsHistory
+      let twWins = 0, twLosses = 0;
+      const twByTier: Record<string, Split> = {};
+      for (const [, entry] of Object.entries(mlbTeamWinsHistory)) {
+        for (const slot of ["pick1", "pick2"] as const) {
+          const p = (entry as any)[slot];
+          if (!p?.result || (p.result !== "win" && p.result !== "loss")) continue;
+          if (p.result === "win") twWins++; else twLosses++;
+          const tier = p.tier ?? p.confidenceTier ?? "?";
+          if (!twByTier[tier]) twByTier[tier] = mk();
+          add(twByTier[tier], p.result);
+        }
+      }
+
       // Format splits as sorted arrays
       const fmt = (map: Record<string, Split>, order?: string[]) => {
         const keys = order ?? Object.keys(map).sort();
@@ -12039,6 +12130,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         byDay:  fmt(byDay,  ["Day","Night"]),
         byProb: fmt(byProb, probBands),
         byDate: byDate.reverse(), // most recent first
+        byDriver: fmt(byDriver),
+        byVob: fmt(byVob, ["Above median +5%", "Near median", "Below median"]),
+        teamWin: {
+          wins: twWins,
+          losses: twLosses,
+          pct: (twWins + twLosses) > 0 ? Math.round(twWins / (twWins + twLosses) * 100) : null,
+          byTier: fmt(twByTier, ["A", "B", "C"]),
+        },
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -19983,6 +20082,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             },
             weather: { tempF, windMph, isDome, venue },
             parkFactor,
+            // Phase 5: Expected runs (Pythagorean-style from component scores)
+            expectedRuns: (() => {
+              const leagueAvgRpg = 4.55;
+              // Normalize 0-100 score to run expectancy: score 50 = league avg (4.55), 80 = 5.5, 20 = 3.5
+              const scoreToRpg = (s: number) => leagueAvgRpg + (s - 50) / 50 * 1.5;
+              const pickRpg = scoreToRpg(finalWinnerScore);
+              const oppRpg  = scoreToRpg(finalLoserScore);
+              const runDiff = parseFloat((pickRpg - oppRpg).toFixed(2));
+              // Pythagorean win% = RS^2 / (RS^2 + RA^2)
+              const pythagoreanWinPct = parseFloat((Math.pow(pickRpg, 2) / (Math.pow(pickRpg, 2) + Math.pow(oppRpg, 2)) * 100).toFixed(1));
+              return {
+                pickRpg: parseFloat(pickRpg.toFixed(2)),
+                oppRpg: parseFloat(oppRpg.toFixed(2)),
+                runDiff,
+                pythagoreanWinPct,
+              };
+            })(),
+            // Phase 5: Top 3 edge driver categories
+            edgeDrivers: (() => {
+              const pickStarterEdgeF = finalPickSub.starterEdge;
+              const oppStarterEdgeF  = finalOppSub.starterEdge;
+              const pickBullpenF     = finalPickSub.bullpenScore;
+              const oppBullpenF      = finalOppSub.bullpenScore;
+              const pickOffenseF     = finalPickSub.offenseVsHand;
+              const oppOffenseF      = finalOppSub.offenseVsHand;
+              const pickLineupF      = finalPickSub.lineupEdge;
+              const oppLineupF       = finalOppSub.lineupEdge;
+              const pickMarketF      = finalPickSub.marketScore;
+              const oppMarketF       = finalOppSub.marketScore;
+              const drivers = [
+                { name: "Starter Edge",   gap: pickStarterEdgeF - oppStarterEdgeF,  icon: "🎯", value: pickStarterEdgeF },
+                { name: "Bullpen Edge",    gap: pickBullpenF - oppBullpenF,           icon: "💪", value: pickBullpenF },
+                { name: "Offense vs Hand", gap: pickOffenseF - oppOffenseF,           icon: "🏏", value: pickOffenseF },
+                { name: "Lineup Depth",    gap: pickLineupF - oppLineupF,             icon: "📋", value: pickLineupF },
+                { name: "Market Edge",     gap: pickMarketF - oppMarketF,             icon: "📈", value: pickMarketF },
+              ];
+              return drivers
+                .filter(d => d.gap > 0)
+                .sort((a, b) => b.gap - a.gap)
+                .slice(0, 3)
+                .map(d => ({ name: d.name, icon: d.icon, gap: d.gap, value: d.value }));
+            })(),
           });
         } catch (gameErr: any) {
           console.warn(`[TeamWin] game error:`, gameErr.message);

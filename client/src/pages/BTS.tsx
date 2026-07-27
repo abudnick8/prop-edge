@@ -255,11 +255,43 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
           <p className="text-[11px] text-muted-foreground">
             {pick.team} · Slot #{pick.lineupSlot} · Bats {pick.bats}
           </p>
+          {/* Top 3 model drivers */}
+          {pick.topDrivers && pick.topDrivers.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+              {pick.topDrivers.map((d: any, i: number) => (
+                <span key={i} style={{
+                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                  background: i === 0 ? "rgba(212,168,67,0.15)" : "rgba(19,35,58,0.06)",
+                  color: i === 0 ? "#D4A843" : "#3D4B58",
+                  border: `1px solid ${i === 0 ? "rgba(212,168,67,0.30)" : "rgba(19,35,58,0.10)"}`,
+                }}>
+                  {d.icon} {d.name}
+                </span>
+              ))}
+              {pick.expectedPA > 0 && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                  background: "rgba(34,197,94,0.08)", color: "#16a34a",
+                  border: "1px solid rgba(34,197,94,0.20)",
+                }}>
+                  ~{pick.expectedPA} PA
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Probability ring + owner remove button */}
         <div className="flex flex-col items-center gap-1.5">
           <ProbRing pct={pick.hitProbability} />
+          {pick.valueOverBaseline !== undefined && pick.valueOverBaseline !== null && (
+            <span style={{
+              fontSize: 9, fontWeight: 800,
+              color: pick.valueOverBaseline >= 3 ? "#16a34a" : pick.valueOverBaseline >= 0 ? "#D4A843" : "#6b7280",
+            }}>
+              {pick.valueOverBaseline >= 0 ? "+" : ""}{pick.valueOverBaseline}pp vs slate
+            </span>
+          )}
           {canRemove && (
             <button
               onClick={async (e) => {
@@ -489,6 +521,39 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
               <Chip label="Lineup Slot" value={`#${pick.lineupSlot}`} highlight={(pick.lineupSlot ?? 9) <= 4} />
             </div>
           </div>
+
+          {/* Model Drivers section */}
+          {pick.topDrivers && pick.topDrivers.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 10, fontWeight: 800, color: "#3D4B58", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Top Model Drivers</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {pick.topDrivers.map((d: any, i: number) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    background: i === 0 ? "rgba(212,168,67,0.08)" : "rgba(19,35,58,0.03)",
+                    border: `1px solid ${i === 0 ? "rgba(212,168,67,0.20)" : "rgba(19,35,58,0.08)"}`,
+                    borderRadius: 8, padding: "6px 10px",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13 }}>{d.icon}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{d.name}</span>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#3D4B58" }}>{d.label}</span>
+                  </div>
+                ))}
+              </div>
+              {pick.expectedPA > 0 && (
+                <p style={{ fontSize: 10, color: "#3D4B58", marginTop: 6 }}>
+                  Estimated plate appearances: <strong style={{ color: "#131A24" }}>~{pick.expectedPA}</strong>
+                  {pick.valueOverBaseline !== undefined && (
+                    <span style={{ marginLeft: 8, color: pick.valueOverBaseline >= 0 ? "#16a34a" : "#6b7280" }}>
+                      · {pick.valueOverBaseline >= 0 ? "+" : ""}{pick.valueOverBaseline}pp above slate median ({pick.slateMedian}%)
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ── 2. Scoring model component bars ── */}
           <div>
@@ -1516,6 +1581,52 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
               </div>
             </div>
           </div>
+
+          {/* Section 5: Edge Drivers & Run Model */}
+          {(pick.edgeDrivers?.length > 0 || pick.expectedRuns) && (
+            <div style={{ background: "rgba(212,168,67,0.04)", border: "1px solid rgba(212,168,67,0.15)", borderRadius: 12, padding: "10px 14px", marginTop: 10 }}>
+              <p style={{ fontSize: 10, fontWeight: 800, color: "#3D4B58", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Edge Drivers</p>
+
+              {pick.expectedRuns && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "6px 10px", background: "rgba(19,35,58,0.04)", borderRadius: 8 }}>
+                  <div>
+                    <p style={{ fontSize: 9, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: 0.5 }}>Projected Runs</p>
+                    <p style={{ fontSize: 13, fontWeight: 900, color: "#131A24", marginTop: 1 }}>
+                      {pick.expectedRuns.pickRpg.toFixed(1)} <span style={{ color: "#3D4B58", fontSize: 10, fontWeight: 600 }}>vs</span> {pick.expectedRuns.oppRpg.toFixed(1)}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 9, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: 0.5 }}>Pythagorean Win%</p>
+                    <p style={{ fontSize: 13, fontWeight: 900, marginTop: 1,
+                      color: (pick.expectedRuns.pythagoreanWinPct ?? 0) >= 60 ? "#16a34a" : (pick.expectedRuns.pythagoreanWinPct ?? 0) >= 52 ? "#D4A843" : "#6b7280" }}>
+                      {pick.expectedRuns.pythagoreanWinPct ?? "—"}%
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {pick.edgeDrivers?.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {pick.edgeDrivers.map((d: any, i: number) => (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "5px 8px", borderRadius: 8,
+                      background: i === 0 ? "rgba(34,197,94,0.08)" : "rgba(19,35,58,0.03)",
+                      border: `1px solid ${i === 0 ? "rgba(34,197,94,0.20)" : "rgba(19,35,58,0.08)"}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>{d.icon}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{d.name}</span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: d.gap >= 10 ? "#16a34a" : "#D4A843" }}>
+                        +{d.gap} edge
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2474,6 +2585,42 @@ function BtsAnalyticsPanel() {
               {/* Hit probability bands */}
               {(data.byProb ?? []).filter((r: any) => r.total > 0).length > 0 && (
                 <SplitSection title="Win % by Hit Probability" rows={data.byProb ?? []} />
+              )}
+
+              {/* Driver win rates */}
+              {(data.byDriver ?? []).filter((r: any) => r.total >= 3).length > 0 && (
+                <SplitSection title="Win % by Top Model Driver" rows={(data.byDriver ?? []).filter((r: any) => r.total >= 3)} />
+              )}
+
+              {/* Value over baseline */}
+              {(data.byVob ?? []).filter((r: any) => r.total > 0).length > 0 && (
+                <SplitSection title="Win % by Value vs Slate Median" rows={data.byVob ?? []} />
+              )}
+
+              {/* Team win record */}
+              {data.teamWin && (data.teamWin.wins + data.teamWin.losses) > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color: MUTED }}>
+                    Team Win Picks — Season Record
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {[
+                      { label: "Wins",   value: String(data.teamWin.wins),   color: "#22c55e" },
+                      { label: "Losses", value: String(data.teamWin.losses), color: "#ef4444" },
+                      { label: "Win %",  value: data.teamWin.pct !== null ? `${data.teamWin.pct}%` : "—",
+                        color: (data.teamWin.pct ?? 0) >= 60 ? "#22c55e" : (data.teamWin.pct ?? 0) >= 40 ? "#eab308" : "#ef4444" },
+                    ].map(s => (
+                      <div key={s.label} className="rounded-xl p-2.5 text-center"
+                        style={{ background: "rgba(19,35,58,0.05)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                        <p className="text-base font-black" style={{ color: s.color }}>{s.value}</p>
+                        <p className="text-[9px] font-semibold mt-0.5" style={{ color: MUTED }}>{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {(data.teamWin.byTier ?? []).filter((r: any) => r.total > 0).length > 0 && (
+                    <SplitSection title="Team Win % by Tier" rows={(data.teamWin.byTier ?? []).map((r: any) => ({ ...r, label: `Tier ${r.label}` }))} />
+                  )}
+                </div>
               )}
 
               {/* Per-day history */}
