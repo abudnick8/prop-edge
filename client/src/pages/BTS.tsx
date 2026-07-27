@@ -281,7 +281,7 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
           )}
         </div>
 
-        {/* Probability ring + owner remove button */}
+        {/* Probability ring + Moneyball badge + owner remove button */}
         <div className="flex flex-col items-center gap-1.5">
           <ProbRing pct={pick.hitProbability} />
           {pick.valueOverBaseline !== undefined && pick.valueOverBaseline !== null && (
@@ -292,6 +292,8 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
               {pick.valueOverBaseline >= 0 ? "+" : ""}{pick.valueOverBaseline}pp vs slate
             </span>
           )}
+          {/* Moneyball Grade coin */}
+          <MbGradeBadge grade={calcMbGrade(pick)} size="md" />
           {canRemove && (
             <button
               onClick={async (e) => {
@@ -1046,11 +1048,25 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   xera <= 3.20 ? " — elite starter. Tough matchup." : " — league-average arm."}` });
 
             if (lines.length === 0) return null;
+            const mbGrade = calcMbGrade(pick);
+            const gradeDesc: Record<MbGrade, string> = {
+              A: "Elite confluence across all signals.",
+              B: "Strong across most Moneyball metrics.",
+              C: "Qualified with mixed signals.",
+              D: "Borderline — 1–2 factors working.",
+              F: "Below threshold.",
+            };
             return (
               <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "12px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <span style={{ fontSize: 14 }}>📚</span>
-                  <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>📚</span>
+                    <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDesc[mbGrade]}</p>
+                    <MbGradeBadge grade={mbGrade} size="lg" />
+                  </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {lines.map((l, i) => (
@@ -1422,8 +1438,8 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
             )}
           </p>
         </div>
-        {/* Win score ring */}
-        <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+        {/* Win score ring + Moneyball grade */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-1.5">
           <div
             className="rounded-full flex items-center justify-center font-black text-sm"
             style={{
@@ -1439,6 +1455,8 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
             </div>
           </div>
           <span className="text-[9px] font-bold text-muted-foreground">Score</span>
+          {/* Moneyball Grade coin */}
+          <MbGradeBadge grade={calcTeamMbGrade(pick)} size="md" />
         </div>
       </div>
 
@@ -1827,11 +1845,25 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
             }
 
             if (lines.length === 0) return null;
+            const mbGradeT = calcTeamMbGrade(pick);
+            const gradeDescT: Record<MbGrade, string> = {
+              A: "Elite sim + run edge. High conviction.",
+              B: "Strong model support across key factors.",
+              C: "Qualified — mixed signals present.",
+              D: "Borderline — narrow edge.",
+              F: "Below threshold.",
+            };
             return (
               <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <span style={{ fontSize: 14 }}>📚</span>
-                  <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>📚</span>
+                    <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDescT[mbGradeT]}</p>
+                    <MbGradeBadge grade={mbGradeT} size="lg" />
+                  </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {lines.map((l, i) => (
@@ -2764,6 +2796,133 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
   );
 }
 
+// ─── Moneyball Grade Utilities ───────────────────────────────────────────────
+type MbGrade = "A" | "B" | "C" | "D" | "F";
+
+/** Score a hitter pick on the Moneyball grading scale */
+function calcMbGrade(pick: any): MbGrade {
+  let pts = 0;
+
+  // Hit probability (0-35 pts)
+  const hp = pick.hitProbability ?? 0;
+  if (hp >= 80)      pts += 35;
+  else if (hp >= 74) pts += 28;
+  else if (hp >= 68) pts += 20;
+  else if (hp >= 62) pts += 12;
+  else               pts += 5;
+
+  // Value over baseline / slate median (0-20 pts)
+  const vob = pick.valueOverBaseline ?? 0;
+  if (vob >= 12)     pts += 20;
+  else if (vob >= 7) pts += 15;
+  else if (vob >= 3) pts += 10;
+  else if (vob >= 0) pts += 5;
+  else               pts += 0;
+
+  // Opposing pitcher xERA — hittable arm boosts grade (0-20 pts)
+  const xera = pick.subScores?.pitcherXera ?? 0;
+  if (xera >= 5.20)      pts += 20;
+  else if (xera >= 4.60) pts += 15;
+  else if (xera >= 4.00) pts += 10;
+  else if (xera >= 3.40) pts += 5;
+  else                   pts += 0; // elite arm, no boost
+
+  // Hard contact % (0-15 pts)
+  const hh = pick.stats?.hardHitPct ?? 0;
+  if (hh >= 50)      pts += 15;
+  else if (hh >= 44) pts += 11;
+  else if (hh >= 38) pts += 7;
+  else if (hh >= 32) pts += 3;
+
+  // xBA vs recent avg divergence bonus — undervalued by surface stats (0-10 pts)
+  const xba = pick.stats?.xba ?? 0;
+  const surf = pick.stats?.avg14 ?? pick.stats?.avgSeason ?? 0;
+  if (xba > 0 && surf > 0 && (xba - surf) >= 0.040) pts += 10;
+  else if (xba > 0 && surf > 0 && (xba - surf) >= 0.020) pts += 5;
+
+  // Convert 0-100 pts to letter grade
+  if (pts >= 78) return "A";
+  if (pts >= 62) return "B";
+  if (pts >= 46) return "C";
+  if (pts >= 30) return "D";
+  return "F";
+}
+
+/** Score a team pick on the Moneyball grading scale */
+function calcTeamMbGrade(pick: any): MbGrade {
+  let pts = 0;
+
+  // Monte Carlo sim win% (0-35 pts)
+  const simPct = pick.simulation?.pickWinPct ?? 0;
+  if (simPct >= 68)      pts += 35;
+  else if (simPct >= 60) pts += 27;
+  else if (simPct >= 54) pts += 18;
+  else if (simPct >= 50) pts += 10;
+  else                   pts += 4;
+
+  // Pythagorean Win% (0-25 pts)
+  const pyth = pick.expectedRuns?.pythagoreanWinPct ?? 0;
+  if (pyth >= 65)      pts += 25;
+  else if (pyth >= 58) pts += 18;
+  else if (pyth >= 53) pts += 11;
+  else if (pyth >= 50) pts += 5;
+
+  // Edge (score gap between teams) (0-20 pts)
+  const edge = pick.edge ?? 0;
+  if (edge >= 18)      pts += 20;
+  else if (edge >= 13) pts += 15;
+  else if (edge >= 9)  pts += 10;
+  else if (edge >= 5)  pts += 5;
+
+  // Top edge driver strength (0-10 pts)
+  const ed0gap = pick.edgeDrivers?.[0]?.gap ?? 0;
+  if (ed0gap >= 18)      pts += 10;
+  else if (ed0gap >= 12) pts += 7;
+  else if (ed0gap >= 7)  pts += 4;
+
+  // Opp starter xERA (hittable arm helps the pick team's bats) (0-10 pts)
+  const osp    = pick.pickSide === "home" ? pick.starters?.away : pick.starters?.home;
+  const ospX   = osp?.xera ?? 0;
+  if (ospX >= 5.20)      pts += 10;
+  else if (ospX >= 4.60) pts += 7;
+  else if (ospX >= 4.00) pts += 4;
+
+  if (pts >= 78) return "A";
+  if (pts >= 62) return "B";
+  if (pts >= 46) return "C";
+  if (pts >= 30) return "D";
+  return "F";
+}
+
+const MB_GRADE_COLORS: Record<MbGrade, { bg: string; text: string; glow: string }> = {
+  A: { bg: "linear-gradient(135deg, #D4A843 0%, #f5c842 60%, #b8860b 100%)", text: "#3a2500", glow: "rgba(212,168,67,0.55)" },
+  B: { bg: "linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 60%, #a0a0a0 100%)", text: "#1a1a1a", glow: "rgba(180,180,180,0.45)" },
+  C: { bg: "linear-gradient(135deg, #cd7f32 0%, #e8a060 60%, #a0522d 100%)", text: "#2a1000", glow: "rgba(180,100,40,0.40)" },
+  D: { bg: "linear-gradient(135deg, #6b7280 0%, #9ca3af 60%, #4b5563 100%)", text: "#f9fafb", glow: "rgba(100,110,120,0.30)" },
+  F: { bg: "linear-gradient(135deg, #dc2626 0%, #ef4444 60%, #991b1b 100%)", text: "#fff0f0", glow: "rgba(220,38,38,0.35)" },
+};
+
+function MbGradeBadge({ grade, size = "md" }: { grade: MbGrade; size?: "sm" | "md" | "lg" }) {
+  const c = MB_GRADE_COLORS[grade];
+  const dim = size === "lg" ? 44 : size === "sm" ? 28 : 36;
+  const fs  = size === "lg" ? 13 : size === "sm" ? 8  : 11;
+  const dfs = size === "lg" ? 7  : size === "sm" ? 5  : 6;
+  return (
+    <div style={{
+      width: dim, height: dim, borderRadius: "50%",
+      background: c.bg,
+      boxShadow: `0 0 ${size === "lg" ? 12 : 8}px ${c.glow}, inset 0 1px 2px rgba(255,255,255,0.35)`,
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      flexShrink: 0,
+      border: "1.5px solid rgba(255,255,255,0.25)",
+    }}>
+      <span style={{ fontSize: dfs, fontWeight: 900, color: c.text, lineHeight: 1, letterSpacing: 0 }}>$</span>
+      <span style={{ fontSize: fs, fontWeight: 900, color: c.text, lineHeight: 1 }}>{grade}</span>
+    </div>
+  );
+}
+
 // ─── BTS Loading Progress Bar ───────────────────────────────────────────────
 function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
   const [pct, setPct] = useState(0);
@@ -2995,6 +3154,56 @@ function BtsAnalyticsPanel() {
               {(data.byVob ?? []).filter((r: any) => r.total > 0).length > 0 && (
                 <SplitSection title="Win % by Value vs Slate Median" rows={data.byVob ?? []} />
               )}
+
+              {/* Win % by Moneyball Grade — computed client-side from graded picks */}
+              {(() => {
+                const allPicks: any[] = data.picks ?? [];
+                const graded = allPicks.filter((p: any) => p.result === "win" || p.result === "loss");
+                if (graded.length < 3) return null;
+                const buckets: Record<MbGrade, { wins: number; total: number }> = {
+                  A: { wins: 0, total: 0 }, B: { wins: 0, total: 0 },
+                  C: { wins: 0, total: 0 }, D: { wins: 0, total: 0 }, F: { wins: 0, total: 0 },
+                };
+                for (const p of graded) {
+                  const g = calcMbGrade(p);
+                  buckets[g].total++;
+                  if (p.result === "win") buckets[g].wins++;
+                }
+                const rows = (["A","B","C","D","F"] as MbGrade[]).map(g => ({
+                  label: g,
+                  wins: buckets[g].wins,
+                  total: buckets[g].total,
+                  pct: buckets[g].total > 0 ? Math.round(buckets[g].wins / buckets[g].total * 100) : null,
+                })).filter(r => r.total > 0);
+                if (rows.length === 0) return null;
+                return (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                      <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: MUTED }}>Win % by Moneyball Grade</p>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {rows.map(r => (
+                        <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <MbGradeBadge grade={r.label as MbGrade} size="sm" />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ height: 6, borderRadius: 999, background: "rgba(19,35,58,0.08)", overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: 999,
+                                width: `${r.pct ?? 0}%`,
+                                background: (r.pct ?? 0) >= 65 ? "#22c55e" : (r.pct ?? 0) >= 45 ? "#D4A843" : "#ef4444",
+                              }} />
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: "#131A24", minWidth: 36, textAlign: "right" }}>
+                            {r.pct !== null ? `${r.pct}%` : "—"}
+                          </span>
+                          <span style={{ fontSize: 10, color: MUTED, minWidth: 40 }}>{r.wins}/{r.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Team win record */}
               {data.teamWin && (data.teamWin.wins + data.teamWin.losses) > 0 && (
