@@ -1727,11 +1727,7 @@ function TeamWinPanel() {
       </div>
 
       <div style={{ padding: 14 }}>
-        {isLoading && (
-          <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>
-            Scoring today's MLB slate…
-          </div>
-        )}
+        {isLoading && <BtsLoadingBar type="team" />}
         {error && (
           <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>
             Unable to load team picks — check back shortly.
@@ -2352,7 +2348,7 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
       })()}
 
       <div style={{ padding: 14 }}>
-        {isLoading && <div style={{ textAlign: "center", padding: "20px 0", color: "#6b7280", fontSize: 13 }}>Analyzing today's MLB slate…</div>}
+        {isLoading && <BtsLoadingBar type="mlb" />}
         {error && <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>Unable to load pick — check back shortly.</div>}
 
         {!isLoading && !error && !data?.primary && (
@@ -2481,6 +2477,126 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── BTS Loading Progress Bar ───────────────────────────────────────────────
+function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
+  const [pct, setPct] = useState(0);
+  const [stageIdx, setStageIdx] = useState(0);
+
+  const stages = type === "hitters" ? [
+    { label: "Fetching today's MLB schedule", target: 12 },
+    { label: "Loading confirmed lineups",      target: 28 },
+    { label: "Pulling pitcher matchup data",   target: 46 },
+    { label: "Fetching Statcast metrics",      target: 63 },
+    { label: "Scoring hitter candidates",      target: 80 },
+    { label: "Ranking & applying ML weights",  target: 94 },
+    { label: "Finalizing picks…",              target: 99 },
+  ] : type === "team" ? [
+    { label: "Fetching today's MLB schedule",  target: 14 },
+    { label: "Loading probable pitchers",      target: 32 },
+    { label: "Scoring starter matchups",       target: 52 },
+    { label: "Evaluating bullpen & lineups",   target: 70 },
+    { label: "Running 100 Monte Carlo sims",   target: 86 },
+    { label: "Applying coherence gate",        target: 96 },
+    { label: "Finalizing team picks…",         target: 99 },
+  ] : [
+    { label: "Fetching today's MLB games",     target: 18 },
+    { label: "Pulling pitcher data",           target: 40 },
+    { label: "Analyzing team matchups",        target: 68 },
+    { label: "Simulating game outcomes",       target: 88 },
+    { label: "Finalizing pick…",               target: 99 },
+  ];
+
+  useEffect(() => {
+    let frame: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setPct(prev => {
+        const currentStage = stages[stageIdx];
+        const target = currentStage?.target ?? 99;
+        if (prev < target) {
+          // Speed varies: fast early, slows near each stage target
+          const gap = target - prev;
+          const step = gap > 20 ? 2.2 : gap > 8 ? 1.2 : 0.4;
+          return Math.min(target, prev + step);
+        }
+        // Advance stage once target reached
+        if (stageIdx < stages.length - 1) {
+          setStageIdx(s => s + 1);
+        }
+        return prev;
+      });
+      frame = setTimeout(tick, 80);
+    };
+    frame = setTimeout(tick, 80);
+    return () => clearTimeout(frame);
+  }, [stageIdx]);
+
+  const currentLabel = stages[Math.min(stageIdx, stages.length - 1)]?.label ?? "Loading…";
+  const displayPct = Math.round(pct);
+
+  return (
+    <div style={{
+      borderRadius: 16,
+      border: "1px solid rgba(19,35,58,0.10)",
+      background: "#fff",
+      padding: "18px 20px",
+      marginBottom: 4,
+    }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: "#22c55e",
+            boxShadow: "0 0 6px rgba(34,197,94,0.7)",
+            animation: "pulse 1.4s ease-in-out infinite",
+          }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: "#131A24" }}>
+            {type === "hitters" ? "Building BTS Hitter Picks" : type === "team" ? "Scoring Team Win Picks" : "Analyzing MLB Pick of the Day"}
+          </span>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 900, color: displayPct >= 80 ? "#22c55e" : "#D4A843", fontVariantNumeric: "tabular-nums" }}>
+          {displayPct}%
+        </span>
+      </div>
+
+      {/* Progress track */}
+      <div style={{
+        height: 8, borderRadius: 999,
+        background: "rgba(19,35,58,0.08)",
+        overflow: "hidden",
+        marginBottom: 10,
+      }}>
+        <div style={{
+          height: "100%",
+          borderRadius: 999,
+          width: `${pct}%`,
+          background: `linear-gradient(90deg, #D4A843 0%, #22c55e ${Math.min(100, pct + 20)}%)`,
+          transition: "width 0.08s linear",
+          boxShadow: "0 0 8px rgba(34,197,94,0.35)",
+        }} />
+      </div>
+
+      {/* Stage dots */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
+        {stages.map((s, i) => (
+          <div key={i} style={{
+            flex: 1, height: 3, borderRadius: 999,
+            background: i < stageIdx ? "#22c55e"
+                      : i === stageIdx ? "#D4A843"
+                      : "rgba(19,35,58,0.10)",
+            transition: "background 0.3s",
+          }} />
+        ))}
+      </div>
+
+      {/* Current stage label */}
+      <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600 }}>
+        <span style={{ marginRight: 6 }}>⏳</span>{currentLabel}
+      </p>
     </div>
   );
 }
@@ -3201,14 +3317,8 @@ export default function BTS() {
         )
       )}
 
-      {/* Loading skeleton */}
-      {isLoading && (
-        <div className="space-y-3 animate-pulse">
-          {[1,2,3].map(i => (
-            <div key={i} className="h-28 rounded-2xl" style={{ background: "rgba(19,35,58,0.06)" }} />
-          ))}
-        </div>
-      )}
+      {/* Loading progress bar */}
+      {isLoading && <BtsLoadingBar type="hitters" />}
 
       {/* Error / no games */}
       {!isLoading && data?.error && (
