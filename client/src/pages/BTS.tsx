@@ -1664,6 +1664,62 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
               )}
             </div>
           )}
+
+          {/* Moneyball Analytics Summary — Team Pick */}
+          {(() => {
+            const simPct  = pick.simulation?.pickWinPct;
+            const pyth    = pick.expectedRuns?.pythagoreanWinPct;
+            const pickRpg = pick.expectedRuns?.pickRpg;
+            const oppRpg  = pick.expectedRuns?.oppRpg;
+            const ed0     = pick.edgeDrivers?.[0];
+            const ed1     = pick.edgeDrivers?.[1];
+            const sfp     = pick.pickSide === "home" ? pick.starters?.home : pick.starters?.away;
+            const sfpEra  = sfp?.era;
+            const sfpXera = sfp?.xera;
+            const lines: { icon: string; label: string; body: string }[] = [];
+
+            // Pythagorean Win%
+            if (pyth != null && pickRpg != null && oppRpg != null)
+              lines.push({ icon: "🧮", label: "Pythagorean Win%",
+                body: `${pyth}% win probability from run output (${pickRpg.toFixed(1)} vs ${oppRpg.toFixed(1)} RPG).${ pyth >= 62 ? " Strong run-scoring advantage — math backs this pick." : pyth >= 54 ? " Slight run edge. Model passed the coherence gate." : " Close game projected — pick qualified on analytical edge, not raw run margin." }` });
+
+            // Monte Carlo sim
+            if (simPct != null)
+              lines.push({ icon: "🎲", label: "Monte Carlo (100 sims)",
+                body: `${simPct}% simulated win rate across 100 randomized game outcomes.${ simPct >= 58 ? " Simulation strongly backs this pick." : simPct >= 50 ? " Simulation aligns with the model pick." : " Close sim result, but analytical edge was sufficient to qualify." }` });
+
+            // Top edge driver
+            if (ed0)
+              lines.push({ icon: ed0.icon, label: `Top Edge — ${ed0.name}`,
+                body: `+${ed0.gap}-point scoring advantage.${ ed0.gap >= 15 ? " Dominant gap — this category strongly tilts the matchup." : ed0.gap >= 10 ? " Meaningful edge the market likely hasn't fully priced in." : " Consistent edge across the scoring model." }${ ed1 ? ` Also: ${ed1.icon} ${ed1.name} (+${ed1.gap}).` : "" }` });
+
+            // Starter xERA vs ERA
+            if (sfpXera != null && sfpEra != null) {
+              const diff = sfpXera - sfpEra;
+              lines.push({ icon: "⚾", label: "Starter True Skill (xERA)",
+                body: `${pick.pickTeam} starter ERA ${sfpEra.toFixed(2)} / xERA ${sfpXera.toFixed(2)}.${ diff < -0.40 ? " Pitching better than ERA shows — tough for opponents to make contact." : diff > 0.40 ? " ERA flatters the starter. Expect regression, hitters will catch up." : " ERA and xERA aligned — consistent, predictable performance." }` });
+            }
+
+            if (lines.length === 0) return null;
+            return (
+              <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "10px 14px", marginTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13 }}>📚</span>
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {lines.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+                        <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -2165,6 +2221,70 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
               )}
             </Section>
           )}
+
+          {/* Moneyball Analytics Summary — Hitter Pick */}
+          {(() => {
+            const xba   = pick.stats?.xba;
+            const avg14 = pick.stats?.avg14;
+            const avgSeason = pick.stats?.avgSeason;
+            const xera  = pick.subScores?.pitcherXera;
+            const hh    = pick.stats?.hardHitPct;
+            const lines: { icon: string; label: string; body: string }[] = [];
+
+            // xBA vs surface avg — quality of contact
+            if (xba != null && (avg14 != null || avgSeason != null)) {
+              const surfaceAvg = avg14 ?? avgSeason ?? 0;
+              const diff = Math.round((xba - surfaceAvg) * 1000);
+              const xbaStr = "." + String(Math.round(xba * 1000)).padStart(3, "0");
+              const avgStr = "." + String(Math.round(surfaceAvg * 1000)).padStart(3, "0");
+              if (diff >= 30) lines.push({ icon: "🔬", label: "Contact Quality",
+                body: `xBA (${xbaStr}) runs +${diff} pts above recent avg (${avgStr}) — hitting the ball harder than results show. Regression to the mean favors this pick.` });
+              else if (diff <= -30) lines.push({ icon: "🔬", label: "Contact Quality",
+                body: `xBA (${xbaStr}) trails recent avg (${avgStr}) by ${Math.abs(diff)} pts — some luck in current numbers, but other factors qualified this pick.` });
+              else lines.push({ icon: "🔬", label: "Contact Quality",
+                body: `xBA (${xbaStr}) aligns with recent avg (${avgStr}) — exit velocity and launch angle support the surface stats.` });
+            }
+
+            // Hard hit %
+            if (hh != null) lines.push({ icon: "🔨", label: "Hard Contact",
+              body: `${hh}% of batted balls at 95+ mph exit velocity.${ hh >= 46 ? " Elite barrel rate — nearly half all contact is crushed." : hh >= 38 ? " Above-average power contact." : " Moderate hard-hit rate." }` });
+
+            // Plate appearances
+            if (pick.expectedPA > 0) lines.push({ icon: "📋", label: "Opportunity",
+              body: `Batting #${pick.lineupSlot ?? "?"}, projected ~${pick.expectedPA} PAs today.${ pick.expectedPA >= 4.5 ? " Top-order volume maximizes hit chances." : pick.expectedPA >= 4.0 ? " Solid PA volume." : " Slightly limited opportunities." }` });
+
+            // Value vs slate
+            if (pick.valueOverBaseline != null) lines.push({ icon: "⚖️", label: "Value vs Field",
+              body: `${pick.valueOverBaseline >= 0 ? "+" : ""}${pick.valueOverBaseline}pp vs today's slate median (${pick.slateMedian}%).${ pick.valueOverBaseline >= 8 ? " Stands out as a top-tier option on today's slate." : pick.valueOverBaseline >= 3 ? " Above average relative to today's field." : pick.valueOverBaseline >= 0 ? " In line with the top half of today's slate." : " Below today's median but other factors qualified this pick." }` });
+
+            // Top driver
+            if (pick.topDrivers?.[0]) lines.push({ icon: pick.topDrivers[0].icon, label: `Top Signal — ${pick.topDrivers[0].name}`,
+              body: `${pick.topDrivers[0].label} — the #1 contributor to this pick's score.${ pick.topDrivers[1] ? ` Backed by ${pick.topDrivers[1].icon} ${pick.topDrivers[1].name}: ${pick.topDrivers[1].label}.` : "" }` });
+
+            // Pitcher xERA
+            if (xera != null) lines.push({ icon: "⚾", label: "Pitcher True Skill",
+              body: `Opposing starter xERA ${xera.toFixed(2)}${ xera >= 4.80 ? " — hittable arm. ERA likely undersells how much contact batters make." : xera >= 4.20 ? " — elevated. Hitters have an edge." : xera <= 3.20 ? " — elite starter. Tough matchup." : " — league-average arm." }` });
+
+            if (lines.length === 0) return null;
+            return (
+              <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.16)", borderRadius: 12, padding: "10px 14px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13 }}>📚</span>
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {lines.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+                        <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Why This Pick — Reasoning */}
           <Section title="Edge Summary" icon="📋">
