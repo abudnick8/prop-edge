@@ -11317,6 +11317,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         p.slateMedian = parseFloat((slateMedian * 100).toFixed(1));
       }
 
+      // ── Moneyball Grade: computed server-side, weighted into final hitProbability ──
+      // Grade is a 0–100 score derived from 5 independent Moneyball signals.
+      // A small boost/penalty is then applied back into hitProbability so that
+      // the final displayed score and ranking reflect the full analytical picture.
+      for (const p of candidatePicks) {
+        let mbPts = 0;
+
+        // 1. Hit probability (35 pts)
+        const hp = p.hitProbability ?? 0;
+        if (hp >= 80)      mbPts += 35;
+        else if (hp >= 74) mbPts += 28;
+        else if (hp >= 68) mbPts += 20;
+        else if (hp >= 62) mbPts += 12;
+        else               mbPts += 5;
+
+        // 2. Value over baseline / slate median (20 pts)
+        const vob = p.valueOverBaseline ?? 0;
+        if (vob >= 12)     mbPts += 20;
+        else if (vob >= 7) mbPts += 15;
+        else if (vob >= 3) mbPts += 10;
+        else if (vob >= 0) mbPts += 5;
+
+        // 3. Opposing pitcher xERA (20 pts) — hittable arm = grade boost
+        const xera = p.subScores?.pitcherXera ?? 0;
+        if (xera >= 5.20)      mbPts += 20;
+        else if (xera >= 4.60) mbPts += 15;
+        else if (xera >= 4.00) mbPts += 10;
+        else if (xera >= 3.40) mbPts += 5;
+
+        // 4. Hard contact % (15 pts)
+        const hh = p.stats?.hardHitPct ?? 0;
+        if (hh >= 50)      mbPts += 15;
+        else if (hh >= 44) mbPts += 11;
+        else if (hh >= 38) mbPts += 7;
+        else if (hh >= 32) mbPts += 3;
+
+        // 5. xBA vs recent avg divergence bonus (10 pts)
+        const xba  = p.stats?.xba  ?? 0;
+        const surf = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
+        if (xba > 0 && surf > 0 && (xba - surf) >= 0.040) mbPts += 10;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.020) mbPts += 5;
+
+        const mbGrade: string = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
+        p.mbGrade = mbGrade;
+        p.mbScore = mbPts;
+
+        // Apply Moneyball boost into hitProbability:
+        // A = +2pp, B = +1pp, C = 0, D = -1pp, F = -2pp
+        // Capped so final prob stays within [45, 95]
+        const mbBoostPp = mbGrade === "A" ? 2 : mbGrade === "B" ? 1 : mbGrade === "C" ? 0 : mbGrade === "D" ? -1 : -2;
+        if (mbBoostPp !== 0) {
+          const boosted = Math.min(95, Math.max(45, p.hitProbability + mbBoostPp));
+          p.hitProbability = boosted;
+        }
+      }
+
       // ── Carry-over cap ──────────────────────────────────────────────────────
       // Non-near-perfect repeat players are blocked outright (heavy formMult penalty
       // pushes them to the bottom, and this gate hard-blocks them as a safety net).
@@ -20127,6 +20183,58 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           });
         } catch (gameErr: any) {
           console.warn(`[TeamWin] game error:`, gameErr.message);
+        }
+      }
+
+      // ── Team Moneyball Grade: server-side, weighted into winnerScore ──
+      for (const g of scoredGames) {
+        let mbPts = 0;
+
+        // 1. Monte Carlo sim win% (35 pts)
+        const simPct = g.simulation?.pickWinPct ?? 0;
+        if (simPct >= 68)      mbPts += 35;
+        else if (simPct >= 60) mbPts += 27;
+        else if (simPct >= 54) mbPts += 18;
+        else if (simPct >= 50) mbPts += 10;
+        else                   mbPts += 4;
+
+        // 2. Pythagorean Win% (25 pts)
+        const pyth = g.expectedRuns?.pythagoreanWinPct ?? 0;
+        if (pyth >= 65)      mbPts += 25;
+        else if (pyth >= 58) mbPts += 18;
+        else if (pyth >= 53) mbPts += 11;
+        else if (pyth >= 50) mbPts += 5;
+
+        // 3. Score edge (20 pts)
+        const edge = g.edge ?? 0;
+        if (edge >= 18)      mbPts += 20;
+        else if (edge >= 13) mbPts += 15;
+        else if (edge >= 9)  mbPts += 10;
+        else if (edge >= 5)  mbPts += 5;
+
+        // 4. Top edge driver gap (10 pts)
+        const ed0gap = g.edgeDrivers?.[0]?.gap ?? 0;
+        if (ed0gap >= 18)      mbPts += 10;
+        else if (ed0gap >= 12) mbPts += 7;
+        else if (ed0gap >= 7)  mbPts += 4;
+
+        // 5. Opp starter xERA (10 pts)
+        const osp   = g.pickSide === "home" ? g.starters?.away : g.starters?.home;
+        const ospX  = osp?.xera ?? 0;
+        if (ospX >= 5.20)      mbPts += 10;
+        else if (ospX >= 4.60) mbPts += 7;
+        else if (ospX >= 4.00) mbPts += 4;
+
+        const mbGrade: string = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
+        g.mbGrade = mbGrade;
+        g.mbScore = mbPts;
+
+        // Apply Moneyball boost into winnerScore:
+        // A = +3, B = +2, C = 0, D = -1, F = -2
+        // Capped so final score stays within [50, 100]
+        const mbBoost = mbGrade === "A" ? 3 : mbGrade === "B" ? 2 : mbGrade === "C" ? 0 : mbGrade === "D" ? -1 : -2;
+        if (mbBoost !== 0) {
+          g.winnerScore = Math.min(100, Math.max(50, (g.winnerScore ?? 68) + mbBoost));
         }
       }
 

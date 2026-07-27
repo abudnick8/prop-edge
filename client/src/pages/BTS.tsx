@@ -293,7 +293,7 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
             </span>
           )}
           {/* Moneyball Grade coin */}
-          <MbGradeBadge grade={calcMbGrade(pick)} size="md" />
+          <MbGradeBadge grade={(pick.mbGrade ?? calcMbGrade(pick)) as MbGrade} size="md" />
           {canRemove && (
             <button
               onClick={async (e) => {
@@ -1048,7 +1048,7 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                   xera <= 3.20 ? " — elite starter. Tough matchup." : " — league-average arm."}` });
 
             if (lines.length === 0) return null;
-            const mbGrade = calcMbGrade(pick);
+            const mbGrade = (pick.mbGrade ?? calcMbGrade(pick)) as MbGrade;
             const gradeDesc: Record<MbGrade, string> = {
               A: "Elite confluence across all signals.",
               B: "Strong across most Moneyball metrics.",
@@ -1064,7 +1064,10 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
                     <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDesc[mbGrade]}</p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDesc[mbGrade]}</p>
+                      {pick.mbScore != null && <p style={{ fontSize: 9, color: "#3D4B58", margin: 0, opacity: 0.7 }}>Score: {pick.mbScore}/100 · weighted into pick</p>}
+                    </div>
                     <MbGradeBadge grade={mbGrade} size="lg" />
                   </div>
                 </div>
@@ -1456,7 +1459,7 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
           </div>
           <span className="text-[9px] font-bold text-muted-foreground">Score</span>
           {/* Moneyball Grade coin */}
-          <MbGradeBadge grade={calcTeamMbGrade(pick)} size="md" />
+          <MbGradeBadge grade={(pick.mbGrade ?? calcTeamMbGrade(pick)) as MbGrade} size="md" />
         </div>
       </div>
 
@@ -1845,7 +1848,7 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
             }
 
             if (lines.length === 0) return null;
-            const mbGradeT = calcTeamMbGrade(pick);
+            const mbGradeT = (pick.mbGrade ?? calcTeamMbGrade(pick)) as MbGrade;
             const gradeDescT: Record<MbGrade, string> = {
               A: "Elite sim + run edge. High conviction.",
               B: "Strong model support across key factors.",
@@ -1861,7 +1864,10 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
                     <p style={{ fontSize: 10, fontWeight: 900, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Moneyball Analytics</p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDescT[mbGradeT]}</p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "#3D4B58", margin: 0 }}>{gradeDescT[mbGradeT]}</p>
+                      {pick.mbScore != null && <p style={{ fontSize: 9, color: "#3D4B58", margin: 0, opacity: 0.7 }}>Score: {pick.mbScore}/100 · weighted into pick</p>}
+                    </div>
                     <MbGradeBadge grade={mbGradeT} size="lg" />
                   </div>
                 </div>
@@ -3165,7 +3171,7 @@ function BtsAnalyticsPanel() {
                   C: { wins: 0, total: 0 }, D: { wins: 0, total: 0 }, F: { wins: 0, total: 0 },
                 };
                 for (const p of graded) {
-                  const g = calcMbGrade(p);
+                  const g = (p.mbGrade ?? calcMbGrade(p)) as MbGrade;
                   buckets[g].total++;
                   if (p.result === "win") buckets[g].wins++;
                 }
