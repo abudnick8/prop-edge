@@ -10476,6 +10476,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
       const slateGames: any[] = [];
       let candidatePicks: any[] = [];
+      let mbSubCandidatePicks: any[] = []; // sub-threshold players (55-59%) for MB extra picks
 
       for (const game of games) {
         const homeTeam = game.teams?.home;
@@ -10653,6 +10654,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
           console.log(`[BTS] buildCandidates team=${teamName} side=${side} players=${players.length} src=${lineupSrc}`);
           const candidates: any[] = [];
+          const mbSubCandidates: any[] = []; // players 55-59% prob — Moneyball pool
           for (let slotIdx = 0; slotIdx < Math.min(players.length, 8); slotIdx++) {
             const p = players[slotIdx];
             const pid = p.id ?? p.person?.id;
@@ -10949,7 +10951,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               })();
 
               // ── Gate 3: Minimum calibrated hit probability ────────────────
-              if (hitProbabilityPct < MIN_HIT_PROBABILITY) { console.log(`[BTS] prob filter OUT: ${fullName} pid=${pid} prob=${hitProbabilityPct} raw=${rawScore.toFixed(3)}`); continue; }
+              if (hitProbabilityPct < MIN_HIT_PROBABILITY) {
+                // Capture 55-59% players into MB sub pool for Moneyball Extra Picks
+                if (hitProbabilityPct >= 55 && !isScratched) {
+                  const oppPit = side === "home"
+                    ? { name: awayTeam.probablePitcher?.fullName ?? "TBD", id: awayTeam.probablePitcher?.id, hand: oppPitcherSeasonStats?.pitchHand ?? "R" }
+                    : { name: homeTeam.probablePitcher?.fullName ?? "TBD", id: homeTeam.probablePitcher?.id, hand: oppPitcherSeasonStats?.pitchHand ?? "R" };
+                  mbSubCandidates.push({ playerId: pid, name: fullName, team: teamName, side, bats, lineupSlot,
+                    lineupSource: p.lineupSource ?? lineupSrc, isScratched, isOverridePick, opponentPitcher: oppPit,
+                    hitProbability: hitProbabilityPct, rawScore,
+                    subScores: { rawScore, hitProbabilityBase, pitcherXera, platoonSplitScore: parseFloat(platoonSplitScore.toFixed(3)), analyticsBoostMult: parseFloat(analyticsBoostMult.toFixed(3)) },
+                    stats: { avg14: stats.avg14, avg30: stats.avg30, avgSeason: stats.avgSeason,
+                      hardHitPct: parseFloat(savant?.hard_hit_percent ?? "0") || 0,
+                      xba: parseFloat(savant?.xba ?? "0") || 0,
+                      xwoba: parseFloat(savant?.xwoba ?? "0") || 0, ghp14: stats.ghp14 ?? null },
+                    game: { matchup: slateEntry.matchup, venue, gameTime: localTime, gameStartMs: gameDate ? new Date(gameDate).getTime() : null },
+                    confidenceTier: confTierBTS, analyticsNote, _mbSubThreshold: true });
+                }
+                console.log(`[BTS] prob filter OUT: ${fullName} pid=${pid} prob=${hitProbabilityPct} raw=${rawScore.toFixed(3)}`);
+                continue;
+              }
 
               const playerLineupSource = p.lineupSource ?? lineupSrc;
 
@@ -11121,16 +11142,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               });
             } catch (playerErr: any) { console.warn(`[BTS] player scoring error pid=${p.id ?? p.person?.id} team=${teamName} slot=${slotIdx}: ${playerErr.message}`); }
           }
-          return candidates;
+          return { main: candidates, mbSub: mbSubCandidates };
         };
 
-        const [homeCandidates, awayCandidates] = await Promise.all([
+        const [homeRes, awayRes] = await Promise.all([
           buildCandidates(homePlayers, "home", awaySplits, homeTeam.team?.name ?? "", homeLineupSource, awaySeasonStats, awayPitcherSavant),
           buildCandidates(awayPlayers, "away", homeSplits, awayTeam.team?.name ?? "", awayLineupSource, homeSeasonStats, homePitcherSavant),
         ]);
 
-        candidatePicks.push(...homeCandidates, ...awayCandidates);
-        console.log(`[BTS] game=${slateEntry.matchup} home=${homeCandidates.length} away=${awayCandidates.length} candidates`);
+        candidatePicks.push(...homeRes.main, ...awayRes.main);
+        mbSubCandidatePicks.push(...homeRes.mbSub, ...awayRes.mbSub);
+        console.log(`[BTS] game=${slateEntry.matchup} home=${homeRes.main.length} away=${awayRes.main.length} candidates mb=${homeRes.mbSub.length + awayRes.mbSub.length}`);
 
         } catch (gameErr: any) {
           console.warn(`[BTS] game processing error for ${slateEntry?.matchup ?? game.gamePk}: ${gameErr.message}`);
@@ -11394,14 +11416,39 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // ── Moneyball Extra Picks (up to 5, grade A or B only) ──────────────────
-      // Candidates that didn't make the main 10 but score A or B on the Moneyball
-      // grading system. Shown in a separate "Moneyball Picks" section in the UI.
+      // Pool 1: main candidates that passed the 60% gate but didn't make top 10
+      // Pool 2: sub-threshold candidates (55-59%) that have elite Moneyball signals
+      // Compute MB grade for the sub-threshold pool first
+      for (const p of mbSubCandidatePicks) {
+        let mbPts = 0;
+        const hp2 = p.hitProbability ?? 0;
+        if (hp2 >= 80) mbPts += 35; else if (hp2 >= 74) mbPts += 28; else if (hp2 >= 68) mbPts += 20; else if (hp2 >= 62) mbPts += 12; else mbPts += 5;
+        const vob2 = p.valueOverBaseline ?? 0;
+        if (vob2 >= 12) mbPts += 20; else if (vob2 >= 7) mbPts += 15; else if (vob2 >= 3) mbPts += 10; else if (vob2 >= 0) mbPts += 5;
+        const xera2 = p.subScores?.pitcherXera ?? 0;
+        if (xera2 >= 5.20) mbPts += 20; else if (xera2 >= 4.60) mbPts += 15; else if (xera2 >= 4.00) mbPts += 10; else if (xera2 >= 3.40) mbPts += 5;
+        const hh2 = p.stats?.hardHitPct ?? 0;
+        if (hh2 >= 50) mbPts += 15; else if (hh2 >= 44) mbPts += 11; else if (hh2 >= 38) mbPts += 7; else if (hh2 >= 32) mbPts += 3;
+        const xba2 = p.stats?.xba ?? 0; const surf2 = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
+        if (xba2 > 0 && surf2 > 0 && (xba2 - surf2) >= 0.040) mbPts += 10;
+        else if (xba2 > 0 && surf2 > 0 && (xba2 - surf2) >= 0.020) mbPts += 5;
+        p.mbGrade = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
+        p.mbScore = mbPts;
+      }
+
       const freshPickIds = new Set(freshPicks.map((p: any) => p.playerId));
       const mbExtraPicks: any[] = [];
       const mbSeenTeams = new Set(freshPicks.map((p: any) => p.team));
-      for (const p of candidatePicks) {
-        if (freshPickIds.has(p.playerId)) continue;   // already in main picks
-        if (mbSeenTeams.has(p.team)) continue;        // one player per team max
+
+      // Combine both pools — main overflows first, then sub-threshold — sorted by MB score desc
+      const mbPool = [
+        ...candidatePicks.filter((p: any) => !freshPickIds.has(p.playerId)),
+        ...mbSubCandidatePicks,
+      ].sort((a: any, b: any) => (b.mbScore ?? 0) - (a.mbScore ?? 0));
+
+      for (const p of mbPool) {
+        if (freshPickIds.has(p.playerId)) continue;
+        if (mbSeenTeams.has(p.team)) continue;
         if (p.mbGrade !== "A" && p.mbGrade !== "B") continue;
         if (p.isScratched) continue;
         mbExtraPicks.push(p);
