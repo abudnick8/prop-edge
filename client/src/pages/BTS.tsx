@@ -1148,6 +1148,43 @@ const BTS_GLOSSARY = [
     emoji: "⚠️",
     def: "Player passed on elite Statcast profile despite cold surface stats: 30+ batted balls, 15+ recent PA, and 4 of 6 signals firing (xBA ≥ .310, HH% ≥ 46%, barrel% ≥ 9%, GHP ≥ 70%, good matchup, whiff% ≤ 22%). Higher variance — verify before locking.",
   },
+  // ── Phase 5 Moneyball additions ──
+  {
+    term: "Top Drivers",
+    label: "Model Driver Chips",
+    emoji: "🏅",
+    def: "The 3 scoring components that contributed the most to this pick's hit probability. Gold chip = #1 driver. Shown on every card so you can immediately see WHY the model liked this player — e.g. \"⚾ Pitcher Matchup\" means the starter's xERA was a major factor.",
+  },
+  {
+    term: "~N PA",
+    label: "Expected Plate Appearances",
+    emoji: "📋",
+    def: "Estimated at-bats for today based on lineup slot and game pace. Top-of-order hitters in a 9-inning game get ~4.8 PA; bottom-order ~3.8 PA. More plate appearances = more chances for a hit = direct probability boost.",
+  },
+  {
+    term: "+Xpp vs slate",
+    label: "Value Over Baseline",
+    emoji: "📈",
+    def: "How far above or below today's slate median this pick sits, in percentage points. If the median hit probability is 62% and this player is at 71%, they show +9pp. Positive values in green mean this pick stands out from the field.",
+  },
+  {
+    term: "Pythagorean Win %",
+    label: "Run-Based Win Probability",
+    emoji: "🧮",
+    def: "A sabermetric formula (RS² / (RS²+RA²)) that converts projected runs scored vs runs allowed into a win probability. More accurate than betting-market implied odds because it ignores line movement and uses actual run production data. Shown in team pick drawers.",
+  },
+  {
+    term: "Edge Drivers",
+    label: "Team Win Edge Factors",
+    emoji: "⚡",
+    def: "The top 3 categories where the picked team has a scoring advantage over the opponent: Starter Edge, Bullpen Edge, Offense vs Pitcher Hand, Lineup Depth, Market Edge, or Environment. Each chip shows the raw gap (e.g. \"🎯 Starter Edge +14\") so you can see exactly what pushed the model toward this team.",
+  },
+  {
+    term: "Monte Carlo Sim",
+    label: "100-Game Simulation",
+    emoji: "🎲",
+    def: "The team win model runs 100 randomized simulations of the game using run-scoring distributions for both teams. If the opponent wins more than 50%+8% of simulations, the model flips its pick. If your team wins fewer than 42% of sims, the pick is disqualified entirely — a hard \"coherence gate\" to catch cases where analytics support the pick but math doesn't.",
+  },
 ];
 
 // ── Module-level color constants (shared across all BTS sub-components) ──────
@@ -2839,6 +2876,69 @@ function HowToReadBTS() {
                   <p className="text-[11px] font-semibold text-foreground w-36 flex-shrink-0">{row.label}</p>
                   <p className="text-[10px] text-muted-foreground flex-1">{row.desc}</p>
                   <p className="text-[10px] font-black" style={{ color: (row as any).color ?? "#b8930a" }}>{row.pct}%</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Moneyball Methodology */}
+          <div
+            className="rounded-xl p-3 mt-1"
+            style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.18)" }}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span style={{ fontSize: 16 }}>📚</span>
+              <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#3b82f6" }}>The Moneyball Methodology</p>
+            </div>
+            <p className="text-[11px] leading-relaxed mb-3" style={{ color: MUTED }}>
+              Clubhouse IQ applies the same data-over-instinct philosophy from Michael Lewis's <em>Moneyball</em> — finding edges the market misprice by leaning on objective metrics instead of reputation or surface stats.
+            </p>
+            <div className="space-y-2">
+              {[
+                {
+                  icon: "🔬",
+                  title: "Quality-of-Contact over Batting Average",
+                  body: "xBA and xwOBA measure what a hitter *deserves* based on exit velocity and launch angle. A .220 hitter with a .310 xBA is being unlucky — the model bets on regression to the mean, not current slump.",
+                },
+                {
+                  icon: "⚾",
+                  title: "Pitcher True Skill (xERA / FIP)",
+                  body: "ERA is polluted by fielding and luck. xERA strips those out, revealing the pitcher's actual run-prevention ability. A 3.20 ERA pitcher with a 4.60 xERA is overrated — batters will catch up.",
+                },
+                {
+                  icon: "📋",
+                  title: "Plate Appearance Volume",
+                  body: "A leadoff hitter gets ~4.8 PAs vs a 9-hole hitter's ~3.6. More chances = higher hit probability. The model bakes lineup slot directly into scoring, rewarding top-order hitters in favorable matchups.",
+                },
+                {
+                  icon: "⚖️",
+                  title: "Value Over Baseline (Slate Median)",
+                  body: "Every pick is graded against the day's full candidate pool. A +9pp edge over the median means this pick is in the top tier of the slate — not just good in isolation, but better than the alternatives.",
+                },
+                {
+                  icon: "🎲",
+                  title: "Monte Carlo Simulation (Team Picks)",
+                  body: "Team win picks run 100 randomized game simulations using each team's actual run-scoring distributions. If the simulation contradicts the model (opponent wins 58%+ of sims), the pick is flipped or disqualified entirely — no pick goes live unless the math backs it up.",
+                },
+                {
+                  icon: "🧮",
+                  title: "Pythagorean Win Expectancy",
+                  body: "RS²/(RS²+RA²) converts run output into a win probability. Teams that win close games repeatedly tend to regress — Pythagorean win% is a more stable predictor than actual record, used by every serious front office.",
+                },
+                {
+                  icon: "🤖",
+                  title: "ML Feedback Loop",
+                  body: "Every graded pick updates the model's weights. If \"Pitcher Matchup\" picks are winning at 75% this season, that component gains influence. Underperforming signals get down-weighted automatically over time.",
+                },
+              ].map(item => (
+                <div key={item.title} className="rounded-lg p-2.5" style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                  <div className="flex items-start gap-2">
+                    <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                    <div>
+                      <p className="text-[11px] font-black text-foreground mb-0.5">{item.title}</p>
+                      <p className="text-[10px] leading-relaxed" style={{ color: MUTED }}>{item.body}</p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
