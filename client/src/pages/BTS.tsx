@@ -1984,7 +1984,7 @@ function TeamWinPanel() {
       </div>
 
       <div style={{ padding: 14 }}>
-        {(isLoading || (!!data && !error)) && <BtsLoadingBar type="team" done={!isLoading && !!data} />}
+        {isLoading && <BtsLoadingBar type="team" />}
         {error && (
           <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>
             Unable to load team picks — check back shortly.
@@ -2669,7 +2669,7 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
       })()}
 
       <div style={{ padding: 14 }}>
-        {(isLoading || (!!data && !error)) && <BtsLoadingBar type="mlb" done={!isLoading && !!data} />}
+        {isLoading && <BtsLoadingBar type="mlb" />}
         {error && <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>Unable to load pick — check back shortly.</div>}
 
         {!isLoading && !error && !data?.primary && (
@@ -3709,10 +3709,10 @@ export default function BTS() {
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["/api/bts-picks", today],
     queryFn: () => apiRequest("GET", `/api/bts-picks`).then(r => r.json()),
-    staleTime: 0,
-    refetchInterval: 5 * 60_000,   // refresh every 5 min (was 15)
-    refetchOnMount: "always",       // always fetch fresh on mount
-    refetchOnWindowFocus: true,     // refetch when tab regains focus
+    staleTime: 4 * 60_000,          // treat data as fresh for 4 min — avoids refetch on every mount/focus
+    refetchInterval: 5 * 60_000,   // background refresh every 5 min
+    refetchOnMount: true,           // only refetch if data is stale (respects staleTime)
+    refetchOnWindowFocus: false,    // don't trigger full 60s reload just from tab focus
     retry: 2,
   });
 
@@ -3899,7 +3899,7 @@ export default function BTS() {
       )}
 
       {/* Loading progress bar */}
-      {(isLoading || (!!data && !error)) && <BtsLoadingBar type="hitters" done={!isLoading && !!data} />}
+      {isLoading && <BtsLoadingBar type="hitters" />}
 
       {/* Error / no games */}
       {!isLoading && data?.error && (
@@ -4192,7 +4192,7 @@ export default function BTS() {
       {btsTab === "moneyball" && (
         <>
           {/* Loading bar */}
-          {(isLoading || (!!data && !error)) && <BtsLoadingBar type="hitters" done={!isLoading && !!data} />}
+          {isLoading && <BtsLoadingBar type="hitters" />}
 
           {/* Header card */}
           <div className="rounded-2xl p-4" style={{ background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.30)" }}>
@@ -4209,7 +4209,7 @@ export default function BTS() {
           </div>
 
           {/* MB picks */}
-          {!isLoading && picks.filter((p: any) => p._mbExtraSlot).length === 0 && (
+          {!isLoading && mbPicks.length === 0 && (
             <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}>
               <p className="text-xs font-bold text-muted-foreground">No Moneyball A/B grade picks found yet</p>
               <p className="text-[10px] text-muted-foreground mt-1">Check back after lineups post (2–3 hrs before first pitch)</p>
@@ -4217,14 +4217,13 @@ export default function BTS() {
           )}
 
           <div className="space-y-3">
-            {picks.filter((p: any) => p._mbExtraSlot).map((pick: any, i: number) => (
+            {mbPicks.map((pick: any, i: number) => (
               <PickCard key={pick.playerId ?? i} pick={pick} canRemove={false} />
             ))}
           </div>
 
           {/* MB-specific analytics: grade breakdown from graded history */}
-          {picks.filter((p: any) => p._mbExtraSlot).length > 0 && (() => {
-            const mbPicks = picks.filter((p: any) => p._mbExtraSlot);
+          {mbPicks.length > 0 && (() => {
             return (
               <div className="rounded-2xl p-4" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
                 <p className="text-xs font-black text-foreground mb-3">Today's Moneyball Signal Breakdown</p>
