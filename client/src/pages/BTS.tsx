@@ -4185,21 +4185,23 @@ export default function BTS() {
             <div className="flex gap-3 mt-3 pt-3" style={{ borderTop: "1px solid rgba(212,168,67,0.20)" }}>
               <div className="text-center flex-1">
                 <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Today</p>
-                <p className="text-sm font-black text-foreground">
-                  {data.mbTodayRecord?.wins ?? 0}–{data.mbTodayRecord?.losses ?? 0}
-                  {(data.mbTodayRecord?.pending ?? 0) > 0 && <span className="text-[10px] text-muted-foreground"> ({data.mbTodayRecord.pending} live)</span>}
-                </p>
-                {data.mbTodayRecord?.winPct != null && (
-                  <p className="text-[10px] font-bold" style={{ color: data.mbTodayRecord.winPct >= 60 ? "#16a34a" : "#3D4B58" }}>{data.mbTodayRecord.winPct}%</p>
+                <div className="flex items-center justify-center gap-2 mt-0.5">
+                  <span className="text-sm font-black" style={{ color: "#16a34a" }}>{data.mbTodayRecord?.wins ?? 0}W</span>
+                  <span className="text-[10px] text-muted-foreground">/</span>
+                  <span className="text-sm font-black" style={{ color: "#ef4444" }}>{data.mbTodayRecord?.losses ?? 0}L</span>
+                </div>
+                {(data.mbTodayRecord?.pending ?? 0) > 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{data.mbTodayRecord.pending} live</p>
                 )}
               </div>
               <div style={{ width: 1, background: "rgba(212,168,67,0.25)" }} />
               <div className="text-center flex-1">
                 <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Season</p>
-                <p className="text-sm font-black text-foreground">{data.mbSeasonRecord?.wins ?? 0}–{data.mbSeasonRecord?.losses ?? 0}</p>
-                {data.mbSeasonRecord?.winPct != null && (
-                  <p className="text-[10px] font-bold" style={{ color: data.mbSeasonRecord.winPct >= 60 ? "#16a34a" : "#3D4B58" }}>{data.mbSeasonRecord.winPct}% win rate</p>
-                )}
+                <div className="flex items-center justify-center gap-2 mt-0.5">
+                  <span className="text-sm font-black" style={{ color: "#16a34a" }}>{data.mbSeasonRecord?.wins ?? 0}W</span>
+                  <span className="text-[10px] text-muted-foreground">/</span>
+                  <span className="text-sm font-black" style={{ color: "#ef4444" }}>{data.mbSeasonRecord?.losses ?? 0}L</span>
+                </div>
               </div>
             </div>
           )}
