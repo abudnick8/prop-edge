@@ -4277,8 +4277,8 @@ export default function BTS() {
         </div>
       )}
 
-      {/* ─── MONEYBALL EXTRA PICKS ─────────────────────────────────────────── */}
-      {!isLoading && mbPicks.length > 0 && (
+      {/* ─── MONEYBALL EXTRA PICKS (slots 11-15, A/B grade only) ───────────── */}
+      {!isLoading && picks.filter((p: any) => p._mbExtraSlot).length > 0 && (
         <div
           className="rounded-2xl p-4"
           style={{ background: "rgba(212,168,67,0.07)", border: "1px solid rgba(212,168,67,0.30)" }}
@@ -4294,47 +4294,11 @@ export default function BTS() {
             </span>
           </div>
           <p className="text-[10px] text-muted-foreground mb-3">
-            These players didn't rank in the top picks overall but score elite on the Moneyball analytical model. Strong secondary options with excellent data signals.
+            These players qualified exclusively on Moneyball analytical signals — strong data confluence even outside the top-10 probability rankings.
           </p>
-          <div className="space-y-2">
-            {mbPicks.map((p: any, i: number) => (
-              <div
-                key={i}
-                className="rounded-xl p-3 cursor-pointer"
-                style={{ background: "rgba(246,241,231,0.7)", border: "1px solid rgba(212,168,67,0.25)" }}
-                onClick={() => setExpandedPick(expandedPick === `mb_${p.playerId}` ? null : `mb_${p.playerId}`)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MbGradeBadge grade={(p.mbGrade ?? "B") as MbGrade} size="sm" />
-                    <div>
-                      <p className="text-xs font-black text-foreground">{p.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{p.team} · {p.opponentPitcher?.name ?? "TBD"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {p.valueOverBaseline != null && (
-                      <span className="text-[10px] font-bold" style={{ color: p.valueOverBaseline >= 0 ? "#16a34a" : "#dc2626" }}>
-                        {p.valueOverBaseline >= 0 ? "+" : ""}{p.valueOverBaseline}pp
-                      </span>
-                    )}
-                    <span className="text-sm font-black" style={{ color: "#D4A843" }}>{p.hitProbability}%</span>
-                    <ChevronDown
-                      size={12}
-                      style={{
-                        color: "#3D4B58",
-                        transform: expandedPick === `mb_${p.playerId}` ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform 0.2s",
-                      }}
-                    />
-                  </div>
-                </div>
-                {expandedPick === `mb_${p.playerId}` && (
-                  <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(212,168,67,0.20)" }}>
-                    <PickCard pick={p} onClose={() => setExpandedPick(null)} canRemove={false} />
-                  </div>
-                )}
-              </div>
+          <div className="space-y-3">
+            {picks.filter((p: any) => p._mbExtraSlot).map((pick: any, i: number) => (
+              <PickCard key={pick.playerId ?? i} pick={pick} canRemove={false} />
             ))}
           </div>
         </div>

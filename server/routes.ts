@@ -11396,23 +11396,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // ── Carry-over cap ──────────────────────────────────────────────────────
-      // Non-near-perfect repeat players are blocked outright (heavy formMult penalty
-      // pushes them to the bottom, and this gate hard-blocks them as a safety net).
+      // Slots 1-10: normal scoring order, one per team, no repeat-yesterday
+      // Slots 11-15: reserved exclusively for Moneyball grade A or B picks
       // Near-perfect repeats are allowed through but capped at MAX_REPEATS (3).
       const seenTeams  = new Set<string>();
       const freshPicks: any[] = [];
       let repeatCount = 0;
-      const MAX_REPEATS = 3; // absolute max carry-overs even for near-perfect repeats
+      const MAX_REPEATS = 3;
+      // Pass 1: fill slots 1-10 with normal scoring
       for (const p of candidatePicks) {
+        if (freshPicks.length >= 10) break;
         if (seenTeams.has(p.team)) continue;
-        // Hard block: repeat player who did NOT qualify as near-perfect
         if (p._repeatYesterday && !p._nearPerfectRepeat) continue;
-        // Cap near-perfect repeats at 3 total
         if (p._repeatYesterday && repeatCount >= MAX_REPEATS) continue;
         seenTeams.add(p.team);
         freshPicks.push(p);
         if (p._repeatYesterday) repeatCount++;
-        if (freshPicks.length >= 10) break;
+      }
+      // Pass 2: fill slots 11-15 with A/B Moneyball picks not already included
+      // Pull from both main overflow AND sub-threshold (55-59%) pool
+      const mainPickIds = new Set(freshPicks.map((p: any) => p.playerId));
+      // Build combined MB overflow pool sorted by mbScore desc
+      const mbOverflowPool = [
+        ...candidatePicks.filter((p: any) => !mainPickIds.has(p.playerId)),
+        ...mbSubCandidatePicks,
+      ].sort((a: any, b: any) => (b.mbScore ?? 0) - (a.mbScore ?? 0));
+      const mbSeenTeamsSlots = new Set<string>(); // separate seen-teams for MB slots (allow same team as main if needed)
+      for (const p of mbOverflowPool) {
+        if (freshPicks.length >= 15) break;
+        if (mainPickIds.has(p.playerId)) continue;
+        if (mbSeenTeamsSlots.has(p.playerId)) continue; // no duplicate players
+        if (p.mbGrade !== "A" && p.mbGrade !== "B") continue;
+        if (p.isScratched) continue;
+        p._mbExtraSlot = true; // flag so frontend/cache can distinguish
+        freshPicks.push(p);
+        mbSeenTeamsSlots.add(p.playerId);
       }
 
       // ── Moneyball Extra Picks (up to 5, grade A or B only) ──────────────────
@@ -11458,7 +11476,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // ── Merge into the daily persistent cache ──────────────────────────
       // Rule: once a player is in today's cache they stay ALL day.
-      // New players from freshPicks can be added (up to the 10-cap).
+      // New players from freshPicks can be added (up to the 15-cap: 10 normal + 5 Moneyball A/B).
       // Existing cached players are NEVER removed.
       if (!btsPicksCache[targetDate]) {
         btsPicksCache[targetDate] = [];
@@ -11474,7 +11492,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           existing.hitProbability = pick.hitProbability;
           continue;
         }
-        if (cachedEntries.length >= (targetDate === "2026-05-06" ? 15 : 10)) break; // 15 cap on 5/6/26 only, 10 all other days
+        if (cachedEntries.length >= 15) break; // 15 picks max (10 normal + 5 Moneyball A/B)
         cachedEntries.push({
           playerId:       pick.playerId,
           name:           pick.name,
