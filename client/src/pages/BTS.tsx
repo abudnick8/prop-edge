@@ -1984,7 +1984,7 @@ function TeamWinPanel() {
       </div>
 
       <div style={{ padding: 14 }}>
-        {isLoading && <BtsLoadingBar type="team" />}
+        {(isLoading || (!!data && !error)) && <BtsLoadingBar type="team" done={!isLoading && !!data} />}
         {error && (
           <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>
             Unable to load team picks — check back shortly.
@@ -2669,7 +2669,7 @@ function DailyPickPanel({ alwaysShowHistory = false }: { alwaysShowHistory?: boo
       })()}
 
       <div style={{ padding: 14 }}>
-        {isLoading && <BtsLoadingBar type="mlb" />}
+        {(isLoading || (!!data && !error)) && <BtsLoadingBar type="mlb" done={!isLoading && !!data} />}
         {error && <div style={{ textAlign: "center", padding: "16px 0", color: "#f87171", fontSize: 12 }}>Unable to load pick — check back shortly.</div>}
 
         {!isLoading && !error && !data?.primary && (
@@ -2930,47 +2930,59 @@ function MbGradeBadge({ grade, size = "md" }: { grade: MbGrade; size?: "sm" | "m
 }
 
 // ─── BTS Loading Progress Bar ───────────────────────────────────────────────
-function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
+function BtsLoadingBar({ type, done }: { type: "hitters" | "team" | "mlb"; done?: boolean }) {
   const [pct, setPct] = useState(0);
   const [stageIdx, setStageIdx] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
   const stages = type === "hitters" ? [
-    { label: "Fetching today's MLB schedule", target: 12 },
-    { label: "Loading confirmed lineups",      target: 28 },
-    { label: "Pulling pitcher matchup data",   target: 46 },
-    { label: "Fetching Statcast metrics",      target: 63 },
-    { label: "Scoring hitter candidates",      target: 80 },
-    { label: "Ranking & applying ML weights",  target: 94 },
-    { label: "Finalizing picks…",              target: 99 },
+    { label: "Fetching today's MLB schedule",      target: 12 },
+    { label: "Loading confirmed lineups",           target: 28 },
+    { label: "Pulling pitcher matchup data",        target: 46 },
+    { label: "Fetching Statcast metrics",           target: 63 },
+    { label: "Scoring hitter candidates",           target: 80 },
+    { label: "Ranking & applying ML weights",       target: 92 },
+    { label: "Grading Moneyball extra picks…",      target: 97 },
+    { label: "Picks ready!",                        target: 100 },
   ] : type === "team" ? [
-    { label: "Fetching today's MLB schedule",  target: 14 },
-    { label: "Loading probable pitchers",      target: 32 },
-    { label: "Scoring starter matchups",       target: 52 },
-    { label: "Evaluating bullpen & lineups",   target: 70 },
-    { label: "Running 100 Monte Carlo sims",   target: 86 },
-    { label: "Applying coherence gate",        target: 96 },
-    { label: "Finalizing team picks…",         target: 99 },
+    { label: "Fetching today's MLB schedule",       target: 14 },
+    { label: "Loading probable pitchers",           target: 32 },
+    { label: "Scoring starter matchups",            target: 52 },
+    { label: "Evaluating bullpen & lineups",        target: 70 },
+    { label: "Running 100 Monte Carlo sims",        target: 86 },
+    { label: "Applying coherence gate",             target: 94 },
+    { label: "Finalizing team picks…",              target: 100 },
   ] : [
-    { label: "Fetching today's MLB games",     target: 18 },
-    { label: "Pulling pitcher data",           target: 40 },
-    { label: "Analyzing team matchups",        target: 68 },
-    { label: "Simulating game outcomes",       target: 88 },
-    { label: "Finalizing pick…",               target: 99 },
+    { label: "Fetching today's MLB games",          target: 18 },
+    { label: "Pulling pitcher data",                target: 40 },
+    { label: "Analyzing team matchups",             target: 68 },
+    { label: "Simulating game outcomes",            target: 88 },
+    { label: "Finalizing pick…",                    target: 100 },
   ];
 
+  // When done fires, jump straight to 100% then hide after 1.5s
   useEffect(() => {
+    if (done && !finished) {
+      setStageIdx(stages.length - 1);
+      setPct(100);
+      setFinished(true);
+      setTimeout(() => setHidden(true), 1500);
+    }
+  }, [done]);
+
+  useEffect(() => {
+    if (finished) return; // stop ticking once done
     let frame: ReturnType<typeof setTimeout>;
     const tick = () => {
       setPct(prev => {
         const currentStage = stages[stageIdx];
-        const target = currentStage?.target ?? 99;
+        const target = currentStage?.target ?? 100;
         if (prev < target) {
-          // Speed varies: fast early, slows near each stage target
           const gap = target - prev;
           const step = gap > 20 ? 2.2 : gap > 8 ? 1.2 : 0.4;
           return Math.min(target, prev + step);
         }
-        // Advance stage once target reached
         if (stageIdx < stages.length - 1) {
           setStageIdx(s => s + 1);
         }
@@ -2980,16 +2992,18 @@ function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
     };
     frame = setTimeout(tick, 80);
     return () => clearTimeout(frame);
-  }, [stageIdx]);
+  }, [stageIdx, finished]);
 
   const currentLabel = stages[Math.min(stageIdx, stages.length - 1)]?.label ?? "Loading…";
   const displayPct = Math.round(pct);
 
+  if (hidden) return null;
+
   return (
     <div style={{
       borderRadius: 16,
-      border: "1px solid rgba(19,35,58,0.10)",
-      background: "#fff",
+      border: finished ? "1px solid rgba(34,197,94,0.40)" : "1px solid rgba(19,35,58,0.10)",
+      background: finished ? "rgba(34,197,94,0.05)" : "#fff",
       padding: "18px 20px",
       marginBottom: 4,
     }}>
@@ -3042,8 +3056,8 @@ function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
       </div>
 
       {/* Current stage label */}
-      <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600 }}>
-        <span style={{ marginRight: 6 }}>⏳</span>{currentLabel}
+      <p style={{ fontSize: 11, color: finished ? "#16a34a" : "#3D4B58", fontWeight: 600 }}>
+        <span style={{ marginRight: 6 }}>{finished ? "✅" : "⏳"}</span>{currentLabel}
       </p>
     </div>
   );
@@ -3664,7 +3678,7 @@ export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [btsTab, setBtsTab] = useState<"hitters" | "team">("hitters");
+  const [btsTab, setBtsTab] = useState<"hitters" | "moneyball" | "team">("hitters");
   const [expandedPick, setExpandedPick] = useState<string | null>(null);
   const [reanalyzeMsg, setReanalyzeMsg] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -3835,19 +3849,23 @@ export default function BTS() {
         display: "flex", gap: 4, background: "rgba(19,35,58,0.05)", borderRadius: 14,
         padding: 4, border: "1px solid rgba(19,35,58,0.08)"
       }}>
-        {(["hitters", "team"] as const).map(tab => (
+        {([
+          { key: "hitters",    label: "⚾ Hitters" },
+          { key: "moneyball",  label: "💰 Moneyball" },
+          { key: "team",       label: "🏆 Team" },
+        ] as const).map(({ key, label }) => (
           <button
-            key={tab}
-            onClick={() => setBtsTab(tab)}
+            key={key}
+            onClick={() => setBtsTab(key)}
             style={{
               flex: 1, padding: "8px 0", borderRadius: 10, border: "none",
-              fontSize: 12, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
-              background: btsTab === tab ? "#13233A" : "transparent",
-              color: btsTab === tab ? "#F6F1E7" : "#3D4B58",
-              boxShadow: btsTab === tab ? "0 1px 4px rgba(19,35,58,0.18)" : "none",
+              fontSize: 11, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
+              background: btsTab === key ? "#13233A" : "transparent",
+              color: btsTab === key ? "#F6F1E7" : "#3D4B58",
+              boxShadow: btsTab === key ? "0 1px 4px rgba(19,35,58,0.18)" : "none",
             }}
           >
-            {tab === "hitters" ? "⚾ Hitter Picks" : "🏆 Team Pick"}
+            {label}
           </button>
         ))}
       </div>
@@ -3881,7 +3899,7 @@ export default function BTS() {
       )}
 
       {/* Loading progress bar */}
-      {isLoading && <BtsLoadingBar type="hitters" />}
+      {(isLoading || (!!data && !error)) && <BtsLoadingBar type="hitters" done={!isLoading && !!data} />}
 
       {/* Error / no games */}
       {!isLoading && data?.error && (
@@ -4170,6 +4188,78 @@ export default function BTS() {
         </>
       )}
 
+      {/* ── Moneyball Tab ─────────────────────────────────────────────── */}
+      {btsTab === "moneyball" && (
+        <>
+          {/* Loading bar */}
+          {(isLoading || (!!data && !error)) && <BtsLoadingBar type="hitters" done={!isLoading && !!data} />}
+
+          {/* Header card */}
+          <div className="rounded-2xl p-4" style={{ background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.30)" }}>
+            <div className="flex items-center gap-2 mb-1">
+              <span style={{ fontSize: 18 }}>💰</span>
+              <p className="text-sm font-black text-foreground">Moneyball Analysis Picks</p>
+              <span className="rounded-full px-2 py-0.5 text-[9px] font-black" style={{ background: "#D4A843", color: "#131A24" }}>
+                A &amp; B GRADES ONLY
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              These 5 picks are selected exclusively by the Moneyball analytical model — players with elite data confluence (xBA divergence, hard contact %, pitcher xERA, VOB) that may fall outside the top-10 probability rankings but carry strong analytical backing.
+            </p>
+          </div>
+
+          {/* MB picks */}
+          {!isLoading && picks.filter((p: any) => p._mbExtraSlot).length === 0 && (
+            <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.10)" }}>
+              <p className="text-xs font-bold text-muted-foreground">No Moneyball A/B grade picks found yet</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Check back after lineups post (2–3 hrs before first pitch)</p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {picks.filter((p: any) => p._mbExtraSlot).map((pick: any, i: number) => (
+              <PickCard key={pick.playerId ?? i} pick={pick} canRemove={false} />
+            ))}
+          </div>
+
+          {/* MB-specific analytics: grade breakdown from graded history */}
+          {picks.filter((p: any) => p._mbExtraSlot).length > 0 && (() => {
+            const mbPicks = picks.filter((p: any) => p._mbExtraSlot);
+            return (
+              <div className="rounded-2xl p-4" style={{ background: "rgba(19,35,58,0.03)", border: "1px solid rgba(19,35,58,0.08)" }}>
+                <p className="text-xs font-black text-foreground mb-3">Today's Moneyball Signal Breakdown</p>
+                <div className="space-y-2">
+                  {mbPicks.map((p: any, i: number) => {
+                    const grade = (p.mbGrade ?? "?") as MbGrade;
+                    return (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <MbGradeBadge grade={grade} size="sm" />
+                          <span className="font-semibold text-foreground">{p.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground text-[10px]">
+                            {p.subScores?.pitcherXera ? `xERA ${p.subScores.pitcherXera.toFixed(2)}` : ""}
+                          </span>
+                          <span className="text-muted-foreground text-[10px]">
+                            {p.stats?.hardHitPct ? `HH ${p.stats.hardHitPct}%` : ""}
+                          </span>
+                          <span className="font-black" style={{ color: "#D4A843" }}>{p.hitProbability}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Win % by MB grade from historical graded picks */}
+          <BtsAnalyticsPanel />
+          <HowToReadBTS />
+        </>
+      )}
+
       {/* ── Hitter Picks Tab ────────────────────────────────────────── */}
       {btsTab === "hitters" && (<>
 
@@ -4277,32 +4367,7 @@ export default function BTS() {
         </div>
       )}
 
-      {/* ─── MONEYBALL EXTRA PICKS (slots 11-15, A/B grade only) ───────────── */}
-      {!isLoading && picks.filter((p: any) => p._mbExtraSlot).length > 0 && (
-        <div
-          className="rounded-2xl p-4"
-          style={{ background: "rgba(212,168,67,0.07)", border: "1px solid rgba(212,168,67,0.30)" }}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <span style={{ fontSize: 16 }}>💰</span>
-            <p className="text-xs font-black text-foreground">Moneyball Extra Picks</p>
-            <span
-              className="rounded-full px-2 py-0.5 text-[9px] font-black"
-              style={{ background: "#D4A843", color: "#131A24" }}
-            >
-              A &amp; B GRADES ONLY
-            </span>
-          </div>
-          <p className="text-[10px] text-muted-foreground mb-3">
-            These players qualified exclusively on Moneyball analytical signals — strong data confluence even outside the top-10 probability rankings.
-          </p>
-          <div className="space-y-3">
-            {picks.filter((p: any) => p._mbExtraSlot).map((pick: any, i: number) => (
-              <PickCard key={pick.playerId ?? i} pick={pick} canRemove={false} />
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* ─── CLUBHOUSE IQ STREAK ─────────────────────────────────────────── */}
       <CiqStreakPanel />
