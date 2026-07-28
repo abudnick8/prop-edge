@@ -11413,65 +11413,53 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         freshPicks.push(p);
         if (p._repeatYesterday) repeatCount++;
       }
-      // Pass 2: fill slots 11-15 with A/B Moneyball picks not already included
-      // Pull from both main overflow AND sub-threshold (55-59%) pool
+      // Pass 2: fill slots 11-15 with the best Moneyball analytical picks
+      // These are scored on a SEPARATE 4-signal scale (no hit-probability component)
+      // so that players just outside the top 10 can still qualify on analytical merit.
+      // Signals: xERA (30pts) + Hard Contact% (25pts) + xBA divergence (25pts) + VOB (20pts) = 100pts
+      // Grade: A>=72, B>=54, C>=36, D>=20 — lower thresholds since hitProb is excluded
       const mainPickIds = new Set(freshPicks.map((p: any) => p.playerId));
-      // Build combined MB overflow pool sorted by mbScore desc
-      const mbOverflowPool = [
+      const mbAnalyticsScore = (p: any): number => {
+        let pts = 0;
+        // xERA (30 pts) — hittable arm is the #1 MB signal
+        const xe = p.subScores?.pitcherXera ?? 0;
+        if (xe >= 5.20) pts += 30; else if (xe >= 4.60) pts += 23; else if (xe >= 4.00) pts += 15; else if (xe >= 3.40) pts += 7;
+        // Hard contact % (25 pts)
+        const hh = p.stats?.hardHitPct ?? 0;
+        if (hh >= 50) pts += 25; else if (hh >= 44) pts += 19; else if (hh >= 38) pts += 12; else if (hh >= 32) pts += 6;
+        // xBA vs recent avg divergence (25 pts)
+        const xba = p.stats?.xba ?? 0; const surf = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
+        if (xba > 0 && surf > 0 && (xba - surf) >= 0.050) pts += 25;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.030) pts += 18;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.015) pts += 10;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.000) pts += 4;
+        // VOB vs sub-pool median (20 pts) — is this player above average for the pool?
+        const vob = p.valueOverBaseline ?? 0;
+        if (vob >= 8) pts += 20; else if (vob >= 4) pts += 14; else if (vob >= 0) pts += 7;
+        return pts;
+      };
+      const mbGradeFromAnalytics = (pts: number): string =>
+        pts >= 72 ? "A" : pts >= 54 ? "B" : pts >= 36 ? "C" : pts >= 20 ? "D" : "F";
+
+      // Combine main overflow + sub-threshold pool, score analytically, sort best-first
+      const mbCombinedPool = [
         ...candidatePicks.filter((p: any) => !mainPickIds.has(p.playerId)),
         ...mbSubCandidatePicks,
-      ].sort((a: any, b: any) => (b.mbScore ?? 0) - (a.mbScore ?? 0));
-      const mbSeenTeamsSlots = new Set<string>(); // separate seen-teams for MB slots (allow same team as main if needed)
-      for (const p of mbOverflowPool) {
+      ].map((p: any) => {
+        const aScore = mbAnalyticsScore(p);
+        const aGrade = mbGradeFromAnalytics(aScore);
+        return { ...p, mbScore: aScore, mbGrade: aGrade, _mbExtraSlot: true };
+      }).filter((p: any) => p.mbGrade === "A" || p.mbGrade === "B")
+        .filter((p: any) => !p.isScratched)
+        .sort((a: any, b: any) => b.mbScore - a.mbScore);
+
+      const mbSeenIds = new Set<string>();
+      for (const p of mbCombinedPool) {
         if (freshPicks.length >= 15) break;
         if (mainPickIds.has(p.playerId)) continue;
-        if (mbSeenTeamsSlots.has(p.playerId)) continue; // no duplicate players
-        if (p.mbGrade !== "A" && p.mbGrade !== "B") continue;
-        if (p.isScratched) continue;
-        p._mbExtraSlot = true; // flag so frontend/cache can distinguish
+        if (mbSeenIds.has(p.playerId)) continue;
         freshPicks.push(p);
-        mbSeenTeamsSlots.add(p.playerId);
-      }
-
-      // ── Moneyball Extra Picks (up to 5, grade A or B only) ──────────────────
-      // Pool 1: main candidates that passed the 60% gate but didn't make top 10
-      // Pool 2: sub-threshold candidates (55-59%) that have elite Moneyball signals
-      // Compute MB grade for the sub-threshold pool first
-      for (const p of mbSubCandidatePicks) {
-        let mbPts = 0;
-        const hp2 = p.hitProbability ?? 0;
-        if (hp2 >= 80) mbPts += 35; else if (hp2 >= 74) mbPts += 28; else if (hp2 >= 68) mbPts += 20; else if (hp2 >= 62) mbPts += 12; else mbPts += 5;
-        const vob2 = p.valueOverBaseline ?? 0;
-        if (vob2 >= 12) mbPts += 20; else if (vob2 >= 7) mbPts += 15; else if (vob2 >= 3) mbPts += 10; else if (vob2 >= 0) mbPts += 5;
-        const xera2 = p.subScores?.pitcherXera ?? 0;
-        if (xera2 >= 5.20) mbPts += 20; else if (xera2 >= 4.60) mbPts += 15; else if (xera2 >= 4.00) mbPts += 10; else if (xera2 >= 3.40) mbPts += 5;
-        const hh2 = p.stats?.hardHitPct ?? 0;
-        if (hh2 >= 50) mbPts += 15; else if (hh2 >= 44) mbPts += 11; else if (hh2 >= 38) mbPts += 7; else if (hh2 >= 32) mbPts += 3;
-        const xba2 = p.stats?.xba ?? 0; const surf2 = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
-        if (xba2 > 0 && surf2 > 0 && (xba2 - surf2) >= 0.040) mbPts += 10;
-        else if (xba2 > 0 && surf2 > 0 && (xba2 - surf2) >= 0.020) mbPts += 5;
-        p.mbGrade = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
-        p.mbScore = mbPts;
-      }
-
-      const freshPickIds = new Set(freshPicks.map((p: any) => p.playerId));
-      const mbExtraPicks: any[] = [];
-      const mbSeenTeams = new Set(freshPicks.map((p: any) => p.team));
-
-      // Combine both pools — main overflows first, then sub-threshold — sorted by MB score desc
-      const mbPool = [
-        ...candidatePicks.filter((p: any) => !freshPickIds.has(p.playerId)),
-        ...mbSubCandidatePicks,
-      ].sort((a: any, b: any) => (b.mbScore ?? 0) - (a.mbScore ?? 0));
-
-      for (const p of mbPool) {
-        if (freshPickIds.has(p.playerId)) continue;
-        if (mbSeenTeams.has(p.team)) continue;
-        if (p.mbGrade !== "A" && p.mbGrade !== "B") continue;
-        if (p.isScratched) continue;
-        mbExtraPicks.push(p);
-        mbSeenTeams.add(p.team);
-        if (mbExtraPicks.length >= 5) break;
+        mbSeenIds.add(p.playerId);
       }
 
       // ── Merge into the daily persistent cache ──────────────────────────
@@ -11792,7 +11780,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         picks:        finalPicks,
         bestPick:     finalPicks[0] ?? null,
         doubleDowns:  finalPicks.slice(1, 4),
-        mbPicks:      mbExtraPicks,
+        mbPicks:      finalPicks.filter((p: any) => p._mbExtraSlot),
         dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
         // Grading / record data
         todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },
