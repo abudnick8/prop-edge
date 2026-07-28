@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useHashLocation, navigate as wouterNavigate } from "wouter/use-hash-location";
 import ShareCard from "@/components/ShareCard";
 import MlbShareCard from "@/components/MlbShareCard";
@@ -2930,80 +2930,58 @@ function MbGradeBadge({ grade, size = "md" }: { grade: MbGrade; size?: "sm" | "m
 }
 
 // ─── BTS Loading Progress Bar ───────────────────────────────────────────────
-function BtsLoadingBar({ type, done }: { type: "hitters" | "team" | "mlb"; done?: boolean }) {
-  const [pct, setPct] = useState(0);
-  const [stageIdx, setStageIdx] = useState(0);
-  const [finished, setFinished] = useState(false);
-  const [hidden, setHidden] = useState(false);
-
+function BtsLoadingBar({ type }: { type: "hitters" | "team" | "mlb" }) {
+  // Stages are time-anchored: each stage has a start/end time in seconds matching
+  // the real server-side work sequence. Hitters take ~55s total, team ~35s, mlb ~25s.
   const stages = type === "hitters" ? [
-    { label: "Fetching today's MLB schedule",      target: 12 },
-    { label: "Loading confirmed lineups",           target: 28 },
-    { label: "Pulling pitcher matchup data",        target: 46 },
-    { label: "Fetching Statcast metrics",           target: 63 },
-    { label: "Scoring hitter candidates",           target: 80 },
-    { label: "Ranking & applying ML weights",       target: 92 },
-    { label: "Grading Moneyball extra picks…",      target: 97 },
-    { label: "Picks ready!",                        target: 100 },
+    { label: "Fetching today's MLB schedule",      start: 0,  end: 6  },
+    { label: "Loading lineup data for all games",  start: 6,  end: 14 },
+    { label: "Pulling pitcher splits & Statcast",  start: 14, end: 26 },
+    { label: "Scoring hitter candidates",          start: 26, end: 38 },
+    { label: "Applying platoon & edge filters",    start: 38, end: 46 },
+    { label: "Running Moneyball analysis",         start: 46, end: 52 },
+    { label: "Ranking picks & grading MB slots",   start: 52, end: 57 },
+    { label: "Saving picks to cache…",              start: 57, end: 60 },
   ] : type === "team" ? [
-    { label: "Fetching today's MLB schedule",       target: 14 },
-    { label: "Loading probable pitchers",           target: 32 },
-    { label: "Scoring starter matchups",            target: 52 },
-    { label: "Evaluating bullpen & lineups",        target: 70 },
-    { label: "Running 100 Monte Carlo sims",        target: 86 },
-    { label: "Applying coherence gate",             target: 94 },
-    { label: "Finalizing team picks…",              target: 100 },
+    { label: "Fetching today's MLB schedule",      start: 0,  end: 4  },
+    { label: "Loading probable pitchers",          start: 4,  end: 10 },
+    { label: "Pulling bullpen & lineup data",      start: 10, end: 18 },
+    { label: "Scoring starter matchups",           start: 18, end: 24 },
+    { label: "Running 100 Monte Carlo simulations",start: 24, end: 30 },
+    { label: "Applying coherence gate",            start: 30, end: 33 },
+    { label: "Finalizing team picks…",              start: 33, end: 36 },
   ] : [
-    { label: "Fetching today's MLB games",          target: 18 },
-    { label: "Pulling pitcher data",                target: 40 },
-    { label: "Analyzing team matchups",             target: 68 },
-    { label: "Simulating game outcomes",            target: 88 },
-    { label: "Finalizing pick…",                    target: 100 },
+    { label: "Fetching today's MLB games",          start: 0,  end: 5  },
+    { label: "Pulling pitcher & team data",        start: 5,  end: 12 },
+    { label: "Analyzing matchups & simulating",    start: 12, end: 20 },
+    { label: "Finalizing MLB pick…",               start: 20, end: 24 },
   ];
 
-  // When done fires, jump straight to 100% then hide after 1.5s
-  useEffect(() => {
-    if (done && !finished) {
-      setStageIdx(stages.length - 1);
-      setPct(100);
-      setFinished(true);
-      setTimeout(() => setHidden(true), 1500);
-    }
-  }, [done]);
+  const totalSecs = stages[stages.length - 1].end;
+  const [elapsed, setElapsed] = useState(0); // seconds since mount
+  const startRef = useRef(Date.now());
 
   useEffect(() => {
-    if (finished) return; // stop ticking once done
-    let frame: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      setPct(prev => {
-        const currentStage = stages[stageIdx];
-        const target = currentStage?.target ?? 100;
-        if (prev < target) {
-          const gap = target - prev;
-          const step = gap > 20 ? 2.2 : gap > 8 ? 1.2 : 0.4;
-          return Math.min(target, prev + step);
-        }
-        if (stageIdx < stages.length - 1) {
-          setStageIdx(s => s + 1);
-        }
-        return prev;
-      });
-      frame = setTimeout(tick, 80);
-    };
-    frame = setTimeout(tick, 80);
-    return () => clearTimeout(frame);
-  }, [stageIdx, finished]);
+    const id = setInterval(() => {
+      setElapsed((Date.now() - startRef.current) / 1000);
+    }, 250);
+    return () => clearInterval(id);
+  }, []);
 
-  const currentLabel = stages[Math.min(stageIdx, stages.length - 1)]?.label ?? "Loading…";
-  const displayPct = Math.round(pct);
+  // Cap at totalSecs so bar never exceeds 97% until the component unmounts
+  const clampedElapsed = Math.min(elapsed, totalSecs * 0.97);
+  // Map elapsed time → pct (linear within each stage, eases near the cap)
+  const pct = Math.min(97, (clampedElapsed / totalSecs) * 100);
 
-  if (hidden) return null;
+  // Which stage are we in?
+  const stageIdx = stages.findIndex(s => elapsed < s.end);
+  const activeStage = stageIdx === -1 ? stages[stages.length - 1] : stages[stageIdx];
 
   return (
     <div style={{
       borderRadius: 16,
-      border: finished ? "1px solid rgba(34,197,94,0.40)" : "1px solid rgba(19,35,58,0.10)",
-      background: finished ? "rgba(34,197,94,0.05)" : "#fff",
+      border: "1px solid rgba(19,35,58,0.10)",
+      background: "#fff",
       padding: "18px 20px",
       marginBottom: 4,
     }}>
@@ -3020,24 +2998,18 @@ function BtsLoadingBar({ type, done }: { type: "hitters" | "team" | "mlb"; done?
             {type === "hitters" ? "Building BTS Hitter Picks" : type === "team" ? "Scoring Team Win Picks" : "Analyzing MLB Pick of the Day"}
           </span>
         </div>
-        <span style={{ fontSize: 12, fontWeight: 900, color: displayPct >= 80 ? "#22c55e" : "#D4A843", fontVariantNumeric: "tabular-nums" }}>
-          {displayPct}%
+        <span style={{ fontSize: 12, fontWeight: 900, color: pct >= 80 ? "#22c55e" : "#D4A843", fontVariantNumeric: "tabular-nums" }}>
+          {Math.round(pct)}%
         </span>
       </div>
 
       {/* Progress track */}
-      <div style={{
-        height: 8, borderRadius: 999,
-        background: "rgba(19,35,58,0.08)",
-        overflow: "hidden",
-        marginBottom: 10,
-      }}>
+      <div style={{ height: 8, borderRadius: 999, background: "rgba(19,35,58,0.08)", overflow: "hidden", marginBottom: 10 }}>
         <div style={{
-          height: "100%",
-          borderRadius: 999,
+          height: "100%", borderRadius: 999,
           width: `${pct}%`,
           background: `linear-gradient(90deg, #D4A843 0%, #22c55e ${Math.min(100, pct + 20)}%)`,
-          transition: "width 0.08s linear",
+          transition: "width 0.25s linear",
           boxShadow: "0 0 8px rgba(34,197,94,0.35)",
         }} />
       </div>
@@ -3047,18 +3019,21 @@ function BtsLoadingBar({ type, done }: { type: "hitters" | "team" | "mlb"; done?
         {stages.map((s, i) => (
           <div key={i} style={{
             flex: 1, height: 3, borderRadius: 999,
-            background: i < stageIdx ? "#22c55e"
-                      : i === stageIdx ? "#D4A843"
-                      : "rgba(19,35,58,0.10)",
+            background: i < stageIdx ? "#22c55e" : i === stageIdx ? "#D4A843" : "rgba(19,35,58,0.10)",
             transition: "background 0.3s",
           }} />
         ))}
       </div>
 
-      {/* Current stage label */}
-      <p style={{ fontSize: 11, color: finished ? "#16a34a" : "#3D4B58", fontWeight: 600 }}>
-        <span style={{ marginRight: 6 }}>{finished ? "✅" : "⏳"}</span>{currentLabel}
-      </p>
+      {/* Current stage label + elapsed time */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 11, color: "#3D4B58", fontWeight: 600, margin: 0 }}>
+          <span style={{ marginRight: 6 }}>⏳</span>{activeStage.label}
+        </p>
+        <p style={{ fontSize: 10, color: "rgba(61,75,88,0.55)", margin: 0, fontVariantNumeric: "tabular-nums" }}>
+          {Math.floor(elapsed)}s
+        </p>
+      </div>
     </div>
   );
 }
@@ -4205,6 +4180,29 @@ export default function BTS() {
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               These 5 picks are selected exclusively by the Moneyball analytical model — players with elite data confluence (xBA divergence, hard contact %, pitcher xERA, VOB) that may fall outside the top-10 probability rankings but carry strong analytical backing.
+          {/* MB record — graded separately from main picks */}
+          {data && (
+            <div className="flex gap-3 mt-3 pt-3" style={{ borderTop: "1px solid rgba(212,168,67,0.20)" }}>
+              <div className="text-center flex-1">
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Today</p>
+                <p className="text-sm font-black text-foreground">
+                  {data.mbTodayRecord?.wins ?? 0}–{data.mbTodayRecord?.losses ?? 0}
+                  {(data.mbTodayRecord?.pending ?? 0) > 0 && <span className="text-[10px] text-muted-foreground"> ({data.mbTodayRecord.pending} live)</span>}
+                </p>
+                {data.mbTodayRecord?.winPct != null && (
+                  <p className="text-[10px] font-bold" style={{ color: data.mbTodayRecord.winPct >= 60 ? "#16a34a" : "#3D4B58" }}>{data.mbTodayRecord.winPct}%</p>
+                )}
+              </div>
+              <div style={{ width: 1, background: "rgba(212,168,67,0.25)" }} />
+              <div className="text-center flex-1">
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Season</p>
+                <p className="text-sm font-black text-foreground">{data.mbSeasonRecord?.wins ?? 0}–{data.mbSeasonRecord?.losses ?? 0}</p>
+                {data.mbSeasonRecord?.winPct != null && (
+                  <p className="text-[10px] font-bold" style={{ color: data.mbSeasonRecord.winPct >= 60 ? "#16a34a" : "#3D4B58" }}>{data.mbSeasonRecord.winPct}% win rate</p>
+                )}
+              </div>
+            </div>
+          )}
             </p>
           </div>
 

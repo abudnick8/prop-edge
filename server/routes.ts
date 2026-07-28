@@ -11756,11 +11756,36 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const scratchedCount = finalPicks.filter(p => p.isScratched).length;
 
       // Season record (accumulated across all in-memory graded picks)
-      const todayWins    = cachedEntries.filter((e: BtsPickEntry) => e.result === "win").length;
-      const todayLosses  = cachedEntries.filter((e: BtsPickEntry) => e.result === "loss").length;
-      const todayPending = cachedEntries.filter((e: BtsPickEntry) => e.result === "pending").length;
+      // Main picks record (slots 1-10 only)
+      const mainEntries  = cachedEntries.filter((e: BtsPickEntry) => !(e.snapshot as any)?._mbExtraSlot);
+      const mbEntries    = cachedEntries.filter((e: BtsPickEntry) => !!(e.snapshot as any)?._mbExtraSlot);
+
+      const todayWins    = mainEntries.filter((e: BtsPickEntry) => e.result === "win").length;
+      const todayLosses  = mainEntries.filter((e: BtsPickEntry) => e.result === "loss").length;
+      const todayPending = mainEntries.filter((e: BtsPickEntry) => e.result === "pending").length;
       const todayWinPct  = (todayWins + todayLosses) > 0
         ? Math.round((todayWins / (todayWins + todayLosses)) * 100)
+        : null;
+
+      // Moneyball picks record (slots 11-15 only) — graded separately
+      const mbTodayWins    = mbEntries.filter((e: BtsPickEntry) => e.result === "win").length;
+      const mbTodayLosses  = mbEntries.filter((e: BtsPickEntry) => e.result === "loss").length;
+      const mbTodayPending = mbEntries.filter((e: BtsPickEntry) => e.result === "pending").length;
+      const mbTodayWinPct  = (mbTodayWins + mbTodayLosses) > 0
+        ? Math.round((mbTodayWins / (mbTodayWins + mbTodayLosses)) * 100)
+        : null;
+
+      // MB season record — accumulated from all days in btsPicksCache
+      let mbSeasonWins = 0; let mbSeasonLosses = 0;
+      for (const [, dayEntries] of Object.entries(btsPicksCache)) {
+        for (const e of (dayEntries as BtsPickEntry[])) {
+          if (!(e.snapshot as any)?._mbExtraSlot) continue;
+          if (e.result === "win")  mbSeasonWins++;
+          if (e.result === "loss") mbSeasonLosses++;
+        }
+      }
+      const mbSeasonWinPct = (mbSeasonWins + mbSeasonLosses) > 0
+        ? Math.round((mbSeasonWins / (mbSeasonWins + mbSeasonLosses)) * 100)
         : null;
 
       const seasonTotal   = btsSeasonRecord.wins + btsSeasonRecord.losses;
@@ -11785,6 +11810,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Grading / record data
         todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },
         seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: seasonWinPct },
+        mbTodayRecord:  { wins: mbTodayWins, losses: mbTodayLosses, pending: mbTodayPending, winPct: mbTodayWinPct },
+        mbSeasonRecord: { wins: mbSeasonWins, losses: mbSeasonLosses, winPct: mbSeasonWinPct },
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
