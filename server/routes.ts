@@ -8689,6 +8689,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // date string → array of up to 10 locked picks
   const btsPicksCache: Record<string, BtsPickEntry[]> = {};
 
+  // ── Hitter stats TTL cache (module-level — survives across requests, 30-min TTL) ──
+  // Keyed by playerId; entries expire after 30 minutes to pick up fresh data.
+  const _hitterStatsTTL: Record<number, { ts: number; data: any }> = {};
+  const HITTER_STATS_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
   // Accumulated season record for BTS (wins/losses across all graded days)
   const btsSeasonRecord: { wins: number; losses: number; pending: number } =
     { wins: 0, losses: 0, pending: 0 };
@@ -9671,7 +9676,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
       }
 
+      const _pitcherSplitsCache: Record<number, any> = {};
       async function getPitcherSplits(pitcherId: number) {
+        if (_pitcherSplitsCache[pitcherId]) return _pitcherSplitsCache[pitcherId];
         try {
           const r = await axios.get(
             `https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=statSplits&group=pitching&season=2026&sitCodes=vl,vr`
@@ -9691,8 +9698,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               if (desc.includes("Right")) { result.vsRight = avg; result.vsRightPA = pa; }
             }
           }
+          _pitcherSplitsCache[pitcherId] = result;
           return result;
-        } catch { return { vsLeft: 0.250, vsRight: 0.250, vsLeftPA: 0, vsRightPA: 0, vsLeftXwoba: null, vsRightXwoba: null }; }
+        } catch {
+          const fallback = { vsLeft: 0.250, vsRight: 0.250, vsLeftPA: 0, vsRightPA: 0, vsLeftXwoba: null, vsRightXwoba: null };
+          _pitcherSplitsCache[pitcherId] = fallback;
+          return fallback;
+        }
       }
 
       // ── 4b2. Helper: pitch arsenal matchup (Phase 2) ──────────────────
@@ -9840,6 +9852,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // ── 5. Helper: fetch hitter stats (30d, 14d, 7d, season, gamelog) ─
       async function getHitterStats(hitterId: number) {
+        // Check module-level TTL cache first
+        const cached = _hitterStatsTTL[hitterId];
+        if (cached && (Date.now() - cached.ts) < HITTER_STATS_TTL_MS) {
+          return cached.data;
+        }
+        // Also deduplicate in-flight: if another parallel call for the same player
+        // is already in-flight, we'd still hit the cache on the way back.
         const today = new Date();
         const fmt = (d: Date) => d.toISOString().slice(0, 10);
         const d30 = new Date(today); d30.setDate(today.getDate() - 30);
@@ -9907,7 +9926,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Top of order gets ~4.5 PA, bottom ~3.3 PA
         const paPerGame = 4.5; // default; overridden in buildCandidates by slot
 
-        return {
+        const statsResult = {
           avg30: parseFloat(s30.avg ?? "0") || 0,
           avg14: parseFloat(s14.avg ?? "0") || 0,
           avg7:  parseFloat(s7.avg  ?? "0") || 0,
@@ -9966,6 +9985,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             return streak;
           })(),
         };
+        // Store in module-level TTL cache
+        _hitterStatsTTL[hitterId] = { ts: Date.now(), data: statsResult };
+        return statsResult;
       }
 
       // ── 6. Score a single hitter ────────────────────────────────────
@@ -10478,10 +10500,62 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       let candidatePicks: any[] = [];
       let mbSubCandidatePicks: any[] = []; // sub-threshold players (55-59%) for MB extra picks
 
-      for (const game of games) {
+      // ── PREFETCH weather for all venues in parallel before game loop ──
+      // fetchStructuredWeather has its own 30-min cache, so calling it here warms it.
+      {
+        const weatherPrefetches: Promise<any>[] = [];
+        for (const g of games) {
+          const teamName = g.teams?.home?.team?.name ?? "";
+          const venue    = g.venue?.name ?? "";
+          if (teamName) weatherPrefetches.push(fetchStructuredWeather(teamName, "MLB", venue).catch(() => null));
+        }
+        if (weatherPrefetches.length > 0) {
+          await Promise.allSettled(weatherPrefetches);
+        }
+      }
+
+      // ── PREFETCH all pitcher stats (splits + season) in parallel ──
+      {
+        const pitcherIds = new Set<number>();
+        for (const g of games) {
+          const hp = g.teams?.home?.probablePitcher?.id;
+          const ap = g.teams?.away?.probablePitcher?.id;
+          if (hp) pitcherIds.add(hp);
+          if (ap) pitcherIds.add(ap);
+        }
+        if (pitcherIds.size > 0) {
+          await Promise.allSettled([
+            ...[...pitcherIds].map(id => getPitcherSplits(id)),
+            ...[...pitcherIds].map(id => getPitcherSeasonStats(id)),
+          ]);
+        }
+      }
+
+      // ── PREFETCH all hitter stats in parallel before game loop ──
+      // Collect all lineup player IDs from the schedule (already hydrated with lineups).
+      // Firing getHitterStats for all players now warms the TTL cache so the game loop
+      // reads from cache instead of making sequential per-player HTTP requests.
+      {
+        const allPlayerIds = new Set<number>();
+        for (const g of games) {
+          const hp: any[] = g.lineups?.homePlayers ?? [];
+          const ap: any[] = g.lineups?.awayPlayers ?? [];
+          for (const p of [...hp, ...ap]) {
+            if (p?.person?.id) allPlayerIds.add(p.person.id);
+          }
+        }
+        if (allPlayerIds.size > 0) {
+          console.log(`[BTS] prefetching hitter stats for ${allPlayerIds.size} lineup players in parallel`);
+          const t0 = Date.now();
+          await Promise.allSettled([...allPlayerIds].map(id => getHitterStats(id)));
+          console.log(`[BTS] prefetch done in ${Date.now() - t0}ms`);
+        }
+      }
+
+      await Promise.allSettled(games.map(async (game) => {
         const homeTeam = game.teams?.home;
         const awayTeam = game.teams?.away;
-        if (!homeTeam || !awayTeam) continue;
+        if (!homeTeam || !awayTeam) return;
 
         const homeAbbr = homeTeam.team?.abbreviation?.toUpperCase() ?? "";
         const awayAbbr = awayTeam.team?.abbreviation?.toUpperCase() ?? "";
@@ -10531,7 +10605,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         };
         slateGames.push(slateEntry);
 
-        if (!slateEntry.meetsFilter) continue;
+        if (!slateEntry.meetsFilter) return;
 
         // ── Per-game try/catch so one bad game never kills remaining games ──
         try {
@@ -11157,7 +11231,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         } catch (gameErr: any) {
           console.warn(`[BTS] game processing error for ${slateEntry?.matchup ?? game.gamePk}: ${gameErr.message}`);
         }
-      }
+      }));
 
       console.log(`[BTS] game loop complete — totalCandidates=${candidatePicks.length}`);
 
