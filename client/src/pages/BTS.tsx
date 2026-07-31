@@ -3874,7 +3874,7 @@ function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => vo
   );
 }
 
-function LiveGameTicker({ status }: { status: EngineStatus }) {
+function LiveGameTicker({ status, alerts, onDismiss }: { status: EngineStatus; alerts: LiveAlert[]; onDismiss: (id: string) => void }) {
   const allGames = Object.entries(status.gameStates ?? {});
   const liveGames = allGames.filter(([, g]) => g.abstractGameState === "Live");
   const previewCount = allGames.filter(([, g]) => g.abstractGameState === "Preview" || g.abstractGameState === "Warmup").length;
@@ -3962,6 +3962,19 @@ function LiveGameTicker({ status }: { status: EngineStatus }) {
                   </div>
                 </div>
               )}
+
+              {/* Alerts for this game — inline below the ticker */}
+              {(() => {
+                const gameAlerts = alerts.filter(a => a.gamePk === Number(pk));
+                if (gameAlerts.length === 0) return null;
+                return (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {gameAlerts.map(a => (
+                      <AlertCard key={a.id} alert={a} onDismiss={() => onDismiss(a.id)} />
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -4151,37 +4164,14 @@ function InGameAlertEngine() {
           )}
 
           {/* Live game tickers */}
-          {status && <LiveGameTicker status={status} />}
+          {status && <LiveGameTicker status={status} alerts={visibleAlerts} onDismiss={(id) => setDismissed(prev => new Set([...prev, id]))} />}
 
-          {/* Alert cards */}
-          {visibleAlerts.length > 0 ? (
-            <div>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                Active Alerts ({visibleAlerts.length})
-              </p>
-              {visibleAlerts.map(alert => (
-                <AlertCard
-                  key={alert.id}
-                  alert={alert}
-                  onDismiss={() => setDismissed(prev => new Set([...prev, alert.id]))}
-                />
-              ))}
-            </div>
-          ) : (
+          {/* No live games empty state */}
+          {!hasActiveGames && (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
-              {hasActiveGames ? (
-                <>
-                  <p style={{ fontSize: 24, marginBottom: 6 }}>🕐</p>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>Waiting for High-Leverage Situation</p>
-                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine is monitoring — alert fires when edge or leverage threshold is crossed</p>
-                </>
-              ) : (
-                <>
-                  <p style={{ fontSize: 24, marginBottom: 6 }}>⚾</p>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>No Live Games Right Now</p>
-                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine will auto-subscribe when games go live today</p>
-                </>
-              )}
+              <p style={{ fontSize: 24, marginBottom: 6 }}>⚾</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>No Live Games Right Now</p>
+              <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine will auto-subscribe when games go live today</p>
             </div>
           )}
         </div>
