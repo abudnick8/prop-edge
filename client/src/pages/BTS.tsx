@@ -3984,6 +3984,135 @@ function LiveGameTicker({ status, alerts, onDismiss }: { status: EngineStatus; a
   );
 }
 
+function AlertGlossary() {
+  const [open, setOpen] = useState(false);
+
+  const tiers = [
+    {
+      tier: 1,
+      label: "CRITICAL",
+      color: "#ef4444",
+      bg: "rgba(239,68,68,0.08)",
+      cooldown: "60s",
+      description: "Highest-leverage situations — fires immediately and sends Discord webhook.",
+      types: [
+        { name: "Extra Innings", desc: "Game enters extra innings — every PA is now maximum leverage, win probability swings dramatically per play." },
+        { name: "Late RISP", desc: "Tie or 1-run game, inning 7+, runners in scoring position — classic walk-off or go-ahead situation." },
+        { name: "Bullpen Change", desc: "Pitching change in a close game (≤2 runs) — new arm resets batter-pitcher matchup, can swing model edge significantly." },
+      ],
+    },
+    {
+      tier: 2,
+      label: "HIGH",
+      color: "#f97316",
+      bg: "rgba(249,115,22,0.08)",
+      cooldown: "90s",
+      description: "High-value events that shift run expectancy or odds noticeably.",
+      types: [
+        { name: "Home Run", desc: "HR recorded — score delta immediately updates win probability; model recalculates market edge." },
+        { name: "Stolen Base", desc: "Runner advances via steal — changes run-expectancy table position, especially impactful with 0 outs." },
+        { name: "Wild Pitch", desc: "Wild pitch or passed ball advances a runner — hidden run-expectancy shift often missed by casual odds." },
+        { name: "Passed Ball", desc: "Same trigger as wild pitch — battery error moves runners, changes leverage state." },
+        { name: "RISP (Early)", desc: "Runners in scoring position in innings 1–6 with model edge ≥5pp — early high-leverage spot worth tracking." },
+      ],
+    },
+    {
+      tier: 3,
+      label: "WATCH",
+      color: "#3b82f6",
+      bg: "rgba(59,130,246,0.08)",
+      cooldown: "180s",
+      description: "Lower-urgency monitoring signals — worth watching but not immediately actionable.",
+      types: [
+        { name: "Market Edge", desc: "Model win probability diverges ≥5pp from the vig-removed market line — potential value bet situation flagged." },
+        { name: "State Change", desc: "Generic game state update when no higher-tier condition is met — score or inning change logged for context." },
+      ],
+    },
+    {
+      tier: 0,
+      label: "PRE-PITCH",
+      color: "#f97316",
+      bg: "rgba(249,115,22,0.06)",
+      cooldown: "45s",
+      description: "Anticipatory alert fired BEFORE the next pitch based on batter-pitcher matchup simulation.",
+      types: [
+        { name: "Pre-Play (Tier 1)", desc: "Simulated upside ≥20pp swing in win probability from at least one outcome (e.g. solo HR ties game in 9th) AND close game (≤2 runs) AND late innings (7+). Highest pre-pitch urgency." },
+        { name: "Pre-Play (Tier 2)", desc: "Simulated upside ≥10pp swing but conditions are less extreme — still worth noting before the pitch is thrown." },
+        { name: "Simulation Engine", desc: "Outcomes modeled per at-bat: single, XBH, HR, walk, strikeout, groundout. Probabilities are weighted by batter AVG vs pitcher hand, pitcher ERA/K9/BB9, last-15-day form, and career BvP history (15+ PA)." },
+      ],
+    },
+  ];
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 10 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "none", border: "none", cursor: "pointer", padding: "2px 0",
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Alert Glossary
+        </span>
+        <span style={{ fontSize: 11, color: "#3D4B58", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          {tiers.map(t => (
+            <div key={t.label} style={{ borderRadius: 8, border: `1px solid ${t.color}30`, overflow: "hidden" }}>
+              {/* Tier header */}
+              <div style={{ background: t.bg, padding: "7px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 900, color: t.color,
+                  background: `${t.color}20`, padding: "2px 7px", borderRadius: 4,
+                  textTransform: "uppercase", letterSpacing: "0.05em",
+                }}>
+                  {t.tier === 0 ? "PRE-PITCH" : `Tier ${t.tier} — ${t.label}`}
+                </span>
+                <span style={{ fontSize: 9, color: "#9CA3AF" }}>cooldown {t.cooldown}</span>
+              </div>
+              {/* Tier description */}
+              <div style={{ padding: "8px 12px 4px", background: "#fff" }}>
+                <p style={{ fontSize: 10, color: "#3D4B58", margin: "0 0 8px" }}>{t.description}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {t.types.map(at => (
+                    <div key={at.name} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: t.color,
+                        minWidth: 90, paddingTop: 1, flexShrink: 0,
+                      }}>
+                        {at.name}
+                      </span>
+                      <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.45 }}>{at.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ height: 8, background: "#fff" }} />
+            </div>
+          ))}
+
+          {/* How edge is calculated */}
+          <div style={{ background: "rgba(19,35,58,0.03)", borderRadius: 8, padding: "10px 12px" }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#131A24", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>How Edge Is Calculated</p>
+            <p style={{ fontSize: 10, color: "#3D4B58", margin: "0 0 4px", lineHeight: 1.5 }}>
+              <b>Model probability</b> is computed from a Markov run-expectancy table: base state (runners + outs) → expected runs → converted to win probability via a sigmoid over score delta × innings remaining. Clamped 5–95% mid-game.
+            </p>
+            <p style={{ fontSize: 10, color: "#3D4B58", margin: "0 0 4px", lineHeight: 1.5 }}>
+              <b>Market probability</b> is derived from the moneyline odds (via The-Odds-API) with vig removed: each side's implied probability is divided by the sum of both implied probabilities.
+            </p>
+            <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.5 }}>
+              <b>Edge</b> = Model% − Market%. Positive = model favors home team more than market does. Negative = model thinks away team is underpriced. Tier 3 fires at ±5pp; cooldown bypassed if edge improves +4pp.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InGameAlertEngine() {
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -4174,6 +4303,9 @@ function InGameAlertEngine() {
               <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine will auto-subscribe when games go live today</p>
             </div>
           )}
+
+          {/* Alert Glossary */}
+          <AlertGlossary />
         </div>
       )}
     </div>
