@@ -18,6 +18,33 @@ import { broadcast } from "./ws";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface MatchupData {
+  batterId:    number;
+  pitcherId:   number;
+  batterName:  string;
+  pitcherName: string;
+  batSide:     "L" | "R" | "S";   // batter handedness
+  pitchHand:   "L" | "R";         // pitcher handedness
+  // Batter stats
+  batterAvgVsPitchHand: number;   // AVG vs this pitcher's hand (2026)
+  batterObpVsPitchHand: number;
+  batterSlgVsPitchHand: number;
+  batterHRRate:   number;          // HR per PA vs this hand
+  batterKRate:    number;          // K per PA vs this hand
+  batterBBRate:   number;          // BB per PA vs this hand
+  batterRecent15: number;          // AVG last 15 days (form)
+  batterBvpAvg:   number | null;   // career AVG vs this specific pitcher (null if <4 PA)
+  batterBvpPA:    number;          // career PA vs this pitcher
+  // Pitcher stats
+  pitcherEra:          number;
+  pitcherWhip:         number;
+  pitcherK9:           number;
+  pitcherBB9:          number;
+  pitcherAvgVsBatSide: number;     // AVG allowed vs this batter's hand
+  pitcherHRPer9:       number;
+  fetchedAt: number;
+}
+
 export interface GameState {
   gamePk: number;
   homeTeam: string;
@@ -30,6 +57,10 @@ export interface GameState {
   runnersOn: { first: boolean; second: boolean; third: boolean };
   pitcherName: string;
   batterName: string;
+  batterId:   number | null;
+  pitcherId:  number | null;
+  batSide:    string;
+  pitchHand:  string;
   abstractGameState: "Preview" | "Live" | "Final";
   detailedState: string;
   lastPlay: string;
@@ -40,6 +71,7 @@ export interface GameState {
   homeProbWin: number;   // Markov model 0–1
   marketHomeProbWin: number | null; // from odds API 0–1
   edge: number | null;   // homeProbWin - marketHomeProbWin, signed
+  matchup: MatchupData | null;  // live BvP matchup data
   sourceTs: number;
   receiveTs: number;
   computeTs: number;
@@ -76,6 +108,110 @@ let lastOddsTs = 0;
 let lastGumboTs: Record<number, number> = {};
 let oddsMap: Record<string, { homeML: number; awayML: number }> = {};
 const alertHistory: TriggerAlert[] = []; // last 50 alerts
+
+// ─── Matchup cache: keyed "batterId_pitcherId", TTL 20 min ────────────────────
+const _matchupCache: Record<string, { ts: number; data: MatchupData }> = {};
+const MATCHUP_TTL_MS = 20 * 60 * 1000;
+
+async function fetchMatchupData(
+  batterId: number, pitcherId: number,
+  batterName: string, pitcherName: string,
+  batSide: string, pitchHand: string,
+): Promise<MatchupData | null> {
+  const key = `${batterId}_${pitcherId}`;
+  const cached = _matchupCache[key];
+  if (cached && Date.now() - cached.ts < MATCHUP_TTL_MS) return cached.data;
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const d15 = new Date(); d15.setDate(d15.getDate() - 15);
+    const d15s = d15.toISOString().slice(0, 10);
+
+    // Normalise handedness codes
+    const pitchSitCode = pitchHand === "L" ? "vl" : "vr";  // batter vs L or R pitcher
+    const batSitCode   = batSide  === "L" ? "vl" : "vr";   // pitcher vs L or R batter
+
+    const [
+      rBatterHand, rBatterRecent, rBvP, rPitcherSeason, rPitcherHand
+    ] = await Promise.allSettled([
+      // 1. Batter vs pitcher hand (2026)
+      axios.get(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=statSplits&group=hitting&season=2026&sitCodes=${pitchSitCode}`, { timeout: 6000 }),
+      // 2. Batter last 15 days
+      axios.get(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=byDateRange&group=hitting&season=2026&startDate=${d15s}&endDate=${today}`, { timeout: 6000 }),
+      // 3. BvP career vs this specific pitcher
+      axios.get(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&group=hitting&opposingPlayerId=${pitcherId}&season=2026`, { timeout: 6000 }),
+      // 4. Pitcher season (ERA, WHIP, K/9, BB/9, HR/9)
+      axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season&group=pitching&season=2026`, { timeout: 6000 }),
+      // 5. Pitcher vs batter hand
+      axios.get(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=statSplits&group=pitching&season=2026&sitCodes=${batSitCode}`, { timeout: 6000 }),
+    ]);
+
+    // Parse batter vs pitcher hand
+    const bhs = rBatterHand.status === "fulfilled"
+      ? rBatterHand.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}
+      : {};
+    const batterAvgVsPitchHand = parseFloat(bhs.avg ?? "0") || 0.250;
+    const batterObpVsPitchHand = parseFloat(bhs.obp ?? "0") || 0.320;
+    const batterSlgVsPitchHand = parseFloat(bhs.slg ?? "0") || 0.380;
+    const bAtBats = bhs.atBats ?? 0;
+    const bHR     = bhs.homeRuns ?? 0;
+    const bK      = bhs.strikeOuts ?? 0;
+    const bBB     = bhs.baseOnBalls ?? 0;
+    const bPA     = bAtBats + bBB + (bhs.hitByPitch ?? 0) + (bhs.sacFlies ?? 0) || 1;
+    const batterHRRate = bHR / bPA;
+    const batterKRate  = bK  / bPA;
+    const batterBBRate = bBB / bPA;
+
+    // Parse batter recent 15d
+    const rec = rBatterRecent.status === "fulfilled"
+      ? rBatterRecent.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}
+      : {};
+    const batterRecent15 = parseFloat(rec.avg ?? "0") || batterAvgVsPitchHand;
+
+    // Parse BvP
+    const bvpStat = rBvP.status === "fulfilled"
+      ? rBvP.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}
+      : {};
+    const bvpPA  = bvpStat.plateAppearances ?? 0;
+    const bvpAvg = bvpPA >= 4 ? (parseFloat(bvpStat.avg ?? "0") || null) : null;
+
+    // Parse pitcher season
+    const pss = rPitcherSeason.status === "fulfilled"
+      ? rPitcherSeason.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}
+      : {};
+    const pitcherEra  = parseFloat(pss.era  ?? "4.50") || 4.50;
+    const pitcherWhip = parseFloat(pss.whip ?? "1.30") || 1.30;
+    const pitcherK9   = parseFloat(pss.strikeoutsPer9Inn ?? "8.0") || 8.0;
+    const pitcherBB9  = parseFloat(pss.walksPer9Inn      ?? "3.0") || 3.0;
+    const ip          = parseFloat(pss.inningsPitched    ?? "1")   || 1;
+    const pitcherHRPer9 = ((pss.homeRuns ?? 1) / ip) * 9;
+
+    // Parse pitcher vs batter hand
+    const phs = rPitcherHand.status === "fulfilled"
+      ? rPitcherHand.value.data?.stats?.[0]?.splits?.[0]?.stat ?? {}
+      : {};
+    const pitcherAvgVsBatSide = parseFloat(phs.avg ?? "0") || parseFloat(pss.avg ?? "0.250") || 0.250;
+
+    const data: MatchupData = {
+      batterId, pitcherId, batterName, pitcherName,
+      batSide: (batSide || "R") as "L" | "R" | "S",
+      pitchHand: (pitchHand || "R") as "L" | "R",
+      batterAvgVsPitchHand, batterObpVsPitchHand, batterSlgVsPitchHand,
+      batterHRRate, batterKRate, batterBBRate,
+      batterRecent15, batterBvpAvg: bvpAvg, batterBvpPA: bvpPA,
+      pitcherEra, pitcherWhip, pitcherK9, pitcherBB9,
+      pitcherAvgVsBatSide, pitcherHRPer9,
+      fetchedAt: Date.now(),
+    };
+
+    _matchupCache[key] = { ts: Date.now(), data };
+    console.log(`[TriggerEngine] matchup fetched: ${batterName} vs ${pitcherName} | BvP AVG: ${bvpAvg ?? "N/A"} (${bvpPA} PA) | batter ${pitchSitCode}: ${batterAvgVsPitchHand.toFixed(3)}`);
+    return data;
+  } catch (e: any) {
+    console.warn(`[TriggerEngine] matchup fetch error ${batterId} vs ${pitcherId}:`, e.message);
+    return null;
+  }
+}
 
 // ─── SSE client management ────────────────────────────────────────────────────
 
@@ -239,6 +375,10 @@ function parseGumboState(gamePk: number, raw: any): GameState | null {
 
     const pitcherName: string = matchup.pitcher?.fullName ?? ls.defense?.pitcher?.fullName ?? "";
     const batterName: string  = matchup.batter?.fullName  ?? ls.offense?.batter?.fullName  ?? "";
+    const batterId:   number | null = matchup.batter?.id   ?? null;
+    const pitcherId:  number | null = matchup.pitcher?.id  ?? null;
+    const batSide:  string = matchup.batSide?.code  ?? "R";
+    const pitchHand: string = matchup.pitchHand?.code ?? "R";
     const lastPlay: string    = result.description ?? "";
     const lastEventType: string = result.event ?? "";
     const balls: number   = count.balls   ?? 0;
@@ -249,18 +389,31 @@ function parseGumboState(gamePk: number, raw: any): GameState | null {
       ? new Date(raw.metaData.timeStamp).getTime()
       : receiveTs;
 
+    // Pull matchup from cache (background-fetched, non-blocking)
+    const matchupKey = batterId && pitcherId ? `${batterId}_${pitcherId}` : null;
+    const cachedMatchup = matchupKey && _matchupCache[matchupKey]?.data
+      ? _matchupCache[matchupKey].data
+      : null;
+
     const partial: GameState = {
       gamePk, homeTeam, awayTeam, homeScore, awayScore,
       inning, isTopInning, outs, runnersOn,
-      pitcherName, batterName,
+      pitcherName, batterName, batterId, pitcherId, batSide, pitchHand,
       abstractGameState, detailedState,
       lastPlay, lastEventType,
       balls, strikes, currentPitchCount,
       homeProbWin: 0.5,
       marketHomeProbWin: null,
       edge: null,
+      matchup: cachedMatchup,
       sourceTs, receiveTs, computeTs: 0,
     };
+
+    // Kick off background matchup fetch if batter/pitcher changed or cache miss
+    if (batterId && pitcherId && !cachedMatchup) {
+      fetchMatchupData(batterId, pitcherId, batterName, pitcherName, batSide, pitchHand)
+        .catch(() => {}); // background, non-blocking
+    }
 
     partial.homeProbWin = computeWinProbability(partial);
 
@@ -637,6 +790,19 @@ export function getEngineStatus() {
         batterName: s.batterName,
         lastEventType: s.lastEventType,
         secsSinceUpdate: Math.round((now - s.receiveTs) / 1000),
+        matchup: s.matchup ? {
+          batterName:           s.matchup.batterName,
+          pitcherName:          s.matchup.pitcherName,
+          batSide:              s.matchup.batSide,
+          pitchHand:            s.matchup.pitchHand,
+          batterAvgVsPitchHand: s.matchup.batterAvgVsPitchHand,
+          batterRecent15:       s.matchup.batterRecent15,
+          batterBvpAvg:         s.matchup.batterBvpAvg,
+          batterBvpPA:          s.matchup.batterBvpPA,
+          pitcherEra:           s.matchup.pitcherEra,
+          pitcherK9:            s.matchup.pitcherK9,
+          pitcherBB9:           s.matchup.pitcherBB9,
+        } : null,
       }])
     ),
   };
@@ -691,6 +857,70 @@ function simulateNextPlay(curr: GameState): PlayOutcome[] {
   const outcomes: PlayOutcome[] = [];
   const r = curr.runnersOn;
   const isTopInning = curr.isTopInning;
+  const m = curr.matchup; // live matchup data (may be null on first poll)
+
+  // ── Derive matchup-adjusted probabilities ────────────────────────────────
+  // League averages as baseline, then blend in matchup data when available.
+  // Weights: 40% batter vs pitcher-hand, 30% pitcher ERA/K9 quality,
+  //          20% batter recent form (L15), 10% BvP head-to-head history.
+
+  const LG_AVG       = 0.248;  // 2026 MLB average
+  const LG_OBP       = 0.318;
+  const LG_HR_RATE   = 0.035;  // HR per PA
+  const LG_K_RATE    = 0.228;
+  const LG_BB_RATE   = 0.083;
+  const LG_HIT_RATE  = LG_AVG; // approx
+  const LG_XBH_RATE  = 0.082;  // non-HR extra base hits per PA
+
+  let hitRate   = LG_HIT_RATE;
+  let xbhRate   = LG_XBH_RATE;
+  let hrRate    = LG_HR_RATE;
+  let kRate     = LG_K_RATE;
+  let bbRate    = LG_BB_RATE;
+
+  if (m) {
+    // Batter component: AVG vs pitcher hand + recent form
+    const batterAdj  = m.batterAvgVsPitchHand * 0.40 + m.batterRecent15 * 0.20;
+    const bvpAdj     = m.batterBvpAvg != null && m.batterBvpPA >= 10
+      ? m.batterBvpAvg * 0.10 : batterAdj * 0.10;
+    const pitcherAdj = m.pitcherAvgVsBatSide * 0.30;
+    hitRate = batterAdj + pitcherAdj + bvpAdj;
+
+    // SLG-based XBH rate: if batter slugs well vs this arm, more XBH
+    const batterSLGAdj = (m.batterSlgVsPitchHand - m.batterAvgVsPitchHand) * 0.35;
+    xbhRate = Math.max(0.03, Math.min(0.15, LG_XBH_RATE + batterSLGAdj));
+
+    // HR rate: blended batter HR/PA vs this arm + pitcher HR/9 context
+    const pitcherHRFactor = m.pitcherHRPer9 / 9; // per PA estimate
+    hrRate = Math.max(0.005, Math.min(0.12,
+      m.batterHRRate * 0.50 + pitcherHRFactor * 0.30 + LG_HR_RATE * 0.20
+    ));
+
+    // K rate: pitcher K/9 scaled to per-PA, blended with batter K tendency
+    const pitcherKPerPA = m.pitcherK9 / (27 + m.pitcherBB9 + m.pitcherK9 * 0.3);
+    kRate = Math.max(0.05, Math.min(0.45,
+      m.batterKRate * 0.45 + pitcherKPerPA * 0.40 + LG_K_RATE * 0.15
+    ));
+
+    // BB rate: pitcher BB/9 + batter BB tendency
+    const pitcherBBPerPA = m.pitcherBB9 / 35;
+    bbRate = Math.max(0.02, Math.min(0.20,
+      m.batterBBRate * 0.40 + pitcherBBPerPA * 0.40 + LG_BB_RATE * 0.20
+    ));
+
+    // BvP override: if 15+ PA history, boost/suppress hit rate
+    if (m.batterBvpAvg !== null && m.batterBvpPA >= 15) {
+      const bvpWeight = Math.min(0.25, m.batterBvpPA / 60);
+      hitRate = hitRate * (1 - bvpWeight) + m.batterBvpAvg * bvpWeight;
+    }
+  }
+
+  // Normalise so probabilities sum reasonably (hit/xbh are subsets of outcomes)
+  // Final PA outcome distribution:
+  //   HR: hrRate | XBH (non-HR): xbhRate | Single: hitRate - xbhRate - hrRate
+  //   BB: bbRate | K: kRate | Out (other): remainder
+  const singleRate = Math.max(0, hitRate - xbhRate - hrRate);
+  const outRate    = Math.max(0.10, 1 - singleRate - xbhRate - hrRate - bbRate - kRate);
 
   // Helper: build a hypothetical state and compute win prob
   function hypothetical(
@@ -700,8 +930,6 @@ function simulateNextPlay(curr: GameState): PlayOutcome[] {
   ): number {
     const newOuts = Math.min(3, curr.outs + addOuts);
     const endHalf = newOuts >= 3;
-
-    // If the half inning ends, runners are cleared and outs reset
     const hy: GameState = {
       ...curr,
       homeScore: curr.homeScore + scoreDelta.home,
@@ -714,10 +942,8 @@ function simulateNextPlay(curr: GameState): PlayOutcome[] {
     return computeWinProbability(hy);
   }
 
-  // Runs scored on a hit — simplified: runner on 3rd always scores, 2nd scores on XBH
   const runsOnSingle = (isTopInning ? -1 : 1) * (
-    (r.third ? 1 : 0) +
-    (r.second && curr.outs < 2 ? 1 : 0) // runner from 2nd scores ~60% on single — approximate
+    (r.third ? 1 : 0) + (r.second && curr.outs < 2 ? 1 : 0)
   );
   const runsOnDouble = (isTopInning ? -1 : 1) * (
     (r.third ? 1 : 0) + (r.second ? 1 : 0) + (r.first ? 1 : 0)
@@ -726,98 +952,101 @@ function simulateNextPlay(curr: GameState): PlayOutcome[] {
     1 + (r.first ? 1 : 0) + (r.second ? 1 : 0) + (r.third ? 1 : 0)
   );
 
-  // ── Single ──────────────────────────────────────────────────────────────
-  const singleRunners = {
-    first:  true,
-    second: r.first,
-    third:  r.second && curr.outs >= 2 ? false : r.second, // runner from 2nd may score
-  };
-  const singleScore = runsOnSingle;
+  // ── Single ───────────────────────────────────────────────────────────────
+  const singleRunners = { first: true, second: r.first, third: r.second && curr.outs >= 2 ? false : r.second };
   const singleProb = hypothetical(
-    isTopInning ? { home: 0, away: -singleScore } : { home: singleScore, away: 0 },
+    isTopInning ? { home: 0, away: -runsOnSingle } : { home: runsOnSingle, away: 0 },
     singleRunners, 0
   );
+  const singleLabel = m
+    ? `Single (batter ${m.batterAvgVsPitchHand.toFixed(3)} vs ${m.pitchHand}HP)`
+    : "Base hit (single)";
   outcomes.push({
-    label: "Base hit (single)",
-    probability: 0.23,
-    homeScoreDelta: isTopInning ? 0 : singleScore,
-    awayScoreDelta: isTopInning ? Math.abs(singleScore) : 0,
-    newRunners: singleRunners,
-    newOuts: 0,
-    newHomeProbWin: singleProb,
-    wpShift: singleProb - curr.homeProbWin,
+    label: singleLabel,
+    probability: singleRate,
+    homeScoreDelta: isTopInning ? 0 : runsOnSingle,
+    awayScoreDelta: isTopInning ? Math.abs(runsOnSingle) : 0,
+    newRunners: singleRunners, newOuts: 0,
+    newHomeProbWin: singleProb, wpShift: singleProb - curr.homeProbWin,
   });
 
-  // ── Extra-base hit (double) ──────────────────────────────────────────────
+  // ── Extra-base hit (double) ───────────────────────────────────────────────
   const xbhRunners = { first: false, second: true, third: false };
-  const xbhScore = runsOnDouble;
   const xbhProb = hypothetical(
-    isTopInning ? { home: 0, away: -xbhScore } : { home: xbhScore, away: 0 },
+    isTopInning ? { home: 0, away: -runsOnDouble } : { home: runsOnDouble, away: 0 },
     xbhRunners, 0
   );
   outcomes.push({
-    label: "Extra-base hit (double)",
-    probability: 0.08,
-    homeScoreDelta: isTopInning ? 0 : xbhScore,
-    awayScoreDelta: isTopInning ? Math.abs(xbhScore) : 0,
-    newRunners: xbhRunners,
-    newOuts: 0,
-    newHomeProbWin: xbhProb,
-    wpShift: xbhProb - curr.homeProbWin,
+    label: "Extra-base hit (double/triple)",
+    probability: xbhRate,
+    homeScoreDelta: isTopInning ? 0 : runsOnDouble,
+    awayScoreDelta: isTopInning ? Math.abs(runsOnDouble) : 0,
+    newRunners: xbhRunners, newOuts: 0,
+    newHomeProbWin: xbhProb, wpShift: xbhProb - curr.homeProbWin,
   });
 
-  // ── Home run ─────────────────────────────────────────────────────────────
-  const hrScore = Math.abs(runsOnHR);
+  // ── Home run ──────────────────────────────────────────────────────────────
+  const hrTotal = Math.abs(runsOnHR);
   const hrProb = hypothetical(
-    isTopInning ? { home: 0, away: hrScore } : { home: hrScore, away: 0 },
+    isTopInning ? { home: 0, away: hrTotal } : { home: hrTotal, away: 0 },
     { first: false, second: false, third: false }, 0
   );
+  const hrLabel = m
+    ? `Home run (HR/PA: ${(m.batterHRRate * 100).toFixed(1)}% vs ${m.pitchHand}HP, pitcher ${m.pitcherHRPer9.toFixed(1)} HR/9)`
+    : "Home run";
   outcomes.push({
-    label: "Home run",
-    probability: 0.035,
-    homeScoreDelta: isTopInning ? 0 : hrScore,
-    awayScoreDelta: isTopInning ? hrScore : 0,
-    newRunners: { first: false, second: false, third: false },
-    newOuts: 0,
-    newHomeProbWin: hrProb,
-    wpShift: hrProb - curr.homeProbWin,
+    label: hrLabel,
+    probability: hrRate,
+    homeScoreDelta: isTopInning ? 0 : hrTotal,
+    awayScoreDelta: isTopInning ? hrTotal : 0,
+    newRunners: { first: false, second: false, third: false }, newOuts: 0,
+    newHomeProbWin: hrProb, wpShift: hrProb - curr.homeProbWin,
   });
 
-  // ── Walk (runner advances, no outs) ──────────────────────────────────────
+  // ── Walk ──────────────────────────────────────────────────────────────────
   const walkRunners = {
-    first:  true,
+    first: true,
     second: r.first || r.second,
-    third:  r.second && r.first ? true : r.third,
+    third: r.second && r.first ? true : r.third,
   };
-  // Walk scores only if bases were loaded
   const walkRuns = r.first && r.second && r.third ? 1 : 0;
   const walkProb = hypothetical(
     isTopInning ? { home: 0, away: walkRuns } : { home: walkRuns, away: 0 },
     walkRunners, 0
   );
+  const walkLabel = m
+    ? `Walk (pitcher ${m.pitcherBB9.toFixed(1)} BB/9, batter BB/PA: ${(m.batterBBRate * 100).toFixed(0)}%)`
+    : "Walk";
   outcomes.push({
-    label: "Walk",
-    probability: 0.088,
+    label: walkLabel,
+    probability: bbRate,
     homeScoreDelta: isTopInning ? 0 : walkRuns,
     awayScoreDelta: isTopInning ? walkRuns : 0,
-    newRunners: walkRunners,
-    newOuts: 0,
-    newHomeProbWin: walkProb,
-    wpShift: walkProb - curr.homeProbWin,
+    newRunners: walkRunners, newOuts: 0,
+    newHomeProbWin: walkProb, wpShift: walkProb - curr.homeProbWin,
+  });
+
+  // ── Strikeout ─────────────────────────────────────────────────────────────
+  const kProb = hypothetical({ home: 0, away: 0 }, { ...r }, 1);
+  const kLabel = m
+    ? `Strikeout (pitcher ${m.pitcherK9.toFixed(1)} K/9, batter K/PA: ${(m.batterKRate * 100).toFixed(0)}%)`
+    : "Strikeout";
+  outcomes.push({
+    label: kLabel,
+    probability: kRate,
+    homeScoreDelta: 0, awayScoreDelta: 0,
+    newRunners: { ...r }, newOuts: 1,
+    newHomeProbWin: kProb, wpShift: kProb - curr.homeProbWin,
   });
 
   // ── Groundout / flyout ────────────────────────────────────────────────────
-  const outRunners = { ...r }; // runners hold on a typical out
-  const outProb = hypothetical({ home: 0, away: 0 }, outRunners, 1);
+  const outProb = hypothetical({ home: 0, away: 0 }, { ...r }, 1);
   outcomes.push({
     label: "Out (groundout/flyout)",
-    probability: 0.43,
-    homeScoreDelta: 0,
-    awayScoreDelta: 0,
-    newRunners: outRunners,
-    newOuts: 1,
-    newHomeProbWin: outProb,
-    wpShift: outProb - curr.homeProbWin,
+    probability: outRate,
+    homeScoreDelta: 0, awayScoreDelta: 0,
+    newRunners: { ...r }, newOuts: 1,
+    newHomeProbWin: outProb, wpShift: outProb - curr.homeProbWin,
   });
 
   // ── Sac fly (runner on 3rd, < 2 outs) ────────────────────────────────────

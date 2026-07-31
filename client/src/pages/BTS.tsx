@@ -3686,6 +3686,13 @@ interface EngineStatus {
     homeProbWin: number; marketHomeProbWin: number | null; edge: number | null;
     abstractGameState: string; pitcherName: string; batterName: string;
     lastEventType: string; secsSinceUpdate: number;
+    matchup: {
+      batterName: string; pitcherName: string;
+      batSide: string; pitchHand: string;
+      batterAvgVsPitchHand: number; batterRecent15: number;
+      batterBvpAvg: number | null; batterBvpPA: number;
+      pitcherEra: number; pitcherK9: number; pitcherBB9: number;
+    } | null;
   }>;
 }
 
@@ -3921,6 +3928,24 @@ function LiveGameTicker({ status }: { status: EngineStatus }) {
                     <p style={{ fontSize: 9, color: "#3D4B58", margin: 0 }}>
                       {g.outs} out · {g.batterName || "—"} vs {g.pitcherName || "—"}
                     </p>
+                    {g.matchup && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 8, background: "rgba(19,35,58,0.06)", color: "#3D4B58", padding: "1px 5px", borderRadius: 3 }}>
+                          AVG vs {g.matchup.pitchHand}HP: {g.matchup.batterAvgVsPitchHand.toFixed(3)}
+                        </span>
+                        <span style={{ fontSize: 8, background: "rgba(19,35,58,0.06)", color: "#3D4B58", padding: "1px 5px", borderRadius: 3 }}>
+                          L15: {g.matchup.batterRecent15.toFixed(3)}
+                        </span>
+                        {g.matchup.batterBvpAvg !== null && g.matchup.batterBvpPA >= 4 && (
+                          <span style={{ fontSize: 8, background: "rgba(212,168,67,0.12)", color: "#b8930a", padding: "1px 5px", borderRadius: 3 }}>
+                            BvP: {g.matchup.batterBvpAvg.toFixed(3)} ({g.matchup.batterBvpPA} PA)
+                          </span>
+                        )}
+                        <span style={{ fontSize: 8, background: "rgba(19,35,58,0.06)", color: "#3D4B58", padding: "1px 5px", borderRadius: 3 }}>
+                          {g.matchup.pitcherEra.toFixed(2)} ERA · {g.matchup.pitcherK9.toFixed(1)} K/9
+                        </span>
+                      </div>
+                    )}
                     {edgeAbs != null && edgeAbs >= 3 && (
                       <p style={{ fontSize: 9, fontWeight: 700, color: edgeAbs >= 8 ? "#16a34a" : "#b8930a", margin: 0, marginTop: 2 }}>
                         Model edge: {g.edge! > 0 ? "+" : ""}{(g.edge! * 100).toFixed(1)}% ({g.edge! > 0 ? g.homeTeam : g.awayTeam})
@@ -3961,8 +3986,18 @@ function InGameAlertEngine() {
 
       es.addEventListener("status", (e: MessageEvent) => {
         try {
-          setStatus(JSON.parse(e.data));
+          const s = JSON.parse(e.data) as EngineStatus;
+          setStatus(s);
           setConnected(true);
+          // Auto-remove alerts for games that have ended
+          const finalPks = new Set(
+            Object.entries(s.gameStates ?? {})
+              .filter(([, g]) => g.abstractGameState === "Final")
+              .map(([pk]) => pk)
+          );
+          if (finalPks.size > 0) {
+            setAlerts(prev => prev.filter(a => !finalPks.has(String(a.gamePk))));
+          }
         } catch {}
       });
 
