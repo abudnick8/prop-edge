@@ -151,14 +151,23 @@ function impliedProb(ml: number): number {
 
 async function fetchOdds(): Promise<void> {
   const key = process.env.ODDS_API_KEY;
-  if (!key) return;
+  if (!key) {
+    console.warn("[TriggerEngine] ODDS_API_KEY not set — running model-only mode");
+    lastOddsTs = Date.now(); // prevent repeated log spam
+    return;
+  }
   try {
     const r = await axios.get(
       `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american`,
-      { timeout: 8000 }
+      { timeout: 10000 }
     );
+    if (!Array.isArray(r.data)) {
+      console.warn("[TriggerEngine] odds API unexpected response:", JSON.stringify(r.data).slice(0, 200));
+      lastOddsTs = Date.now();
+      return;
+    }
     const newMap: Record<string, { homeML: number; awayML: number }> = {};
-    for (const game of (r.data ?? [])) {
+    for (const game of r.data) {
       const homeTeam: string = game.home_team ?? "";
       const bk = game.bookmakers?.[0];
       if (!bk) continue;
@@ -170,10 +179,14 @@ async function fetchOdds(): Promise<void> {
         newMap[homeTeam] = { homeML: homeOutcome.price, awayML: awayOutcome.price };
       }
     }
+    const count = Object.keys(newMap).length;
+    console.log(`[TriggerEngine] odds refreshed — ${count} games with ML lines`);
     oddsMap = newMap;
     lastOddsTs = Date.now();
   } catch (e: any) {
-    console.warn("[TriggerEngine] odds fetch failed:", e.message);
+    console.warn("[TriggerEngine] odds fetch failed:", e.message, "| remaining map:", Object.keys(oddsMap).length, "entries");
+    // Keep lastOddsTs stale so UI shows orange freshness warning
+    // but don't clear existing odds — they degrade gracefully
   }
 }
 
@@ -181,9 +194,10 @@ async function fetchOdds(): Promise<void> {
 
 async function fetchGumboState(gamePk: number): Promise<any | null> {
   try {
+    // NOTE: do NOT use ?fields= filter — it strips gameData/liveData contents entirely
     const r = await axios.get(
-      `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live?fields=gameData,liveData,metaData`,
-      { timeout: 5000 }
+      `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`,
+      { timeout: 8000 }
     );
     return r.data;
   } catch (e: any) {
@@ -467,13 +481,17 @@ function evaluateTrigger(prev: GameState | undefined, curr: GameState): TriggerA
 async function fetchTodayGamePks(): Promise<number[]> {
   try {
     const today = new Date().toISOString().slice(0, 10);
+    // NOTE: do NOT use ?fields= filter — it strips nested status fields
     const r = await axios.get(
-      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&gameType=R&fields=dates,games,gamePk,status,abstractGameState`,
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&gameType=R`,
       { timeout: 8000 }
     );
     const games: any[] = r.data?.dates?.[0]?.games ?? [];
     return games
-      .filter((g: any) => ["Live", "Preview"].includes(g.status?.abstractGameState ?? ""))
+      .filter((g: any) => {
+        const state = g.status?.abstractGameState ?? "";
+        return ["Live", "Preview", "Warmup"].includes(state);
+      })
       .map((g: any) => g.gamePk)
       .filter(Boolean);
   } catch (e: any) {
