@@ -3868,16 +3868,31 @@ function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => vo
 }
 
 function LiveGameTicker({ status }: { status: EngineStatus }) {
-  const games = Object.entries(status.gameStates ?? {});
-  if (games.length === 0) return null;
+  const allGames = Object.entries(status.gameStates ?? {});
+  const liveGames = allGames.filter(([, g]) => g.abstractGameState === "Live");
+  const previewCount = allGames.filter(([, g]) => g.abstractGameState === "Preview" || g.abstractGameState === "Warmup").length;
+  if (allGames.length === 0) return null;
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-        Live Games Tracked ({games.length})
-      </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
+          {liveGames.length > 0 ? `In Progress (${liveGames.length})` : "No Games In Progress Yet"}
+        </p>
+        {previewCount > 0 && (
+          <span style={{ fontSize: 9, color: "#9CA3AF" }}>+{previewCount} upcoming today</span>
+        )}
+      </div>
+      {liveGames.length === 0 && (
+        <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
+          <p style={{ fontSize: 11, color: "#3D4B58", margin: 0 }}>
+            Engine is subscribed — alerts will fire when games start
+          </p>
+        </div>
+      )}
+      {liveGames.length > 0 && (
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {games.map(([pk, g]) => {
+        {liveGames.map(([pk, g]) => {
           const liveColor = g.abstractGameState === "Live" ? "#22c55e" : "#9CA3AF";
           const edgeAbs = g.edge != null ? Math.abs(g.edge * 100) : null;
           const runners = g.runnersOn ?? { first: false, second: false, third: false };
@@ -3926,6 +3941,7 @@ function LiveGameTicker({ status }: { status: EngineStatus }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -4063,9 +4079,13 @@ function InGameAlertEngine() {
               <div style={{ width: 1, background: "rgba(19,35,58,0.10)" }} />
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 8, color: "#9CA3AF", textTransform: "uppercase", margin: 0 }}>Odds</p>
-                <p style={{ fontSize: 11, fontWeight: 800, color: status.lastOddsSecs != null && status.lastOddsSecs < 60 ? "#22c55e" : "#F59E0B", margin: 0 }}>
-                  {status.lastOddsSecs != null ? `${status.lastOddsSecs}s` : "—"}
-                </p>
+                {status.lastOddsSecs == null || status.lastOddsSecs > 300 ? (
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#9CA3AF", margin: 0 }}>MODEL</p>
+                ) : (
+                  <p style={{ fontSize: 11, fontWeight: 800, color: status.lastOddsSecs < 60 ? "#22c55e" : "#F59E0B", margin: 0 }}>
+                    {status.lastOddsSecs}s
+                  </p>
+                )}
               </div>
               <div style={{ width: 1, background: "rgba(19,35,58,0.10)" }} />
               <div style={{ textAlign: "center" }}>
@@ -4097,8 +4117,8 @@ function InGameAlertEngine() {
               {hasActiveGames ? (
                 <>
                   <p style={{ fontSize: 24, marginBottom: 6 }}>🕐</p>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>Monitoring {status?.activeGames} Live Game{status?.activeGames !== 1 ? "s" : ""}</p>
-                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Alert fires when edge or leverage threshold is crossed</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>Waiting for High-Leverage Situation</p>
+                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine is monitoring — alert fires when edge or leverage threshold is crossed</p>
                 </>
               ) : (
                 <>
