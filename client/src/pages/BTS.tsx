@@ -4001,7 +4001,27 @@ function InGameAlertEngine() {
     return () => eventSourceRef.current?.close();
   }, []);
 
-  const visibleAlerts = alerts.filter(a => !dismissed.has(a.id));
+  // Cap at 2 cards per live game: keep the most recent pre_play + most recent non-pre_play per gamePk
+  const visibleAlerts = (() => {
+    const notDismissed = alerts.filter(a => !dismissed.has(a.id));
+    const seen = new Map<string, { prePlay: LiveAlert | null; postPlay: LiveAlert | null }>();
+    for (const a of notDismissed) {
+      const key = String(a.gamePk);
+      if (!seen.has(key)) seen.set(key, { prePlay: null, postPlay: null });
+      const slot = seen.get(key)!;
+      if (a.type === "pre_play") {
+        if (!slot.prePlay) slot.prePlay = a; // most recent pre-play (alerts are newest-first)
+      } else {
+        if (!slot.postPlay) slot.postPlay = a; // most recent post-play
+      }
+    }
+    const result: LiveAlert[] = [];
+    for (const { prePlay, postPlay } of seen.values()) {
+      if (postPlay) result.push(postPlay);
+      if (prePlay)  result.push(prePlay);
+    }
+    return result;
+  })();
   const hasActiveGames = (status?.activeGames ?? 0) > 0;
 
   return (
