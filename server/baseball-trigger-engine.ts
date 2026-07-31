@@ -514,34 +514,44 @@ async function pollGame(gamePk: number) {
     secsSinceSource: Math.round((Date.now() - curr.sourceTs) / 1000),
   });
 
-  // Evaluate trigger
+  // Helper: fire Discord webhook for high-tier alerts
+  function fireDiscord(a: TriggerAlert) {
+    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) return;
+    axios.post(webhookUrl, {
+      embeds: [{
+        title: `⚾ ${a.headline}`,
+        description: `${a.body}\n\n**Scenarios:**\n${a.swingScenarios.map(s => `• ${s}`).join("\n")}`,
+        color: a.tier === 1 ? 0xFF4444 : a.tier === 2 ? 0xFF8C00 : 0x4488FF,
+        footer: { text: `Edge: ${a.modelEdge != null ? a.modelEdge + "%" : "model only"} | Latency: ${a.latencyMs.total}ms | ${a.type}` },
+        timestamp: new Date(a.alertTs).toISOString(),
+      }]
+    }).catch(() => {});
+  }
+
+  // Evaluate post-play trigger (fires after a meaningful state change)
   const alert = evaluateTrigger(prev, curr);
   if (alert) {
     engineStatus.alertCount++;
     console.log(`[TriggerEngine] TIER ${alert.tier} ALERT: ${alert.headline}`);
     broadcast("mlb:trigger", alert);
     broadcastSse("trigger", alert);
+    if (alert.tier === 1) fireDiscord(alert);
+  }
 
-    // Tier 1: also push Discord webhook if configured
-    if (alert.tier === 1) {
-      const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-      if (webhookUrl) {
-        axios.post(webhookUrl, {
-          embeds: [{
-            title: `⚾ ${alert.headline}`,
-            description: `${alert.body}\n\n**Scenarios:**\n${alert.swingScenarios.map(s => `• ${s}`).join("\n")}`,
-            color: alert.tier === 1 ? 0xFF4444 : alert.tier === 2 ? 0xFF8C00 : 0x4488FF,
-            footer: { text: `Edge: ${alert.modelEdge != null ? alert.modelEdge + "%" : "model only"} | Latency: ${alert.latencyMs.total}ms` },
-            timestamp: new Date(alert.alertTs).toISOString(),
-          }]
-        }).catch(() => {});
-      }
-    }
+  // Evaluate pre-play anticipatory trigger (fires on current state BEFORE next pitch)
+  const preAlert = evaluatePrePlayTrigger(curr);
+  if (preAlert) {
+    engineStatus.alertCount++;
+    console.log(`[TriggerEngine] PRE-PLAY TIER ${preAlert.tier}: ${preAlert.headline}`);
+    broadcast("mlb:trigger", preAlert);
+    broadcastSse("trigger", preAlert);
+    if (preAlert.tier === 1) fireDiscord(preAlert);
+  }
 
-    // Remove finished games
-    if (curr.abstractGameState === "Final") {
-      activeGamePks.delete(gamePk);
-    }
+  // Remove finished games
+  if (curr.abstractGameState === "Final") {
+    activeGamePks.delete(gamePk);
   }
 }
 
@@ -640,4 +650,365 @@ export function startTriggerEngine() {
 export function stopTriggerEngine() {
   engineRunning = false;
   engineStatus.running = false;
+}
+
+// ─── Pre-play anticipatory trigger ───────────────────────────────────────────
+// Fires BEFORE the next pitch based on the current base/score/out state.
+// Simulates the most probable next plays and calculates how much win probability
+// would shift. If a single common play (single, out, HR, walk) would move WP
+// by ≥12pp, fire an anticipatory alert so the user knows BEFORE it happens.
+
+interface PlayOutcome {
+  label: string;         // "Base hit", "Home run", "Out", etc.
+  probability: number;   // 0–1 rough base rate
+  homeScoreDelta: number;
+  awayScoreDelta: number;
+  newRunners: { first: boolean; second: boolean; third: boolean };
+  newOuts: number;       // outs added (0 or 1); if 3 total → end half inning
+  newHomeProbWin: number;
+  wpShift: number;       // signed: positive = good for home, negative = good for away
+}
+
+function simulateNextPlay(curr: GameState): PlayOutcome[] {
+  const outcomes: PlayOutcome[] = [];
+  const r = curr.runnersOn;
+  const isTopInning = curr.isTopInning;
+
+  // Helper: build a hypothetical state and compute win prob
+  function hypothetical(
+    scoreDelta: { home: number; away: number },
+    newRunners: { first: boolean; second: boolean; third: boolean },
+    addOuts: number,
+  ): number {
+    const newOuts = Math.min(3, curr.outs + addOuts);
+    const endHalf = newOuts >= 3;
+
+    // If the half inning ends, runners are cleared and outs reset
+    const hy: GameState = {
+      ...curr,
+      homeScore: curr.homeScore + scoreDelta.home,
+      awayScore: curr.awayScore + scoreDelta.away,
+      runnersOn: endHalf ? { first: false, second: false, third: false } : newRunners,
+      outs: endHalf ? 0 : newOuts,
+      inning: endHalf && !isTopInning ? curr.inning + 1 : curr.inning,
+      isTopInning: endHalf ? !isTopInning : isTopInning,
+    };
+    return computeWinProbability(hy);
+  }
+
+  // Runs scored on a hit — simplified: runner on 3rd always scores, 2nd scores on XBH
+  const runsOnSingle = (isTopInning ? -1 : 1) * (
+    (r.third ? 1 : 0) +
+    (r.second && curr.outs < 2 ? 1 : 0) // runner from 2nd scores ~60% on single — approximate
+  );
+  const runsOnDouble = (isTopInning ? -1 : 1) * (
+    (r.third ? 1 : 0) + (r.second ? 1 : 0) + (r.first ? 1 : 0)
+  );
+  const runsOnHR = (isTopInning ? -1 : 1) * (
+    1 + (r.first ? 1 : 0) + (r.second ? 1 : 0) + (r.third ? 1 : 0)
+  );
+
+  // ── Single ──────────────────────────────────────────────────────────────
+  const singleRunners = {
+    first:  true,
+    second: r.first,
+    third:  r.second && curr.outs >= 2 ? false : r.second, // runner from 2nd may score
+  };
+  const singleScore = runsOnSingle;
+  const singleProb = hypothetical(
+    isTopInning ? { home: 0, away: -singleScore } : { home: singleScore, away: 0 },
+    singleRunners, 0
+  );
+  outcomes.push({
+    label: "Base hit (single)",
+    probability: 0.23,
+    homeScoreDelta: isTopInning ? 0 : singleScore,
+    awayScoreDelta: isTopInning ? Math.abs(singleScore) : 0,
+    newRunners: singleRunners,
+    newOuts: 0,
+    newHomeProbWin: singleProb,
+    wpShift: singleProb - curr.homeProbWin,
+  });
+
+  // ── Extra-base hit (double) ──────────────────────────────────────────────
+  const xbhRunners = { first: false, second: true, third: false };
+  const xbhScore = runsOnDouble;
+  const xbhProb = hypothetical(
+    isTopInning ? { home: 0, away: -xbhScore } : { home: xbhScore, away: 0 },
+    xbhRunners, 0
+  );
+  outcomes.push({
+    label: "Extra-base hit (double)",
+    probability: 0.08,
+    homeScoreDelta: isTopInning ? 0 : xbhScore,
+    awayScoreDelta: isTopInning ? Math.abs(xbhScore) : 0,
+    newRunners: xbhRunners,
+    newOuts: 0,
+    newHomeProbWin: xbhProb,
+    wpShift: xbhProb - curr.homeProbWin,
+  });
+
+  // ── Home run ─────────────────────────────────────────────────────────────
+  const hrScore = Math.abs(runsOnHR);
+  const hrProb = hypothetical(
+    isTopInning ? { home: 0, away: hrScore } : { home: hrScore, away: 0 },
+    { first: false, second: false, third: false }, 0
+  );
+  outcomes.push({
+    label: "Home run",
+    probability: 0.035,
+    homeScoreDelta: isTopInning ? 0 : hrScore,
+    awayScoreDelta: isTopInning ? hrScore : 0,
+    newRunners: { first: false, second: false, third: false },
+    newOuts: 0,
+    newHomeProbWin: hrProb,
+    wpShift: hrProb - curr.homeProbWin,
+  });
+
+  // ── Walk (runner advances, no outs) ──────────────────────────────────────
+  const walkRunners = {
+    first:  true,
+    second: r.first || r.second,
+    third:  r.second && r.first ? true : r.third,
+  };
+  // Walk scores only if bases were loaded
+  const walkRuns = r.first && r.second && r.third ? 1 : 0;
+  const walkProb = hypothetical(
+    isTopInning ? { home: 0, away: walkRuns } : { home: walkRuns, away: 0 },
+    walkRunners, 0
+  );
+  outcomes.push({
+    label: "Walk",
+    probability: 0.088,
+    homeScoreDelta: isTopInning ? 0 : walkRuns,
+    awayScoreDelta: isTopInning ? walkRuns : 0,
+    newRunners: walkRunners,
+    newOuts: 0,
+    newHomeProbWin: walkProb,
+    wpShift: walkProb - curr.homeProbWin,
+  });
+
+  // ── Groundout / flyout ────────────────────────────────────────────────────
+  const outRunners = { ...r }; // runners hold on a typical out
+  const outProb = hypothetical({ home: 0, away: 0 }, outRunners, 1);
+  outcomes.push({
+    label: "Out (groundout/flyout)",
+    probability: 0.43,
+    homeScoreDelta: 0,
+    awayScoreDelta: 0,
+    newRunners: outRunners,
+    newOuts: 1,
+    newHomeProbWin: outProb,
+    wpShift: outProb - curr.homeProbWin,
+  });
+
+  // ── Sac fly (runner on 3rd, < 2 outs) ────────────────────────────────────
+  if (r.third && curr.outs < 2) {
+    const sfRuns = 1;
+    const sfProb = hypothetical(
+      isTopInning ? { home: 0, away: sfRuns } : { home: sfRuns, away: 0 },
+      { first: r.first, second: r.second, third: false }, 1
+    );
+    outcomes.push({
+      label: "Sacrifice fly (scores runner from 3rd)",
+      probability: 0.04,
+      homeScoreDelta: isTopInning ? 0 : sfRuns,
+      awayScoreDelta: isTopInning ? sfRuns : 0,
+      newRunners: { first: r.first, second: r.second, third: false },
+      newOuts: 1,
+      newHomeProbWin: sfProb,
+      wpShift: sfProb - curr.homeProbWin,
+    });
+  }
+
+  // ── Double play (runner on 1st, < 2 outs) ────────────────────────────────
+  if (r.first && curr.outs < 2) {
+    const dpProb = hypothetical({ home: 0, away: 0 }, { first: false, second: r.second, third: r.third }, 2);
+    outcomes.push({
+      label: "Double play (ends threat)",
+      probability: 0.08,
+      homeScoreDelta: 0,
+      awayScoreDelta: 0,
+      newRunners: { first: false, second: r.second, third: r.third },
+      newOuts: 2,
+      newHomeProbWin: dpProb,
+      wpShift: dpProb - curr.homeProbWin,
+    });
+  }
+
+  return outcomes;
+}
+
+interface PrePlaySwing {
+  maxUpside: PlayOutcome;    // biggest positive shift
+  maxDownside: PlayOutcome;  // biggest negative shift
+  allOutcomes: PlayOutcome[];
+  swingRange: number;        // upside.wpShift - downside.wpShift (total swing)
+  battingTeam: string;
+  fieldingTeam: string;
+  alertMessage: string;
+  marketImplied: number | null;
+}
+
+export function computePrePlaySwing(curr: GameState): PrePlaySwing | null {
+  if (curr.abstractGameState !== "Live") return null;
+  if (curr.outs >= 3) return null; // half inning is over
+
+  const outcomes = simulateNextPlay(curr);
+
+  // From trailing team's perspective, find the best and worst outcome
+  const scoreDelta = curr.homeScore - curr.awayScore;
+  const battingTeam  = curr.isTopInning ? curr.awayTeam : curr.homeTeam;
+  const fieldingTeam = curr.isTopInning ? curr.homeTeam : curr.awayTeam;
+
+  // Sort by wpShift — for the batting team (away = top, home = bottom)
+  // Positive wpShift always = good for home. Flip sign for away team at bat.
+  const flip = curr.isTopInning ? -1 : 1;
+  const sorted = [...outcomes].sort((a, b) => flip * b.wpShift - flip * a.wpShift);
+
+  const maxUpside   = sorted[0];  // best outcome for batting team
+  const maxDownside = sorted[sorted.length - 1]; // worst for batting team
+
+  const swingRange = Math.abs(maxUpside.wpShift - maxDownside.wpShift);
+
+  // Only meaningful if swing range is significant
+  if (swingRange < 0.10) return null;
+
+  // Format market implied if available
+  const marketTeamProb = curr.marketHomeProbWin != null
+    ? curr.isTopInning
+      ? 1 - curr.marketHomeProbWin  // away team at bat
+      : curr.marketHomeProbWin      // home team at bat
+    : null;
+
+  // Build human-readable alert message
+  const runnerDesc = [
+    curr.runnersOn.first  && "1st",
+    curr.runnersOn.second && "2nd",
+    curr.runnersOn.third  && "3rd",
+  ].filter(Boolean).join(" & ") || "empty";
+
+  const scoreLine = `${curr.awayTeam} ${curr.awayScore}–${curr.homeScore} ${curr.homeTeam}`;
+  const upsideShiftPct = Math.round(Math.abs(maxUpside.wpShift) * 100);
+  const downsideShiftPct = Math.round(Math.abs(maxDownside.wpShift) * 100);
+
+  let alertMessage = `${battingTeam} batting, runners on ${runnerDesc}, ${curr.outs} out. `;
+  alertMessage += `${scoreLine}. `;
+  alertMessage += `${maxUpside.label} shifts win odds +${upsideShiftPct}pp for ${battingTeam}`;
+  if (marketTeamProb != null) {
+    alertMessage += ` (market: ${Math.round(marketTeamProb * 100)}% ${battingTeam})`;
+  }
+  alertMessage += `. ${maxDownside.label} shifts ${downsideShiftPct}pp against.`;
+
+  return {
+    maxUpside,
+    maxDownside,
+    allOutcomes: outcomes,
+    swingRange,
+    battingTeam,
+    fieldingTeam,
+    alertMessage,
+    marketImplied: marketTeamProb,
+  };
+}
+
+// ─── Hook pre-play trigger into main evaluateTrigger ─────────────────────────
+// Called from pollGame after every GUMBO update. Runs simulateNextPlay on the
+// CURRENT state (before next pitch) and fires if the swing potential is high.
+
+export function evaluatePrePlayTrigger(curr: GameState): TriggerAlert | null {
+  if (curr.abstractGameState !== "Live") return null;
+
+  const swing = computePrePlaySwing(curr);
+  if (!swing) return null;
+
+  // Only fire if swing range is meaningful
+  // Tier 1: any single play could shift WP ≥20pp AND game is close (±1) and late (≥7th)
+  // Tier 2: swing range ≥15pp, close game any inning
+  // Tier 3: swing range ≥10pp general
+  const isClose = Math.abs(curr.homeScore - curr.awayScore) <= 2;
+  const isLate  = curr.inning >= 7;
+  const swingPct = Math.round(swing.swingRange * 100);
+  const upsidePct = Math.round(Math.abs(swing.maxUpside.wpShift) * 100);
+
+  const tier: 1 | 2 | 3 =
+    (upsidePct >= 20 && isClose && isLate) ? 1 :
+    (swing.swingRange >= 0.15 && isClose) ? 2 :
+    (swing.swingRange >= 0.10) ? 3 : 3;
+
+  if (swing.swingRange < 0.10) return null;
+
+  // Cooldown: pre-play triggers use a separate key and fire at most once per at-bat state
+  const r = curr.runnersOn;
+  const stateKey = `preplay_${curr.gamePk}_${curr.inning}${curr.isTopInning ? "T" : "B"}_${curr.outs}_${r.first?1:0}${r.second?1:0}${r.third?1:0}`;
+  const last = lastAlertByType.get(stateKey);
+  if (last && Date.now() - last.ts < 45_000) return null; // 45s per identical state
+
+  const scoreDelta = curr.homeScore - curr.awayScore;
+  const trailingTeam = scoreDelta > 0 ? curr.awayTeam : scoreDelta < 0 ? curr.homeTeam : null;
+  const leadingTeam  = scoreDelta > 0 ? curr.homeTeam : scoreDelta < 0 ? curr.awayTeam : null;
+
+  // Build swing scenario lines for the UI
+  const topOutcomes = [...swing.allOutcomes]
+    .filter(o => Math.abs(o.wpShift) >= 0.06)
+    .sort((a, b) => (curr.isTopInning ? -1 : 1) * b.wpShift - (curr.isTopInning ? -1 : 1) * a.wpShift)
+    .slice(0, 4);
+
+  const swingScenarios = topOutcomes.map(o => {
+    const shiftPct = Math.round(Math.abs(o.wpShift) * 100);
+    const beneficial = (curr.isTopInning ? o.wpShift < 0 : o.wpShift > 0);
+    const arrow = beneficial ? "▲" : "▼";
+    const teamName = beneficial ? swing.battingTeam : swing.fieldingTeam;
+    return `${o.label}: ${arrow}${shiftPct}pp for ${teamName} (p≈${Math.round(o.probability * 100)}%)`;
+  });
+
+  const runnerDesc = [
+    curr.runnersOn.first  && "1st",
+    curr.runnersOn.second && "2nd",
+    curr.runnersOn.third  && "3rd",
+  ].filter(Boolean).join(" & ") || "bases empty";
+
+  const inningStr = `${curr.inning}${curr.isTopInning ? "T" : "B"}`;
+  const marketLine = swing.marketImplied != null
+    ? `Market: ${Math.round(swing.marketImplied * 100)}% ${swing.battingTeam}`
+    : "market odds updating";
+
+  const headline = tier === 1
+    ? `PRE-PLAY ALERT — ${swing.battingTeam} at bat, ${runnerDesc}, ${curr.outs} out — ${upsidePct}pp swing possible`
+    : `SWING WATCH — ${inningStr} | ${swing.battingTeam} | ${runnerDesc} | ${curr.outs} out | ${swingPct}pp range`;
+
+  const body = `${curr.awayTeam} ${curr.awayScore}–${curr.homeScore} ${curr.homeTeam} | ${inningStr} | ${runnerDesc} | ${curr.outs} out | ${marketLine}`;
+
+  const alertTs = Date.now();
+  lastAlertByType.set(stateKey, { ts: alertTs, edge: curr.edge });
+
+  const alert: TriggerAlert = {
+    id: `preplay_${curr.gamePk}_${alertTs}`,
+    gamePk: curr.gamePk,
+    tier,
+    type: "pre_play",
+    headline,
+    body,
+    situation: swing.alertMessage,
+    swingTeam: swing.battingTeam,
+    swingScenarios,
+    favoredTeam: curr.homeProbWin >= 0.5 ? curr.homeTeam : curr.awayTeam,
+    underdogTeam: curr.homeProbWin >= 0.5 ? curr.awayTeam : curr.homeTeam,
+    modelEdge: curr.edge !== null ? parseFloat((curr.edge * 100).toFixed(1)) : null,
+    triggerScore: Math.min(100, Math.round(upsidePct * 1.5 + (isLate ? 20 : 0) + (isClose ? 15 : 0))),
+    sourceTs: curr.sourceTs,
+    receiveTs: curr.receiveTs,
+    computeTs: curr.computeTs,
+    alertTs,
+    latencyMs: {
+      ingest:  curr.receiveTs - curr.sourceTs,
+      compute: curr.computeTs - curr.receiveTs,
+      total:   alertTs - curr.sourceTs,
+    },
+  };
+
+  alertHistory.unshift(alert);
+  if (alertHistory.length > 50) alertHistory.pop();
+
+  return alert;
 }

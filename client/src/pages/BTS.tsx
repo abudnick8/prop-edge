@@ -3753,9 +3753,17 @@ function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => vo
       >✕</button>
 
       {/* Tier + headline */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
         <span style={{ fontSize: 16 }}>⚾</span>
         <TierBadge tier={alert.tier} />
+        {alert.type === "pre_play" && (
+          <span style={{
+            fontSize: 8, fontWeight: 900, letterSpacing: "0.08em",
+            background: "rgba(255,140,0,0.15)", color: "#b8930a",
+            border: "1px solid rgba(255,140,0,0.35)",
+            padding: "2px 6px", borderRadius: 4,
+          }}>BEFORE NEXT PITCH</span>
+        )}
         <span style={{ fontSize: 10, color: "rgba(19,35,58,0.45)", marginLeft: "auto", marginRight: 20 }}>
           {new Date(alert.alertTs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </span>
@@ -3763,12 +3771,31 @@ function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => vo
       <p style={{ fontSize: 13, fontWeight: 800, color: "#131A24", marginBottom: 4, lineHeight: 1.3 }}>
         {alert.headline}
       </p>
-      <p style={{ fontSize: 11, color: "#3D4B58", marginBottom: 10, lineHeight: 1.4 }}>
-        {alert.body}
+      <p style={{ fontSize: 11, color: "#3D4B58", marginBottom: alert.type === "pre_play" ? 8 : 10, lineHeight: 1.4 }}>
+        {alert.type === "pre_play" ? alert.situation : alert.body}
       </p>
 
-      {/* Swing team highlight */}
-      {alert.swingTeam && (
+      {/* Pre-play: swing potential banner */}
+      {alert.type === "pre_play" && alert.swingTeam && (
+        <div style={{
+          background: "rgba(212,168,67,0.10)",
+          border: "1px solid rgba(212,168,67,0.30)",
+          borderRadius: 8, padding: "8px 12px", marginBottom: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#b8930a", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
+              🎯 {alert.swingTeam} — High Swing Potential
+            </p>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#b8930a" }}>Score: {alert.triggerScore}/100</span>
+          </div>
+          <p style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+            Current at-bat situation has a wide range of outcomes. One hit could shift the odds significantly.
+          </p>
+        </div>
+      )}
+
+      {/* Post-play: swing team highlight */}
+      {alert.type !== "pre_play" && alert.swingTeam && (
         <div style={{
           background: "rgba(212,168,67,0.10)",
           border: "1px solid rgba(212,168,67,0.30)",
@@ -3787,14 +3814,26 @@ function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => vo
       {alert.swingScenarios?.length > 0 && (
         <div style={{ marginBottom: 10 }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: "#131A24", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Next-Play Scenarios
+            {alert.type === "pre_play" ? "Next-Pitch Outcomes" : "Next-Play Scenarios"}
           </p>
-          {alert.swingScenarios.map((s, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: c, fontWeight: 700, flexShrink: 0 }}>›</span>
-              <p style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>{s}</p>
-            </div>
-          ))}
+          {alert.swingScenarios.map((s, i) => {
+            const isUp = s.includes("▲");
+            const isDown = s.includes("▼");
+            return (
+              <div key={i} style={{
+                display: "flex", gap: 6, marginBottom: 4, alignItems: "flex-start",
+                padding: "4px 8px", borderRadius: 6,
+                background: isUp ? "rgba(34,197,94,0.05)" : isDown ? "rgba(239,68,68,0.05)" : "transparent",
+              }}>
+                <span style={{ fontSize: 10, color: isUp ? "#16a34a" : isDown ? "#ef4444" : c, fontWeight: 900, flexShrink: 0 }}>
+                  {isUp ? "▲" : isDown ? "▼" : "›"}
+                </span>
+                <p style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+                  {s.replace("▲", "").replace("▼", "").trim()}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
 
