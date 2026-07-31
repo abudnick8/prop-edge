@@ -3,6 +3,7 @@ import { Server } from "http";
 import { storage } from "./storage";
 import { runScan, fetchLivePrices, computeSharpMoneyScore, tagUrgency } from "./scanner";
 import { broadcast } from "./ws";
+import { startTriggerEngine, getEngineStatus, getRecentAlerts, addSseClient } from "./baseball-trigger-engine";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import { spawn, ChildProcess } from "child_process";
@@ -21193,6 +21194,42 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ─── Baseball Trigger Engine — SSE + status endpoints ────────────────────
+
+  // Start engine immediately when routes register
+  startTriggerEngine();
+
+  // GET /api/mlb/live-alerts/stream — SSE stream of trigger events
+  app.get("/api/mlb/live-alerts/stream", (req: Request, res: Response) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.flushHeaders();
+    // Send current status immediately
+    res.write(`event: status\ndata: ${JSON.stringify(getEngineStatus())}\n\n`);
+    // Send recent alerts
+    for (const alert of getRecentAlerts()) {
+      res.write(`event: trigger\ndata: ${JSON.stringify(alert)}\n\n`);
+    }
+    addSseClient(res);
+    // Keepalive every 15s
+    const ka = setInterval(() => {
+      try { res.write(`: keepalive\n\n`); } catch { clearInterval(ka); }
+    }, 15_000);
+    req.on("close", () => clearInterval(ka));
+  });
+
+  // GET /api/mlb/live-alerts/status — current engine snapshot
+  app.get("/api/mlb/live-alerts/status", (_req: Request, res: Response) => {
+    res.json(getEngineStatus());
+  });
+
+  // GET /api/mlb/live-alerts/recent — last 20 fired alerts
+  app.get("/api/mlb/live-alerts/recent", (_req: Request, res: Response) => {
+    res.json({ alerts: getRecentAlerts() });
   });
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -3649,6 +3649,433 @@ function CiqStreakPanel() {
   );
 }
 
+
+// ─── In-Game Alert Engine UI ─────────────────────────────────────────────────
+
+interface LiveAlert {
+  id: string;
+  gamePk: number;
+  tier: 1 | 2 | 3;
+  type: string;
+  headline: string;
+  body: string;
+  situation: string;
+  swingTeam: string;
+  swingScenarios: string[];
+  favoredTeam: string;
+  underdogTeam: string;
+  modelEdge: number | null;
+  triggerScore: number;
+  latencyMs: { ingest: number; compute: number; total: number };
+  alertTs: number;
+}
+
+interface EngineStatus {
+  running: boolean;
+  activeGames: number;
+  gamePks: number[];
+  lastOddsSecs: number | null;
+  lastGumboSecs: Record<number, number>;
+  alertCount: number;
+  errors: number;
+  gameStates: Record<number, {
+    homeTeam: string; awayTeam: string;
+    homeScore: number; awayScore: number;
+    inning: number; isTopInning: boolean; outs: number;
+    runnersOn: { first: boolean; second: boolean; third: boolean };
+    homeProbWin: number; marketHomeProbWin: number | null; edge: number | null;
+    abstractGameState: string; pitcherName: string; batterName: string;
+    lastEventType: string; secsSinceUpdate: number;
+  }>;
+}
+
+function TierBadge({ tier }: { tier: 1 | 2 | 3 }) {
+  const cfg = {
+    1: { label: "TIER 1 · CRITICAL", bg: "#FF3B3B", color: "#fff" },
+    2: { label: "TIER 2 · HIGH",     bg: "#FF8C00", color: "#fff" },
+    3: { label: "TIER 3 · WATCH",    bg: "#2563EB", color: "#fff" },
+  }[tier];
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 900, letterSpacing: "0.08em",
+      background: cfg.bg, color: cfg.color,
+      padding: "2px 7px", borderRadius: 4,
+    }}>{cfg.label}</span>
+  );
+}
+
+function RunnerDiamond({ runnersOn }: { runnersOn: { first: boolean; second: boolean; third: boolean } }) {
+  const base = (on: boolean) => ({
+    width: 10, height: 10,
+    background: on ? "#D4A843" : "rgba(19,35,58,0.15)",
+    border: `1.5px solid ${on ? "#D4A843" : "rgba(19,35,58,0.25)"}`,
+    transform: "rotate(45deg)",
+    display: "inline-block",
+    borderRadius: 1,
+  });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: 32 }}>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <div style={base(runnersOn.second)} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", width: 26 }}>
+        <div style={base(runnersOn.third)} />
+        <div style={base(runnersOn.first)} />
+      </div>
+    </div>
+  );
+}
+
+function AlertCard({ alert, onDismiss }: { alert: LiveAlert; onDismiss: () => void }) {
+  const tierColors = { 1: "#FF3B3B", 2: "#FF8C00", 3: "#2563EB" };
+  const tierGlow   = { 1: "rgba(255,59,59,0.15)", 2: "rgba(255,140,0,0.12)", 3: "rgba(37,99,235,0.10)" };
+  const c = tierColors[alert.tier];
+  const g = tierGlow[alert.tier];
+
+  return (
+    <div style={{
+      borderRadius: 14,
+      border: `1.5px solid ${c}`,
+      background: `linear-gradient(135deg, ${g} 0%, #fff 100%)`,
+      padding: "14px 16px",
+      marginBottom: 10,
+      animation: "slideIn 0.3s ease",
+      position: "relative",
+    }}>
+      {/* Dismiss */}
+      <button
+        onClick={onDismiss}
+        style={{
+          position: "absolute", top: 10, right: 12,
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 14, color: "rgba(19,35,58,0.35)", lineHeight: 1,
+        }}
+      >✕</button>
+
+      {/* Tier + headline */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 16 }}>⚾</span>
+        <TierBadge tier={alert.tier} />
+        <span style={{ fontSize: 10, color: "rgba(19,35,58,0.45)", marginLeft: "auto", marginRight: 20 }}>
+          {new Date(alert.alertTs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, fontWeight: 800, color: "#131A24", marginBottom: 4, lineHeight: 1.3 }}>
+        {alert.headline}
+      </p>
+      <p style={{ fontSize: 11, color: "#3D4B58", marginBottom: 10, lineHeight: 1.4 }}>
+        {alert.body}
+      </p>
+
+      {/* Swing team highlight */}
+      {alert.swingTeam && (
+        <div style={{
+          background: "rgba(212,168,67,0.10)",
+          border: "1px solid rgba(212,168,67,0.30)",
+          borderRadius: 8, padding: "8px 12px", marginBottom: 10,
+        }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#b8930a", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            🎯 Swing Team — {alert.swingTeam}
+          </p>
+          <p style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4 }}>
+            1–2 plays could shift this game decisively in {alert.swingTeam}'s favor
+          </p>
+        </div>
+      )}
+
+      {/* Swing scenarios */}
+      {alert.swingScenarios?.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "#131A24", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Next-Play Scenarios
+          </p>
+          {alert.swingScenarios.map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: c, fontWeight: 700, flexShrink: 0 }}>›</span>
+              <p style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>{s}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {alert.modelEdge != null && (
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            background: Math.abs(alert.modelEdge) >= 8 ? "rgba(34,197,94,0.12)" : "rgba(19,35,58,0.06)",
+            color: Math.abs(alert.modelEdge) >= 8 ? "#16a34a" : "#3D4B58",
+            padding: "3px 8px", borderRadius: 5,
+          }}>
+            Edge: {alert.modelEdge > 0 ? "+" : ""}{alert.modelEdge}%
+          </span>
+        )}
+        <span style={{
+          fontSize: 10, fontWeight: 700,
+          background: "rgba(19,35,58,0.06)", color: "#3D4B58",
+          padding: "3px 8px", borderRadius: 5,
+        }}>
+          Score: {alert.triggerScore}/100
+        </span>
+        <span style={{
+          fontSize: 10, color: "rgba(19,35,58,0.45)",
+          padding: "3px 8px",
+        }}>
+          {alert.latencyMs?.total}ms latency
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LiveGameTicker({ status }: { status: EngineStatus }) {
+  const games = Object.entries(status.gameStates ?? {});
+  if (games.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+        Live Games Tracked ({games.length})
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {games.map(([pk, g]) => {
+          const liveColor = g.abstractGameState === "Live" ? "#22c55e" : "#9CA3AF";
+          const edgeAbs = g.edge != null ? Math.abs(g.edge * 100) : null;
+          const runners = g.runnersOn ?? { first: false, second: false, third: false };
+          return (
+            <div key={pk} style={{
+              background: "#fff",
+              border: "1px solid rgba(19,35,58,0.10)",
+              borderRadius: 10, padding: "10px 12px",
+            }}>
+              {/* Score row */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: liveColor, boxShadow: g.abstractGameState === "Live" ? `0 0 5px ${liveColor}` : "none" }} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#131A24", flex: 1 }}>
+                  {g.awayTeam} {g.awayScore} — {g.homeScore} {g.homeTeam}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: g.abstractGameState === "Live" ? "#22c55e" : "#9CA3AF" }}>
+                  {g.abstractGameState === "Live" ? `${g.inning}${g.isTopInning ? "T" : "B"}` : g.abstractGameState}
+                </span>
+              </div>
+
+              {/* State row */}
+              {g.abstractGameState === "Live" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <RunnerDiamond runnersOn={runners} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 9, color: "#3D4B58", margin: 0 }}>
+                      {g.outs} out · {g.batterName || "—"} vs {g.pitcherName || "—"}
+                    </p>
+                    {edgeAbs != null && edgeAbs >= 3 && (
+                      <p style={{ fontSize: 9, fontWeight: 700, color: edgeAbs >= 8 ? "#16a34a" : "#b8930a", margin: 0, marginTop: 2 }}>
+                        Model edge: {g.edge! > 0 ? "+" : ""}{(g.edge! * 100).toFixed(1)}% ({g.edge! > 0 ? g.homeTeam : g.awayTeam})
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 9, color: "#9CA3AF", margin: 0 }}>Updated {g.secsSinceUpdate}s ago</p>
+                    {g.homeProbWin != null && (
+                      <p style={{ fontSize: 9, fontWeight: 700, color: "#131A24", margin: 0, marginTop: 1 }}>
+                        Model: {Math.round(g.homeProbWin * 100)}% {g.homeTeam}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InGameAlertEngine() {
+  const [alerts, setAlerts] = useState<LiveAlert[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [status, setStatus] = useState<EngineStatus | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    function connect() {
+      const es = new EventSource("/api/mlb/live-alerts/stream");
+      eventSourceRef.current = es;
+
+      es.addEventListener("status", (e: MessageEvent) => {
+        try {
+          setStatus(JSON.parse(e.data));
+          setConnected(true);
+        } catch {}
+      });
+
+      es.addEventListener("trigger", (e: MessageEvent) => {
+        try {
+          const alert: LiveAlert = JSON.parse(e.data);
+          setAlerts(prev => {
+            if (prev.find(a => a.id === alert.id)) return prev;
+            return [alert, ...prev].slice(0, 20);
+          });
+          // Browser push notification for Tier 1
+          if (alert.tier === 1 && "Notification" in window && Notification.permission === "granted") {
+            new Notification(`⚾ ${alert.headline}`, {
+              body: alert.body,
+              icon: "/favicon.ico",
+            });
+          }
+        } catch {}
+      });
+
+      es.onerror = () => {
+        setConnected(false);
+        es.close();
+        // Reconnect after 3s
+        setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
+
+    // Request notification permission
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    return () => eventSourceRef.current?.close();
+  }, []);
+
+  const visibleAlerts = alerts.filter(a => !dismissed.has(a.id));
+  const hasActiveGames = (status?.activeGames ?? 0) > 0;
+
+  return (
+    <div style={{
+      background: "rgba(255,59,59,0.04)",
+      border: "1.5px solid rgba(255,59,59,0.20)",
+      borderRadius: 16,
+      marginBottom: 16,
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          width: "100%", background: "none", border: "none",
+          padding: "14px 16px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 10,
+          borderBottom: expanded ? "1px solid rgba(255,59,59,0.15)" : "none",
+        }}
+      >
+        {/* Live pulse */}
+        <div style={{ position: "relative", width: 10, height: 10 }}>
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: "50%",
+            background: connected && hasActiveGames ? "#FF3B3B" : "#9CA3AF",
+            boxShadow: connected && hasActiveGames ? "0 0 8px rgba(255,59,59,0.7)" : "none",
+            animation: connected && hasActiveGames ? "pulse 1.2s ease-in-out infinite" : "none",
+          }} />
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 900, color: "#131A24" }}>
+          IN-GAME ALERT ENGINE
+        </span>
+        {visibleAlerts.length > 0 && (
+          <span style={{
+            fontSize: 10, fontWeight: 900,
+            background: "#FF3B3B", color: "#fff",
+            padding: "2px 7px", borderRadius: 10, marginLeft: 2,
+          }}>
+            {visibleAlerts.length}
+          </span>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: connected ? "#22c55e" : "#9CA3AF", textTransform: "uppercase" }}>
+            {connected ? "LIVE" : "RECONNECTING"}
+          </span>
+          {status?.activeGames != null && (
+            <span style={{ fontSize: 9, color: "#3D4B58" }}>
+              {status.activeGames} game{status.activeGames !== 1 ? "s" : ""}
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: "#3D4B58", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div style={{ padding: "14px 16px" }}>
+          {/* Status bar */}
+          {status && (
+            <div style={{
+              display: "flex", gap: 10, flexWrap: "wrap",
+              marginBottom: 14, padding: "8px 12px",
+              background: "rgba(19,35,58,0.04)", borderRadius: 8,
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 8, color: "#9CA3AF", textTransform: "uppercase", margin: 0 }}>Feed</p>
+                <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", margin: 0 }}>
+                  {connected ? "LIVE" : "—"}
+                </p>
+              </div>
+              <div style={{ width: 1, background: "rgba(19,35,58,0.10)" }} />
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 8, color: "#9CA3AF", textTransform: "uppercase", margin: 0 }}>Games</p>
+                <p style={{ fontSize: 11, fontWeight: 800, color: "#131A24", margin: 0 }}>{status.activeGames}</p>
+              </div>
+              <div style={{ width: 1, background: "rgba(19,35,58,0.10)" }} />
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 8, color: "#9CA3AF", textTransform: "uppercase", margin: 0 }}>Odds</p>
+                <p style={{ fontSize: 11, fontWeight: 800, color: status.lastOddsSecs != null && status.lastOddsSecs < 60 ? "#22c55e" : "#F59E0B", margin: 0 }}>
+                  {status.lastOddsSecs != null ? `${status.lastOddsSecs}s` : "—"}
+                </p>
+              </div>
+              <div style={{ width: 1, background: "rgba(19,35,58,0.10)" }} />
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 8, color: "#9CA3AF", textTransform: "uppercase", margin: 0 }}>Alerts</p>
+                <p style={{ fontSize: 11, fontWeight: 800, color: "#D4A843", margin: 0 }}>{status.alertCount}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Live game tickers */}
+          {status && <LiveGameTicker status={status} />}
+
+          {/* Alert cards */}
+          {visibleAlerts.length > 0 ? (
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                Active Alerts ({visibleAlerts.length})
+              </p>
+              {visibleAlerts.map(alert => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  onDismiss={() => setDismissed(prev => new Set([...prev, alert.id]))}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              {hasActiveGames ? (
+                <>
+                  <p style={{ fontSize: 24, marginBottom: 6 }}>🕐</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>Monitoring {status?.activeGames} Live Game{status?.activeGames !== 1 ? "s" : ""}</p>
+                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Alert fires when edge or leverage threshold is crossed</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 24, marginBottom: 6 }}>⚾</p>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#131A24", marginBottom: 2 }}>No Live Games Right Now</p>
+                  <p style={{ fontSize: 11, color: "#3D4B58" }}>Engine will auto-subscribe when games go live today</p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BTS() {
   const [showAllSlate, setShowAllSlate] = useState(false);
   const [showAllPicks, setShowAllPicks] = useState(false);
@@ -4156,6 +4583,7 @@ export default function BTS() {
       {/* ── Team Pick Tab ─────────────────────────────────────────── */}
       {btsTab === "team" && (
         <>
+          <InGameAlertEngine />
           <BtsAnalyticsPanel />
           <TeamWinPanel />
           <DailyPickPanel />
