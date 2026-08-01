@@ -19326,11 +19326,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           pickImplied = pickSide === "home" ? homeImplied : awayImplied;
           console.log("[MLB pick] Sim flip: new pick=" + pickTeam + " (sim was " + sim.oppWinPct + "% vs " + sim.pickWinPct + "%)");
         }
+        // Always re-derive starters from current (possibly flipped) pick/opp teams
+        const currentPickStarter = starterMap.get(pickTeam) ?? null;
+        const currentOppStarter  = starterMap.get(oppTeam)  ?? null;
         // Re-run simulation with (possibly corrected) pick orientation
         const simFinal = simulateMLBGame({
           pickTeam, oppTeam, pickStats, oppStats,
-          pickStarter: starterMap.get(pickTeam) ?? null,
-          oppStarter:  starterMap.get(oppTeam)  ?? null,
+          pickStarter: currentPickStarter,
+          oppStarter:  currentOppStarter,
           pickSide, total, weatherData, sims: 100,
         });
 
@@ -19464,18 +19467,20 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
 
         // 3. STARTING PITCHER DUEL
-        analysis.starters = { pick: pickStarter, opp: oppStarter };
-        if (pickStarter && oppStarter) {
-          const pickEra = parseFloat(pickStarter.era) || 5.0;
-          const oppEra  = parseFloat(oppStarter.era)  || 5.0;
+        // Use currentPickStarter/currentOppStarter — these are always re-derived after any sim flip,
+        // so pitcher names will correctly match the current pick team (not the original pre-flip assignment).
+        analysis.starters = { pick: currentPickStarter, opp: currentOppStarter };
+        if (currentPickStarter && currentOppStarter) {
+          const pickEra = parseFloat(currentPickStarter.era) || 5.0;
+          const oppEra  = parseFloat(currentOppStarter.era)  || 5.0;
           const eraDiff = oppEra - pickEra; // positive = pick's starter better
-          if (eraDiff >= 1.5) { score += 12; reasons.push(`Pitching edge: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record}) vs ${oppStarter.name} (${oppStarter.era} ERA) — significant ERA advantage`); }
-          else if (eraDiff >= 0.5) { score += 7; reasons.push(`Pitching edge: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record}) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
-          else if (eraDiff <= -1.5) { score -= 10; reasons.push(`Pitching concern: ${pickStarter.name} (${pickStarter.era} ERA) faces ${oppStarter.name} (${oppStarter.era} ERA) — opponent has significant ERA advantage`); }
-          else if (eraDiff <= -0.5) { score -= 5; reasons.push(`Slight pitching disadvantage: ${pickStarter.name} (${pickStarter.era} ERA) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
-          else { reasons.push(`Even pitching matchup: ${pickStarter.name} (${pickStarter.era} ERA) vs ${oppStarter.name} (${oppStarter.era} ERA)`); }
-        } else if (pickStarter) {
-          reasons.push(`Starter: ${pickStarter.name} (${pickStarter.era} ERA, ${pickStarter.record})`);
+          if (eraDiff >= 1.5) { score += 12; reasons.push(`Pitching edge: ${currentPickStarter.name} (${currentPickStarter.era} ERA, ${currentPickStarter.record}) vs ${currentOppStarter.name} (${currentOppStarter.era} ERA) — significant ERA advantage`); }
+          else if (eraDiff >= 0.5) { score += 7; reasons.push(`Pitching edge: ${currentPickStarter.name} (${currentPickStarter.era} ERA, ${currentPickStarter.record}) vs ${currentOppStarter.name} (${currentOppStarter.era} ERA)`); }
+          else if (eraDiff <= -1.5) { score -= 10; reasons.push(`Pitching concern: ${currentPickStarter.name} (${currentPickStarter.era} ERA) faces ${currentOppStarter.name} (${currentOppStarter.era} ERA) — opponent has significant ERA advantage`); }
+          else if (eraDiff <= -0.5) { score -= 5; reasons.push(`Slight pitching disadvantage: ${currentPickStarter.name} (${currentPickStarter.era} ERA) vs ${currentOppStarter.name} (${currentOppStarter.era} ERA)`); }
+          else { reasons.push(`Even pitching matchup: ${currentPickStarter.name} (${currentPickStarter.era} ERA) vs ${currentOppStarter.name} (${currentOppStarter.era} ERA)`); }
+        } else if (currentPickStarter) {
+          reasons.push(`Starter: ${currentPickStarter.name} (${currentPickStarter.era} ERA, ${currentPickStarter.record})`);
         }
 
         // 4. TEAM OFFENSE vs OPPONENT PITCHING
@@ -19583,7 +19588,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           // Deep analysis object — used in frontend drawer
           analysis: {
             ...analysis,
-            pickStats, oppStats, pickStarter, oppStarter,
+            pickStats, oppStats,
+            pickStarter: currentPickStarter,
+            oppStarter:  currentOppStarter,
           },
         });
       }
