@@ -18760,7 +18760,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { console.warn("[MLB Pick] Postgres load error:", e.message); }
   }
 
-  // Temporary debug route — shows raw ESPN/Odds API results
+  // Debug route — diagnose MLB game source on Railway
   app.get("/api/mlb/debug-games", async (_req: Request, res: Response) => {
     const CTZ = "America/Chicago";
     const todayStr = (() => {
@@ -18768,20 +18768,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const [m, d, y] = ct.split("/");
       return `${y}-${m}-${d}`;
     })();
-    const espnDate = todayStr.replace(/-/g, "");
     const oddsKey = process.env.ODDS_API_KEY ?? "(none)";
     try {
-      const espnR = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDate}`, { signal: AbortSignal.timeout(8000) });
-      const espnD: any = await espnR.json();
-      const events = espnD?.events ?? [];
-      const espnGames = events.map((ev: any) => {
-        const comp = ev.competitions?.[0];
-        const comps = comp?.competitors ?? [];
-        const h = comps.find((c: any) => c.homeAway === "home");
-        const a = comps.find((c: any) => c.homeAway === "away");
-        return { status: ev.status?.type?.description, home: h?.team?.displayName, away: a?.team?.displayName, time: ev.date };
-      });
-      res.json({ todayStr, oddsKeyPresent: oddsKey !== "(none)", oddsKeyStart: oddsKey.slice(0, 8), espnCount: espnGames.length, espnGames: espnGames.slice(0, 5) });
+      const mlbR = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=team`, { signal: AbortSignal.timeout(10000) });
+      const mlbD: any = await mlbR.json();
+      const games: any[] = [];
+      for (const d of (mlbD?.dates ?? [])) {
+        for (const g of (d?.games ?? [])) {
+          games.push({ state: g?.status?.abstractGameState, home: g?.teams?.home?.team?.name, away: g?.teams?.away?.team?.name, time: g?.gameDate });
+        }
+      }
+      res.json({ todayStr, oddsKeyPresent: oddsKey !== "(none)", oddsKeyStart: oddsKey.slice(0, 8), mlbStatsCount: games.length, games: games.slice(0, 5) });
     } catch (e: any) {
       res.json({ error: e.message, todayStr });
     }
@@ -18971,38 +18968,38 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return `${y2}-${m2}-${d2}` === todayStr;
       });
 
-      // ── ESPN fallback: if Odds API returned nothing, build game list from ESPN ──
+      // ── MLB Stats API fallback: if Odds API returned nothing ──────────────────
+      // ESPN is rate-limited on cloud IPs; MLB Stats API is reliable from any host.
       if (mlbGames.length === 0) {
-        console.warn(`[MLB pick] Odds API gave 0 games — using ESPN scoreboard fallback`);
+        console.warn(`[MLB pick] Odds API gave 0 games — using MLB Stats API schedule fallback`);
         try {
-          const espnDate = todayStr.replace(/-/g, "");
-          const espnR = await fetch(
-            `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDate}`,
-            { signal: AbortSignal.timeout(8000) }
+          const mlbSchedR = await fetch(
+            `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=team`,
+            { signal: AbortSignal.timeout(10000) }
           );
-          if (espnR.ok) {
-            const espnD: any = await espnR.json();
-            for (const ev of (espnD?.events ?? [])) {
-              const comp = ev.competitions?.[0];
-              const competitors: any[] = comp?.competitors ?? [];
-              const homeComp = competitors.find((c: any) => c.homeAway === "home");
-              const awayComp = competitors.find((c: any) => c.homeAway === "away");
-              if (!homeComp || !awayComp) continue;
-              const status = ev.status?.type?.description ?? "";
-              if (status === "Final" || status === "In Progress") continue;
-              mlbGames.push({
-                id: ev.id,
-                sport_key: "baseball_mlb",
-                home_team: homeComp.team?.displayName ?? "",
-                away_team: awayComp.team?.displayName ?? "",
-                commence_time: ev.date ?? new Date().toISOString(),
-                bookmakers: [],
-              });
+          if (mlbSchedR.ok) {
+            const mlbSchedD: any = await mlbSchedR.json();
+            for (const date of (mlbSchedD?.dates ?? [])) {
+              for (const game of (date?.games ?? [])) {
+                const abstractState: string = game?.status?.abstractGameState ?? "";
+                if (abstractState === "Final") continue; // skip finished games
+                const homeTeam: string = game?.teams?.home?.team?.name ?? "";
+                const awayTeam: string = game?.teams?.away?.team?.name ?? "";
+                if (!homeTeam || !awayTeam) continue;
+                mlbGames.push({
+                  id: String(game.gamePk),
+                  sport_key: "baseball_mlb",
+                  home_team: homeTeam,
+                  away_team: awayTeam,
+                  commence_time: game.gameDate ?? new Date().toISOString(),
+                  bookmakers: [],
+                });
+              }
             }
-            console.log(`[MLB pick] ESPN fallback → ${mlbGames.length} games`);
+            console.log(`[MLB pick] MLB Stats API fallback → ${mlbGames.length} games`);
           }
         } catch (e: any) {
-          console.error("[MLB pick] ESPN fallback error:", e.message);
+          console.error("[MLB pick] MLB Stats API fallback error:", e.message);
         }
       }
 
