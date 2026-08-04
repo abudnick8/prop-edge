@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --legacy-peer-deps --omit=dev"
+buildCommand = "npm install --legacy-peer-deps && npm run build"
 
 [deploy]
 startCommand = "node dist/index.cjs"
