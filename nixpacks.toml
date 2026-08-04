@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install --legacy-peer-deps --omit=dev"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node dist/index.cjs"
