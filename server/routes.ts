@@ -18773,8 +18773,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before first pitch
 
       // If we have a cached pick for today, check whether we're past the lock window
-      if (_mlbDailyPickCache && _mlbDailyPickCache.date === todayStr) {
+      const forceRefresh = req.query.refresh === "1";
+      if (!forceRefresh && _mlbDailyPickCache && _mlbDailyPickCache.date === todayStr) {
         const cachedData = _mlbDailyPickCache.data;
+        // If cached result has no games analyzed, use a short 5-min TTL so it retries quickly
+        const emptyCacheTTL = 5 * 60 * 1000;
+        const effectiveTTL = (!cachedData.primary && cachedData.gamesAnalyzed === 0) ? emptyCacheTTL : TTL;
         // Find earliest game time from cached scored games
         const allGames: any[] = [
           ...(cachedData.primary   ? [cachedData.primary]   : []),
@@ -18786,7 +18790,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }, Infinity);
         const isLocked = isFinite(earliestMs) && now >= earliestMs - LOCK_BEFORE_MS;
         // Return cached if locked (no more updates) OR still within normal TTL
-        if (isLocked || (now - _mlbDailyPickCache.ts) < TTL) {
+        if (isLocked || (now - _mlbDailyPickCache.ts) < effectiveTTL) {
           return res.json({ ..._mlbDailyPickCache.data, history: mlbDailyPicksHistory, locked: isLocked });
         }
       }
@@ -18917,8 +18921,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const r = await fetch(oddsUrl, { signal: AbortSignal.timeout(10000) });
           if (r.ok) {
             const raw = await r.json();
-            mlbGames = Array.isArray(raw) ? raw : [];
-            console.log(`[MLB pick] Odds API → ${mlbGames.length} games for ${todayStr}`);
+            if (Array.isArray(raw)) {
+              mlbGames = raw;
+              console.log(`[MLB pick] Odds API → ${mlbGames.length} games for ${todayStr}`);
+            } else {
+              // Key invalid or quota exhausted — raw is an error object
+              console.warn(`[MLB pick] Odds API error response: ${JSON.stringify(raw).slice(0,120)} — will use ESPN fallback`);
+            }
           } else {
             console.warn(`[MLB pick] Odds API ${r.status} — will try ESPN fallback`);
           }
