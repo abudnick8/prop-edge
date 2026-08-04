@@ -18760,6 +18760,33 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { console.warn("[MLB Pick] Postgres load error:", e.message); }
   }
 
+  // Temporary debug route — shows raw ESPN/Odds API results
+  app.get("/api/mlb/debug-games", async (_req: Request, res: Response) => {
+    const CTZ = "America/Chicago";
+    const todayStr = (() => {
+      const ct = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
+      const [m, d, y] = ct.split("/");
+      return `${y}-${m}-${d}`;
+    })();
+    const espnDate = todayStr.replace(/-/g, "");
+    const oddsKey = process.env.ODDS_API_KEY ?? "(none)";
+    try {
+      const espnR = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${espnDate}`, { signal: AbortSignal.timeout(8000) });
+      const espnD: any = await espnR.json();
+      const events = espnD?.events ?? [];
+      const espnGames = events.map((ev: any) => {
+        const comp = ev.competitions?.[0];
+        const comps = comp?.competitors ?? [];
+        const h = comps.find((c: any) => c.homeAway === "home");
+        const a = comps.find((c: any) => c.homeAway === "away");
+        return { status: ev.status?.type?.description, home: h?.team?.displayName, away: a?.team?.displayName, time: ev.date };
+      });
+      res.json({ todayStr, oddsKeyPresent: oddsKey !== "(none)", oddsKeyStart: oddsKey.slice(0, 8), espnCount: espnGames.length, espnGames: espnGames.slice(0, 5) });
+    } catch (e: any) {
+      res.json({ error: e.message, todayStr });
+    }
+  });
+
   app.get("/api/mlb/pick-of-day", async (req: Request, res: Response) => {
     try {
       const CTZ = "America/Chicago";
