@@ -18760,30 +18760,6 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     } catch (e: any) { console.warn("[MLB Pick] Postgres load error:", e.message); }
   }
 
-  // Debug route — diagnose MLB game source on Railway
-  app.get("/api/mlb/debug-games", async (_req: Request, res: Response) => {
-    const CTZ = "America/Chicago";
-    const todayStr = (() => {
-      const ct = new Date().toLocaleDateString("en-US", { timeZone: CTZ, year: "numeric", month: "2-digit", day: "2-digit" });
-      const [m, d, y] = ct.split("/");
-      return `${y}-${m}-${d}`;
-    })();
-    const oddsKey = process.env.ODDS_API_KEY ?? "(none)";
-    try {
-      const mlbR = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=team`, { signal: AbortSignal.timeout(10000) });
-      const mlbD: any = await mlbR.json();
-      const games: any[] = [];
-      for (const d of (mlbD?.dates ?? [])) {
-        for (const g of (d?.games ?? [])) {
-          games.push({ state: g?.status?.abstractGameState, home: g?.teams?.home?.team?.name, away: g?.teams?.away?.team?.name, time: g?.gameDate });
-        }
-      }
-      res.json({ todayStr, oddsKeyPresent: oddsKey !== "(none)", oddsKeyStart: oddsKey.slice(0, 8), mlbStatsCount: games.length, games: games.slice(0, 5) });
-    } catch (e: any) {
-      res.json({ error: e.message, todayStr });
-    }
-  });
-
   app.get("/api/mlb/pick-of-day", async (req: Request, res: Response) => {
     try {
       const CTZ = "America/Chicago";
