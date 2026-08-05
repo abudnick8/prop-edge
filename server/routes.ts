@@ -8378,6 +8378,160 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const LIVE_SCORES_CACHE = new Map<string, { data: any; ts: number }>();
   const LIVE_SCORES_TTL   = 30_000; // 30 seconds
 
+  // ─── Helper: build a normalised LiveGame from ESPN event ────────────────────
+  function _espnEventToGame(ev: any, sportKey: string): any {
+    const comp    = ev.competitions?.[0] ?? {};
+    const status  = ev.status ?? {};
+    const sit     = comp.situation ?? null;
+    const teams   = (comp.competitors ?? []).map((t: any) => ({
+      id:           t.id,
+      abbr:         t.team?.abbreviation ?? "?",
+      displayName:  t.team?.displayName ?? "",
+      shortName:    t.team?.shortDisplayName ?? "",
+      logo:         t.team?.logo ?? null,
+      color:        t.team?.color ? `#${t.team.color}` : null,
+      score:        t.score ?? "0",
+      homeAway:     t.homeAway,
+      linescores:   (t.linescores ?? []).map((ls: any) => ({ period: ls.period, value: ls.displayValue ?? "0" })),
+      records:      (t.records ?? []).map((rec: any) => rec.summary).slice(0, 1),
+    }));
+    const leaders = (comp.leaders ?? []).flatMap((lg: any) =>
+      (lg.leaders ?? []).slice(0, 2).map((l: any) => ({
+        category: lg.shortDisplayName ?? lg.abbreviation,
+        displayValue: l.displayValue,
+        athlete: { id: l.athlete?.id, name: l.athlete?.shortName ?? l.athlete?.displayName, headshot: l.athlete?.headshot ?? null, position: l.athlete?.position ?? null, teamId: l.athlete?.team?.id ?? null },
+      }))
+    ).slice(0, 6);
+    return {
+      id:        ev.id, uid: ev.uid, sport: sportKey.toUpperCase(),
+      name:      ev.name, shortName: ev.shortName, date: ev.date,
+      status: {
+        state:       status.type?.state ?? "pre",
+        description: status.type?.description ?? "Scheduled",
+        detail:      status.type?.detail ?? "",
+        shortDetail: status.type?.shortDetail ?? "",
+        period:      status.period ?? 0,
+        clock:       status.displayClock ?? "0:00",
+        completed:   status.type?.completed ?? false,
+      },
+      venue:      comp.venue ? { name: comp.venue.fullName, city: comp.venue.address?.city } : null,
+      teams, situation: sit ? {
+        lastPlay: sit.lastPlay?.text ?? null, balls: sit.balls, strikes: sit.strikes, outs: sit.outs,
+        onFirst: sit.onFirst ?? false, onSecond: sit.onSecond ?? false, onThird: sit.onThird ?? false,
+        pitcher: sit.pitcher ? { name: sit.pitcher.athlete?.displayName, summary: sit.pitcher.summary, headshot: sit.pitcher.athlete?.headshot ?? null } : null,
+        batter:  sit.batter  ? { name: sit.batter.athlete?.displayName,  summary: sit.batter.summary,  headshot: sit.batter.athlete?.headshot  ?? null } : null,
+      } : null,
+      leaders,
+      broadcasts: (comp.broadcasts ?? []).flatMap((b: any) => b.names ?? []).slice(0, 2),
+    };
+  }
+
+  // ─── MLB fallback: MLB Stats API ─────────────────────────────────────────────
+  async function _fetchMlbScores(todayStr: string): Promise<any[]> {
+    try {
+      const r = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${todayStr}&hydrate=team,linescore,decisions`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!r.ok) return [];
+      const d: any = await r.json();
+      const games: any[] = [];
+      for (const dateObj of (d?.dates ?? [])) {
+        for (const g of (dateObj?.games ?? [])) {
+          const home     = g.teams?.home?.team ?? {};
+          const away     = g.teams?.away?.team ?? {};
+          const homeScr  = g.teams?.home?.score ?? 0;
+          const awayScr  = g.teams?.away?.score ?? 0;
+          const ls       = g.linescore ?? {};
+          const absState = g.status?.abstractGameState ?? "Preview";  // Preview|Live|Final
+          const detState = g.status?.detailedState ?? "Scheduled";
+          // Map to ESPN-like state codes
+          const stateMap: Record<string, string> = { Preview: "pre", Live: "in", Final: "post" };
+          const state    = stateMap[absState] ?? "pre";
+          const inning   = ls.currentInning ?? 0;
+          const isTop    = ls.isTopInning ?? true;
+          const outs     = ls.outs ?? 0;
+          const offense  = ls.offense ?? {};
+          // Build linescore per inning
+          const homeInnings = (ls.innings ?? []).map((inn: any, i: number) => ({ period: i + 1, value: String(inn.home?.runs ?? "-") }));
+          const awayInnings = (ls.innings ?? []).map((inn: any, i: number) => ({ period: i + 1, value: String(inn.away?.runs ?? "-") }));
+          games.push({
+            id: String(g.gamePk), uid: String(g.gamePk), sport: "MLB",
+            name: `${away.name ?? ""} at ${home.name ?? ""}`,
+            shortName: `${away.abbreviation ?? ""} @ ${home.abbreviation ?? ""}`,
+            date: g.gameDate ?? new Date().toISOString(),
+            status: {
+              state, description: detState, detail: detState, shortDetail: detState,
+              period: inning, clock: isTop ? "Top" : "Bot", completed: state === "post",
+            },
+            venue: null,
+            teams: [
+              { id: String(away.id), abbr: away.abbreviation ?? "?", displayName: away.name ?? "", shortName: away.abbreviation ?? "",
+                logo: null, color: null, score: String(awayScr), homeAway: "away", linescores: awayInnings, records: [] },
+              { id: String(home.id), abbr: home.abbreviation ?? "?", displayName: home.name ?? "", shortName: home.abbreviation ?? "",
+                logo: null, color: null, score: String(homeScr), homeAway: "home", linescores: homeInnings, records: [] },
+            ],
+            situation: state === "in" ? {
+              lastPlay: null, balls: ls.balls ?? 0, strikes: ls.strikes ?? 0, outs,
+              onFirst: !!(offense.first), onSecond: !!(offense.second), onThird: !!(offense.third),
+              pitcher: null, batter: null,
+            } : null,
+            leaders: [], broadcasts: [],
+          });
+        }
+      }
+      return games;
+    } catch (e: any) {
+      console.warn("[live-scores] MLB Stats API fallback error:", e.message);
+      return [];
+    }
+  }
+
+  // ─── NHL fallback: NHL web API ────────────────────────────────────────────────
+  async function _fetchNhlScores(todayStr: string): Promise<any[]> {
+    try {
+      const r = await fetch(
+        `https://api-web.nhle.com/v1/score/${todayStr}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!r.ok) return [];
+      const d: any = await r.json();
+      const games: any[] = [];
+      for (const g of (d?.games ?? [])) {
+        const home     = g.homeTeam ?? {};
+        const away     = g.awayTeam ?? {};
+        const gameState: string = g.gameState ?? "FUT"; // FUT|PRE|LIVE|CRIT|OVER|FINAL
+        const stateMap: Record<string, string> = { FUT: "pre", PRE: "pre", LIVE: "in", CRIT: "in", OVER: "post", FINAL: "post", OFF: "post" };
+        const state = stateMap[gameState] ?? "pre";
+        const period = g.period ?? 0;
+        const clock  = g.clock?.timeRemaining ?? "20:00";
+        games.push({
+          id: String(g.id), uid: String(g.id), sport: "NHL",
+          name: `${away.name?.default ?? away.abbrev} at ${home.name?.default ?? home.abbrev}`,
+          shortName: `${away.abbrev ?? "?"} @ ${home.abbrev ?? "?"}`,
+          date: g.startTimeUTC ?? new Date().toISOString(),
+          status: {
+            state, description: gameState === "FUT" ? "Scheduled" : gameState,
+            detail: clock, shortDetail: period > 0 ? `${period < 4 ? `P${period}` : "OT"} ${clock}` : "Scheduled",
+            period, clock, completed: state === "post",
+          },
+          venue: g.venue ? { name: g.venue.default, city: null } : null,
+          teams: [
+            { id: String(away.id), abbr: away.abbrev ?? "?", displayName: away.name?.default ?? away.abbrev ?? "", shortName: away.abbrev ?? "",
+              logo: away.logo ?? null, color: null, score: String(away.score ?? 0), homeAway: "away", linescores: [], records: [] },
+            { id: String(home.id), abbr: home.abbrev ?? "?", displayName: home.name?.default ?? home.abbrev ?? "", shortName: home.abbrev ?? "",
+              logo: home.logo ?? null, color: null, score: String(home.score ?? 0), homeAway: "home", linescores: [], records: [] },
+          ],
+          situation: null, leaders: [], broadcasts: [],
+        });
+      }
+      return games;
+    } catch (e: any) {
+      console.warn("[live-scores] NHL API fallback error:", e.message);
+      return [];
+    }
+  }
+
   app.get("/api/live-scores", async (req, res) => {
     try {
       const sport = (req.query.sport as string ?? "all").toLowerCase();
@@ -8396,100 +8550,50 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const targets = sport === "all" ? SPORTS : SPORTS.filter(s => s.key === sport);
 
+      // Compute today in Central Time once
+      const ctNow       = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const espnDateParam = `${ctNow.getFullYear()}${String(ctNow.getMonth()+1).padStart(2,"0")}${String(ctNow.getDate()).padStart(2,"0")}`;
+      const todayStr    = `${ctNow.getFullYear()}-${String(ctNow.getMonth()+1).padStart(2,"0")}-${String(ctNow.getDate()).padStart(2,"0")}`;
+
       const results: Record<string, any[]> = {};
 
       await Promise.all(targets.map(async (s) => {
         try {
-          // Always pass today's Central-time date so ESPN doesn't default to yesterday's completed games
-          const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-          const espnDateParam = `${ctNow.getFullYear()}${String(ctNow.getMonth()+1).padStart(2,"0")}${String(ctNow.getDate()).padStart(2,"0")}`;
+          // ── Try ESPN first ────────────────────────────────────────────────────
           const url = `https://site.api.espn.com/apis/site/v2/sports/${s.sn}/${s.lg}/scoreboard?dates=${espnDateParam}`;
           const r   = await fetch(url, { signal: AbortSignal.timeout(8000) });
-          if (!r.ok) { results[s.key] = []; return; }
-          const d   = await r.json() as any;
+          let espnGames: any[] = [];
+          if (r.ok) {
+            const d: any = await r.json();
+            if (Array.isArray(d?.events) && d.events.length > 0) {
+              espnGames = d.events.map((ev: any) => _espnEventToGame(ev, s.key));
+            }
+          }
 
-          results[s.key] = (d.events ?? []).map((ev: any) => {
-            const comp = ev.competitions?.[0] ?? {};
-            const status = ev.status ?? {};
-            const sit    = comp.situation ?? null;
+          // ── Fallback to native APIs if ESPN returned nothing ──────────────────
+          if (espnGames.length === 0) {
+            if (s.key === "mlb") {
+              console.log("[live-scores] ESPN returned 0 MLB games — using MLB Stats API fallback");
+              results[s.key] = await _fetchMlbScores(todayStr);
+              return;
+            }
+            if (s.key === "nhl") {
+              console.log("[live-scores] ESPN returned 0 NHL games — using NHL API fallback");
+              results[s.key] = await _fetchNhlScores(todayStr);
+              return;
+            }
+          }
 
-            const teams = (comp.competitors ?? []).map((t: any) => ({
-              id:           t.id,
-              abbr:         t.team?.abbreviation ?? "?",
-              displayName:  t.team?.displayName ?? "",
-              shortName:    t.team?.shortDisplayName ?? "",
-              logo:         t.team?.logo ?? null,
-              color:        t.team?.color ? `#${t.team.color}` : null,
-              score:        t.score ?? "0",
-              homeAway:     t.homeAway,
-              linescores:   (t.linescores ?? []).map((ls: any) => ({
-                period: ls.period,
-                value:  ls.displayValue ?? "0",
-              })),
-              records:      (t.records ?? []).map((rec: any) => rec.summary).slice(0, 1),
-            }));
-
-            // Stat leaders shown on scoreboard (pitching/hitting/scoring leaders)
-            const leaders = (comp.leaders ?? []).flatMap((lg: any) =>
-              (lg.leaders ?? []).slice(0, 2).map((l: any) => ({
-                category:    lg.shortDisplayName ?? lg.abbreviation,
-                displayValue: l.displayValue,
-                athlete: {
-                  id:       l.athlete?.id,
-                  name:     l.athlete?.shortName ?? l.athlete?.displayName,
-                  headshot: l.athlete?.headshot ?? null,
-                  position: l.athlete?.position ?? null,
-                  teamId:   l.athlete?.team?.id ?? null,
-                },
-              }))
-            ).slice(0, 6);
-
-            return {
-              id:         ev.id,
-              uid:        ev.uid,
-              sport:      s.key.toUpperCase(),
-              name:       ev.name,
-              shortName:  ev.shortName,
-              date:       ev.date,
-              status: {
-                state:       status.type?.state ?? "pre",          // "pre"|"in"|"post"
-                description: status.type?.description ?? "Scheduled",
-                detail:      status.type?.detail ?? "",
-                shortDetail: status.type?.shortDetail ?? "",
-                period:      status.period ?? 0,
-                clock:       status.displayClock ?? "0:00",
-                completed:   status.type?.completed ?? false,
-              },
-              venue: comp.venue ? {
-                name: comp.venue.fullName,
-                city: comp.venue.address?.city,
-              } : null,
-              teams,
-              situation: sit ? {
-                lastPlay:  sit.lastPlay?.text ?? null,
-                balls:     sit.balls,
-                strikes:   sit.strikes,
-                outs:      sit.outs,
-                onFirst:   sit.onFirst ?? false,
-                onSecond:  sit.onSecond ?? false,
-                onThird:   sit.onThird ?? false,
-                pitcher: sit.pitcher ? {
-                  name:     sit.pitcher.athlete?.displayName,
-                  summary:  sit.pitcher.summary,
-                  headshot: sit.pitcher.athlete?.headshot ?? null,
-                } : null,
-                batter: sit.batter ? {
-                  name:     sit.batter.athlete?.displayName,
-                  summary:  sit.batter.summary,
-                  headshot: sit.batter.athlete?.headshot ?? null,
-                } : null,
-              } : null,
-              leaders,
-              broadcasts: (comp.broadcasts ?? []).flatMap((b: any) => b.names ?? []).slice(0, 2),
-            };
-          });
-        } catch {
-          results[s.key] = [];
+          results[s.key] = espnGames;
+        } catch (err: any) {
+          // ESPN completely failed — try native fallback
+          if (s.key === "mlb") {
+            results[s.key] = await _fetchMlbScores(todayStr);
+          } else if (s.key === "nhl") {
+            results[s.key] = await _fetchNhlScores(todayStr);
+          } else {
+            results[s.key] = [];
+          }
         }
       }));
 
@@ -8501,6 +8605,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     }
   });
 
+  // ─── DEAD CODE PLACEHOLDER — kept to satisfy downstream refs ─────────────────
   app.get("/api/market-signals", async (_req, res) => {
     try {
       const cacheKey = "market-signals";
