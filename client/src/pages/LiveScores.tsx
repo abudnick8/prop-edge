@@ -471,31 +471,44 @@ function GameCard({ game, expanded, onToggle }: { game: LiveGame; expanded: bool
       <div className="px-4 py-3 flex items-center gap-3">
         {/* Away team */}
         <div className={`flex-1 flex items-center gap-2 ${awayWin ? "opacity-100" : game.status.state === "post" ? "opacity-50" : "opacity-100"}`}>
-          {away?.logo && (
-            <img src={away.logo} alt={away.abbr} className="w-8 h-8 object-contain flex-shrink-0" onError={e => (e.currentTarget.style.display = "none")} />
-          )}
+          {away?.logo
+            ? <img src={away.logo} alt={away.abbr} className="w-8 h-8 object-contain flex-shrink-0" onError={e => (e.currentTarget.style.display = "none")} />
+            : <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white" style={{ background: meta.color + "cc" }}>{away?.abbr?.slice(0,3)}</div>
+          }
           <div>
             <div className="font-black text-sm text-[#131A24]">{away?.abbr}</div>
             <div className="text-[10px] text-[#3D4B58]">{away?.records[0] ?? ""}</div>
           </div>
-          <div className={`ml-auto font-black text-2xl ${awayWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>{away?.score}</div>
+          <div className={`ml-auto font-black text-2xl ${awayWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>
+            {game.status.state === "pre" ? <span className="text-lg text-[#3D4B58]/40">–</span> : away?.score}
+          </div>
         </div>
 
         {/* Center divider */}
         <div className="flex flex-col items-center gap-0.5 flex-shrink-0 px-1">
-          <span className="text-[10px] font-bold text-[#3D4B58] uppercase tracking-wider">@</span>
+          {game.status.state === "pre" ? (
+            <>
+              <span className="text-[9px] font-bold text-[#3D4B58]/50 uppercase tracking-wider">vs</span>
+              <span className="text-[10px] font-bold text-[#131A24]">{toCentralTime(game.date)}</span>
+            </>
+          ) : (
+            <span className="text-[10px] font-bold text-[#3D4B58] uppercase tracking-wider">@</span>
+          )}
         </div>
 
         {/* Home team */}
         <div className={`flex-1 flex items-center gap-2 flex-row-reverse ${homeWin ? "opacity-100" : game.status.state === "post" ? "opacity-50" : "opacity-100"}`}>
-          {home?.logo && (
-            <img src={home.logo} alt={home.abbr} className="w-8 h-8 object-contain flex-shrink-0" onError={e => (e.currentTarget.style.display = "none")} />
-          )}
+          {home?.logo
+            ? <img src={home.logo} alt={home.abbr} className="w-8 h-8 object-contain flex-shrink-0" onError={e => (e.currentTarget.style.display = "none")} />
+            : <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white" style={{ background: meta.color + "cc" }}>{home?.abbr?.slice(0,3)}</div>
+          }
           <div className="text-right">
             <div className="font-black text-sm text-[#131A24]">{home?.abbr}</div>
             <div className="text-[10px] text-[#3D4B58]">{home?.records[0] ?? ""}</div>
           </div>
-          <div className={`mr-auto font-black text-2xl ${homeWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>{home?.score}</div>
+          <div className={`mr-auto font-black text-2xl ${homeWin ? "text-[#131A24]" : "text-[#3D4B58]"}`}>
+            {game.status.state === "pre" ? <span className="text-lg text-[#3D4B58]/40">–</span> : home?.score}
+          </div>
         </div>
       </div>
 

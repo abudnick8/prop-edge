@@ -8426,6 +8426,40 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     };
   }
 
+  // ─── MLB team logo map (ESPN CDN — works even when ESPN API is blocked) ───────
+  const MLB_LOGOS: Record<string, string> = {
+    "108": "https://a.espncdn.com/i/teamlogos/mlb/500/laa.png",  // Angels
+    "109": "https://a.espncdn.com/i/teamlogos/mlb/500/ari.png",  // D-backs
+    "110": "https://a.espncdn.com/i/teamlogos/mlb/500/bal.png",  // Orioles
+    "111": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",  // Red Sox
+    "112": "https://a.espncdn.com/i/teamlogos/mlb/500/chc.png",  // Cubs
+    "113": "https://a.espncdn.com/i/teamlogos/mlb/500/cin.png",  // Reds
+    "114": "https://a.espncdn.com/i/teamlogos/mlb/500/cle.png",  // Guardians
+    "115": "https://a.espncdn.com/i/teamlogos/mlb/500/col.png",  // Rockies
+    "116": "https://a.espncdn.com/i/teamlogos/mlb/500/det.png",  // Tigers
+    "117": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",  // Astros
+    "118": "https://a.espncdn.com/i/teamlogos/mlb/500/kc.png",   // Royals
+    "119": "https://a.espncdn.com/i/teamlogos/mlb/500/lad.png",  // Dodgers
+    "120": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",  // Nationals
+    "121": "https://a.espncdn.com/i/teamlogos/mlb/500/nym.png",  // Mets
+    "133": "https://a.espncdn.com/i/teamlogos/mlb/500/oak.png",  // Athletics
+    "134": "https://a.espncdn.com/i/teamlogos/mlb/500/pit.png",  // Pirates
+    "135": "https://a.espncdn.com/i/teamlogos/mlb/500/sd.png",   // Padres
+    "136": "https://a.espncdn.com/i/teamlogos/mlb/500/sea.png",  // Mariners
+    "137": "https://a.espncdn.com/i/teamlogos/mlb/500/sf.png",   // Giants
+    "138": "https://a.espncdn.com/i/teamlogos/mlb/500/stl.png",  // Cardinals
+    "139": "https://a.espncdn.com/i/teamlogos/mlb/500/tb.png",   // Rays
+    "140": "https://a.espncdn.com/i/teamlogos/mlb/500/tex.png",  // Rangers
+    "141": "https://a.espncdn.com/i/teamlogos/mlb/500/tor.png",  // Blue Jays
+    "142": "https://a.espncdn.com/i/teamlogos/mlb/500/min.png",  // Twins
+    "143": "https://a.espncdn.com/i/teamlogos/mlb/500/phi.png",  // Phillies
+    "144": "https://a.espncdn.com/i/teamlogos/mlb/500/atl.png",  // Braves
+    "145": "https://a.espncdn.com/i/teamlogos/mlb/500/cws.png",  // White Sox
+    "146": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png",  // Marlins
+    "147": "https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png",  // Yankees
+    "158": "https://a.espncdn.com/i/teamlogos/mlb/500/mil.png",  // Brewers
+  };
+
   // ─── MLB fallback: MLB Stats API ─────────────────────────────────────────────
   async function _fetchMlbScores(todayStr: string): Promise<any[]> {
     try {
@@ -8455,6 +8489,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           // Build linescore per inning
           const homeInnings = (ls.innings ?? []).map((inn: any, i: number) => ({ period: i + 1, value: String(inn.home?.runs ?? "-") }));
           const awayInnings = (ls.innings ?? []).map((inn: any, i: number) => ({ period: i + 1, value: String(inn.away?.runs ?? "-") }));
+          const awayId    = String(away.id ?? "");
+          const homeId    = String(home.id ?? "");
+          const awayLR    = g.teams?.away?.leagueRecord;
+          const homeLR    = g.teams?.home?.leagueRecord;
+          const awayRec   = awayLR ? `${awayLR.wins}-${awayLR.losses}` : "";
+          const homeRec   = homeLR ? `${homeLR.wins}-${homeLR.losses}` : "";
           games.push({
             id: String(g.gamePk), uid: String(g.gamePk), sport: "MLB",
             name: `${away.name ?? ""} at ${home.name ?? ""}`,
@@ -8466,10 +8506,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             },
             venue: null,
             teams: [
-              { id: String(away.id), abbr: away.abbreviation ?? "?", displayName: away.name ?? "", shortName: away.abbreviation ?? "",
-                logo: null, color: null, score: String(awayScr), homeAway: "away", linescores: awayInnings, records: [] },
-              { id: String(home.id), abbr: home.abbreviation ?? "?", displayName: home.name ?? "", shortName: home.abbreviation ?? "",
-                logo: null, color: null, score: String(homeScr), homeAway: "home", linescores: homeInnings, records: [] },
+              { id: awayId, abbr: away.abbreviation ?? "?", displayName: away.name ?? "", shortName: away.abbreviation ?? "",
+                logo: MLB_LOGOS[awayId] ?? null, color: null,
+                score: state === "pre" ? "-" : String(awayScr),
+                homeAway: "away", linescores: awayInnings, records: awayRec ? [awayRec] : [] },
+              { id: homeId, abbr: home.abbreviation ?? "?", displayName: home.name ?? "", shortName: home.abbreviation ?? "",
+                logo: MLB_LOGOS[homeId] ?? null, color: null,
+                score: state === "pre" ? "-" : String(homeScr),
+                homeAway: "home", linescores: homeInnings, records: homeRec ? [homeRec] : [] },
             ],
             situation: state === "in" ? {
               lastPlay: null, balls: ls.balls ?? 0, strikes: ls.strikes ?? 0, outs,
