@@ -6372,6 +6372,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     res.json(out);
   });
 
+  app.get("/api/debug-bts-pool", async (_req, res) => {
+    res.json({
+      rawPool: (globalThis as any).__btsRawPoolDebug ?? null,
+      postLock: (globalThis as any).__btsPostLockDebug ?? null,
+      gameErrors: (globalThis as any).__btsGameErrors ?? null,
+    });
+  });
+
   app.get("/api/debug-scan", async (req, res) => {
     const results: Record<string, any> = {};
     const axios = (await import("axios")).default;
@@ -11534,8 +11542,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         } catch (gameErr: any) {
           console.warn(`[BTS] game processing error for ${slateEntry?.matchup ?? game.gamePk}: ${gameErr.message}`);
+          (globalThis as any).__btsGameErrors = (globalThis as any).__btsGameErrors ?? [];
+          (globalThis as any).__btsGameErrors.push({ matchup: slateEntry?.matchup ?? String(game.gamePk), message: gameErr.message, ts: new Date().toISOString() });
         }
       }));
+      (globalThis as any).__btsRawPoolDebug = {
+        size: allCandidatesRawByPlayerId.size,
+        ids: [...allCandidatesRawByPlayerId.keys()],
+        hasMarte: allCandidatesRawByPlayerId.has(606466),
+        ts: new Date().toISOString(),
+      };
 
       console.log(`[BTS] game loop complete — totalCandidates=${candidatePicks.length}`);
 
@@ -11934,14 +11950,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // an in-progress/started game's pick still can't have its decision
       // fields changed post-lock, only its display/analytics enrichment.
       let postLockAnalyticsRefreshed = false;
+      const postLockDebug: any[] = [];
       for (const entry of cachedEntries) {
         if (refreshedThisRun.has(entry.playerId)) continue;
         const raw = allCandidatesRawByPlayerId.get(entry.playerId);
+        postLockDebug.push({ playerId: entry.playerId, name: entry.name, foundRaw: !!raw, hasSubScores: !!raw?.subScores, hasSnapshot: !!entry.snapshot });
         if (!raw || !raw.subScores || !entry.snapshot) continue;
         entry.snapshot.subScores = { ...(entry.snapshot.subScores ?? {}), ...raw.subScores };
         postLockAnalyticsRefreshed = true;
       }
       if (postLockAnalyticsRefreshed) saveBtsPicksCache();
+      (globalThis as any).__btsPostLockDebug = { refreshedThisRunIds: [...refreshedThisRun], postLockDebug, ts: new Date().toISOString() };
 
       // ── Scratch-swap: replace confirmed-scratched picks before game starts ─────
       // Rule: if a cached pick's player is confirmed NOT in the official lineup
