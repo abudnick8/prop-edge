@@ -6377,6 +6377,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       rawPool: (globalThis as any).__btsRawPoolDebug ?? null,
       postLock: (globalThis as any).__btsPostLockDebug ?? null,
       gameErrors: (globalThis as any).__btsGameErrors ?? null,
+      lineupDebug: (globalThis as any).__btsLineupDebug ?? null,
     });
   });
 
@@ -10728,6 +10729,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const slateGames: any[] = [];
       let candidatePicks: any[] = [];
       let mbSubCandidatePicks: any[] = []; // sub-threshold players (55-59%) for MB extra picks
+      (globalThis as any).__btsLineupDebug = [];
+      (globalThis as any).__btsGameErrors = [];
       // Unfiltered pool of every player scored this run, INCLUDING players whose
       // game has already started. candidatePicks/freshPicks get filtered down to
       // "future games only" further below (to avoid picking NEW players from
@@ -10929,6 +10932,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }
         console.log(`[BTS] ${slateEntry.matchup} home=${homeLineupSource}(${homePlayers.length}) away=${awayLineupSource}(${awayPlayers.length}) total=${total}`);
         if (homePlayers.length === 0 && awayPlayers.length === 0) { console.warn(`[BTS] SKIPPING ${slateEntry.matchup} — no lineup data`); }
+        (globalThis as any).__btsLineupDebug = (globalThis as any).__btsLineupDebug ?? [];
+        (globalThis as any).__btsLineupDebug.push({
+          matchup: slateEntry.matchup,
+          homeLineupSource, homeCount: homePlayers.length,
+          awayLineupSource, awayCount: awayPlayers.length,
+          confirmedHomeCount: confirmedHome.length,
+          confirmedAwayCount: confirmedAway.length,
+        });
 
         // Scratch detection: if we previously had a projected pick whose ID
         // is NOT in the now-confirmed lineup, it gets flagged as scratched
