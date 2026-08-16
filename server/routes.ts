@@ -6354,12 +6354,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
   app.get("/api/debug-espn", async (_req, res) => {
     const axios = (await import("axios")).default;
-    try {
-      const r = await axios.get("https://site.api.espn.com/apis/search/v2?query=judge&limit=8&type=player&sport=baseball%2Fmlb", { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
-      res.json({ ok: true, status: r.status, resultCount: (r.data?.results ?? []).length, sample: r.data });
-    } catch (e: any) {
-      res.json({ ok: false, status: e.response?.status, error: e.message, body: typeof e.response?.data === "string" ? e.response.data.slice(0, 500) : e.response?.data });
+    const out: Record<string, any> = {};
+    const endpoints: Record<string, string> = {
+      search:     "https://site.api.espn.com/apis/search/v2?query=judge&limit=8&type=player&sport=baseball%2Fmlb",
+      profile:    "https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/592450",
+      scoreboard: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+      statsapi:   "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2026-08-15",
+    };
+    for (const [name, url] of Object.entries(endpoints)) {
+      try {
+        const r = await axios.get(url, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+        out[name] = { ok: true, status: r.status };
+      } catch (e: any) {
+        out[name] = { ok: false, status: e.response?.status, error: e.message };
+      }
     }
+    res.json(out);
   });
 
   app.get("/api/debug-scan", async (req, res) => {
