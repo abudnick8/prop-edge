@@ -6352,6 +6352,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     res.json((globalThis as any).__bppDebugLast ?? { note: "no BPP lookup has run yet" });
   });
 
+  app.get("/api/debug-espn", async (_req, res) => {
+    const axios = (await import("axios")).default;
+    try {
+      const r = await axios.get("https://site.api.espn.com/apis/search/v2?query=judge&limit=8&type=player&sport=baseball%2Fmlb", { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
+      res.json({ ok: true, status: r.status, resultCount: (r.data?.results ?? []).length, sample: r.data });
+    } catch (e: any) {
+      res.json({ ok: false, status: e.response?.status, error: e.message, body: typeof e.response?.data === "string" ? e.response.data.slice(0, 500) : e.response?.data });
+    }
+  });
+
   app.get("/api/debug-scan", async (req, res) => {
     const results: Record<string, any> = {};
     const axios = (await import("axios")).default;
@@ -11803,6 +11813,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Rule: once a player is in today's cache they stay ALL day.
       // New players from freshPicks can be added (up to the 15-cap: 10 normal + 5 Moneyball A/B).
       // Existing cached players are NEVER removed.
+      //
+      // Guard: a ?date= override (used for admin/diagnostic preview of a future
+      // slate) must NEVER persist into btsPicksCache. Only today's real date
+      // (past its own 8 AM CT gate) or past dates may write through. This
+      // prevents an early preview call from locking in premature picks based
+      // on unofficial/projected lineups before the day's proper generation.
+      const isFutureDateOverride = targetDate > ctDateStr;
+      if (isFutureDateOverride) {
+        return res.json({
+          date: targetDate,
+          picks: freshPicks,
+          preview: true,
+          message: `Preview only for future date ${targetDate} — not saved. Picks for this date will be generated for real at 8:00 AM CT on that day.`,
+          todayRecord:  { wins: 0, losses: 0, pending: 0, winPct: null },
+          seasonRecord: { wins: btsSeasonRecord.wins, losses: btsSeasonRecord.losses, winPct: null },
+        });
+      }
       if (!btsPicksCache[targetDate]) {
         btsPicksCache[targetDate] = [];
       }
@@ -12334,6 +12361,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       });
     } catch (e: any) {
       console.error("[BTS] remove-player error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Purge an entire date's BTS picks (owner only) — used to correct a date
+  // that was accidentally generated early via a ?date= override before its
+  // proper 8 AM CT gate, so the day can regenerate cleanly at the right time.
+  // Only allows purging FUTURE dates (never today or past, to protect real
+  // locked/graded picks) — this is a regeneration-correction tool, not a
+  // general-purpose delete.
+  app.post("/api/bts/purge-future-date", requireOwner, async (req, res) => {
+    try {
+      const { date } = req.body ?? {};
+      if (!date || typeof date !== "string") return res.status(400).json({ error: "date (YYYY-MM-DD) required" });
+
+      const ctNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const todayStr = [
+        ctNow.getFullYear(),
+        String(ctNow.getMonth() + 1).padStart(2, "0"),
+        String(ctNow.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      if (date <= todayStr) {
+        return res.status(400).json({ error: `Refusing to purge ${date} — only future dates (after ${todayStr}) can be purged with this tool.` });
+      }
+
+      const existing = btsPicksCache[date] ?? [];
+      const removedCount = existing.length;
+
+      delete btsPicksCache[date];
+      delete btsExcludedByDate[date];
+
+      await db.query(`DELETE FROM bts_picks WHERE pick_date=$1`, [date]).catch((e: any) =>
+        console.warn("[BTS] purge-future-date DB delete error:", e.message)
+      );
+
+      saveBtsPicksCache();
+
+      console.log(`[BTS] Owner purged ${removedCount} prematurely-generated picks for future date ${date}. Will regenerate cleanly at its proper 8 AM CT gate.`);
+
+      res.json({ ok: true, date, removedCount, message: `Purged ${removedCount} picks for ${date}. It will regenerate fresh at 8 AM CT on that day.` });
+    } catch (e: any) {
+      console.error("[BTS] purge-future-date error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });
