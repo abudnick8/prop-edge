@@ -4113,6 +4113,89 @@ function AlertGlossary() {
   );
 }
 
+function BallparkPalGlossary() {
+  const [open, setOpen] = useState(false);
+
+  const metrics = [
+    {
+      name: "Batter vs. Pitcher (BvP) Matchup",
+      color: "#D4A843",
+      desc: "Home run / extra-base-hit / walk / strikeout probability for the specific batter-pitcher pairing in today's game, simulated from both players' full-season and recent-form profiles.",
+      fallback: "MLB Stats API vsPlayer career splits blended with the app's internal platoon (L/R) matchup logic when Ballpark Pal is unavailable.",
+    },
+    {
+      name: "Park Factors",
+      color: "#22c55e",
+      desc: "Stadium- and weather-adjusted multipliers for runs, home runs, doubles/triples, and singles at today's specific venue — split into a stadium component and a live-weather component.",
+      fallback: "Internal STADIUM_COORDS-based park factor table combined with the live wind/temperature model already used for game environment scoring.",
+    },
+    {
+      name: "Team Win Probability",
+      color: "#3b82f6",
+      desc: "Ballpark Pal's independently-simulated moneyline win probability for each team, used to cross-validate the app's own 100x Monte Carlo simulation before a Team Pick / Game of the Day is finalized.",
+      fallback: "The app's internal 100-run Monte Carlo simulation (starter ERA, bullpen, lineup edge, park/weather) stands alone as the coherence gate.",
+    },
+    {
+      name: "Total Runs Projection",
+      color: "#f97316",
+      desc: "Simulated expected combined runs scored by both teams, factoring starting pitching, bullpen usage, and park/weather conditions.",
+      fallback: "Internal Pythagorean win% and run-environment estimate derived from team offense/pitching splits.",
+    },
+    {
+      name: "Batter Stat Projections",
+      color: "#a855f7",
+      desc: "Simulated per-game projections for hits, home runs, walks, strikeouts, total bases, and other counting stats — used as a cross-check against the sportsbook's posted prop line.",
+      fallback: "Season, L15, and L30 rolling averages already tracked per player, cross-validated game-by-game for divergence.",
+    },
+  ];
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.08)", paddingTop: 10 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "none", border: "none", cursor: "pointer", padding: "2px 0",
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#3D4B58", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Ballpark Pal Glossary
+        </span>
+        <span style={{ fontSize: 11, color: "#3D4B58", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.5 }}>
+            Ballpark Pal is a third-party MLB simulation data provider integrated across Beat the Streak,
+            the Team Pick / Game of the Day, Moneyball grading, and baseball player props. Every metric below
+            has a built-in fallback method, so analysis quality is preserved even if this integration is ever removed.
+          </p>
+          {metrics.map(m => (
+            <div key={m.name} style={{ borderRadius: 8, border: `1px solid ${m.color}30`, overflow: "hidden" }}>
+              <div style={{ background: `${m.color}12`, padding: "7px 12px" }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 900, color: m.color,
+                  background: `${m.color}20`, padding: "2px 7px", borderRadius: 4,
+                  textTransform: "uppercase", letterSpacing: "0.05em",
+                }}>
+                  {m.name}
+                </span>
+              </div>
+              <div style={{ padding: "8px 12px", background: "#fff" }}>
+                <p style={{ fontSize: 10, color: "#3D4B58", margin: "0 0 6px", lineHeight: 1.45 }}>{m.desc}</p>
+                <p style={{ fontSize: 9, color: "#9CA3AF", margin: 0, lineHeight: 1.4 }}>
+                  <b style={{ color: "#3D4B58" }}>Fallback if unavailable:</b> {m.fallback}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InGameAlertEngine() {
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -4824,6 +4907,7 @@ export default function BTS() {
           <TeamWinPanel />
           <DailyPickPanel />
           <HowToReadBTS />
+          <BallparkPalGlossary />
         </>
       )}
 

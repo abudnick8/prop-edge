@@ -2274,8 +2274,121 @@ async function fetchOddsAPI(apiKey: string, settings?: { enabledSports?: string[
     }
   }
 
+  // \u2500\u2500 Ballpark Pal enrichment: MLB player props get an independent BvP/park-factor cross-check \u2500\u2500
+  // Non-blocking \u2014 any failure leaves the original Odds-API-only score untouched.
+  try {
+    await enrichMlbPropsWithBallparkPal(bets);
+  } catch (e: any) {
+    console.warn(`[BallparkPal] MLB prop enrichment error:`, e.message);
+  }
+
   console.log(`Odds API total: ${bets.length} bets (game lines + props + futures)`);
   return bets;
+}
+
+// Map Odds API MLB stat market keys \u2192 Ballpark Pal projected-average field names
+const MLB_STAT_TO_BPP_FIELD: Record<string, string> = {
+  "hits": "hits",
+  "home runs": "homeRuns",
+  "rbis": "rbi",
+  "runs scored": "runs",
+  "total bases": "totalBases",
+  "stolen bases": "stolenBases",
+  "walks": "baseOnBalls",
+};
+
+// Enrich MLB player_prop bets in-place with a Ballpark Pal simulated-projection edge (C7 signal).
+// Matches by player name (case-insensitive) against BPP's per-game batter averages, re-scores
+// via computeConfidence with bppEdge/bppFlipped populated, and updates score/factors/summary.
+async function enrichMlbPropsWithBallparkPal(bets: InsertBet[]): Promise<void> {
+  const { bppIsAvailable, bppFindGameId, bppGetAverages } = await import("./ballpark-pal");
+  if (!bppIsAvailable()) return;
+
+  const mlbPropBets = bets.filter(b => b.sport === "MLB" && b.betType === "player_prop" && b.playerName && b.gameTime);
+  if (mlbPropBets.length === 0) return;
+
+  // Group by game (home/away team pair + date) to minimize BPP calls
+  const gameGroups = new Map<string, InsertBet[]>();
+  for (const bet of mlbPropBets) {
+    const dateStr = bet.gameTime ? new Date(bet.gameTime as any).toISOString().slice(0, 10) : null;
+    if (!dateStr || !bet.homeTeam || !bet.awayTeam) continue;
+    const key = `${dateStr}|${bet.homeTeam}|${bet.awayTeam}`;
+    if (!gameGroups.has(key)) gameGroups.set(key, []);
+    gameGroups.get(key)!.push(bet);
+  }
+
+  for (const [key, groupBets] of gameGroups) {
+    try {
+      const [dateStr, homeTeamName, awayTeamName] = key.split("|");
+      const homeTeamId = resolveMlbTeamId(homeTeamName);
+      const awayTeamId = resolveMlbTeamId(awayTeamName);
+      if (!homeTeamId || !awayTeamId) continue;
+
+      const gameId = await bppFindGameId(dateStr, awayTeamId, homeTeamId);
+      if (!gameId) continue;
+
+      const averages = await bppGetAverages(gameId);
+      if (!averages?.batters?.length) continue;
+
+      const battersByName = new Map<string, any>();
+      for (const b of averages.batters) {
+        if (b.playerName) battersByName.set(b.playerName.toLowerCase().trim(), b);
+      }
+
+      for (const bet of groupBets) {
+        const statType = ((bet.teamStats as any)?.statType ?? "").toLowerCase().trim();
+        const bppField = MLB_STAT_TO_BPP_FIELD[statType];
+        if (!bppField) continue; // stat not covered by BPP averages — leave bet unmodified
+
+        const bppBatter = battersByName.get((bet.playerName ?? "").toLowerCase().trim());
+        const bppProjected = bppBatter?.[bppField];
+        if (bppProjected == null || bet.line == null || bet.line <= 0) continue;
+
+        const bppEdge = (bppProjected - bet.line) / bet.line;
+        const pickSide = ((bet.teamStats as any)?.pickSide ?? "over").toLowerCase();
+        const candidateSide = bppEdge >= 0 ? "over" : "under";
+        const bppFlipped = candidateSide !== pickSide;
+
+        const rescored = computeConfidence({
+          impliedProb: bet.impliedProbability ?? 0.5,
+          source: bet.source ?? "oddsapi",
+          betType: "player_prop",
+          sport: "MLB",
+          title: bet.title ?? "",
+          odds: (bet.overOdds ?? undefined) as any,
+          line: bet.line,
+          recentAvg: (bet.playerStats as any)?.recentAvg ?? null,
+          formEdge: (bet as any).formEdgePct != null ? (bet as any).formEdgePct / 100 : null,
+          bppEdge,
+          bppFlipped,
+        });
+
+        bet.confidenceScore = rescored.score;
+        bet.riskLevel = rescored.risk;
+        bet.recommendedAllocation = rescored.allocation;
+        bet.keyFactors = [...(bet.keyFactors ?? []), ...rescored.factors.filter(f => f.startsWith("Ballpark Pal"))];
+        bet.isHighConfidence = rescored.score >= 85;
+      }
+    } catch (e: any) {
+      console.warn(`[BallparkPal] enrichment error for game group ${key}:`, e.message);
+    }
+  }
+}
+
+// Minimal MLB team-name \u2192 MLB Stats API team ID resolver (matches Ballpark Pal team IDs 1:1)
+const MLB_TEAM_NAME_TO_ID: Record<string, number> = {
+  "arizona diamondbacks": 109, "atlanta braves": 144, "baltimore orioles": 110, "boston red sox": 111,
+  "chicago cubs": 112, "chicago white sox": 145, "cincinnati reds": 113, "cleveland guardians": 114,
+  "colorado rockies": 115, "detroit tigers": 116, "houston astros": 117, "kansas city royals": 118,
+  "los angeles angels": 108, "los angeles dodgers": 119, "miami marlins": 146, "milwaukee brewers": 158,
+  "minnesota twins": 142, "new york mets": 121, "new york yankees": 147, "oakland athletics": 133,
+  "athletics": 133, "philadelphia phillies": 143, "pittsburgh pirates": 134, "san diego padres": 135,
+  "san francisco giants": 137, "seattle mariners": 136, "st louis cardinals": 138, "st. louis cardinals": 138,
+  "tampa bay rays": 139, "texas rangers": 140, "toronto blue jays": 141, "washington nationals": 120,
+};
+function resolveMlbTeamId(teamName: string | null | undefined): number | null {
+  if (!teamName) return null;
+  return MLB_TEAM_NAME_TO_ID[teamName.toLowerCase().trim()] ?? null;
 }
 
 // Parse standard game lines (h2h, spreads, totals)
@@ -2489,6 +2602,9 @@ interface ScoreInput {
   // ML priority signals
   statCategory?: string | null;      // e.g. "hits", "home_runs" — feeds per-stat ML weights
   linematePriority?: boolean;        // true = Props Hub (Linemate) confirmed this pick
+  // Ballpark Pal (MLB only) — independent BvP/park-factor simulated projection edge
+  bppEdge?: number | null;           // fractional edge: (bppProjectedStat - line) / line, signed same convention as formEdge
+  bppFlipped?: boolean;              // true if BPP-projected side disagrees with picked side
 }
 
 interface ScoreResult {
@@ -2805,10 +2921,44 @@ function computeConfidenceRaw(input: ScoreInput): ScoreResult {
     }
     // c6 range: -15 to +12
 
+    // ── C7: Ballpark Pal simulated projection edge (MLB only, up to ±8 pts) ──
+    // Independent cross-check against BvP-adjusted, park/weather-adjusted simulated
+    // stat projections. Smaller weight than C6 (ESPN L5 form) since this is a
+    // secondary confirming signal, not the primary form read.
+    let c7 = 0;
+    if (input.sport === "MLB" && input.bppEdge != null) {
+      const edge7 = input.bppEdge;
+      const bppPct = Math.round(Math.abs(edge7) * 100);
+      if (input.bppFlipped) {
+        if (Math.abs(edge7) >= 0.25) {
+          c7 = -8;
+          factors.push(`Ballpark Pal warning: simulated projection ${edge7 > 0 ? "exceeds" : "trails"} line by ${bppPct}% — disagrees with picked side`);
+        } else if (Math.abs(edge7) >= 0.15) {
+          c7 = -4;
+          factors.push(`Ballpark Pal caution: mild conflict with picked side (${bppPct}% divergence)`);
+        }
+      } else {
+        if (edge7 >= 0.25) {
+          c7 = 8;
+          factors.push(`Ballpark Pal confirms: BvP/park-adjusted sim projects ${bppPct}% above line — supports OVER lean`);
+        } else if (edge7 >= 0.12) {
+          c7 = 5;
+          factors.push(`Ballpark Pal supports pick: simulated projection ${bppPct}% above line`);
+        } else if (edge7 <= -0.25) {
+          c7 = 8;
+          factors.push(`Ballpark Pal confirms: BvP/park-adjusted sim projects ${bppPct}% below line — supports UNDER lean`);
+        } else if (edge7 <= -0.12) {
+          c7 = 5;
+          factors.push(`Ballpark Pal supports pick: simulated projection ${bppPct}% below line`);
+        }
+      }
+    }
+    // c7 range: -8 to +8 (MLB only, 0 when BPP unavailable or non-MLB)
+
     // ── Raw composite score ──
-    // C1(20) + C2(16→28) + C3(22) + C4(13) + C5(12) + C6(-15 to +12) = theoretical max ~107
+    // C1(20) + C2(16→28) + C3(22) + C4(13) + C5(12) + C6(-15 to +12) + C7(-8 to +8, MLB only) = theoretical max ~115
     // Harder scale: must fire on nearly every component to reach 85+ threshold.
-    const rawScore = c1 + c2 + c3 + c4 + c5 + c6;
+    const rawScore = c1 + c2 + c3 + c4 + c5 + c6 + c7;
 
     // ── Hard gate cap ──
     // Gate cap tightened: 72 → 66 so gated bets stay in the low-confidence tier

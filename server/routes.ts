@@ -31,6 +31,12 @@ import {
   computeAnalyticsBoost,
 } from "./mlb-analytics";
 import { registerPlayerIntelRoutes } from "./player-intel-routes";
+import {
+  bppIsAvailable, bppGetGames, bppFindGameId, bppGetMatchupsForDate, bppGetMatchup,
+  bppGetParkFactorsForDate, bppGetParkFactorForGame, bppGetHitterParkFactors, bppGetHitterParkFactor,
+  bppGetAverages, bppGetBatterAverage, bppGetProbabilities, bppGetTeamWinProbability,
+  bppGetTotalRunsProjection, bppBatterHitScore, bppMatchupScore, bppParkFactorScore, bppCacheStats,
+} from "./ballpark-pal";
 // No payment integration — accounts are free to create, tier managed by owner
 
 // ── ML Engine helpers (pure TypeScript — no Python dependency) ───────────────
@@ -8524,6 +8530,37 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           });
         }
       }
+      // ── Enrich LIVE games with current pitcher/batter matchup from GUMBO ──
+      const liveGamePks = games.filter(gm => gm.status.state === "in").map(gm => Number(gm.id));
+      if (liveGamePks.length > 0) {
+        await Promise.all(liveGamePks.map(async (gamePk) => {
+          try {
+            const gr = await fetch(
+              `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`,
+              { signal: AbortSignal.timeout(8000) }
+            );
+            if (!gr.ok) return;
+            const gd: any = await gr.json();
+            const ld = gd.liveData ?? {};
+            const currentPlay = ld.plays?.currentPlay ?? {};
+            const matchup = currentPlay.matchup ?? {};
+            const lsOff = ld.linescore?.offense ?? {};
+            const lsDef = ld.linescore?.defense ?? {};
+            const pitcherObj = matchup.pitcher ?? lsDef.pitcher ?? null;
+            const batterObj  = matchup.batter  ?? lsOff.batter  ?? null;
+            const target = games.find(gm => gm.id === String(gamePk));
+            if (target && target.situation) {
+              target.situation.pitcher = pitcherObj
+                ? { name: pitcherObj.fullName ?? pitcherObj.name ?? null, summary: matchup.pitchHand?.code ? `Throws ${matchup.pitchHand.code}` : null, headshot: null }
+                : null;
+              target.situation.batter = batterObj
+                ? { name: batterObj.fullName ?? batterObj.name ?? null, summary: matchup.batSide?.code ? `Bats ${matchup.batSide.code}` : null, headshot: null }
+                : null;
+              target.situation.lastPlay = currentPlay.result?.description ?? null;
+            }
+          } catch { /* leave pitcher/batter null on failure */ }
+        }));
+      }
       return games;
     } catch (e: any) {
       console.warn("[live-scores] MLB Stats API fallback error:", e.message);
@@ -10196,6 +10233,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         pitcherXera: number | null,      // Baseball Savant xERA for opposing starter
         platoonSplitScore: number,       // OBP-delta platoon score 0-1 (vs this hand)
         pitcherBarrelAllowed: number,    // pitcher's barrel rate allowed (from Savant)
+        // Ballpark Pal additions:
+        bppComponent: number | null,     // Ballpark Pal simulated hit-probability + BvP + park-factor blend (0-1), null if unavailable
       ): number {
         const bats = hitter.bats;
         const pitcherAvgAllowed = bats === "L" ? (pitcherSplits.vsLeft  || 0.250) : (pitcherSplits.vsRight  || 0.250);
@@ -10585,6 +10624,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const extraBvp  = bvpWeight - 0.06;
         const formW     = Math.max(0.10, 0.15 - extraBvp * 0.40);
         const matchupW  = Math.max(0.19, 0.25 - extraBvp * 0.60);
+        // Ballpark Pal weight: ~10% when available (auto-dilutes all other
+        // weights proportionally via the totalW normalization below since it's
+        // simply excluded from both numerator and denominator when null).
+        const BPP_WEIGHT = 0.10;
         const rawNom = (
           form             * formW     +   // 15% base (form + streak + D/N)
           contact          * 0.16      +   // 16% (xBA, xwOBA, zCon, ozCon, sprint, K%)
@@ -10595,10 +10638,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           platoonComponent * 0.04      +   // 4%  (OBP platoon split vs pitcher hand)
           venueScore       * 0.04      +   // 4%  (career park splits, reduced by 1%)
           battedBallBonus  * 0.02      +   // 2%  (GB/FB vs pitcher type, reduced by 1%)
-          stabilityScore   * 0.05          // 5%  anchor
+          stabilityScore   * 0.05      +   // 5%  anchor
+          (bppComponent !== null ? bppComponent * BPP_WEIGHT : 0) // ~10% Ballpark Pal sim, when available
         );
-        // Normalize by actual weight sum so output stays in 0-1 range
-        const totalW = formW + 0.16 + 0.08 + matchupW + 0.18 + bvpWeight + 0.04 + 0.04 + 0.02 + 0.05;
+        // Normalize by actual weight sum so output stays in 0-1 range.
+        // If BPP is unavailable, its weight is excluded from the denominator too,
+        // so the other 9 components proportionally absorb the full 100% — no bias.
+        const totalW = formW + 0.16 + 0.08 + matchupW + 0.18 + bvpWeight + 0.04 + 0.04 + 0.02 + 0.05
+          + (bppComponent !== null ? BPP_WEIGHT : 0);
         const raw = rawNom / totalW;
         const clampedRaw = Math.max(0, Math.min(1, raw));
         return clampedRaw;
@@ -10875,6 +10922,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
         } catch { /* sportsbook data unavailable — no edge filter applied */ }
 
+        // ── Ballpark Pal: resolve this game's BPP gameId + pull matchups/park factors once ──
+        // Never throws; every lookup below degrades to null if BPP is unavailable.
+        const bppDateStr = gameDate ? new Date(gameDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+        let bppGameId: number | null = null;
+        let bppHitterParkFactors: Awaited<ReturnType<typeof bppGetHitterParkFactors>> = [];
+        if (bppIsAvailable() && homeTeam.team?.id && awayTeam.team?.id) {
+          try {
+            bppGameId = await bppFindGameId(bppDateStr, awayTeam.team.id, homeTeam.team.id);
+            if (bppGameId) {
+              // Warm the matchups-for-date cache (bulk, one call covers the whole day)
+              await bppGetMatchupsForDate(bppDateStr);
+              bppHitterParkFactors = await bppGetHitterParkFactors(bppGameId);
+            }
+          } catch { /* non-blocking — BPP unavailable this game */ }
+        }
+
         const buildCandidates = async (players: any[], side: "home" | "away", pitcherSplits: any, teamName: string, lineupSrc: string, oppPitcherSeasonStats: any, oppPitcherSavant: any) => {
           console.log(`[BTS] buildCandidates team=${teamName} side=${side} players=${players.length} src=${lineupSrc}`);
           const candidates: any[] = [];
@@ -11039,6 +11102,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 platoonSplitScore = await getPlatoonSplitScore(pid, pitcherHand);
               } catch { /* non-blocking — neutral fallback */ }
 
+              // ── Ballpark Pal: blend BvP matchup sim + park factor into a single 0-1 component ──
+              let bppComponent: number | null = null;
+              try {
+                if (bppGameId && opponentPitcherId) {
+                  const bppMatch = await bppGetMatchup(bppDateStr, pid, opponentPitcherId);
+                  const bppMatchScore = bppMatchupScore(bppMatch);
+                  const bppPf = bppHitterParkFactors.find(pf => pf.playerId === pid) ?? null;
+                  const bppPfScore = bppParkFactorScore(bppPf ?? null);
+                  if (bppMatchScore !== null || bppPfScore !== null) {
+                    // Weight matchup sim higher than park factor when both present
+                    if (bppMatchScore !== null && bppPfScore !== null) {
+                      bppComponent = bppMatchScore * 0.70 + bppPfScore * 0.30;
+                    } else {
+                      bppComponent = bppMatchScore ?? bppPfScore;
+                    }
+                  }
+                }
+              } catch { /* non-blocking — falls back to null, formula auto-dilutes */ }
+
               const rawScore = scoreHitter(
                 { ...stats, bats },
                 pitcherSplits,
@@ -11070,6 +11152,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 pitcherXera,
                 platoonSplitScore,
                 pitcherBarrelAllowed,
+                // Ballpark Pal addition:
+                bppComponent,
               );
 
               // ── Calibrated probability (Phase 1: logistic sigmoid) ──────
@@ -11184,7 +11268,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   mbSubCandidates.push({ playerId: pid, name: fullName, team: teamName, side, bats, lineupSlot,
                     lineupSource: p.lineupSource ?? lineupSrc, isScratched, isOverridePick, opponentPitcher: oppPit,
                     hitProbability: hitProbabilityPct, rawScore,
-                    subScores: { rawScore, hitProbabilityBase, pitcherXera, platoonSplitScore: parseFloat(platoonSplitScore.toFixed(3)), analyticsBoostMult: parseFloat(analyticsBoostMult.toFixed(3)) },
+                    subScores: { rawScore, hitProbabilityBase, pitcherXera, platoonSplitScore: parseFloat(platoonSplitScore.toFixed(3)), analyticsBoostMult: parseFloat(analyticsBoostMult.toFixed(3)), bppComponent: bppComponent !== null ? parseFloat(bppComponent.toFixed(3)) : null },
                     stats: { avg14: stats.avg14, avg30: stats.avg30, avgSeason: stats.avgSeason,
                       hardHitPct: parseFloat(savant?.hard_hit_percent ?? "0") || 0,
                       xba: parseFloat(savant?.xba ?? "0") || 0,
@@ -11305,6 +11389,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   platoonSplitScore:     parseFloat(platoonSplitScore.toFixed(3)),
                   pitcherBarrelAllowed:  pitcherBarrelAllowed,
                   analyticsBoostMult:    parseFloat(analyticsBoostMult.toFixed(3)),
+                  bppComponent:          bppComponent !== null ? parseFloat(bppComponent.toFixed(3)) : null,
                 },
                 hitProbability:  hitProbabilityPct,
                 impliedProb:     impliedProb !== null ? Math.round(impliedProb * 100) : null,
@@ -11564,48 +11649,63 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // ── Moneyball Grade: computed server-side, weighted into final hitProbability ──
-      // Grade is a 0–100 score derived from 5 independent Moneyball signals.
+      // Grade is a 0–100 score derived from 6 independent Moneyball signals
+      // (rebalanced to include Ballpark Pal's simulated matchup+park signal when available).
       // A small boost/penalty is then applied back into hitProbability so that
       // the final displayed score and ranking reflect the full analytical picture.
       for (const p of candidatePicks) {
         let mbPts = 0;
+        const hasBpp = p.subScores?.bppComponent !== null && p.subScores?.bppComponent !== undefined;
 
-        // 1. Hit probability (35 pts)
+        // 1. Hit probability (30 pts, was 35 — diluted to make room for BPP)
         const hp = p.hitProbability ?? 0;
-        if (hp >= 80)      mbPts += 35;
-        else if (hp >= 74) mbPts += 28;
-        else if (hp >= 68) mbPts += 20;
-        else if (hp >= 62) mbPts += 12;
-        else               mbPts += 5;
+        if (hp >= 80)      mbPts += 30;
+        else if (hp >= 74) mbPts += 24;
+        else if (hp >= 68) mbPts += 17;
+        else if (hp >= 62) mbPts += 10;
+        else               mbPts += 4;
 
-        // 2. Value over baseline / slate median (20 pts)
+        // 2. Value over baseline / slate median (17 pts, was 20)
         const vob = p.valueOverBaseline ?? 0;
-        if (vob >= 12)     mbPts += 20;
-        else if (vob >= 7) mbPts += 15;
-        else if (vob >= 3) mbPts += 10;
-        else if (vob >= 0) mbPts += 5;
+        if (vob >= 12)     mbPts += 17;
+        else if (vob >= 7) mbPts += 13;
+        else if (vob >= 3) mbPts += 9;
+        else if (vob >= 0) mbPts += 4;
 
-        // 3. Opposing pitcher xERA (20 pts) — hittable arm = grade boost
+        // 3. Opposing pitcher xERA (17 pts, was 20) — hittable arm = grade boost
         const xera = p.subScores?.pitcherXera ?? 0;
-        if (xera >= 5.20)      mbPts += 20;
-        else if (xera >= 4.60) mbPts += 15;
-        else if (xera >= 4.00) mbPts += 10;
-        else if (xera >= 3.40) mbPts += 5;
+        if (xera >= 5.20)      mbPts += 17;
+        else if (xera >= 4.60) mbPts += 13;
+        else if (xera >= 4.00) mbPts += 9;
+        else if (xera >= 3.40) mbPts += 4;
 
-        // 4. Hard contact % (15 pts)
+        // 4. Hard contact % (13 pts, was 15)
         const hh = p.stats?.hardHitPct ?? 0;
-        if (hh >= 50)      mbPts += 15;
-        else if (hh >= 44) mbPts += 11;
-        else if (hh >= 38) mbPts += 7;
+        if (hh >= 50)      mbPts += 13;
+        else if (hh >= 44) mbPts += 10;
+        else if (hh >= 38) mbPts += 6;
         else if (hh >= 32) mbPts += 3;
 
-        // 5. xBA vs recent avg divergence bonus (10 pts)
+        // 5. xBA vs recent avg divergence bonus (8 pts, was 10)
         const xba  = p.stats?.xba  ?? 0;
         const surf = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
-        if (xba > 0 && surf > 0 && (xba - surf) >= 0.040) mbPts += 10;
-        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.020) mbPts += 5;
+        if (xba > 0 && surf > 0 && (xba - surf) >= 0.040) mbPts += 8;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.020) mbPts += 4;
 
-        const mbGrade: string = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
+        // 6. Ballpark Pal simulated matchup + park factor (15 pts, only when BPP available)
+        if (hasBpp) {
+          const bpp = p.subScores.bppComponent;
+          if (bpp >= 0.75)      mbPts += 15;
+          else if (bpp >= 0.62) mbPts += 11;
+          else if (bpp >= 0.50) mbPts += 7;
+          else if (bpp >= 0.38) mbPts += 3;
+        }
+
+        // Grade thresholds scale to whichever max applies (100 w/ BPP, 85 without)
+        // so BPP availability never systematically inflates or deflates grades.
+        const mbPtsScaled = hasBpp ? mbPts : (mbPts / 85) * 100;
+        const mbGrade: string = mbPtsScaled >= 78 ? "A" : mbPtsScaled >= 62 ? "B" : mbPtsScaled >= 46 ? "C" : mbPtsScaled >= 30 ? "D" : "F";
+        mbPts = Math.round(mbPtsScaled);
         p.mbGrade = mbGrade;
         p.mbScore = mbPts;
 
@@ -11638,29 +11738,37 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (p._repeatYesterday) repeatCount++;
       }
       // Pass 2: fill slots 11-15 with the best Moneyball analytical picks
-      // These are scored on a SEPARATE 4-signal scale (no hit-probability component)
+      // These are scored on a SEPARATE signal scale (no hit-probability component)
       // so that players just outside the top 10 can still qualify on analytical merit.
-      // Signals: xERA (30pts) + Hard Contact% (25pts) + xBA divergence (25pts) + VOB (20pts) = 100pts
+      // Signals: xERA (26pts) + Hard Contact% (21pts) + xBA divergence (21pts) + VOB (17pts)
+      //          + Ballpark Pal sim (15pts, when available) = 100pts (85pts without BPP)
       // Grade: A>=72, B>=54, C>=36, D>=20 — lower thresholds since hitProb is excluded
       const mainPickIds = new Set(freshPicks.map((p: any) => p.playerId));
       const mbAnalyticsScore = (p: any): number => {
         let pts = 0;
-        // xERA (30 pts) — hittable arm is the #1 MB signal
+        const hasBpp = p.subScores?.bppComponent !== null && p.subScores?.bppComponent !== undefined;
+        // xERA (26 pts, was 30) — hittable arm is the #1 MB signal
         const xe = p.subScores?.pitcherXera ?? 0;
-        if (xe >= 5.20) pts += 30; else if (xe >= 4.60) pts += 23; else if (xe >= 4.00) pts += 15; else if (xe >= 3.40) pts += 7;
-        // Hard contact % (25 pts)
+        if (xe >= 5.20) pts += 26; else if (xe >= 4.60) pts += 20; else if (xe >= 4.00) pts += 13; else if (xe >= 3.40) pts += 6;
+        // Hard contact % (21 pts, was 25)
         const hh = p.stats?.hardHitPct ?? 0;
-        if (hh >= 50) pts += 25; else if (hh >= 44) pts += 19; else if (hh >= 38) pts += 12; else if (hh >= 32) pts += 6;
-        // xBA vs recent avg divergence (25 pts)
+        if (hh >= 50) pts += 21; else if (hh >= 44) pts += 16; else if (hh >= 38) pts += 10; else if (hh >= 32) pts += 5;
+        // xBA vs recent avg divergence (21 pts, was 25)
         const xba = p.stats?.xba ?? 0; const surf = p.stats?.avg14 ?? p.stats?.avgSeason ?? 0;
-        if (xba > 0 && surf > 0 && (xba - surf) >= 0.050) pts += 25;
-        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.030) pts += 18;
-        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.015) pts += 10;
-        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.000) pts += 4;
-        // VOB vs sub-pool median (20 pts) — is this player above average for the pool?
+        if (xba > 0 && surf > 0 && (xba - surf) >= 0.050) pts += 21;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.030) pts += 15;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.015) pts += 8;
+        else if (xba > 0 && surf > 0 && (xba - surf) >= 0.000) pts += 3;
+        // VOB vs sub-pool median (17 pts, was 20) — is this player above average for the pool?
         const vob = p.valueOverBaseline ?? 0;
-        if (vob >= 8) pts += 20; else if (vob >= 4) pts += 14; else if (vob >= 0) pts += 7;
-        return pts;
+        if (vob >= 8) pts += 17; else if (vob >= 4) pts += 12; else if (vob >= 0) pts += 6;
+        // Ballpark Pal simulated matchup + park factor (15 pts, only when BPP available)
+        if (hasBpp) {
+          const bpp = p.subScores.bppComponent;
+          if (bpp >= 0.75) pts += 15; else if (bpp >= 0.62) pts += 11; else if (bpp >= 0.50) pts += 7; else if (bpp >= 0.38) pts += 3;
+        }
+        // Scale to a consistent 100pt basis regardless of BPP availability
+        return hasBpp ? pts : (pts / 85) * 100;
       };
       const mbGradeFromAnalytics = (pts: number): string =>
         pts >= 72 ? "A" : pts >= 54 ? "B" : pts >= 36 ? "C" : pts >= 20 ? "D" : "F";
@@ -20410,6 +20518,32 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             continue;
           }
 
+          // ── Ballpark Pal cross-validation: independent model must not strongly disagree ──
+          // Extension of the internal Monte Carlo coherence gate — now requires the app's
+          // own 100x sim AND Ballpark Pal's independently-simulated win probability to not
+          // both point away from the pick. Never blocks the pick if BPP is unavailable.
+          let bppWinProb: number | null = null;
+          let bppTotalRuns: number | null = null;
+          try {
+            if (bppIsAvailable() && homeTeamId && awayTeamId) {
+              const bppDate = commenceTime ? new Date(commenceTime).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+              const bppGid = await bppFindGameId(bppDate, awayTeamId, homeTeamId);
+              if (bppGid) {
+                const finalPickTeamId = finalPickSide === "home" ? homeTeamId : awayTeamId;
+                bppWinProb = await bppGetTeamWinProbability(bppGid, finalPickTeamId);
+                bppTotalRuns = await bppGetTotalRunsProjection(bppGid);
+              }
+            }
+          } catch { /* non-blocking — BPP unavailable, skip cross-validation */ }
+
+          if (bppWinProb !== null && bppWinProb < 0.35 && usedSimResult.pickWinPct < 55) {
+            // Both independent sims are lukewarm/negative on this pick — disqualify.
+            // (Only trips when BOTH models are unfavorable — a single dissenting model
+            // is not enough to override the primary internal analysis.)
+            console.log(`[TeamWin] DISQUALIFIED ${finalPickTeam} — Ballpark Pal win% only ${Math.round(bppWinProb*100)}% AND internal sim ${usedSimResult.pickWinPct}% both weak`);
+            continue;
+          }
+
           const finalTier = mlbTeamWinConfTier(finalWinnerScore, finalWinnerScore - finalLoserScore);
           if (finalTier === "PASS") continue;
 
@@ -20443,6 +20577,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               predictedOppScore:   usedSimResult.predictedOppScore,
               sims:                usedSimResult.sims,
             },
+            ballparkPal: bppWinProb !== null ? {
+              pickWinProb: Math.round(bppWinProb * 100),
+              totalRunsProjection: bppTotalRuns !== null ? parseFloat(bppTotalRuns.toFixed(2)) : null,
+            } : null,
             subScores: {
               home: {
                 starterEdge: homeStarterEdge,
@@ -20526,43 +20664,57 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // ── Team Moneyball Grade: server-side, weighted into winnerScore ──
       for (const g of scoredGames) {
         let mbPts = 0;
+        const hasBpp = g.ballparkPal !== null && g.ballparkPal !== undefined;
 
-        // 1. Monte Carlo sim win% (35 pts)
+        // 1. Monte Carlo sim win% (30 pts, was 35 — diluted to make room for BPP)
         const simPct = g.simulation?.pickWinPct ?? 0;
-        if (simPct >= 68)      mbPts += 35;
-        else if (simPct >= 60) mbPts += 27;
-        else if (simPct >= 54) mbPts += 18;
-        else if (simPct >= 50) mbPts += 10;
-        else                   mbPts += 4;
+        if (simPct >= 68)      mbPts += 30;
+        else if (simPct >= 60) mbPts += 23;
+        else if (simPct >= 54) mbPts += 15;
+        else if (simPct >= 50) mbPts += 8;
+        else                   mbPts += 3;
 
-        // 2. Pythagorean Win% (25 pts)
+        // 2. Pythagorean Win% (21 pts, was 25)
         const pyth = g.expectedRuns?.pythagoreanWinPct ?? 0;
-        if (pyth >= 65)      mbPts += 25;
-        else if (pyth >= 58) mbPts += 18;
-        else if (pyth >= 53) mbPts += 11;
-        else if (pyth >= 50) mbPts += 5;
+        if (pyth >= 65)      mbPts += 21;
+        else if (pyth >= 58) mbPts += 15;
+        else if (pyth >= 53) mbPts += 9;
+        else if (pyth >= 50) mbPts += 4;
 
-        // 3. Score edge (20 pts)
+        // 3. Score edge (17 pts, was 20)
         const edge = g.edge ?? 0;
-        if (edge >= 18)      mbPts += 20;
-        else if (edge >= 13) mbPts += 15;
-        else if (edge >= 9)  mbPts += 10;
-        else if (edge >= 5)  mbPts += 5;
+        if (edge >= 18)      mbPts += 17;
+        else if (edge >= 13) mbPts += 13;
+        else if (edge >= 9)  mbPts += 8;
+        else if (edge >= 5)  mbPts += 4;
 
-        // 4. Top edge driver gap (10 pts)
+        // 4. Top edge driver gap (8 pts, was 10)
         const ed0gap = g.edgeDrivers?.[0]?.gap ?? 0;
-        if (ed0gap >= 18)      mbPts += 10;
-        else if (ed0gap >= 12) mbPts += 7;
-        else if (ed0gap >= 7)  mbPts += 4;
+        if (ed0gap >= 18)      mbPts += 8;
+        else if (ed0gap >= 12) mbPts += 6;
+        else if (ed0gap >= 7)  mbPts += 3;
 
-        // 5. Opp starter xERA (10 pts)
+        // 5. Opp starter xERA (9 pts, was 10)
         const osp   = g.pickSide === "home" ? g.starters?.away : g.starters?.home;
         const ospX  = osp?.xera ?? 0;
-        if (ospX >= 5.20)      mbPts += 10;
-        else if (ospX >= 4.60) mbPts += 7;
-        else if (ospX >= 4.00) mbPts += 4;
+        if (ospX >= 5.20)      mbPts += 9;
+        else if (ospX >= 4.60) mbPts += 6;
+        else if (ospX >= 4.00) mbPts += 3;
 
-        const mbGrade: string = mbPts >= 78 ? "A" : mbPts >= 62 ? "B" : mbPts >= 46 ? "C" : mbPts >= 30 ? "D" : "F";
+        // 6. Ballpark Pal independent win probability (15 pts, only when available)
+        // Rewards agreement between the internal sim's pick and BPP's independent model.
+        if (hasBpp) {
+          const bppP = g.ballparkPal.pickWinProb ?? 0;
+          if (bppP >= 62)      mbPts += 15;
+          else if (bppP >= 54) mbPts += 11;
+          else if (bppP >= 48) mbPts += 6;
+          else if (bppP >= 42) mbPts += 2;
+        }
+
+        // Scale to a consistent 100pt basis regardless of BPP availability
+        const mbPtsScaled = hasBpp ? mbPts : (mbPts / 85) * 100;
+        const mbGrade: string = mbPtsScaled >= 78 ? "A" : mbPtsScaled >= 62 ? "B" : mbPtsScaled >= 46 ? "C" : mbPtsScaled >= 30 ? "D" : "F";
+        mbPts = Math.round(mbPtsScaled);
         g.mbGrade = mbGrade;
         g.mbScore = mbPts;
 
