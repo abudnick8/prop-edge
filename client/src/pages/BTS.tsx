@@ -1084,6 +1084,74 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
               </div>
             );
           })()}
+
+          {/* ── Ballpark Pal Analytics ── */}
+          {(() => {
+            const bpp = pick.subScores?.bppComponent;
+            const bd  = pick.subScores?.bppDetail;
+            const lines: { icon: string; label: string; body: string }[] = [];
+
+            if (bd) {
+              const hr = bd.homeRunVsTypical ?? 0, xbh = bd.doubleTripleVsTypical ?? 0,
+                    single = bd.singleVsTypical ?? 0, bb = bd.walkVsTypical ?? 0, k = bd.strikeoutVsTypical ?? 0;
+              const fmt = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
+              lines.push({ icon: "🎯", label: "BvP Simulation",
+                body: `Simulated vs ${bd.pitcherName || "today's starter"}: HR ${fmt(hr)}, XBH ${fmt(xbh)}, 1B ${fmt(single)}, BB ${fmt(bb)}, K ${fmt(k)} vs this batter's typical rate.${
+                  hr >= 15 || xbh >= 15 ? " Sim flags a favorable power matchup." :
+                  k >= 15 ? " Sim flags elevated strikeout risk against this arm." : ""}` });
+
+              if (bd.parkHomeRuns != null) {
+                const pf = bd.parkHomeRuns;
+                lines.push({ icon: "🏟️", label: "Park + Weather Factor",
+                  body: `Combined stadium + live weather multiplier for this batter: ${pf.toFixed(2)}x on HR${
+                    bd.parkDoublesTriples != null ? `, ${bd.parkDoublesTriples.toFixed(2)}x on XBH` : ""
+                  }${bd.parkSingles != null ? `, ${bd.parkSingles.toFixed(2)}x on 1B` : ""}.${
+                    pf >= 1.10 ? " Venue/conditions boost power today." :
+                    pf <= 0.90 ? " Venue/conditions suppress power today." : " Roughly neutral park effect."}${
+                    bd.parkHomeRunsStadium != null && bd.parkHomeRunsWeather != null
+                      ? ` (stadium ${bd.parkHomeRunsStadium.toFixed(2)}x · weather ${bd.parkHomeRunsWeather.toFixed(2)}x)` : ""}` });
+              }
+            }
+
+            if (bpp != null) {
+              lines.push({ icon: "⚖️", label: "Grade Weight",
+                body: `Blended matchup (70%) + park (30%) sim scored ${(bpp * 100).toFixed(0)}/100 — contributes up to 15 pts to this player's Moneyball grade above.` });
+            }
+
+            const gradeLabel = bpp == null ? "Not available for this matchup" :
+              bpp >= 0.75 ? "Strongly favorable simulation" :
+              bpp >= 0.62 ? "Favorable simulation" :
+              bpp >= 0.50 ? "Roughly neutral simulation" :
+              bpp >= 0.38 ? "Mildly unfavorable simulation" : "Unfavorable simulation";
+
+            return (
+              <div style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.16)", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>🌳</span>
+                    <p style={{ fontSize: 10, fontWeight: 900, color: "#22c55e", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Ballpark Pal Analytics</p>
+                  </div>
+                  <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, textAlign: "right" }}>{gradeLabel}</p>
+                </div>
+                {lines.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {lines.map((l, i) => (
+                      <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                        <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.45, margin: 0 }}>
+                          <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.45, opacity: 0.75 }}>
+                    No Ballpark Pal simulation was returned for this specific batter/pitcher pairing (lineup not yet official for this game, or provider outage) — this pick's grade fell back to the app's internal platoon-split and park-factor model instead.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -1884,6 +1952,51 @@ function TeamWinCard({ pick, slot, isOwner = false, onGrade }: {
               </div>
             );
           })()}
+
+          {/* ── Ballpark Pal Analytics — Team Pick ── */}
+          {(() => {
+            const bppWin  = pick.ballparkPal?.pickWinProb;
+            const bppRuns = pick.ballparkPal?.totalRunsProjection;
+            const simPct  = pick.simulation?.pickWinPct;
+
+            const lines: { icon: string; label: string; body: string }[] = [];
+            if (bppWin != null) {
+              const gap = simPct != null ? simPct - bppWin : null;
+              lines.push({ icon: "🎯", label: "Independent Win Sim",
+                body: `Ballpark Pal's own simulation gives ${pick.pickTeam} a ${bppWin}% win probability` +
+                  (simPct != null ? ` vs this app's ${simPct}% (100x Monte Carlo).` : ".") +
+                  (gap != null ? (Math.abs(gap) <= 8 ? " Both models agree — high-conviction cross-validation." :
+                    gap > 8 ? " This app's internal sim is more bullish than Ballpark Pal's." :
+                    " Ballpark Pal is more bullish than this app's internal sim.") : "") });
+            }
+            if (bppRuns != null) {
+              lines.push({ icon: "🔢", label: "Total Runs Projection",
+                body: `Ballpark Pal projects ${bppRuns.toFixed(1)} combined runs for this game, factoring starting pitching, bullpen usage, and park/weather.` });
+            }
+            lines.push({ icon: "🛡️", label: "Coherence Gate",
+              body: bppWin != null
+                ? "This pick passed the cross-validation gate — it is not disqualified because Ballpark Pal and the internal sim don't both point away from it."
+                : "Ballpark Pal data wasn't available for this game (game not yet listed, or provider outage) — the coherence gate ran on the internal 100x simulation alone." });
+
+            return (
+              <div style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.16)", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                  <span style={{ fontSize: 14 }}>🌳</span>
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#22c55e", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Ballpark Pal Analytics</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {lines.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                      <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.45, margin: 0 }}>
+                        <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -2446,6 +2559,50 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
                     </div>
                   ))}
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* Ballpark Pal Analytics Summary — Hitter Pick */}
+          {(() => {
+            const bpp = pick.subScores?.bppComponent;
+            const bd  = pick.subScores?.bppDetail;
+            const lines: { icon: string; label: string; body: string }[] = [];
+
+            if (bd) {
+              const hr = bd.homeRunVsTypical ?? 0, xbh = bd.doubleTripleVsTypical ?? 0,
+                    single = bd.singleVsTypical ?? 0, bb = bd.walkVsTypical ?? 0, k = bd.strikeoutVsTypical ?? 0;
+              const fmt = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
+              lines.push({ icon: "🎯", label: "BvP Simulation",
+                body: `Simulated vs ${bd.pitcherName || "today's starter"}: HR ${fmt(hr)}, XBH ${fmt(xbh)}, 1B ${fmt(single)}, BB ${fmt(bb)}, K ${fmt(k)} vs this batter's typical rate.` });
+              if (bd.parkHomeRuns != null) lines.push({ icon: "🏟️", label: "Park + Weather Factor",
+                body: `Combined stadium + live weather multiplier for this batter: ${bd.parkHomeRuns.toFixed(2)}x on HR${ bd.parkSingles != null ? `, ${bd.parkSingles.toFixed(2)}x on 1B` : "" }.` });
+            }
+            if (bpp != null) lines.push({ icon: "⚖️", label: "Grade Weight",
+              body: `Blended matchup (70%) + park (30%) sim scored ${(bpp * 100).toFixed(0)}/100 — contributes up to 15 pts to this player's Moneyball grade above.` });
+
+            return (
+              <div style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.16)", borderRadius: 12, padding: "10px 14px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13 }}>🌳</span>
+                  <p style={{ fontSize: 10, fontWeight: 900, color: "#22c55e", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Ballpark Pal Analytics</p>
+                </div>
+                {lines.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {lines.map((l, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 12, flexShrink: 0, marginTop: 1 }}>{l.icon}</span>
+                        <p style={{ fontSize: 11, color: "#3D4B58", lineHeight: 1.4, margin: 0 }}>
+                          <strong style={{ color: "#131A24" }}>{l.label}:</strong>{" "}{l.body}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.4, opacity: 0.75 }}>
+                    No Ballpark Pal simulation was returned for this matchup — this pick's grade fell back to the internal platoon-split and park-factor model.
+                  </p>
+                )}
               </div>
             );
           })()}
@@ -4170,6 +4327,11 @@ function BallparkPalGlossary() {
             Ballpark Pal is a third-party MLB simulation data provider integrated across Beat the Streak,
             the Team Pick / Game of the Day, Moneyball grading, and baseball player props. Every metric below
             has a built-in fallback method, so analysis quality is preserved even if this integration is ever removed.
+          </p>
+          <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.5 }}>
+            Look for the green <strong style={{ color: "#22c55e" }}>Ballpark Pal Analytics</strong> card on any Beat the Streak
+            hitter pick or Team Pick / Game of the Day card (right below the blue Moneyball Analytics card) to see exactly
+            what Ballpark Pal returned for that specific pick, or why it fell back to internal data if unavailable.
           </p>
           {metrics.map(m => (
             <div key={m.name} style={{ borderRadius: 8, border: `1px solid ${m.color}30`, overflow: "hidden" }}>

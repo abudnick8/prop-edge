@@ -11128,6 +11128,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
               // ── Ballpark Pal: blend BvP matchup sim + park factor into a single 0-1 component ──
               let bppComponent: number | null = null;
+              let bppDetail: {
+                homeRunProbability: number; doubleTripleProbability: number; singleProbability: number;
+                walkProbability: number; strikeoutProbability: number;
+                homeRunVsTypical: number; doubleTripleVsTypical: number; singleVsTypical: number;
+                walkVsTypical: number; strikeoutVsTypical: number; pitcherName: string;
+                parkHomeRuns: number | null; parkDoublesTriples: number | null; parkSingles: number | null;
+                parkHomeRunsStadium: number | null; parkHomeRunsWeather: number | null;
+              } | null = null;
               try {
                 if (bppGameId && opponentPitcherId) {
                   const bppMatch = await bppGetMatchup(bppDateStr, pid, opponentPitcherId);
@@ -11142,6 +11150,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                     } else {
                       bppComponent = bppMatchScore ?? bppPfScore;
                     }
+                  }
+                  if (bppMatch || bppPf) {
+                    bppDetail = {
+                      homeRunProbability:      bppMatch?.homeRunProbability ?? 0,
+                      doubleTripleProbability: bppMatch?.doubleTripleProbability ?? 0,
+                      singleProbability:       bppMatch?.singleProbability ?? 0,
+                      walkProbability:         bppMatch?.walkProbability ?? 0,
+                      strikeoutProbability:    bppMatch?.strikeoutProbability ?? 0,
+                      homeRunVsTypical:        bppMatch?.homeRunVsTypical ?? 0,
+                      doubleTripleVsTypical:   bppMatch?.doubleTripleVsTypical ?? 0,
+                      singleVsTypical:         bppMatch?.singleVsTypical ?? 0,
+                      walkVsTypical:           bppMatch?.walkVsTypical ?? 0,
+                      strikeoutVsTypical:      bppMatch?.strikeoutVsTypical ?? 0,
+                      pitcherName:             bppMatch?.pitcherName ?? "",
+                      parkHomeRuns:            bppPf?.homeRuns ?? null,
+                      parkDoublesTriples:      bppPf?.doublesTriples ?? null,
+                      parkSingles:             bppPf?.singles ?? null,
+                      parkHomeRunsStadium:     bppPf?.homeRunsStadium ?? null,
+                      parkHomeRunsWeather:     bppPf?.homeRunsWeather ?? null,
+                    };
                   }
                 }
               } catch { /* non-blocking — falls back to null, formula auto-dilutes */ }
@@ -11415,6 +11443,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   pitcherBarrelAllowed:  pitcherBarrelAllowed,
                   analyticsBoostMult:    parseFloat(analyticsBoostMult.toFixed(3)),
                   bppComponent:          bppComponent !== null ? parseFloat(bppComponent.toFixed(3)) : null,
+                  bppDetail:             bppDetail,
                 },
                 hitProbability:  hitProbabilityPct,
                 impliedProb:     impliedProb !== null ? Math.round(impliedProb * 100) : null,
