@@ -10720,6 +10720,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const slateGames: any[] = [];
       let candidatePicks: any[] = [];
       let mbSubCandidatePicks: any[] = []; // sub-threshold players (55-59%) for MB extra picks
+      // Unfiltered pool of every player scored this run, INCLUDING players whose
+      // game has already started. candidatePicks/freshPicks get filtered down to
+      // "future games only" further below (to avoid picking NEW players from
+      // already-started games), but that filter must never block refreshing the
+      // snapshot data (BPP, Moneyball, stats, etc.) of a player who is already
+      // locked into today's cache — otherwise any data enrichment added after a
+      // pick's game starts can never reach that already-cached pick again.
+      const allCandidatesRawByPlayerId = new Map<number, any>();
 
       // ── PREFETCH weather for all venues in parallel before game loop ──
       // fetchStructuredWeather has its own 30-min cache, so calling it here warms it.
@@ -11515,6 +11523,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         candidatePicks.push(...homeRes.main, ...awayRes.main);
         mbSubCandidatePicks.push(...homeRes.mbSub, ...awayRes.mbSub);
+        // Capture every scored player (home + away, main + mbSub) into the raw
+        // pool BEFORE any "future games only" filtering happens below, so an
+        // already-locked cached pick can still be refreshed with fresh data
+        // even after its game has started.
+        for (const p of [...homeRes.main, ...awayRes.main, ...homeRes.mbSub, ...awayRes.mbSub]) {
+          if (p?.playerId != null) allCandidatesRawByPlayerId.set(p.playerId, p);
+        }
         console.log(`[BTS] game=${slateEntry.matchup} home=${homeRes.main.length} away=${awayRes.main.length} candidates mb=${homeRes.mbSub.length + awayRes.mbSub.length}`);
 
         } catch (gameErr: any) {
@@ -11875,12 +11890,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const cachedEntries = btsPicksCache[targetDate];
       const cachedIds = new Set(cachedEntries.map((e: BtsPickEntry) => e.playerId));
 
+      const refreshedThisRun = new Set<number>();
       for (const pick of freshPicks) {
         if (cachedIds.has(pick.playerId)) {
           // Already cached — refresh snapshot + probability but keep lockedAt/result
           const existing = cachedEntries.find((e: BtsPickEntry) => e.playerId === pick.playerId)!;
           existing.snapshot       = pick;
           existing.hitProbability = pick.hitProbability;
+          refreshedThisRun.add(pick.playerId);
           continue;
         }
         if (cachedEntries.length >= 15) break; // 15 picks max (10 normal + 5 Moneyball A/B)
@@ -11901,6 +11918,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         cachedIds.add(pick.playerId);
       }
 
+      // ── Post-lock analytics refresh (Ballpark Pal fix) ──────────────────────
+      // The freshPicks loop above only refreshes a cached pick's snapshot if that
+      // player still ranks inside today's top-10/Moneyball-slot cut. But
+      // candidatePicks (the pool freshPicks is built from) EXCLUDES any player
+      // whose game has already started, which means once a pick's game begins,
+      // it silently stops receiving snapshot refreshes forever — so any
+      // analytics layer added/changed after that pick locked in (e.g. Ballpark
+      // Pal) can never populate for it, even though the underlying data (BPP
+      // matchup sim, park factors, etc.) is still available from the raw
+      // per-game scoring pass captured in allCandidatesRawByPlayerId.
+      // Fix: for any cached entry not already refreshed above, merge in the
+      // latest subScores (bppComponent/bppDetail + other analytics fields) from
+      // the raw pool — WITHOUT touching hitProbability, grade, or lockedAt, so
+      // an in-progress/started game's pick still can't have its decision
+      // fields changed post-lock, only its display/analytics enrichment.
+      let postLockAnalyticsRefreshed = false;
+      for (const entry of cachedEntries) {
+        if (refreshedThisRun.has(entry.playerId)) continue;
+        const raw = allCandidatesRawByPlayerId.get(entry.playerId);
+        if (!raw || !raw.subScores || !entry.snapshot) continue;
+        entry.snapshot.subScores = { ...(entry.snapshot.subScores ?? {}), ...raw.subScores };
+        postLockAnalyticsRefreshed = true;
+      }
+      if (postLockAnalyticsRefreshed) saveBtsPicksCache();
 
       // ── Scratch-swap: replace confirmed-scratched picks before game starts ─────
       // Rule: if a cached pick's player is confirmed NOT in the official lineup

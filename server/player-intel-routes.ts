@@ -135,7 +135,15 @@ function getStatCfg(sport: Sport): SportStatCfg {
 // ─── Endpoint Implementations ─────────────────────────────────────────────
 
 /**
- * Search ESPN for players. Post-filters by UID league ID so sport tabs are strict.
+ * Search ESPN for players.
+ *
+ * IMPORTANT: `site.api.espn.com` (the old /apis/search/v2 endpoint) is
+ * blocked (403) from Railway's production egress IP — confirmed via
+ * /api/debug-espn. `site.web.api.espn.com` is NOT blocked (it's already
+ * used successfully elsewhere in this file for profile/gamelog lookups),
+ * so player search is implemented against its /apis/common/v3/search
+ * endpoint instead, which supports server-side `league=` filtering and
+ * returns clean, structured player objects (no UID regex parsing needed).
  */
 async function handleSearch(q: string, sport?: string): Promise<any[]> {
   const asciiQ = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -151,39 +159,34 @@ async function handleSearch(q: string, sport?: string): Promise<any[]> {
     const mapping = ESPN_SPORT_MAP[s];
     if (!mapping) continue;
     try {
-      const url = `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(asciiQ)}&limit=8&type=player&sport=${mapping.sport}%2F${mapping.league}`;
+      const url = `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(asciiQ)}&type=player&league=${mapping.league}&limit=15`;
       const r = await axios.get(url, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS });
+      const items: any[] = r.data?.items ?? [];
 
-      const allContents: any[] = [];
-      for (const rg of (r.data?.results ?? [])) {
-        for (const c of (rg.contents ?? [])) allContents.push(c);
-      }
-
-      const validLeagueIds = ESPN_LEAGUE_ID_MAP[s];
-
-      for (const item of allContents) {
-        const uid: string = item.uid ?? "";
-        const uidMatch = uid.match(/~a:(\d+)/);
-        const espnId = uidMatch ? uidMatch[1] : String(item.id ?? "");
+      for (const item of items) {
+        const espnId = String(item.id ?? "");
         if (!espnId || seenIds.has(espnId)) continue;
 
-        // Post-filter by league ID in UID
-        const leagueMatch = uid.match(/~l:(\d+)~/);
-        const uidLeagueId = leagueMatch ? leagueMatch[1] : null;
-        if (uidLeagueId && validLeagueIds.length > 0 && !validLeagueIds.includes(uidLeagueId)) {
-          continue;
-        }
+        // Defensive: the API's league= param should already filter, but
+        // double-check the returned league matches to avoid cross-sport noise.
+        if ((item.league ?? "").toLowerCase() !== mapping.league) continue;
 
         seenIds.add(espnId);
+
+        const teamCore: any = item.teamRelationships?.[0]?.core ?? null;
+        const teamAbbr: string | null = teamCore?.abbreviation ?? null;
+        const teamName: string | null = teamCore?.displayName ?? teamCore?.name ?? null;
+        const headshotUrl: string = item.headshot?.href ?? espnHeadshot(mapping.headshotSport, espnId);
+
         results.push({
           espnId,
           name:     item.displayName ?? item.name ?? "",
           sport:    s,
-          team:     item.team?.abbreviation ?? item.teamName ?? null,
-          teamAbbr: item.team?.abbreviation ?? item.teamName ?? null,
-          position: item.position?.abbreviation ?? item.positionText ?? null,
-          headshot: espnHeadshot(mapping.headshotSport, espnId),
-          headshotUrl: espnHeadshot(mapping.headshotSport, espnId),
+          team:     teamName ?? teamAbbr ?? null,
+          teamAbbr: teamAbbr ?? teamName ?? null,
+          position: "",
+          headshot: headshotUrl,
+          headshotUrl,
         });
       }
     } catch (err: any) {
