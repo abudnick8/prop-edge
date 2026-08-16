@@ -2368,6 +2368,8 @@ async function enrichMlbPropsWithBallparkPal(bets: InsertBet[]): Promise<void> {
         bet.recommendedAllocation = rescored.allocation;
         bet.keyFactors = [...(bet.keyFactors ?? []), ...rescored.factors.filter(f => f.startsWith("Ballpark Pal"))];
         bet.isHighConfidence = rescored.score >= 85;
+        (bet as any).bppEdge = parseFloat(bppEdge.toFixed(4));
+        (bet as any).bppFlipped = bppFlipped;
       }
     } catch (e: any) {
       console.warn(`[BallparkPal] enrichment error for game group ${key}:`, e.message);
