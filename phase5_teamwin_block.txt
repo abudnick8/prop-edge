@@ -1,0 +1,45 @@
+            weather: { tempF, windMph, isDome, venue },
+            parkFactor,
+            // Phase 5: Expected runs (Pythagorean-style from component scores)
+            expectedRuns: (() => {
+              const leagueAvgRpg = 4.55;
+              // Normalize 0-100 score to run expectancy: score 50 = league avg (4.55), 80 = 5.5, 20 = 3.5
+              const scoreToRpg = (s: number) => leagueAvgRpg + (s - 50) / 50 * 1.5;
+              const pickRpg = scoreToRpg(finalWinnerScore);
+              const oppRpg  = scoreToRpg(finalLoserScore);
+              const runDiff = parseFloat((pickRpg - oppRpg).toFixed(2));
+              // Pythagorean win% = RS^2 / (RS^2 + RA^2)
+              const pythagoreanWinPct = parseFloat((Math.pow(pickRpg, 2) / (Math.pow(pickRpg, 2) + Math.pow(oppRpg, 2)) * 100).toFixed(1));
+              return {
+                pickRpg: parseFloat(pickRpg.toFixed(2)),
+                oppRpg: parseFloat(oppRpg.toFixed(2)),
+                runDiff,
+                pythagoreanWinPct,
+              };
+            })(),
+            // Phase 5: Top 3 edge driver categories
+            edgeDrivers: (() => {
+              const pickStarterEdgeF = finalPickSub.starterEdge;
+              const oppStarterEdgeF  = finalOppSub.starterEdge;
+              const pickBullpenF     = finalPickSub.bullpenScore;
+              const oppBullpenF      = finalOppSub.bullpenScore;
+              const pickOffenseF     = finalPickSub.offenseVsHand;
+              const oppOffenseF      = finalOppSub.offenseVsHand;
+              const pickLineupF      = finalPickSub.lineupEdge;
+              const oppLineupF       = finalOppSub.lineupEdge;
+              const pickMarketF      = finalPickSub.marketScore;
+              const oppMarketF       = finalOppSub.marketScore;
+              const drivers = [
+                { name: "Starter Edge",   gap: pickStarterEdgeF - oppStarterEdgeF,  icon: "🎯", value: pickStarterEdgeF },
+                { name: "Bullpen Edge",    gap: pickBullpenF - oppBullpenF,           icon: "💪", value: pickBullpenF },
+                { name: "Offense vs Hand", gap: pickOffenseF - oppOffenseF,           icon: "🏏", value: pickOffenseF },
+                { name: "Lineup Depth",    gap: pickLineupF - oppLineupF,             icon: "📋", value: pickLineupF },
+                { name: "Market Edge",     gap: pickMarketF - oppMarketF,             icon: "📈", value: pickMarketF },
+              ];
+              return drivers
+                .filter(d => d.gap > 0)
+                .sort((a, b) => b.gap - a.gap)
+                .slice(0, 3)
+                .map(d => ({ name: d.name, icon: d.icon, gap: d.gap, value: d.value }));
+            })(),
+          });

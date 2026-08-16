@@ -6348,6 +6348,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─── Debug endpoint: test each data source independently ─────────────────
+  app.get("/api/debug-bpp-last", async (_req, res) => {
+    res.json((globalThis as any).__bppDebugLast ?? { note: "no BPP lookup has run yet" });
+  });
+
   app.get("/api/debug-scan", async (req, res) => {
     const results: Record<string, any> = {};
     const axios = (await import("axios")).default;
@@ -11110,6 +11114,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   const bppMatchScore = bppMatchupScore(bppMatch);
                   const bppPf = bppHitterParkFactors.find(pf => pf.playerId === pid) ?? null;
                   const bppPfScore = bppParkFactorScore(bppPf ?? null);
+                  (globalThis as any).__bppDebugLast = { pid, pidType: typeof pid, opponentPitcherId, oppType: typeof opponentPitcherId, bppGameId, bppDateStr, matchFound: !!bppMatch, matchScore: bppMatchScore, pfFound: !!bppPf, pfScore: bppPfScore, matchupsCacheSize: (bppHitterParkFactors || []).length };
                   if (bppMatchScore !== null || bppPfScore !== null) {
                     // Weight matchup sim higher than park factor when both present
                     if (bppMatchScore !== null && bppPfScore !== null) {
