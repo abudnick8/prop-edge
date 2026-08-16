@@ -11019,7 +11019,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               const platoonOk = pitcherXwobaVsMe !== null
                 ? pitcherXwobaVsMe >= MIN_PLATOON_XWOBA
                 : (pitcherPAvsMe < MIN_PLATOON_PA ? true : pitcherAvgVsMe >= MIN_PLATOON_BA_HARD);
-              if (!platoonOk) { console.log(`[BTS] platoon filter OUT: pid=${pid} name=${person?.fullName} bats=${bats} xwoba=${pitcherXwobaVsMe} ba=${pitcherAvgVsMe}`); continue; }
+              if (!platoonOk) {
+                console.log(`[BTS] platoon filter OUT: pid=${pid} name=${person?.fullName} bats=${bats} xwoba=${pitcherXwobaVsMe} ba=${pitcherAvgVsMe}`);
+                (globalThis as any).__btsPlayerTrace = (globalThis as any).__btsPlayerTrace ?? [];
+                (globalThis as any).__btsPlayerTrace.push({ pid, name: person?.fullName, team: teamName, stage: "platoon_filter_out", bats, xwoba: pitcherXwobaVsMe, ba: pitcherAvgVsMe });
+                continue;
+              }
 
               // Scratch detection: was this a projected player who's now absent from confirmed lineup?
               const confirmedIds = side === "home" ? confirmedHomeIds : confirmedAwayIds;
@@ -11200,6 +11205,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   }
                 }
               } catch { /* non-blocking — falls back to null, formula auto-dilutes */ }
+
+              // Capture BPP + pitcher analytics into the unfiltered raw pool for EVERY
+              // player who reaches this point, regardless of whether they ultimately
+              // clear Gate 3 (hit-probability threshold). This is critical for already-
+              // locked/cached picks whose live-recalculated probability has since
+              // dropped below the candidate/mbSub thresholds (e.g. after the game
+              // started and today's at-bats shifted their rolling stats) — without
+              // this, their bppComponent/bppDetail would never reach the raw pool and
+              // the post-lock refresh pass would have nothing to merge from.
+              allCandidatesRawByPlayerId.set(pid, {
+                playerId: pid,
+                subScores: {
+                  pitcherXera, pitcherBarrelAllowed,
+                  platoonSplitScore: parseFloat(platoonSplitScore.toFixed(3)),
+                  bppComponent: bppComponent !== null ? parseFloat(bppComponent.toFixed(3)) : null,
+                  bppDetail,
+                },
+              });
 
               const rawScore = scoreHitter(
                 { ...stats, bats },

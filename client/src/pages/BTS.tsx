@@ -9,6 +9,37 @@ import { useAuth } from "@/context/AuthContext";
 import { ChevronDown, ChevronUp, Trophy, Target, TrendingUp, AlertCircle, RefreshCw, Flame, Zap, Clock, CheckCircle, AlertTriangle, BookOpen, XCircle, HelpCircle, BarChart2, X, RotateCcw, Swords, Crown, Search, Share2, Star, TrendingDown, Minus, History } from "lucide-react";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+// Compact Ballpark Pal summary for the collapsed/front view of a pick card —
+// shows the favorable/unfavorable simulation grade plus a one-line "why"
+// (the specific BvP stat delta that drove the grade) without requiring the
+// user to expand the card to see the full Ballpark Pal Analytics section.
+function bppFrontSummary(subScores: any): { label: string; icon: string; color: string; bg: string; border: string; reason: string } | null {
+  const bpp = subScores?.bppComponent;
+  const bd = subScores?.bppDetail;
+  if (bpp == null) return null;
+  const label =
+    bpp >= 0.75 ? "Strongly Favorable" :
+    bpp >= 0.62 ? "Favorable" :
+    bpp >= 0.50 ? "Neutral" :
+    bpp >= 0.38 ? "Mildly Unfavorable" : "Unfavorable";
+  const color  = bpp >= 0.62 ? "#16a34a" : bpp >= 0.50 ? "#3D4B58" : "#dc2626";
+  const bg     = bpp >= 0.62 ? "rgba(34,197,94,0.12)" : bpp >= 0.50 ? "rgba(19,35,58,0.06)" : "rgba(239,68,68,0.10)";
+  const border = bpp >= 0.62 ? "rgba(34,197,94,0.30)" : bpp >= 0.50 ? "rgba(19,35,58,0.15)" : "rgba(239,68,68,0.25)";
+
+  let reason = "";
+  if (bd) {
+    const hr = bd.homeRunVsTypical ?? 0, xbh = bd.doubleTripleVsTypical ?? 0, k = bd.strikeoutVsTypical ?? 0;
+    const fmt = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`;
+    const vs = bd.pitcherName ? ` vs ${bd.pitcherName}` : "";
+    if (k >= 15 && k > Math.max(hr, xbh)) {
+      reason = `K risk ${fmt(k)}${vs}`;
+    } else if (hr !== 0 || xbh !== 0) {
+      reason = `HR ${fmt(hr)}, XBH ${fmt(xbh)}${vs}`;
+    }
+  }
+  return { label, icon: "🌳", color, bg, border, reason };
+}
+
 function fmtAvg(v: number | null | undefined) {
   if (!v) return "—";
   return "." + Math.round(v * 1000).toString().padStart(3, "0");
@@ -255,30 +286,47 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
           <p className="text-[11px] text-muted-foreground">
             {pick.team} · Slot #{pick.lineupSlot} · Bats {pick.bats}
           </p>
-          {/* Top 3 model drivers */}
-          {pick.topDrivers && pick.topDrivers.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-              {pick.topDrivers.map((d: any, i: number) => (
-                <span key={i} style={{
-                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                  background: i === 0 ? "rgba(212,168,67,0.15)" : "rgba(19,35,58,0.06)",
-                  color: i === 0 ? "#D4A843" : "#3D4B58",
-                  border: `1px solid ${i === 0 ? "rgba(212,168,67,0.30)" : "rgba(19,35,58,0.10)"}`,
-                }}>
-                  {d.icon} {d.name}
-                </span>
-              ))}
-              {pick.expectedPA > 0 && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                  background: "rgba(34,197,94,0.08)", color: "#16a34a",
-                  border: "1px solid rgba(34,197,94,0.20)",
-                }}>
-                  ~{pick.expectedPA} PA
-                </span>
-              )}
-            </div>
-          )}
+          {/* Top 3 model drivers + Ballpark Pal front-of-card summary */}
+          {(() => {
+            const bpp = bppFrontSummary(pick.subScores);
+            const hasDrivers = pick.topDrivers && pick.topDrivers.length > 0;
+            if (!hasDrivers && !bpp) return null;
+            return (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                {hasDrivers && pick.topDrivers.map((d: any, i: number) => (
+                  <span key={i} style={{
+                    fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                    background: i === 0 ? "rgba(212,168,67,0.15)" : "rgba(19,35,58,0.06)",
+                    color: i === 0 ? "#D4A843" : "#3D4B58",
+                    border: `1px solid ${i === 0 ? "rgba(212,168,67,0.30)" : "rgba(19,35,58,0.10)"}`,
+                  }}>
+                    {d.icon} {d.name}
+                  </span>
+                ))}
+                {pick.expectedPA > 0 && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                    background: "rgba(34,197,94,0.08)", color: "#16a34a",
+                    border: "1px solid rgba(34,197,94,0.20)",
+                  }}>
+                    ~{pick.expectedPA} PA
+                  </span>
+                )}
+                {/* Ballpark Pal front-of-card summary — favorable/unfavorable grade + why, visible without expanding */}
+                {bpp && (
+                  <span
+                    title="Ballpark Pal simulated matchup grade — expand card for full breakdown"
+                    style={{
+                      fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                      background: bpp.bg, color: bpp.color, border: `1px solid ${bpp.border}`,
+                    }}
+                  >
+                    {bpp.icon} BPP {bpp.label}{bpp.reason ? ` · ${bpp.reason}` : ""}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Probability ring + Moneyball badge + owner remove button */}
@@ -2276,6 +2324,22 @@ function PickOfDayCard({ pick, label, isRunnerUp = false, isOwner = false, onGra
             {pick.pickML != null ? ` · ML ${mlFmt(pick.pickML)}` : ""}
             {pick.spread != null ? ` · Spread ${spreadFmt(pick.spread)}` : ""}
           </div>
+          {/* Ballpark Pal front-of-card summary for the spotlighted batter behind this pick */}
+          {(() => {
+            const bpp = bppFrontSummary(pick.subScores);
+            if (!bpp) return null;
+            return (
+              <span
+                title="Ballpark Pal simulated matchup grade for this pick's key batter — expand card for full breakdown"
+                style={{
+                  display: "inline-block", marginTop: 3, fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                  background: bpp.bg, color: bpp.color, border: `1px solid ${bpp.border}`,
+                }}
+              >
+                {bpp.icon} BPP {bpp.label}{bpp.reason ? ` · ${bpp.reason}` : ""}
+              </span>
+            );
+          })()}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
           {/* Only show grade/score in header; result shown in banner above */}
@@ -4331,8 +4395,61 @@ function BallparkPalGlossary() {
           <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.5 }}>
             Look for the green <strong style={{ color: "#22c55e" }}>Ballpark Pal Analytics</strong> card on any Beat the Streak
             hitter pick or Team Pick / Game of the Day card (right below the blue Moneyball Analytics card) to see exactly
-            what Ballpark Pal returned for that specific pick, or why it fell back to internal data if unavailable.
+            what Ballpark Pal returned for that specific pick, or why it fell back to internal data if unavailable. A compact
+            🌳 <strong>BPP</strong> chip also now sits right on the front of the card (next to the model-driver tags), so you can
+            see the favorable/unfavorable read and the specific reason behind it without expanding.
           </p>
+
+          {/* How to read the actual card fields shown on every pick */}
+          <div style={{ borderRadius: 8, border: "1px solid rgba(34,197,94,0.20)", overflow: "hidden" }}>
+            <div style={{ background: "rgba(34,197,94,0.10)", padding: "7px 12px" }}>
+              <span style={{ fontSize: 9, fontWeight: 900, color: "#22c55e", background: "rgba(34,197,94,0.20)",
+                padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                How to Read the Card
+              </span>
+            </div>
+            <div style={{ padding: "8px 12px", background: "#fff", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 12, flexShrink: 0 }}>🎯</span>
+                <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.45 }}>
+                  <b style={{ color: "#131A24" }}>BvP Simulation</b> — HR / XBH (extra-base hit) / 1B / BB / K rates for this exact
+                  batter vs. today's starter, shown as a % above or below that batter's own typical rate (not league average).
+                  A large positive HR/XBH delta flags a favorable power matchup; a large positive K delta flags elevated
+                  strikeout risk against that specific arm.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 12, flexShrink: 0 }}>🏟️</span>
+                <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.45 }}>
+                  <b style={{ color: "#131A24" }}>Park + Weather Factor</b> — combined stadium × live-weather multiplier on this
+                  batter's HR/XBH/1B odds at today's specific venue. Above 1.10x = the ballpark and today's conditions boost
+                  power; below 0.90x = they suppress it; the stadium and weather components are also broken out individually.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 12, flexShrink: 0 }}>⚖️</span>
+                <p style={{ fontSize: 10, color: "#3D4B58", margin: 0, lineHeight: 1.45 }}>
+                  <b style={{ color: "#131A24" }}>Grade Weight</b> — the BvP matchup sim (70%) and park/weather sim (30%) are blended
+                  into a single 0–100 score, which contributes up to 15 points toward this player's overall Moneyball grade.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 12, flexShrink: 0 }}>🌳</span>
+                <div style={{ fontSize: 10, color: "#3D4B58", lineHeight: 1.45 }}>
+                  <b style={{ color: "#131A24" }}>Overall label</b> — the blended 0–100 score maps to a plain-language read shown in
+                  the card's top-right corner and in the front-of-card chip:
+                  <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span>≥ 75 — <b style={{ color: "#16a34a" }}>Strongly Favorable</b></span>
+                    <span>62–74 — <b style={{ color: "#16a34a" }}>Favorable</b></span>
+                    <span>50–61 — <b style={{ color: "#3D4B58" }}>Neutral</b></span>
+                    <span>38–49 — <b style={{ color: "#dc2626" }}>Mildly Unfavorable</b></span>
+                    <span>&lt; 38 — <b style={{ color: "#dc2626" }}>Unfavorable</b></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {metrics.map(m => (
             <div key={m.name} style={{ borderRadius: 8, border: `1px solid ${m.color}30`, overflow: "hidden" }}>
               <div style={{ background: `${m.color}12`, padding: "7px 12px" }}>
