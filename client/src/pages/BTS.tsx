@@ -3421,6 +3421,40 @@ function BtsAnalyticsPanel() {
                 );
               })()}
 
+              {/* Win % by Ballpark Pal Grade — computed client-side from graded picks' BPP simulation */}
+              {(() => {
+                const allPicks: any[] = data.picks ?? [];
+                const graded = allPicks.filter((p: any) => p.result === "win" || p.result === "loss");
+                const buckets: Record<"Favorable" | "Neutral" | "Unfavorable", { wins: number; total: number }> = {
+                  Favorable:   { wins: 0, total: 0 },
+                  Neutral:     { wins: 0, total: 0 },
+                  Unfavorable: { wins: 0, total: 0 },
+                };
+                for (const p of graded) {
+                  const bpp = p.snapshot?.subScores?.bppComponent ?? p.subScores?.bppComponent;
+                  if (bpp == null) continue;
+                  const bucket = bpp >= 0.62 ? "Favorable" : bpp >= 0.38 ? "Neutral" : "Unfavorable";
+                  buckets[bucket].total++;
+                  if (p.result === "win") buckets[bucket].wins++;
+                }
+                const rows = (["Favorable", "Neutral", "Unfavorable"] as const).map(label => ({
+                  label,
+                  wins: buckets[label].wins,
+                  total: buckets[label].total,
+                  pct: buckets[label].total > 0 ? Math.round(buckets[label].wins / buckets[label].total * 100) : null,
+                })).filter(r => r.total > 0);
+                if (rows.length === 0) return null;
+                return (
+                  <div>
+                    <SplitSection title="Win % by Ballpark Pal Grade" rows={rows} />
+                    <p className="text-[9px] mt-1.5" style={{ color: MUTED }}>
+                      Actual hit results for graded picks, grouped by the 🌳 Ballpark Pal simulation grade
+                      (Favorable ≥ 62, Neutral 38–61, Unfavorable &lt; 38) each pick carried when it was made.
+                    </p>
+                  </div>
+                );
+              })()}
+
               {/* Team win record */}
               {data.teamWin && (data.teamWin.wins + data.teamWin.losses) > 0 && (
                 <div>
