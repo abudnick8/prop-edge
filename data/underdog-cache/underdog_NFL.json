@@ -72778,7 +72778,7 @@
       "updated_at": "2026-09-02T07:01:36Z"
     },
     {
-      "id": "c16d8bbc-a321-41ab-8dc4-1e307467bbef",
+      "id": "d0070c3d-02ef-4752-9748-e5efda8fa188",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -72789,40 +72789,40 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "6c32d7d5-0eae-43b4-b021-9cb9b8da3bc5",
-          "american_price": "-148",
+          "id": "a511f212-9210-470e-890c-c03b844edd80",
+          "american_price": "-139",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.68",
+          "decimal_price": "1.72",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "c16d8bbc-a321-41ab-8dc4-1e307467bbef",
-          "payout_multiplier": "0.85",
+          "over_under_line_id": "d0070c3d-02ef-4752-9748-e5efda8fa188",
+          "payout_multiplier": "0.87",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Matthew Stafford",
           "selection_subheader": "Higher 1.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-30T17:01:49Z"
+          "updated_at": "2026-09-02T10:21:13Z"
         },
         {
-          "id": "ae3d4148-aace-4c69-b8c2-4af06af3f830",
-          "american_price": "+120",
+          "id": "beca05ea-27fb-4ca0-bc84-4fcdd71f87eb",
+          "american_price": "+114",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.2",
+          "decimal_price": "2.14",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "c16d8bbc-a321-41ab-8dc4-1e307467bbef",
+          "over_under_line_id": "d0070c3d-02ef-4752-9748-e5efda8fa188",
           "payout_multiplier": "1.1",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -72830,7 +72830,7 @@
           "selection_subheader": "Lower 1.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-30T17:01:49Z"
+          "updated_at": "2026-09-02T10:21:13Z"
         }
       ],
       "over_under": {
@@ -72864,7 +72864,7 @@
       "stable_id": "0a751395-e1ee-4641-8176-3a395309d782|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-08-30T17:01:55Z"
+      "updated_at": "2026-09-02T10:21:44Z"
     },
     {
       "id": "d4b6dc59-20ce-4ed0-821c-e2ce2eaa0861",
@@ -82823,7 +82823,7 @@
       "updated_at": "2026-09-02T04:52:08Z"
     },
     {
-      "id": "dd51e076-1a9b-4e83-9e57-bbfc6657dac3",
+      "id": "00234aba-7db8-433c-9b9f-17792b19afc8",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -82834,48 +82834,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "984c83b4-d1ea-41b6-91a0-63784c69d699",
-          "american_price": "-110",
+          "id": "928cf2b2-db05-44d7-8a5f-8fee434277e4",
+          "american_price": "-108",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "32+",
+          "choice_display_name_shorter": "33+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.91",
+          "decimal_price": "1.93",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "dd51e076-1a9b-4e83-9e57-bbfc6657dac3",
+          "over_under_line_id": "00234aba-7db8-433c-9b9f-17792b19afc8",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Josh Allen",
-          "selection_subheader": "Higher 31.5 Rush Yards",
+          "selection_subheader": "Higher 32.5 Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T07:56:30Z"
+          "updated_at": "2026-09-02T07:41:14Z"
         },
         {
-          "id": "bdbcbf23-4f87-45a6-8b9b-508b136cb462",
-          "american_price": "-112",
+          "id": "1682a229-25c4-422c-8aec-ccb7cd1b34c7",
+          "american_price": "-114",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "31-",
+          "choice_display_name_shorter": "32-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.9",
+          "decimal_price": "1.88",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "dd51e076-1a9b-4e83-9e57-bbfc6657dac3",
+          "over_under_line_id": "00234aba-7db8-433c-9b9f-17792b19afc8",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Josh Allen",
-          "selection_subheader": "Lower 31.5 Rush Yards",
+          "selection_subheader": "Lower 32.5 Rush Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T07:56:30Z"
+          "updated_at": "2026-09-02T07:41:14Z"
         }
       ],
       "over_under": {
@@ -82907,9 +82907,9 @@
       "rank": 130173106007099,
       "sort_by": null,
       "stable_id": "32dc09c6-20d9-441c-9e33-41f7b61a32ca|balanced",
-      "stat_value": "31.5",
+      "stat_value": "32.5",
       "status": "active",
-      "updated_at": "2026-09-02T04:37:11Z"
+      "updated_at": "2026-09-02T07:41:25Z"
     },
     {
       "id": "045c1564-26aa-4950-acc7-900061d28c63",
@@ -145954,7 +145954,7 @@
       "updated_at": "2026-09-02T07:05:01Z"
     },
     {
-      "id": "532f3e19-9db7-4edb-96f4-1219bbc2c698",
+      "id": "c1b0fc8d-ceb5-4160-9d25-1a931d3d8f71",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -145965,7 +145965,7 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "c0abe74e-32bc-4255-a504-74add115e3d5",
+          "id": "c1f6fb3e-05ef-4926-aed5-e10aed8a5cc0",
           "american_price": "+129",
           "appearance_id": null,
           "choice": "higher",
@@ -145976,7 +145976,7 @@
           "decimal_price": "2.29",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "532f3e19-9db7-4edb-96f4-1219bbc2c698",
+          "over_under_line_id": "c1b0fc8d-ceb5-4160-9d25-1a931d3d8f71",
           "payout_multiplier": "1.14",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -145984,10 +145984,10 @@
           "selection_subheader": "Higher 4.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T16:42:05Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         },
         {
-          "id": "a9721622-f8d4-4c8a-9f4b-0def8a539ce1",
+          "id": "224226a7-b868-40b7-91fc-1fb86eea800b",
           "american_price": "-159",
           "appearance_id": null,
           "choice": "lower",
@@ -145998,7 +145998,7 @@
           "decimal_price": "1.63",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "532f3e19-9db7-4edb-96f4-1219bbc2c698",
+          "over_under_line_id": "c1b0fc8d-ceb5-4160-9d25-1a931d3d8f71",
           "payout_multiplier": "0.82",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -146006,7 +146006,7 @@
           "selection_subheader": "Lower 4.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T16:42:05Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         }
       ],
       "over_under": {
@@ -146040,7 +146040,7 @@
       "stable_id": "64d15d0b-505b-4bea-985a-d5b901711add|balanced",
       "stat_value": "4.5",
       "status": "active",
-      "updated_at": "2026-09-01T21:46:11Z"
+      "updated_at": "2026-09-02T10:50:12Z"
     },
     {
       "id": "00752a9d-e1bf-48f6-a4ff-efd26b8e33f8",
@@ -148470,7 +148470,7 @@
       "updated_at": "2026-09-02T07:05:03Z"
     },
     {
-      "id": "24276192-3316-4f41-af22-f4de2acdf3ae",
+      "id": "9f1f3739-216a-4cba-bf73-6cfe79d9f846",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -148481,48 +148481,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "5e7f0ffb-462f-409c-a393-86a5303fbf48",
+          "id": "12ffd919-5145-4426-bf28-8c61f119f74a",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "64+",
+          "choice_display_name_shorter": "58+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "24276192-3316-4f41-af22-f4de2acdf3ae",
+          "over_under_line_id": "9f1f3739-216a-4cba-bf73-6cfe79d9f846",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jameson Williams",
-          "selection_subheader": "Higher 63.5 Receiving Yards",
+          "selection_subheader": "Higher 57.5 Receiving Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T18:18:44Z"
+          "updated_at": "2026-09-02T09:32:39Z"
         },
         {
-          "id": "ae39ed67-c613-49d4-8392-d65e3633b5e2",
+          "id": "a5cb04d9-438d-4db8-8a84-4dbe6f467143",
           "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "63-",
+          "choice_display_name_shorter": "57-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "24276192-3316-4f41-af22-f4de2acdf3ae",
+          "over_under_line_id": "9f1f3739-216a-4cba-bf73-6cfe79d9f846",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jameson Williams",
-          "selection_subheader": "Lower 63.5 Receiving Yards",
+          "selection_subheader": "Lower 57.5 Receiving Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T18:18:44Z"
+          "updated_at": "2026-09-02T09:32:39Z"
         }
       ],
       "over_under": {
@@ -148554,9 +148554,9 @@
       "rank": 130177115008099,
       "sort_by": null,
       "stable_id": "b4df65e2-4236-437f-820a-591d9672dac0|balanced",
-      "stat_value": "63.5",
+      "stat_value": "57.5",
       "status": "active",
-      "updated_at": "2026-09-02T07:04:40Z"
+      "updated_at": "2026-09-02T09:33:22Z"
     },
     {
       "id": "14448ec5-1831-4a24-8536-bdc4d1dc55a0",
@@ -194292,7 +194292,7 @@
       "updated_at": "2026-09-02T04:59:32Z"
     },
     {
-      "id": "8e0161e3-3661-4b19-b2d2-8a77a37e8292",
+      "id": "41676e01-4883-445f-b26b-79f67e704ecb",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -194303,7 +194303,7 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "5d043453-7314-4e85-a08f-34389cf8c6df",
+          "id": "843f2ca8-72b6-4101-9c27-4550cd8dba53",
           "american_price": "+1080",
           "appearance_id": null,
           "choice": "higher",
@@ -194314,7 +194314,7 @@
           "decimal_price": "11.8",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "8e0161e3-3661-4b19-b2d2-8a77a37e8292",
+          "over_under_line_id": "41676e01-4883-445f-b26b-79f67e704ecb",
           "payout_multiplier": "8.5",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -194322,7 +194322,7 @@
           "selection_subheader": "Higher 0.5 Rush + Rec TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-02T03:55:04Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         }
       ],
       "over_under": {
@@ -194356,7 +194356,7 @@
       "stable_id": "07401457-8512-4cda-bf37-797013877e04|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-09-02T03:55:21Z"
+      "updated_at": "2026-09-02T10:50:31Z"
     },
     {
       "id": "c725e4df-f313-4e51-970d-600954468787",
@@ -194537,7 +194537,7 @@
       "updated_at": "2026-09-02T05:10:29Z"
     },
     {
-      "id": "9bd6a6b4-d469-41c7-b317-cb3c80d5d251",
+      "id": "ec73cce4-f8f1-430e-af06-31a50939806b",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -194548,48 +194548,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "41eac07c-11db-4f9d-b2c5-080041d85d9e",
-          "american_price": "-239",
+          "id": "847d3174-87a9-4f97-bacf-399ebefc31ee",
+          "american_price": "-244",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.42",
+          "decimal_price": "1.41",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "9bd6a6b4-d469-41c7-b317-cb3c80d5d251",
-          "payout_multiplier": "0.72",
+          "over_under_line_id": "ec73cce4-f8f1-430e-af06-31a50939806b",
+          "payout_multiplier": "0.71",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Geno Smith",
           "selection_subheader": "Higher 0.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T00:00:07Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         },
         {
-          "id": "9a6305f5-15fd-4cc1-b1ff-5abda945d35e",
-          "american_price": "+188",
+          "id": "78787ba9-dc58-4891-8c5b-10784b96dc59",
+          "american_price": "+194",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "0-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.88",
+          "decimal_price": "2.94",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "9bd6a6b4-d469-41c7-b317-cb3c80d5d251",
-          "payout_multiplier": "1.42",
+          "over_under_line_id": "ec73cce4-f8f1-430e-af06-31a50939806b",
+          "payout_multiplier": "1.46",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Geno Smith",
           "selection_subheader": "Lower 0.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T00:00:07Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         }
       ],
       "over_under": {
@@ -194623,7 +194623,7 @@
       "stable_id": "641a3fc3-ca3c-4464-aa83-b8ae34bd398a|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-09-01T00:00:37Z"
+      "updated_at": "2026-09-02T10:50:30Z"
     },
     {
       "id": "a623c064-5b0b-4446-bea7-02eab9ad6b04",
@@ -208991,7 +208991,7 @@
       "updated_at": "2026-09-02T05:10:38Z"
     },
     {
-      "id": "d46711fc-632e-439f-b7dd-f6aa13184432",
+      "id": "91eaf6f8-3395-473e-a9b2-3e8434b49843",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -209002,48 +209002,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "6624d3c4-f232-47db-bfb5-ca3ac852a0b4",
-          "american_price": "-120",
+          "id": "1e0cf65b-3ba1-4a2d-bf02-dc8c751baa6a",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "31+",
+          "choice_display_name_shorter": "32+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.84",
+          "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "d46711fc-632e-439f-b7dd-f6aa13184432",
+          "over_under_line_id": "91eaf6f8-3395-473e-a9b2-3e8434b49843",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Cam Ward",
-          "selection_subheader": "Higher 30.5 Pass Attempts",
+          "selection_subheader": "Higher 31.5 Pass Attempts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T23:14:43Z"
+          "updated_at": "2026-09-02T12:08:45Z"
         },
         {
-          "id": "ed88e37d-d25a-4ccd-989b-c71034361609",
-          "american_price": "-104",
+          "id": "119958ed-7ed9-4647-b0f1-577538a65816",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "30-",
+          "choice_display_name_shorter": "31-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.97",
+          "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "d46711fc-632e-439f-b7dd-f6aa13184432",
+          "over_under_line_id": "91eaf6f8-3395-473e-a9b2-3e8434b49843",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Cam Ward",
-          "selection_subheader": "Lower 30.5 Pass Attempts",
+          "selection_subheader": "Lower 31.5 Pass Attempts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T23:14:43Z"
+          "updated_at": "2026-09-02T12:08:45Z"
         }
       ],
       "over_under": {
@@ -209071,13 +209071,13 @@
         "title": "Cam Ward Pass Attempts O/U"
       },
       "over_under_id": "3dc58643-ae5f-42cc-8d2d-e6d085ae8f3d",
-      "provider_id": "manual",
+      "provider_id": "swish",
       "rank": 130180199013099,
       "sort_by": null,
       "stable_id": "3dc58643-ae5f-42cc-8d2d-e6d085ae8f3d|balanced",
-      "stat_value": "30.5",
+      "stat_value": "31.5",
       "status": "active",
-      "updated_at": "2026-09-02T02:57:09Z"
+      "updated_at": "2026-09-02T12:09:07Z"
     },
     {
       "id": "400bd88f-774c-4d8a-9887-2c162d172c12",
@@ -240351,7 +240351,7 @@
       "updated_at": "2026-09-02T04:39:36Z"
     },
     {
-      "id": "eaf03f04-59fa-493f-bd94-ecf32586198e",
+      "id": "c0e9fdc4-5ce1-47a1-adc8-ee5dc9143b32",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -240362,48 +240362,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "56e9a8fb-be9d-4dab-b1b9-aa8c6d649f8e",
-          "american_price": "+115",
+          "id": "7a796bf5-ea9d-4e0e-bfa3-ed9c779177db",
+          "american_price": "+100",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "4+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.15",
+          "decimal_price": "2",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "eaf03f04-59fa-493f-bd94-ecf32586198e",
-          "payout_multiplier": "1.11",
+          "over_under_line_id": "c0e9fdc4-5ce1-47a1-adc8-ee5dc9143b32",
+          "payout_multiplier": "1.04",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dallas Goedert",
           "selection_subheader": "Higher 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T16:30:14Z"
+          "updated_at": "2026-09-02T10:45:04Z"
         },
         {
-          "id": "fae6b593-d591-4ca9-b59a-4a6d02b0c724",
-          "american_price": "-141",
+          "id": "5d69e765-d6ac-4434-88fa-0c20aa534729",
+          "american_price": "-122",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "3-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.71",
+          "decimal_price": "1.82",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "eaf03f04-59fa-493f-bd94-ecf32586198e",
-          "payout_multiplier": "0.86",
+          "over_under_line_id": "c0e9fdc4-5ce1-47a1-adc8-ee5dc9143b32",
+          "payout_multiplier": "0.95",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Dallas Goedert",
           "selection_subheader": "Lower 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T16:30:14Z"
+          "updated_at": "2026-09-02T10:45:04Z"
         }
       ],
       "over_under": {
@@ -240437,7 +240437,7 @@
       "stable_id": "73271bb2-c586-47a6-9335-b136a293b09b|balanced",
       "stat_value": "3.5",
       "status": "active",
-      "updated_at": "2026-09-01T16:30:34Z"
+      "updated_at": "2026-09-02T10:45:07Z"
     },
     {
       "id": "44a8f65e-5db8-4228-8ffa-84edd3800ffa",
@@ -249777,7 +249777,7 @@
       "updated_at": "2026-09-02T04:58:56Z"
     },
     {
-      "id": "f4375886-ef0b-4c1d-b82e-e0d297bb37e4",
+      "id": "bf5ac616-e14e-4691-b4bf-47ff5cbbb4f4",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -249788,48 +249788,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "998b6b91-d03b-4c5d-9869-de28415146d5",
-          "american_price": "-148",
+          "id": "36a72e44-4fc9-4d08-b31d-5056d6867d30",
+          "american_price": "-164",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "4+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.68",
+          "decimal_price": "1.61",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "f4375886-ef0b-4c1d-b82e-e0d297bb37e4",
-          "payout_multiplier": "0.85",
+          "over_under_line_id": "bf5ac616-e14e-4691-b4bf-47ff5cbbb4f4",
+          "payout_multiplier": "0.81",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Marvin Harrison",
           "selection_subheader": "Higher 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T00:16:17Z"
+          "updated_at": "2026-09-02T10:35:06Z"
         },
         {
-          "id": "c92fbbff-62b1-4a8c-afc1-2c1cac05d500",
-          "american_price": "+120",
+          "id": "5380ab9f-556e-4d4d-9476-53216ba21c62",
+          "american_price": "+134",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "3-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.2",
+          "decimal_price": "2.34",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "f4375886-ef0b-4c1d-b82e-e0d297bb37e4",
-          "payout_multiplier": "1.1",
+          "over_under_line_id": "bf5ac616-e14e-4691-b4bf-47ff5cbbb4f4",
+          "payout_multiplier": "1.17",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Marvin Harrison",
           "selection_subheader": "Lower 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-01T00:16:17Z"
+          "updated_at": "2026-09-02T10:35:06Z"
         }
       ],
       "over_under": {
@@ -249863,7 +249863,7 @@
       "stable_id": "09b36d05-2b76-4a90-85d5-24681f78623b|balanced",
       "stat_value": "3.5",
       "status": "active",
-      "updated_at": "2026-09-01T00:16:35Z"
+      "updated_at": "2026-09-02T10:35:11Z"
     },
     {
       "id": "a6cedb60-6d64-4e90-a673-1f8a468f6954",
@@ -254877,7 +254877,7 @@
       "updated_at": "2026-09-02T05:41:28Z"
     },
     {
-      "id": "e23981fa-5bb4-406f-a5a1-bec8993b5af5",
+      "id": "f4a903b3-e19f-403b-8439-e629ea1ba1b8",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -254888,18 +254888,18 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "a888a75d-3907-4dd4-a5b2-96b837dd8a5b",
-          "american_price": "-120",
+          "id": "deec0b1d-2c7d-412f-aa5f-028ebc6ce125",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "4+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.84",
+          "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "e23981fa-5bb4-406f-a5a1-bec8993b5af5",
+          "over_under_line_id": "f4a903b3-e19f-403b-8439-e629ea1ba1b8",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -254907,21 +254907,21 @@
           "selection_subheader": "Higher 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T21:41:55Z"
+          "updated_at": "2026-09-02T10:29:26Z"
         },
         {
-          "id": "137e28c6-417e-4593-8f35-305747f89612",
-          "american_price": "-104",
+          "id": "dfbc31a7-df1a-4c90-ae10-a92f1146958e",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "3-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.97",
+          "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "e23981fa-5bb4-406f-a5a1-bec8993b5af5",
+          "over_under_line_id": "f4a903b3-e19f-403b-8439-e629ea1ba1b8",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -254929,7 +254929,7 @@
           "selection_subheader": "Lower 3.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T21:41:55Z"
+          "updated_at": "2026-09-02T10:29:26Z"
         }
       ],
       "over_under": {
@@ -254963,7 +254963,7 @@
       "stable_id": "b534679f-6abd-4bd6-b833-4a65c2311e18|balanced",
       "stat_value": "3.5",
       "status": "active",
-      "updated_at": "2026-08-31T21:42:16Z"
+      "updated_at": "2026-09-02T10:29:52Z"
     },
     {
       "id": "fb63328d-d5b8-4b86-b92b-2bf9753eb4e8",
@@ -264791,7 +264791,7 @@
       "updated_at": "2026-09-01T16:11:05Z"
     },
     {
-      "id": "94b22753-470e-47ed-bf22-1f63e498cf48",
+      "id": "4866acd7-c5a5-41b0-86c3-e464563dadc5",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -264802,48 +264802,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "975a80e5-0408-40e0-8aae-deb53cd78175",
+          "id": "aa578532-1a2a-485f-b4f2-bad3c8504afb",
           "american_price": "-109",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "34+",
+          "choice_display_name_shorter": "33+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
           "decimal_price": "1.92",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "94b22753-470e-47ed-bf22-1f63e498cf48",
+          "over_under_line_id": "4866acd7-c5a5-41b0-86c3-e464563dadc5",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "De'Von Achane",
-          "selection_subheader": "Higher 33.5 Receiving Yards",
+          "selection_subheader": "Higher 32.5 Receiving Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T23:47:28Z"
+          "updated_at": "2026-09-02T09:32:12Z"
         },
         {
-          "id": "384be085-986a-42c7-aa5d-d269e3306df3",
+          "id": "dc909bc2-c626-4a81-9139-c06f286f3dd3",
           "american_price": "-113",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "33-",
+          "choice_display_name_shorter": "32-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
           "decimal_price": "1.89",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "94b22753-470e-47ed-bf22-1f63e498cf48",
+          "over_under_line_id": "4866acd7-c5a5-41b0-86c3-e464563dadc5",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "De'Von Achane",
-          "selection_subheader": "Lower 33.5 Receiving Yards",
+          "selection_subheader": "Lower 32.5 Receiving Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T23:47:28Z"
+          "updated_at": "2026-09-02T09:32:12Z"
         }
       ],
       "over_under": {
@@ -264875,9 +264875,9 @@
       "rank": 130184103008099,
       "sort_by": null,
       "stable_id": "5d626453-4a9f-4c10-8b7e-381d29efec16|balanced",
-      "stat_value": "33.5",
+      "stat_value": "32.5",
       "status": "active",
-      "updated_at": "2026-09-02T02:35:03Z"
+      "updated_at": "2026-09-02T09:32:39Z"
     },
     {
       "id": "04f30d3c-0e85-4928-a19e-6c2382811fc3",
@@ -272566,7 +272566,7 @@
       "updated_at": "2026-09-02T02:35:06Z"
     },
     {
-      "id": "6b1f9187-0b00-4e7c-94d4-dde4d67265e0",
+      "id": "4981fe0a-cdbd-4015-bb43-5762f0564a87",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -272577,26 +272577,26 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "fafaf244-3d6b-44f2-9d84-e460a748ab23",
-          "american_price": "+910",
+          "id": "071c61fb-f879-4757-9afc-d139993a532b",
+          "american_price": "+1420",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "1+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "10.1",
+          "decimal_price": "15.2",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "6b1f9187-0b00-4e7c-94d4-dde4d67265e0",
-          "payout_multiplier": "7.0",
+          "over_under_line_id": "4981fe0a-cdbd-4015-bb43-5762f0564a87",
+          "payout_multiplier": "11.5",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kirk Cousins",
           "selection_subheader": "Higher 0.5 Rush + Rec TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-30T16:46:05Z"
+          "updated_at": "2026-09-02T10:50:04Z"
         }
       ],
       "over_under": {
@@ -272630,7 +272630,7 @@
       "stable_id": "a75d3721-ffac-4573-80d9-7f3b792a8b7a|balanced",
       "stat_value": "0.5",
       "status": "active",
-      "updated_at": "2026-08-30T16:46:09Z"
+      "updated_at": "2026-09-02T10:50:28Z"
     },
     {
       "id": "e8cf585d-66c6-4ccd-9091-7d21945e5c24",
@@ -284592,7 +284592,7 @@
       "updated_at": "2026-09-01T19:40:45Z"
     },
     {
-      "id": "54fc2af1-f07d-4cde-a801-ef4b8bec3fcf",
+      "id": "c247e244-2986-4863-af93-a6d4524c3c04",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -284603,48 +284603,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "7b96fa0b-5547-4664-aecc-b082c1e91b88",
-          "american_price": "+137",
+          "id": "24043c66-7fa4-4c07-94d4-b63ea1b08146",
+          "american_price": "+122",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "2+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "2.37",
+          "decimal_price": "2.22",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "54fc2af1-f07d-4cde-a801-ef4b8bec3fcf",
-          "payout_multiplier": "1.15",
+          "over_under_line_id": "c247e244-2986-4863-af93-a6d4524c3c04",
+          "payout_multiplier": "1.11",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jaxson Dart",
           "selection_subheader": "Higher 1.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-26T09:32:03Z"
+          "updated_at": "2026-09-02T10:45:04Z"
         },
         {
-          "id": "9ad677ef-7efe-4689-8305-356126ee5191",
-          "american_price": "-170",
+          "id": "2f7b354a-9322-4687-9ed6-dc6f9c3d79bb",
+          "american_price": "-150",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "1-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.59",
+          "decimal_price": "1.67",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "54fc2af1-f07d-4cde-a801-ef4b8bec3fcf",
-          "payout_multiplier": "0.81",
+          "over_under_line_id": "c247e244-2986-4863-af93-a6d4524c3c04",
+          "payout_multiplier": "0.84",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Jaxson Dart",
           "selection_subheader": "Lower 1.5 Pass TDs",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-26T09:32:03Z"
+          "updated_at": "2026-09-02T10:45:04Z"
         }
       ],
       "over_under": {
@@ -284678,7 +284678,7 @@
       "stable_id": "67f9447b-434b-4229-82c1-a223d0b0cbd1|balanced",
       "stat_value": "1.5",
       "status": "active",
-      "updated_at": "2026-08-30T01:20:55Z"
+      "updated_at": "2026-09-02T10:45:17Z"
     },
     {
       "id": "b03713e4-ab53-4866-92cb-7ac4a468f1a8",
@@ -300742,7 +300742,7 @@
       "updated_at": "2026-09-02T02:30:17Z"
     },
     {
-      "id": "6cb2d4b0-59a4-4ad3-b09b-3765e43be738",
+      "id": "32d754ba-72dd-4e53-944b-98890f924237",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -300753,7 +300753,7 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "39ebc11d-7c7b-43d9-a67a-0f5edff3050d",
+          "id": "6db641d5-c1ae-496a-8ff9-bf60186e3ca1",
           "american_price": "+129",
           "appearance_id": null,
           "choice": "higher",
@@ -300764,7 +300764,7 @@
           "decimal_price": "2.29",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "6cb2d4b0-59a4-4ad3-b09b-3765e43be738",
+          "over_under_line_id": "32d754ba-72dd-4e53-944b-98890f924237",
           "payout_multiplier": "1.14",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -300772,10 +300772,10 @@
           "selection_subheader": "Higher 4.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T16:52:05Z"
+          "updated_at": "2026-09-02T10:54:04Z"
         },
         {
-          "id": "8f417f7f-991e-460e-8cf6-91ad0f870278",
+          "id": "98c88a81-a254-4266-b994-8ab1d995497f",
           "american_price": "-159",
           "appearance_id": null,
           "choice": "lower",
@@ -300786,7 +300786,7 @@
           "decimal_price": "1.63",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "6cb2d4b0-59a4-4ad3-b09b-3765e43be738",
+          "over_under_line_id": "32d754ba-72dd-4e53-944b-98890f924237",
           "payout_multiplier": "0.82",
           "raw_probability": null,
           "rfq_combinable": true,
@@ -300794,7 +300794,7 @@
           "selection_subheader": "Lower 4.5 Receptions",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-08-31T16:52:05Z"
+          "updated_at": "2026-09-02T10:54:04Z"
         }
       ],
       "over_under": {
@@ -300828,7 +300828,7 @@
       "stable_id": "98502f28-4cd0-4ecc-a1ce-968cfdd7bd96|balanced",
       "stat_value": "4.5",
       "status": "active",
-      "updated_at": "2026-08-31T16:52:18Z"
+      "updated_at": "2026-09-02T10:54:27Z"
     },
     {
       "id": "41b52929-23a4-4a4a-9247-70ae3742ad63",
@@ -330506,6 +330506,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-09-02T07:12:33Z",
+  "cached_at": "2026-09-02T12:11:08Z",
   "sport": "NFL"
 }
