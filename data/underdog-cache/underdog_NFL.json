@@ -59843,7 +59843,7 @@
       "updated_at": "2026-09-05T02:44:40Z"
     },
     {
-      "id": "fa57b365-42bc-4fc6-a8f8-a2d1802f17d6",
+      "id": "45d92491-78e0-4a28-b412-f31e9306faec",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -59854,48 +59854,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "5ed3d718-a4ef-43a6-bd02-c52b1ef034f6",
-          "american_price": "-114",
+          "id": "4ff7b391-c626-48f6-81b8-c71f51d2dfba",
+          "american_price": "-110",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
-          "choice_display_name_shorter": "70+",
+          "choice_display_name_shorter": "73+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.88",
+          "decimal_price": "1.91",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "fa57b365-42bc-4fc6-a8f8-a2d1802f17d6",
+          "over_under_line_id": "45d92491-78e0-4a28-b412-f31e9306faec",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kyren Williams",
-          "selection_subheader": "Higher 69.5 Rush + Rec Yards",
+          "selection_subheader": "Higher 72.5 Rush + Rec Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-04T20:54:40Z"
+          "updated_at": "2026-09-05T09:02:42Z"
         },
         {
-          "id": "781521cb-192d-4a02-bea3-73ddbda8c9fe",
-          "american_price": "-108",
+          "id": "a45640fd-6b4c-430d-a38b-c593b62ad863",
+          "american_price": "-112",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
-          "choice_display_name_shorter": "69-",
+          "choice_display_name_shorter": "72-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "1.93",
+          "decimal_price": "1.9",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "fa57b365-42bc-4fc6-a8f8-a2d1802f17d6",
+          "over_under_line_id": "45d92491-78e0-4a28-b412-f31e9306faec",
           "payout_multiplier": "1.0",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Kyren Williams",
-          "selection_subheader": "Lower 69.5 Rush + Rec Yards",
+          "selection_subheader": "Lower 72.5 Rush + Rec Yards",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-04T20:54:40Z"
+          "updated_at": "2026-09-05T09:02:42Z"
         }
       ],
       "over_under": {
@@ -59923,13 +59923,13 @@
         "title": "Kyren Williams Rush + Rec Yards O/U"
       },
       "over_under_id": "380587d1-67ff-4df7-89b0-e5b77e69234a",
-      "provider_id": "swish",
+      "provider_id": null,
       "rank": 115172103008099,
       "sort_by": null,
       "stable_id": "380587d1-67ff-4df7-89b0-e5b77e69234a|balanced",
-      "stat_value": "69.5",
+      "stat_value": "72.5",
       "status": "active",
-      "updated_at": "2026-09-04T20:54:40Z"
+      "updated_at": "2026-09-05T09:02:42Z"
     },
     {
       "id": "c06761b5-304a-4ceb-aeb9-6425c47ab677",
@@ -182797,7 +182797,7 @@
       "updated_at": "2026-09-04T22:21:04Z"
     },
     {
-      "id": "3d8d3dd0-c847-4afb-8a5c-cbe8ed369c70",
+      "id": "d287bcb9-401b-4c3c-95f4-52afd97c834a",
       "contract_terms_url": null,
       "contract_url": null,
       "entry_stable_id": null,
@@ -182808,48 +182808,48 @@
       "non_discounted_stat_value": null,
       "options": [
         {
-          "id": "48c7c6c8-9ccb-4808-a303-cdbb77a4afaf",
-          "american_price": "-124",
+          "id": "5be93f1e-25c9-45ab-aaa8-cf3823939764",
+          "american_price": "-122",
           "appearance_id": null,
           "choice": "higher",
           "choice_display": "Higher",
           "choice_display_name_shorter": "16+",
           "choice_display_short": "Higher",
           "choice_id": "over__",
-          "decimal_price": "1.81",
+          "decimal_price": "1.82",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "3d8d3dd0-c847-4afb-8a5c-cbe8ed369c70",
-          "payout_multiplier": "0.94",
+          "over_under_line_id": "d287bcb9-401b-4c3c-95f4-52afd97c834a",
+          "payout_multiplier": "0.95",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Quinshon Judkins",
           "selection_subheader": "Higher 15.5 Rush Attempts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-05T05:55:43Z"
+          "updated_at": "2026-09-05T10:58:15Z"
         },
         {
-          "id": "0fdf1336-6066-4fdc-bf08-af1a2b2823d3",
-          "american_price": "+101",
+          "id": "ae19612b-c32e-47fe-9460-7275c88acb61",
+          "american_price": "+100",
           "appearance_id": null,
           "choice": "lower",
           "choice_display": "Lower",
           "choice_display_name_shorter": "15-",
           "choice_display_short": "Lower",
           "choice_id": "under__",
-          "decimal_price": "2.01",
+          "decimal_price": "2",
           "grouping_id": null,
           "lookup_id": null,
-          "over_under_line_id": "3d8d3dd0-c847-4afb-8a5c-cbe8ed369c70",
-          "payout_multiplier": "1.05",
+          "over_under_line_id": "d287bcb9-401b-4c3c-95f4-52afd97c834a",
+          "payout_multiplier": "1.04",
           "raw_probability": null,
           "rfq_combinable": true,
           "selection_header": "Quinshon Judkins",
           "selection_subheader": "Lower 15.5 Rush Attempts",
           "status": "active",
           "type": "OverUnderOption",
-          "updated_at": "2026-09-05T05:55:43Z"
+          "updated_at": "2026-09-05T10:58:15Z"
         }
       ],
       "over_under": {
@@ -182883,7 +182883,7 @@
       "stable_id": "f567909b-8527-4c10-84d1-f2d23a00f429|balanced",
       "stat_value": "15.5",
       "status": "active",
-      "updated_at": "2026-09-05T05:55:43Z"
+      "updated_at": "2026-09-05T10:58:15Z"
     },
     {
       "id": "75e67388-2940-454e-b6e1-9a1ddf37a787",
@@ -344888,6 +344888,6 @@
     }
   ],
   "solo_games": [],
-  "cached_at": "2026-09-05T07:01:07Z",
+  "cached_at": "2026-09-05T11:19:46Z",
   "sport": "NFL"
 }
