@@ -16099,11 +16099,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   let _sleeperRosterCache: { players: Record<string, SleeperPlayer>; ts: number; week: number } | null = null;
 
   function getCurrentNFLWeek(): number {
-    // NFL 2026 season: Sep 3 2026 (Thu) – Jan 4 2027.
+    // NFL 2026 season: Sep 9 2026 (Wed kickoff, Patriots @ Seahawks) – Jan 10 2027.
+    // Matches NFL_SEASON_START used elsewhere (Dashboard.tsx, getNflWeekLabel).
     // During off-season returns 0 — callers should still serve data,
     // just skip the week-boundary cache-bust logic.
-    const SEASON_START = new Date("2026-09-03T00:00:00Z").getTime();
-    const SEASON_END   = new Date("2027-01-04T23:59:59Z").getTime();
+    const SEASON_START = new Date("2026-09-09T00:00:00Z").getTime();
+    const SEASON_END   = new Date("2027-01-11T00:00:00Z").getTime();
     const now = Date.now();
     if (now < SEASON_START || now > SEASON_END) return 0; // off-season
     const weekNum = Math.floor((now - SEASON_START) / (7 * 24 * 60 * 60 * 1000)) + 1;
