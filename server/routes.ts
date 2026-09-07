@@ -992,16 +992,20 @@ async function resolveESPNId(playerName: string, sport: string): Promise<string 
 
   // Method 1: ESPN site search API — type=player (NOT type=athlete which returns errors)
   // The response has results[].contents[] where each item has uid = "s:40~l:46~a:{espnId}"
+  // NOTE: must use native fetch, not axios — ESPN's Akamai WAF returns a 403
+  // "Access Denied" specifically for axios's default TLS/HTTP client fingerprint.
   try {
     // Strip accents so "Schröder" → "Schroder", "Diabaté" → "Diabate"
     const asciiName = playerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const r = await axios.get(
+    const resp = await fetch(
       `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(asciiName)}&limit=8&type=player&sport=${sportsName}%2F${league}`,
-      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+      { signal: AbortSignal.timeout(6000), headers: { "User-Agent": "Mozilla/5.0" } }
     );
+    if (!resp.ok) throw new Error(`status ${resp.status}`);
+    const rData: any = await resp.json();
     // Results are nested: results[] → contents[]
     const allContents: any[] = [];
-    for (const resultGroup of (r.data?.results ?? [])) {
+    for (const resultGroup of (rData?.results ?? [])) {
       for (const c of (resultGroup.contents ?? [])) allContents.push(c);
     }
     const nameLower = asciiName.toLowerCase();
@@ -1029,12 +1033,14 @@ async function resolveESPNId(playerName: string, sport: string): Promise<string 
   // Method 2: ESPN search without sport filter (broader — catches rookies, international players)
   try {
     const asciiName2 = playerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const r2 = await axios.get(
+    const resp2 = await fetch(
       `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(asciiName2)}&limit=5&type=player`,
-      { timeout: 6000, headers: { "User-Agent": "Mozilla/5.0" } }
+      { signal: AbortSignal.timeout(6000), headers: { "User-Agent": "Mozilla/5.0" } }
     );
+    if (!resp2.ok) throw new Error(`status ${resp2.status}`);
+    const r2Data: any = await resp2.json();
     const allContents2: any[] = [];
-    for (const rg of (r2.data?.results ?? [])) for (const c of (rg.contents ?? [])) allContents2.push(c);
+    for (const rg of (r2Data?.results ?? [])) for (const c of (rg.contents ?? [])) allContents2.push(c);
     const nameLower2 = asciiName2.toLowerCase();
     const parts2 = nameLower2.split(" ");
     for (const item of allContents2) {
