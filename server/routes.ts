@@ -16778,6 +16778,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   }
 
   // ── GET /api/nfl/props ─────────────────────────────────────────────────────
+  app.get("/api/nfl/props/_debug", async (req: Request, res: Response) => {
+    try {
+      const slate = (req.query.slate as string) || "week";
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: any[]) => { logs.push(args.map(String).join(" ")); origLog(...args); };
+      let rows: any[] = [];
+      let errMsg: string | null = null;
+      try {
+        rows = await buildNflPropsData(slate);
+      } catch (e) {
+        errMsg = (e as Error).message + "\n" + (e as Error).stack;
+      }
+      console.log = origLog;
+      res.json({ slate, rowCount: rows.length, error: errMsg, logs, sample: rows.slice(0, 3) });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   app.get("/api/nfl/props", async (req: Request, res: Response) => {
     try {
       const slate    = (req.query.slate  as string) || "week";
