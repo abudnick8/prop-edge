@@ -1996,7 +1996,9 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
           {(!pick.result || pick.result === "pending") && (
             <>
               <div style={{ fontSize: 18, fontWeight: 900, color: nflGradeColor(pick.grade) }}>{pick.grade}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>{pick.score}/100</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED }}>
+                {pick.modelWinPct != null ? `${pick.modelWinPct}% win` : `${pick.score}/100`}
+              </div>
               {nflResultBadge("pending")}
             </>
           )}
@@ -2018,10 +2020,22 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
             <TileRow items={[
               { label: "Confidence", value: `${pick.score}/100` },
               { label: "Grade", value: pick.grade, color: nflGradeColor(pick.grade) },
+              pick.modelWinPct != null ? { label: "Sim Win%", value: `${pick.modelWinPct}%` } : null,
               market.impliedWinPct ? { label: "Implied Win%", value: `${market.impliedWinPct}%` } : null,
               pick.total != null ? { label: "O/U", value: `${pick.total}` } : null,
             ]} />
           </div>
+
+          {a.simulation && (
+            <Section title="Monte Carlo Projection" icon="🎲">
+              <div style={{ background: "rgba(212,168,67,0.08)", borderRadius: 10, padding: "10px 12px", border: "1px solid rgba(212,168,67,0.22)" }}>
+                <StatRow label="Simulations" value={Number(a.simulation.trials ?? 0).toLocaleString()} />
+                <StatRow label={`${pick.pickTeam} win probability`} value={`${a.simulation.winProbability}%`} highlight />
+                <StatRow label="Projected score" value={`${pick.pickTeam} ${a.simulation.predictedPickScore} – ${a.simulation.predictedOppScore} ${pick.oppTeam}`} />
+                <StatRow label="Line source" value={`${market.source ?? "Sportsbook"} · ${market.lineType ?? "Main market"}`} />
+              </div>
+            </Section>
+          )}
 
           {/* Sharp Money */}
           {(sharp.sharpScore > 0 || sharp.sharpDirection) && (
@@ -2591,6 +2605,49 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
   );
 }
 
+function NflTeamProjectionsPanel() {
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["/api/nfl/pick-of-week"],
+    staleTime: 60 * 60 * 1000,
+  });
+  const games: any[] = data?.games?.length
+    ? data.games
+    : [data?.primary, data?.runnerUp].filter(Boolean);
+
+  return (
+    <div style={{ marginTop: 20, marginBottom: 18 }}>
+      <div style={{ background: NAVY, borderRadius: "14px 14px 0 0", padding: "12px 16px", color: BG_COLOR }}>
+        <div style={{ fontSize: 14, fontWeight: 900 }}>Team Win Projections</div>
+        <div style={{ fontSize: 10, opacity: 0.68, marginTop: 2 }}>
+          Every weekly game ranked by 10,000 simulations using sportsbook main lines
+        </div>
+      </div>
+      <div style={{ border: "1px solid rgba(19,35,58,0.10)", borderTop: "none", borderRadius: "0 0 14px 14px", padding: 12, background: "#fff" }}>
+        {isLoading && <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: MUTED }}>Running weekly simulations…</div>}
+        {error && <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: "#dc2626" }}>Team projections are temporarily unavailable.</div>}
+        {!isLoading && !error && games.length === 0 && (
+          <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: MUTED }}>Main sportsbook lines have not been posted yet.</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {games.map((game, index) => (
+            <NflPickCard
+              key={`${game.awayTeam}-${game.homeTeam}`}
+              pick={{ ...game, result: "pending" }}
+              label={index === 0 ? "#1 Most Likely Winner" : index === 1 ? "#2 Most Likely Winner" : `Game Projection #${index + 1}`}
+              isRunnerUp={index > 0}
+            />
+          ))}
+        </div>
+        {games.length > 0 && (
+          <div style={{ fontSize: 9, color: MUTED, textAlign: "center", marginTop: 10 }}>
+            Main-market lines only · {games[0]?.analysis?.market?.source ?? "professional sportsbook"} · Updated hourly
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NflPickOfWeekPanel() {
   const [showHistory, setShowHistory] = useState(false);
   const { isOwner } = useAuth();
@@ -2954,8 +3011,9 @@ export default function EndZone() {
         {/* ════ TAB 1: Projections ════ */}
         {activeTab === "projections" && (
           <div>
+            <NflTeamProjectionsPanel />
             {/* Filter bar */}
-            <div style={{ overflowX: "auto", paddingBottom: 4, marginTop: 20, marginBottom: 16 }}>
+            <div style={{ overflowX: "auto", paddingBottom: 4, marginTop: 8, marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: "max-content" }}>
                 {/* Slate */}
                 <div style={{ display: "flex", gap: 4, background: "#fff", borderRadius: 10, padding: 4, border: "1px solid rgba(19,35,58,0.10)" }}>

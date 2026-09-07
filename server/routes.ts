@@ -13056,6 +13056,57 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return Math.round(stored);
   }
 
+  // Treat history as the source of truth. This prevents a stale persisted
+  // currentStreak from being copied into a new pending day and also repairs
+  // old null scores when the original candidate snapshot is still available.
+  function reconcileCiqStreakState(): boolean {
+    const before = JSON.stringify(ciqStreakState);
+    const sorted = [...ciqStreakState.history].sort((a, b) => a.date.localeCompare(b.date));
+    let streak = 0, best = 0, wins = 0, losses = 0, days = 0;
+    for (const entry of sorted) {
+      for (const pick of entry.picks) {
+        if (pick.score == null || !Number.isFinite(Number(pick.score)) || Number(pick.score) <= 0) {
+          const cached = (btsPicksCache[entry.date] ?? []).find(e => e.playerId === pick.playerId);
+          const repaired = cached ? computeEntryProb(cached) : 0;
+          if (repaired > 0) pick.score = repaired;
+        }
+      }
+      entry.streakBefore = streak;
+      const graded = entry.picks.filter(p => p.result !== "void");
+      const pending = graded.some(p => p.result === "pending");
+      if (pending) {
+        entry.result = "pending";
+        entry.streakAfter = null;
+        continue;
+      }
+      if (graded.length === 0) {
+        entry.result = "void";
+        entry.streakAfter = streak;
+        continue;
+      }
+      if (graded.every(p => p.result === "win")) {
+        streak += graded.length;
+        entry.result = "win";
+        entry.streakAfter = streak;
+        wins++;
+      } else {
+        streak = 0;
+        entry.result = "loss";
+        entry.streakAfter = 0;
+        losses++;
+      }
+      days++;
+      best = Math.max(best, streak);
+    }
+    ciqStreakState.history = sorted;
+    ciqStreakState.currentStreak = streak;
+    ciqStreakState.bestStreak = Math.max(best, ciqStreakState.bestStreak ?? 0);
+    ciqStreakState.totalWins = wins;
+    ciqStreakState.totalLosses = losses;
+    ciqStreakState.totalDays = days;
+    return before !== JSON.stringify(ciqStreakState);
+  }
+
   async function selectCiqStreakPicksForDate(dateStr: string) {
     const existing = ciqStreakState.history.find(d => d.date === dateStr);
     if (existing) return existing;
@@ -13318,12 +13369,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     for (const entry of ciqStreakState.history) {
       if (entry.result === "pending") await gradeCiqStreakForDate(entry.date);
     }
+    if (reconcileCiqStreakState()) saveCiqStreak();
   });
 
   // GET /api/bts/ciq-streak
   app.get("/api/bts/ciq-streak", async (_req, res) => {
     try {
       const todayStr = ciqCtDateStr();
+      if (reconcileCiqStreakState()) saveCiqStreak();
       // Auto-pick today if we haven't yet and BTS picks are available
       if (ciqStreakState.lastPickDate !== todayStr) {
         await selectCiqStreakPicksForDate(todayStr);
@@ -13332,6 +13385,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       for (const entry of ciqStreakState.history) {
         if (entry.result === "pending") await gradeCiqStreakForDate(entry.date);
       }
+      if (reconcileCiqStreakState()) saveCiqStreak();
       const recentHistory = [...ciqStreakState.history]
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 30);
@@ -13344,6 +13398,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         totalLosses:   ciqStreakState.totalLosses,
         today:         ciqStreakState.history.find(d => d.date === todayStr) ?? null,
         history:       recentHistory,
+        doubleDownCriteria: { firstPickMin: 75, secondPickMin: 72, bothMustHit: true },
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -21228,7 +21283,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before earliest game
 
       // ── WEEKLY LOCK: once this week's picks are saved to history, serve them frozen ──
-      if (nflWeeklyPicksHistory[weekLabel]) {
+      if (nflWeeklyPicksHistory[weekLabel] && nflWeeklyPicksHistory[weekLabel].games?.length) {
         const weekEntry = nflWeeklyPicksHistory[weekLabel];
         const frozenNfl = {
           week: weekLabel,
@@ -21244,7 +21299,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json({ ...frozenNfl, history: nflWeeklyPicksHistory, locked: true });
       }
 
-      if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel) {
+      if (_nflWeeklyPickCache && _nflWeeklyPickCache.week === weekLabel && _nflWeeklyPickCache.data?.games?.length) {
         const cachedData = _nflWeeklyPickCache.data;
         const allGames: any[] = [
           ...(cachedData.primary  ? [cachedData.primary]  : []),
@@ -21323,7 +21378,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const defInts  = toNum(def, "interceptions");
 
           // Get team record
-          const recR = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}`, { signal: AbortSignal.timeout(5000) });
+          const recR = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}`, { signal: AbortSignal.timeout(5000) });
           let wins = 0, losses = 0, homeRecord = "—", roadRecord = "—";
           if (recR.ok) {
             const recD: any = await recR.json();
@@ -21356,7 +21411,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // ── Fetch ESPN NFL injuries ─────────────────────────────────────────
       const espnInjuries: Map<string, string[]> = new Map(); // teamName → list of out players
       try {
-        const injR = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(7000) });
+        const injR = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(7000) });
         if (injR.ok) {
           const injData: any = await injR.json();
           for (const te of (injData.injuries ?? [])) {
@@ -21399,13 +21454,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Fetch the current week's scheduled matchups from ESPN scoreboard to
       // validate that the Odds API game pairings are real scheduled games.
       let espnScheduledPairs: Set<string> = new Set();
+      const espnMainLineGames: any[] = [];
       try {
         const NFL_START_2026 = new Date("2026-09-09T00:00:00Z");
         const isPreSeason = Date.now() < NFL_START_2026.getTime();
         // During preseason we look ahead; during season we check scoreboard for this week
         const sbUrl = isPreSeason
-          ? `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260909-20260915`
-          : `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=50`;
+          ? `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260909-20260915&limit=100`
+          : `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100`;
         const sbR = await fetch(sbUrl, { signal: AbortSignal.timeout(7000) });
         if (sbR.ok) {
           const sbData: any = await sbR.json();
@@ -21422,11 +21478,43 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                 for (const h of hNames) for (const a of aNames) {
                   espnScheduledPairs.add(`${h}|${a}`);
                 }
+                const posted = comp.odds?.[0];
+                const homeML = Number(posted?.moneyline?.home?.close?.odds);
+                const awayML = Number(posted?.moneyline?.away?.close?.odds);
+                const homeSpread = Number(posted?.pointSpread?.home?.close?.line ?? posted?.spread);
+                const gameTotal = Number(posted?.overUnder);
+                if (posted && (Number.isFinite(homeML) || Number.isFinite(homeSpread))) {
+                  espnMainLineGames.push({
+                    id: ev.id,
+                    home_team: homeC.team?.displayName,
+                    away_team: awayC.team?.displayName,
+                    commence_time: ev.date,
+                    bookmakers: [{
+                      key: "draftkings",
+                      title: posted.provider?.displayName ?? posted.provider?.name ?? "DraftKings",
+                      markets: [
+                        { key: "h2h", outcomes: [
+                          { name: homeC.team?.displayName, price: Number.isFinite(homeML) ? homeML : null },
+                          { name: awayC.team?.displayName, price: Number.isFinite(awayML) ? awayML : null },
+                        ]},
+                        { key: "spreads", outcomes: [
+                          { name: homeC.team?.displayName, point: Number.isFinite(homeSpread) ? homeSpread : null },
+                          { name: awayC.team?.displayName, point: Number.isFinite(homeSpread) ? -homeSpread : null },
+                        ]},
+                        { key: "totals", outcomes: [{ name: "Over", point: Number.isFinite(gameTotal) ? gameTotal : null }]},
+                      ],
+                    }],
+                    lineSource: posted.provider?.displayName ?? posted.provider?.name ?? "DraftKings",
+                  });
+                }
               }
             }
           }
         }
       } catch { /* non-fatal — skip cross-validation if ESPN down */ }
+      // ESPN exposes DraftKings' current straight-bet market. Use it when the
+      // multi-book feed is unavailable; these are main lines, never alternates.
+      if (nflGames.length === 0) nflGames = espnMainLineGames;
 
       // Helper: check if a home/away pair is in the ESPN schedule (or schedule is empty = skip)
       function isValidMatchup(home: string, away: string): boolean {
@@ -21550,22 +21638,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         let spreadHome: number | null = null, total: number | null = null;
         let mlHome: number | null = null, mlAway: number | null = null;
 
-        for (const bk of (game.bookmakers ?? [])) {
+        const preferredBooks = new Set(["draftkings", "fanduel", "betmgm", "williamhill_us", "espnbet"]);
+        const books = (game.bookmakers ?? []).filter((b: any) =>
+          preferredBooks.has(String(b.key ?? "").toLowerCase()) || (game.bookmakers ?? []).length === 1
+        );
+        const homeMLs: number[] = [], awayMLs: number[] = [], homeSpreads: number[] = [], totalsList: number[] = [];
+        const lineBooks: string[] = [];
+        for (const bk of books) {
           const h2h    = bk.markets?.find((m: any) => m.key === "h2h");
           const spreads = bk.markets?.find((m: any) => m.key === "spreads");
           const totals  = bk.markets?.find((m: any) => m.key === "totals");
           if (h2h?.outcomes?.length >= 2) {
-            // Sanitize: NFL moneylines should never exceed ±600 in a real game.
-            // Anything beyond that is a corrupt Odds API artifact (e.g. -7000, -410 pre-season).
             const rawHome = h2h.outcomes.find((o: any) => o.name === homeTeam)?.price ?? null;
             const rawAway = h2h.outcomes.find((o: any) => o.name === awayTeam)?.price ?? null;
-            mlHome = rawHome !== null && Math.abs(rawHome) <= 600 ? rawHome : null;
-            mlAway = rawAway !== null && Math.abs(rawAway) <= 600 ? rawAway : null;
+            if (Number.isFinite(rawHome) && Math.abs(rawHome) <= 2000) homeMLs.push(Number(rawHome));
+            if (Number.isFinite(rawAway) && Math.abs(rawAway) <= 2000) awayMLs.push(Number(rawAway));
           }
-          if (spreads?.outcomes?.length) spreadHome = spreads.outcomes.find((o: any) => o.name === homeTeam)?.point ?? null;
-          if (totals?.outcomes?.length)  total      = totals.outcomes.find((o: any)  => o.name === "Over")?.point ?? null;
-          if (mlHome !== null) break;
+          const sh = spreads?.outcomes?.find((o: any) => o.name === homeTeam)?.point;
+          const tt = totals?.outcomes?.find((o: any) => o.name === "Over")?.point;
+          if (Number.isFinite(sh) && Math.abs(sh) <= 30) homeSpreads.push(Number(sh));
+          if (Number.isFinite(tt) && tt >= 25 && tt <= 75) totalsList.push(Number(tt));
+          lineBooks.push(bk.title ?? bk.key ?? "Sportsbook");
         }
+        const median = (xs: number[]): number | null => xs.length
+          ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+          : null;
+        mlHome = median(homeMLs);
+        mlAway = median(awayMLs);
+        spreadHome = median(homeSpreads);
+        total = median(totalsList);
 
         // Skip this game entirely if no valid ML odds found — means data is too corrupt/thin
         // to produce a meaningful pick. Don’t push to scoredNfl.
@@ -21586,6 +21687,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const pickTeam    = pickSide === "home" ? homeTeam : awayTeam;
         const oppTeam     = pickSide === "home" ? awayTeam : homeTeam;
         const pickML      = pickSide === "home" ? mlHome : mlAway;
+        const vigTotal = homeImplied + awayImplied;
+        if (vigTotal > 0) { homeImplied /= vigTotal; awayImplied /= vigTotal; }
         const pickImplied = pickSide === "home" ? homeImplied : awayImplied;
 
         const pickId = getNflEspnId(pickTeam);
@@ -21622,7 +21725,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         // 1. MARKET IMPLIED PROBABILITY
         const impliedPct = Math.round(pickImplied * 100);
-        analysis.market = { impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome, spread: spreadHome, total };
+        analysis.market = {
+          impliedWinPct: impliedPct, pickML, oppML: pickSide === "home" ? mlAway : mlHome,
+          spread: spreadHome, total,
+          lineType: "Main market", source: game.lineSource ?? (lineBooks.length > 1 ? `${lineBooks.length}-book consensus` : lineBooks[0] ?? "Sportsbook"),
+          books: lineBooks,
+        };
         if (pickImplied >= 0.65) { score += 16; reasons.push(`Heavy favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
         else if (pickImplied >= 0.56) { score += 10; reasons.push(`Solid favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
         else if (pickImplied >= 0.50) { score += 5;  reasons.push(`Slight favorite: ${pickTeam} at ${impliedPct}% implied win probability`); }
@@ -21814,7 +21922,41 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           else if (total <= 40) { reasons.push(`Low total (${total}) — defensive game expected`); }
         }
 
-        score = Math.min(97, Math.max(20, score));
+        // 10,000 deterministic Monte Carlo trials. The posted main spread and
+        // total anchor expected scoring; last-season scoring form adds a small
+        // adjustment without overpowering the professional market.
+        const simTotal = total ?? 44;
+        const simSpreadHome = spreadHome ?? ((awayImplied - homeImplied) * 14);
+        let homeMean = simTotal / 2 - simSpreadHome / 2;
+        let awayMean = simTotal / 2 + simSpreadHome / 2;
+        if (pickStats && oppStats) {
+          const homeStats = pickSide === "home" ? pickStats : oppStats;
+          const awayStats = pickSide === "away" ? pickStats : oppStats;
+          homeMean = homeMean * 0.85 + (homeStats.ppg || homeMean) * 0.15;
+          awayMean = awayMean * 0.85 + (awayStats.ppg || awayMean) * 0.15;
+        }
+        let seed = String(game.id ?? `${awayTeam}-${homeTeam}`).split("").reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 2166136261);
+        const rand = () => { seed = (1664525 * seed + 1013904223) >>> 0; return (seed + 1) / 4294967297; };
+        const normal = () => Math.sqrt(-2 * Math.log(rand())) * Math.cos(2 * Math.PI * rand());
+        let homeWins = 0, awayWins = 0, ties = 0;
+        const trials = 10000;
+        for (let i = 0; i < trials; i++) {
+          const shared = normal() * 6.2;
+          const hs = homeMean + shared + normal() * 8.8;
+          const as = awayMean + shared + normal() * 8.8;
+          if (hs > as) homeWins++; else if (as > hs) awayWins++; else ties++;
+        }
+        const homeWinPct = (homeWins + ties * 0.5) / trials;
+        const modelWinPct = Math.round((pickSide === "home" ? homeWinPct : 1 - homeWinPct) * 1000) / 10;
+        analysis.simulation = {
+          trials,
+          winProbability: modelWinPct,
+          predictedPickScore: Math.round(pickSide === "home" ? homeMean : awayMean),
+          predictedOppScore: Math.round(pickSide === "home" ? awayMean : homeMean),
+          marketAnchored: true,
+        };
+        reasons.unshift(`${pickTeam} won ${modelWinPct}% of 10,000 market-anchored simulations`);
+        score = Math.min(97, Math.max(20, Math.round(score * 0.55 + modelWinPct * 0.45)));
         const grade = score >= 83 ? "A" : score >= 73 ? "B+" : score >= 63 ? "B" : score >= 53 ? "C+" : "C";
 
         // Don’t publish picks with a raw score below 35 — that means both ML odds and
@@ -21826,7 +21968,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
         scoredNfl.push({
           homeTeam, awayTeam, pickTeam, oppTeam, pickSide, pickML, spread: spreadHome, total,
-          score, grade, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
+          score, grade, modelWinPct, reasons, weatherNote, sharpScore, sharpDirection, publicBetPct,
           commenceTime: game.commence_time ?? null, injuryNote,
           analysis: {
             ...analysis,
@@ -21837,11 +21979,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         });
       }
 
-      scoredNfl.sort((a, b) => b.score - a.score);
+      scoredNfl.sort((a, b) => (b.modelWinPct ?? b.score) - (a.modelWinPct ?? a.score));
       const nflPrimary  = scoredNfl[0] ?? null;
       const nflRunnerUp = scoredNfl[1] ?? null;
 
-      const nflResult = { week: weekLabel, primary: nflPrimary, runnerUp: nflRunnerUp, gamesAnalyzed: scoredNfl.length, fetchedAt: new Date().toISOString(), liveData: nflGames.length > 0 };
+      const nflResult = { week: weekLabel, primary: nflPrimary, runnerUp: nflRunnerUp, games: scoredNfl, gamesAnalyzed: scoredNfl.length, fetchedAt: new Date().toISOString(), liveData: nflGames.length > 0 };
 
       if (nflPrimary && nflGames.length > 0 && !nflWeeklyPicksHistory[weekLabel]) {
         const nflPickSnap = (p: any) => p ? ({

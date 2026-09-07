@@ -3772,7 +3772,9 @@ function CiqStreakPanel() {
                 <span className="text-[9px]" style={{ color: MUTED }}>{p.team}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold" style={{ color: GOLD }}>{p.score}%</span>
+                <span className="text-[9px] font-bold" style={{ color: p.score != null && p.score > 0 ? GOLD : MUTED }}>
+                  {p.score != null && p.score > 0 ? `${p.score}%` : "Score unavailable"}
+                </span>
                 <GradeBadge result={p.result} hits={p.hits} ab={p.ab} />
               </div>
             </div>
