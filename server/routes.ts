@@ -13057,6 +13057,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     if (Number.isFinite(steamerAvg) && steamerAvg > 0 && steamerAvg < 1) {
       return Math.round((1 - Math.pow(1 - steamerAvg, expectedPA)) * 100);
     }
+    const gradeScore = Number(snap.mbScore ?? (e as any).mbScore);
+    if (Number.isFinite(gradeScore) && gradeScore >= 0) {
+      return Math.round(45 + Math.min(100, gradeScore) * 0.37);
+    }
     // Fallback: use stored value
     const stored = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
     if (stored == null) return 0;
