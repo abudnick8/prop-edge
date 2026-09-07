@@ -4809,16 +4809,25 @@ export default function BTS() {
   const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
   const visibleSlate = showAllSlate ? slate : slate.slice(0, 5);
   // Merge live stats into picks so badges update every 30s without full refetch
-  const picksWithLive = picks.map((p: any) => {
-    const live = liveStats[p.playerId];
-    if (!live) return p;
-    return {
-      ...p,
-      hits:   live.hits   ?? p.hits,
-      ab:     live.ab     ?? p.ab,
-      result: live.result ?? p.result,
-    };
-  });
+  const picksWithLive = picks
+    .map((p: any) => {
+      const live = liveStats[p.playerId];
+      if (!live) return p;
+      return {
+        ...p,
+        hits:   live.hits   ?? p.hits,
+        ab:     live.ab     ?? p.ab,
+        result: live.result ?? p.result,
+      };
+    })
+    .sort((a: any, b: any) => {
+      const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
+      const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
+      if (bGrade !== aGrade) return bGrade - aGrade;
+      const aProb = Number.isFinite(Number(a.hitProbability)) ? Number(a.hitProbability) : -1;
+      const bProb = Number.isFinite(Number(b.hitProbability)) ? Number(b.hitProbability) : -1;
+      return bProb - aProb;
+    });
   const visiblePicks = showAllPicks ? picksWithLive : picksWithLive.slice(0, 5);
 
   // History data — use history endpoint as source of truth for records

@@ -12285,14 +12285,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Before global deadline: only keep picks whose game hasn't started yet
       //   (but any pick that came in via the cache — i.e. was previously locked—
       //    always stays visible regardless of game start status)
-      const finalPicks = annotatedPicks.filter(p => {
-        // Always show a pick once it's been graded (result known) or locked
-        if (p.locked || p.result === "win" || p.result === "loss") return true;
-        // Before deadline: hide a pick only if the game has already started AND
-        // the pick was never locked in (pre-deadline, no lineup yet)
-        if (!pastDeadline && p.gameStarted && !p.locked) return false;
-        return true;
-      });
+      const finalPicks = annotatedPicks
+        .filter(p => {
+          // Always show a pick once it's been graded (result known) or locked
+          if (p.locked || p.result === "win" || p.result === "loss") return true;
+          // Before deadline: hide a pick only if the game has already started AND
+          // the pick was never locked in (pre-deadline, no lineup yet)
+          if (!pastDeadline && p.gameStarted && !p.locked) return false;
+          return true;
+        })
+        // Cache order reflects when a player was added, not current quality.
+        // Always present the highest Moneyball grade/score first; probability
+        // breaks ties and missing grades sort to the bottom.
+        .sort((a: any, b: any) => {
+          const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
+          const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
+          if (bGrade !== aGrade) return bGrade - aGrade;
+          const aProb = Number.isFinite(Number(a.hitProbability)) ? Number(a.hitProbability) : -1;
+          const bProb = Number.isFinite(Number(b.hitProbability)) ? Number(b.hitProbability) : -1;
+          return bProb - aProb;
+        });
 
       const confirmedCount = finalPicks.filter(p => p.lineupSource === "confirmed").length;
       const projectedCount = finalPicks.filter(p => p.lineupSource === "projected").length;
