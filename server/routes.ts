@@ -16606,6 +16606,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       games.push(...filtered);
     }
 
+    console.log(`[NFL Props DEBUG] slate=${slate} games.length=${games.length}`);
     // No fallback stub games — if ESPN has no scheduled games for this slate,
     // we correctly return zero rows rather than fabricating matchups.
     if (games.length === 0) return [];
@@ -16624,7 +16625,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const oppAbbr  = side === "home" ? game.awayTeam : game.homeTeam;
 
         const roster = liveRosters[teamAbbr] ?? NFL_ROSTER_TIERS[teamAbbr];
-        if (!roster) continue;
+        if (!roster) { console.log(`[NFL Props DEBUG] no roster for ${teamAbbr}`); continue; }
 
         // Fetch real recent-game logs for this team's skill players in parallel.
         const [qbGames, rb1Games, wr1Games, wr2Games, te1Games] = await Promise.all([
@@ -16634,6 +16635,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           fetchNflPlayerRecentGames(roster.wr2),
           fetchNflPlayerRecentGames(roster.te1),
         ]);
+        console.log(`[NFL Props DEBUG] ${teamAbbr}: qb=${roster.qb}(${qbGames.length}g) rb1=${roster.rb1}(${rb1Games.length}g) wr1=${roster.wr1}(${wr1Games.length}g) wr2=${roster.wr2}(${wr2Games.length}g) te1=${roster.te1}(${te1Games.length}g)`);
 
         // ── QB Pass Yards (real L5 passing yards) ────────────────────────────
         const qbYds = qbGames.map(g => g.passingYards).filter(v => v != null);
