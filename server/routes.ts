@@ -9640,10 +9640,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // OLD team after an in-season trade (e.g. Luis García Jr. traded from
   // the Nationals to the Yankees mid-2026). Keyed by MLB playerId (not
   // name, since multiple active players can share a name) and cached for
-  // 6 hours so we don't hammer the MLB Stats API on every pick render.
+  // 1 hour so trades and roster moves reach the UI promptly.
   // ─────────────────────────────────────────────────────────────────────
   const _mlbCurrentTeamCache = new Map<number, { name: string; ts: number }>();
-  const MLB_TEAM_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+  const MLB_TEAM_CACHE_TTL = 60 * 60 * 1000; // 1h
   async function resolveMlbCurrentTeam(playerId: number, fallbackTeam: string): Promise<string> {
     if (!playerId) return fallbackTeam;
     const cached = _mlbCurrentTeamCache.get(playerId);
@@ -12951,6 +12951,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   app.get("/api/bts-history", async (_req, res) => {
     try {
       await Promise.race([getMLPullPromise(), new Promise(r => setTimeout(r, 30000))]);
+      const ct = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+      const todayStr = `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,"0")}-${String(ct.getDate()).padStart(2,"0")}`;
+      if (btsPicksCache[todayStr]?.length) {
+        btsPicksCache[todayStr] = await resolveMlbTeamsForPicks(btsPicksCache[todayStr]);
+      }
       // Build a list of days sorted descending, each with picks + record
       const days = Object.entries(btsPicksCache)
         .sort(([a], [b]) => b.localeCompare(a))
@@ -13410,6 +13415,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (entry.result === "pending") await gradeCiqStreakForDate(entry.date);
       }
       if (reconcileCiqStreakState()) saveCiqStreak();
+      const todayEntry = ciqStreakState.history.find(d => d.date === todayStr);
+      if (todayEntry) {
+        todayEntry.picks = await Promise.all(todayEntry.picks.map(async p => ({
+          ...p,
+          team: await resolveMlbCurrentTeam(Number(p.playerId), p.team),
+        })));
+      }
       const recentHistory = [...ciqStreakState.history]
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 30);
@@ -13420,7 +13432,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         totalDays:     ciqStreakState.totalDays,
         totalWins:     ciqStreakState.totalWins,
         totalLosses:   ciqStreakState.totalLosses,
-        today:         ciqStreakState.history.find(d => d.date === todayStr) ?? null,
+        today:         todayEntry ?? null,
         history:       recentHistory,
         doubleDownCriteria: { firstPickMin: 75, secondPickMin: 72, bothMustHit: true },
       });
@@ -16479,11 +16491,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     TEN: { qb: "Will Levis",        rb1: "Tony Pollard",     wr1: "Calvin Ridley",    wr2: "Treylon Burks",    te1: "Chig Okonkwo" },
     IND: { qb: "Anthony Richardson",rb1: "Jonathan Taylor",  wr1: "Michael Pittman Jr.",wr2: "Josh Downs",     te1: "Mo Alie-Cox" },
     CLE: { qb: "Deshaun Watson",    rb1: "Jerome Ford",      wr1: "Jerry Jeudy",      wr2: "Cedric Tillman",   te1: "David Njoku" },
-    PIT: { qb: "Russell Wilson",    rb1: "Najee Harris",     wr1: "George Pickens",   wr2: "Van Jefferson",    te1: "Pat Freiermuth" },
+    PIT: { qb: "Aaron Rodgers",     rb1: "Jaylen Warren",     wr1: "DK Metcalf",       wr2: "Calvin Austin III", te1: "Pat Freiermuth" },
     DEN: { qb: "Bo Nix",            rb1: "Javonte Williams", wr1: "Courtland Sutton", wr2: "Josh Reynolds",    te1: "Adam Trautman" },
     LV:  { qb: "Aidan O'Connell",  rb1: "Zamir White",      wr1: "Jakobi Meyers",    wr2: "Michael Gallup",   te1: "Brock Bowers" },
     LAR: { qb: "Matthew Stafford",  rb1: "Kyren Williams",   wr1: "Puka Nacua",       wr2: "Demarcus Robinson",te1: "Tyler Higbee" },
-    SEA: { qb: "Geno Smith",        rb1: "Zach Charbonnet",  wr1: "DK Metcalf",       wr2: "Tyler Lockett",    te1: "Noah Fant" },
+    SEA: { qb: "Sam Darnold",       rb1: "Zach Charbonnet",  wr1: "Jaxon Smith-Njigba",wr2: "Cooper Kupp",     te1: "AJ Barner" },
     ARI: { qb: "Kyler Murray",      rb1: "James Conner",     wr1: "Marvin Harrison Jr.",wr2: "Michael Wilson", te1: "Trey McBride" },
     NO:  { qb: "Derek Carr",        rb1: "Kendre Miller",    wr1: "Chris Olave",       wr2: "Rashid Shaheed",  te1: "Foster Moreau" },
     ATL: { qb: "Kirk Cousins",      rb1: "Bijan Robinson",   wr1: "Drake London",      wr2: "Darnell Mooney",  te1: "Kyle Pitts" },
@@ -21598,9 +21610,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       };
 
       // ── NFL Key Offensive Players per team (name → role) ──────────────────
-      // Uses NFL_ROSTER_TIERS defined above in the scope; here we build a
-      // simplified lookup from abbreviated team names to full player lists.
-      // NFL_ROSTER_TIERS is already accessible in this scope (defined at line ~15387).
+      // Pull the current depth chart before building weekly projection analysis.
+      // The static map is retained only as an outage fallback.
+      const liveNflRosterTiers = await getLiveNflRosterTiers();
       function getNflKeyPlayers(teamName: string): { qb: string; rb: string; wr1: string; wr2: string; te: string } | null {
         // Try to match team name to roster tiers abbreviation
         const TEAM_NAME_TO_ABBR: Record<string, string> = {
@@ -21620,7 +21632,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           Object.entries(TEAM_NAME_TO_ABBR).find(([k]) => teamName.includes(k.split(" ").pop()!))?.at(1) as string | undefined ??
           null;
         if (!abbr) return null;
-        const t = NFL_ROSTER_TIERS[abbr];
+        const t = liveNflRosterTiers[abbr] ?? NFL_ROSTER_TIERS[abbr];
         if (!t) return null;
         return { qb: t.qb, rb: t.rb1, wr1: t.wr1, wr2: t.wr2 ?? "", te: t.te1 };
       }
