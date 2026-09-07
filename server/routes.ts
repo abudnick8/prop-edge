@@ -16516,13 +16516,63 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // depth_chart_order, so each request gets the ACTUAL current top players.
   let _nflDepthChartCache: { byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>; ts: number } | null = null;
   const NFL_DEPTH_CHART_TTL = 60 * 60 * 1000; // 1 hour
+  let _espnNflRosterCache: { byTeam: Record<string, Set<string>>; ts: number } | null = null;
+  const ESPN_NFL_ROSTER_TTL = 6 * 60 * 60 * 1000;
+  let _nflRosterVerification: { verifiedTeams: Set<string>; checkedAt: string } = {
+    verifiedTeams: new Set(),
+    checkedAt: "",
+  };
+
+  const NFL_TEAM_ABBRS = [
+    "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB",
+    "HOU","IND","JAX","KC","LV","LAC","LAR","MIA","MIN","NE","NO","NYG",
+    "NYJ","PHI","PIT","SEA","SF","TB","TEN","WAS",
+  ];
+  const ESPN_TEAM_SLUG: Record<string, string> = { WAS: "wsh" };
+  const normalizeNflPlayerName = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  /**
+   * ESPN is the independent roster-membership source. Sleeper still supplies
+   * depth-chart order, but a player is only selected when ESPN also lists him
+   * on that team's active offense. Results are cached because this checks all
+   * 32 clubs.
+   */
+  async function getEspnActiveNflRosters(): Promise<Record<string, Set<string>>> {
+    if (_espnNflRosterCache && (Date.now() - _espnNflRosterCache.ts) < ESPN_NFL_ROSTER_TTL) {
+      return _espnNflRosterCache.byTeam;
+    }
+    const byTeam: Record<string, Set<string>> = {};
+    await Promise.allSettled(NFL_TEAM_ABBRS.map(async team => {
+      const slug = ESPN_TEAM_SLUG[team] ?? team.toLowerCase();
+      const r = await fetch(
+        `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/teams/${slug}/roster`,
+        { signal: AbortSignal.timeout(12000) }
+      );
+      if (!r.ok) throw new Error(`ESPN ${team} ${r.status}`);
+      const d: any = await r.json();
+      const offense = (d?.athletes ?? []).find((group: any) => group.position === "offense");
+      const activeNames = (offense?.items ?? [])
+        .filter((p: any) => p?.status?.type !== "practice-squad" && p?.status?.type !== "injured-reserve")
+        .map((p: any) => normalizeNflPlayerName(p.fullName ?? p.displayName ?? ""))
+        .filter(Boolean);
+      if (activeNames.length) byTeam[team] = new Set(activeNames);
+    }));
+    if (Object.keys(byTeam).length) {
+      _espnNflRosterCache = { byTeam, ts: Date.now() };
+    }
+    return byTeam;
+  }
 
   async function getLiveNflRosterTiers(): Promise<Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>> {
     if (_nflDepthChartCache && (Date.now() - _nflDepthChartCache.ts) < NFL_DEPTH_CHART_TTL) {
       return _nflDepthChartCache.byTeam;
     }
     try {
-      const resp = await fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(15000) });
+      const [resp, espnRosters] = await Promise.all([
+        fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(15000) }),
+        getEspnActiveNflRosters(),
+      ]);
       if (!resp.ok) throw new Error(`Sleeper ${resp.status}`);
       const allPlayers: Record<string, any> = await resp.json();
 
@@ -16540,7 +16590,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }> = {};
       for (const [team, pos] of Object.entries(byTeamPos)) {
-        const qbs = rankByDepth(pos.QB), rbs = rankByDepth(pos.RB), wrs = rankByDepth(pos.WR), tes = rankByDepth(pos.TE);
+        const espnActive = espnRosters[team];
+        const crossVerified = (list: any[]) => {
+          const ranked = rankByDepth(list);
+          if (!espnActive?.size) return ranked;
+          const confirmed = ranked.filter(p => espnActive.has(normalizeNflPlayerName(p.full_name ?? "")));
+          return confirmed.length ? confirmed : ranked;
+        };
+        const qbs = crossVerified(pos.QB), rbs = crossVerified(pos.RB), wrs = crossVerified(pos.WR), tes = crossVerified(pos.TE);
         if (!qbs[0] || !rbs[0] || !wrs[0] || !tes[0]) continue; // incomplete team — skip rather than guess
         byTeam[team] = {
           qb: qbs[0].full_name,
@@ -16550,6 +16607,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           te1: tes[0].full_name,
         };
       }
+      _nflRosterVerification = {
+        verifiedTeams: new Set(Object.keys(byTeam).filter(team => Boolean(espnRosters[team]?.size))),
+        checkedAt: new Date().toISOString(),
+      };
       _nflDepthChartCache = { byTeam, ts: Date.now() };
       return byTeam;
     } catch (err) {
@@ -21616,7 +21677,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Pull the current depth chart before building weekly projection analysis.
       // The static map is retained only as an outage fallback.
       const liveNflRosterTiers = await getLiveNflRosterTiers();
-      function getNflKeyPlayers(teamName: string): { qb: string; rb: string; wr1: string; wr2: string; te: string } | null {
+      function getNflKeyPlayers(teamName: string): {
+        qb: string; rb: string; wr1: string; wr2: string; te: string;
+        rosterSources: string[]; crossVerified: boolean; rosterCheckedAt: string;
+      } | null {
         // Try to match team name to roster tiers abbreviation
         const TEAM_NAME_TO_ABBR: Record<string, string> = {
           "Kansas City Chiefs": "KC", "Buffalo Bills": "BUF", "Baltimore Ravens": "BAL",
@@ -21637,7 +21701,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (!abbr) return null;
         const t = liveNflRosterTiers[abbr] ?? NFL_ROSTER_TIERS[abbr];
         if (!t) return null;
-        return { qb: t.qb, rb: t.rb1, wr1: t.wr1, wr2: t.wr2 ?? "", te: t.te1 };
+        return {
+          qb: t.qb, rb: t.rb1, wr1: t.wr1, wr2: t.wr2 ?? "", te: t.te1,
+          rosterSources: ["Sleeper", "ESPN"],
+          crossVerified: _nflRosterVerification.verifiedTeams.has(abbr),
+          rosterCheckedAt: _nflRosterVerification.checkedAt,
+        };
       }
 
       // Helper to get defensive matchup rank for a team (look up by team display name)

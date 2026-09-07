@@ -2104,7 +2104,14 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
                 {/* Key offensive players */}
                 {pickKeyPlayers && (
                   <div style={{ borderTop: "1px solid rgba(212,168,67,0.20)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Key Players</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>Key Players</div>
+                      <span style={{ fontSize: 7, fontWeight: 800, color: pickKeyPlayers.crossVerified ? "#15803d" : "#92400e",
+                        background: pickKeyPlayers.crossVerified ? "rgba(22,163,74,0.09)" : "rgba(212,168,67,0.12)",
+                        borderRadius: 8, padding: "2px 6px", whiteSpace: "nowrap" }}>
+                        {pickKeyPlayers.crossVerified ? "✓ Sleeper + ESPN verified" : "Sleeper roster · ESPN pending"}
+                      </span>
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
                       {pickKeyPlayers.qb  && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>QB</b> {pickKeyPlayers.qb}</span>}
                       {pickKeyPlayers.rb  && <span style={{ fontSize: 10, color: NAVY }}><b style={{ color: GOLD_COLOR }}>RB</b> {pickKeyPlayers.rb}</span>}
@@ -2133,7 +2140,14 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
                 </div>
                 {oppKeyPlayers && (
                   <div style={{ borderTop: "1px solid rgba(19,35,58,0.10)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Key Players</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>Key Players</div>
+                      <span style={{ fontSize: 7, fontWeight: 800, color: oppKeyPlayers.crossVerified ? "#15803d" : "#92400e",
+                        background: oppKeyPlayers.crossVerified ? "rgba(22,163,74,0.09)" : "rgba(212,168,67,0.12)",
+                        borderRadius: 8, padding: "2px 6px", whiteSpace: "nowrap" }}>
+                        {oppKeyPlayers.crossVerified ? "✓ Sleeper + ESPN verified" : "Sleeper roster · ESPN pending"}
+                      </span>
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
                       {oppKeyPlayers.qb  && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>QB</b> {oppKeyPlayers.qb}</span>}
                       {oppKeyPlayers.rb  && <span style={{ fontSize: 10, color: MUTED }}><b style={{ color: NAVY }}>RB</b> {oppKeyPlayers.rb}</span>}
