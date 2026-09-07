@@ -2606,6 +2606,7 @@ function NflPickCard({ pick, label, isRunnerUp = false, isOwner = false, sport =
 }
 
 function NflTeamProjectionsPanel() {
+  const [showProjectionHistory, setShowProjectionHistory] = useState(false);
   const { data, isLoading, error } = useQuery<any>({
     queryKey: ["/api/nfl/pick-of-week"],
     staleTime: 60 * 60 * 1000,
@@ -2613,6 +2614,19 @@ function NflTeamProjectionsPanel() {
   const games: any[] = data?.games?.length
     ? data.games
     : [data?.primary, data?.runnerUp].filter(Boolean);
+  const projectionHistory = Object.values(data?.history ?? {})
+    .sort((a: any, b: any) => String(b.week ?? "").localeCompare(String(a.week ?? "")));
+  const historicalPicks = projectionHistory.flatMap((entry: any) =>
+    ([
+      entry.primary ? { ...entry.primary, week: entry.week, slot: "#1 Pick" } : null,
+      entry.runnerUp ? { ...entry.runnerUp, week: entry.week, slot: "#2 Pick" } : null,
+    ]).filter(Boolean)
+  ) as any[];
+  const correctPicks = historicalPicks.filter(p => p.result === "win").length;
+  const wrongPicks = historicalPicks.filter(p => p.result === "loss").length;
+  const pendingPicks = historicalPicks.filter(p => !p.result || p.result === "pending").length;
+  const gradedPicks = correctPicks + wrongPicks;
+  const projectionAccuracy = gradedPicks > 0 ? Math.round((correctPicks / gradedPicks) * 100) : null;
 
   return (
     <div style={{ marginTop: 20, marginBottom: 18 }}>
@@ -2643,6 +2657,82 @@ function NflTeamProjectionsPanel() {
             Main-market lines only · {games[0]?.analysis?.market?.source ?? "professional sportsbook"} · Updated hourly
           </div>
         )}
+
+        <div style={{ marginTop: 14, borderTop: "1px solid rgba(19,35,58,0.10)", paddingTop: 12 }}>
+          <button
+            onClick={() => setShowProjectionHistory(v => !v)}
+            style={{
+              width: "100%", border: "none", background: "transparent", padding: 0, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "space-between", color: NAVY,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 900 }}>
+              <BarChart2 size={14} style={{ color: GOLD_COLOR }} />
+              Projection History
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, color: MUTED }}>
+              {gradedPicks > 0 ? `${correctPicks} correct · ${wrongPicks} wrong` : "No graded picks yet"}
+              {showProjectionHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+          </button>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 10 }}>
+            {[
+              { label: "Correct", value: correctPicks, color: "#15803d", bg: "rgba(22,163,74,0.08)" },
+              { label: "Wrong", value: wrongPicks, color: "#b91c1c", bg: "rgba(220,38,38,0.07)" },
+              { label: "Accuracy", value: projectionAccuracy === null ? "—" : `${projectionAccuracy}%`, color: NAVY, bg: "rgba(19,35,58,0.06)" },
+              { label: "Pending", value: pendingPicks, color: "#92400e", bg: "rgba(212,168,67,0.10)" },
+            ].map(stat => (
+              <div key={stat.label} style={{ borderRadius: 9, padding: "8px 5px", textAlign: "center", background: stat.bg }}>
+                <div style={{ fontSize: 15, lineHeight: 1, fontWeight: 900, color: stat.color }}>{stat.value}</div>
+                <div style={{ fontSize: 8, marginTop: 4, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: MUTED }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {showProjectionHistory && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+              {historicalPicks.length === 0 && (
+                <div style={{ padding: "12px 8px", textAlign: "center", fontSize: 11, color: MUTED }}>
+                  Weekly results will appear here after projections are saved.
+                </div>
+              )}
+              {historicalPicks.map((pick, index) => {
+                const isWin = pick.result === "win";
+                const isLoss = pick.result === "loss";
+                return (
+                  <div
+                    key={`${pick.week}-${pick.slot}-${index}`}
+                    style={{
+                      display: "grid", gridTemplateColumns: "70px minmax(0, 1fr) auto", alignItems: "center", gap: 8,
+                      border: "1px solid rgba(19,35,58,0.08)", borderRadius: 9, padding: "8px 9px",
+                      background: isWin ? "rgba(22,163,74,0.035)" : isLoss ? "rgba(220,38,38,0.03)" : "#fff",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 900, color: NAVY }}>{pick.week}</div>
+                      <div style={{ fontSize: 8, color: MUTED, marginTop: 2 }}>{pick.slot}</div>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: NAVY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {pick.pickTeam}
+                      </div>
+                      <div style={{ fontSize: 8, color: MUTED, marginTop: 2 }}>vs. {pick.oppTeam}</div>
+                    </div>
+                    <span style={{
+                      minWidth: 55, textAlign: "center", borderRadius: 12, padding: "4px 7px",
+                      fontSize: 9, fontWeight: 900, textTransform: "uppercase",
+                      color: isWin ? "#15803d" : isLoss ? "#b91c1c" : "#92400e",
+                      background: isWin ? "rgba(22,163,74,0.10)" : isLoss ? "rgba(220,38,38,0.09)" : "rgba(212,168,67,0.12)",
+                    }}>
+                      {isWin ? "Correct" : isLoss ? "Wrong" : "Pending"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
