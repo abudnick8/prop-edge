@@ -6128,9 +6128,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       try {
         // Step 1: Find athlete by name
-        const searchUrl = `https://site.api.espn.com/apis/search/v2?query=${encodeURIComponent(playerName)}&limit=5&type=athlete&sport=${sportCfg.slug}`;
-        const searchResp = await axiosLib.get(searchUrl, { timeout: 8000, headers: { "User-Agent": "Mozilla/5.0" } });
-        const hits = searchResp.data?.athletes ?? searchResp.data?.results ?? [];
+        // NOTE: site.web.api.espn.com, not site.api.espn.com — the latter's WAF
+        // 403s Railway's outbound IP. Use native fetch, not axios (also blocked).
+        const searchUrl = `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(playerName)}&limit=5&type=athlete&sport=${sportCfg.slug}`;
+        const searchFetchResp = await fetch(searchUrl, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
+        const searchData: any = searchFetchResp.ok ? await searchFetchResp.json() : {};
+        const hits = searchData?.athletes ?? searchData?.results ?? [];
         let athleteId: string | null = null;
         // Find best name match
         const nameLower = playerName.toLowerCase();
@@ -16538,22 +16541,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   async function buildNflPropsData(slate: string): Promise<PropRow[]> {
     // 1. Fetch games from ESPN scoreboard — includes REAL live DraftKings
     // spread/total/moneyline lines for scheduled games (no Odds API needed).
+    // NOTE: uses site.web.api.espn.com, NOT site.api.espn.com — the latter's
+    // Akamai WAF returns a 403 Access Denied for Railway's outbound IP range
+    // (confirmed via production debug logging), silently zeroing out every
+    // slate. site.web.api.espn.com serves an identical events/odds payload
+    // and is already used elsewhere in this file for gamelogs/search without issue.
     const scoreboardUrl = slate === "today"
-      ? "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-      : "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100";
+      ? "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
+      : "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100";
 
     let espnGames: any[] = [];
     try {
       const sbResp = await fetch(scoreboardUrl, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
-      console.log(`[NFL Props DEBUG] scoreboard fetch status=${sbResp.status} url=${scoreboardUrl}`);
       if (sbResp.ok) {
         const sbData: any = await sbResp.json();
         espnGames = sbData?.events ?? [];
-        console.log(`[NFL Props DEBUG] scoreboard events=${espnGames.length}`);
-      } else {
-        console.log(`[NFL Props DEBUG] scoreboard non-ok body=${(await sbResp.text()).slice(0,300)}`);
       }
-    } catch (e) { console.log(`[NFL Props DEBUG] scoreboard fetch EXCEPTION: ${(e as Error).message}`); }
+    } catch { /* use empty */ }
 
     // 2. Build game list directly from ESPN's own odds block (real DraftKings lines).
     const games: NflGame[] = [];
@@ -16639,7 +16643,6 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           fetchNflPlayerRecentGames(roster.wr2),
           fetchNflPlayerRecentGames(roster.te1),
         ]);
-        console.log(`[NFL Props DEBUG] ${teamAbbr}: qb=${roster.qb}(${qbGames.length}g) rb1=${roster.rb1}(${rb1Games.length}g) wr1=${roster.wr1}(${wr1Games.length}g) wr2=${roster.wr2}(${wr2Games.length}g) te1=${roster.te1}(${te1Games.length}g)`);
 
         // ── QB Pass Yards (real L5 passing yards) ────────────────────────────
         const qbYds = qbGames.map(g => g.passingYards).filter(v => v != null);
