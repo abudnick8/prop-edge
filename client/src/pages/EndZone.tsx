@@ -444,16 +444,18 @@ function StreakTracker({ data }: { data: StreakData | null | undefined }) {
   );
 }
 
-// ─── Off-Season Card ──────────────────────────────────────────────────────────
+// ─── No Games Scheduled Card ─────────────────────────────────────────────────
+// Shown only when the live data pipeline (ESPN scoreboard + Sleeper rosters +
+// ESPN gamelogs) returns zero real prop rows — e.g. between weeks, a bye-heavy
+// slate, or a transient fetch issue. Never shows placeholder/fabricated data.
 function OffSeasonCard() {
   return (
     <div style={{ background: NAVY, borderRadius: 16, padding: "32px 24px", textAlign: "center", margin: "24px 0" }}>
       <div style={{ fontSize: 48, marginBottom: 12 }}>🏈</div>
-      <p style={{ color: BG_COLOR, fontWeight: 900, fontSize: 18, marginBottom: 8 }}>2026 Pre-Season Mode</p>
+      <p style={{ color: BG_COLOR, fontWeight: 900, fontSize: 18, marginBottom: 8 }}>No Live Props Right Now</p>
       <p style={{ color: "rgba(246,241,231,0.65)", fontSize: 13, maxWidth: 340, margin: "0 auto 16px" }}>
-        The 2026 NFL regular season hasn't kicked off yet. Player prop projections will auto-populate once Week 1 games are scheduled. All Radar, Fantasy Tools, and Betting Edge panels are running on 2026 outlook data.
+        We couldn't pull real scheduled games or player stats for this slate yet. This updates automatically as soon as ESPN posts the next set of games — no placeholder data is ever shown here.
       </p>
-      <p style={{ color: GOLD_COLOR, fontSize: 12, fontWeight: 700 }}>2026 Season kicks off September 2026 🗓</p>
     </div>
   );
 }
@@ -3190,11 +3192,11 @@ export default function EndZone() {
         {/* ════ TAB 3: Radar ════ */}
         {activeTab === "radar" && (
           <div style={{ marginTop: 20 }}>
-            {/* Pre-season notice banner */}
+            {/* Live data notice banner */}
             <div style={{ background: "rgba(212,168,67,0.10)", border: "1px solid rgba(212,168,67,0.30)", borderRadius: 10, padding: "8px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 14 }}>🏈</span>
               <span style={{ fontSize: 12, color: "#92680a", fontWeight: 600 }}>
-                <b>2026 Pre-Season Outlook</b> — All panels show forward-looking analysis for the upcoming NFL season. Team assignments update live via Sleeper roster data. Betting Edge panels activate once Week 1 lines are posted.
+                <b>Live Fantasy Analysis</b> — Panels below use real, currently-rostered players. Team assignments update live via Sleeper roster data. Betting Edge panels activate once real game lines are posted for that matchup.
               </span>
             </div>
             {/* Sub-panel selector */}

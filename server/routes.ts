@@ -16409,8 +16409,129 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     NE:  { qb: "Drake Maye",        rb1: "Rhamondre Stevenson",wr1: "Kendrick Bourne", wr2: "JuJu Smith-Schuster",te1:"Hunter Henry"},
   };
 
+  // ── Live NFL roster resolver (Sleeper depth charts) ─────────────────────────
+  // Replaces the old hardcoded NFL_ROSTER_TIERS map, which went stale after
+  // trades/roster moves (e.g. missed Kenneth Walker III → KC, Kirk Cousins → LV,
+  // Ashton Jeanty → LV RB1). Sleeper's player DB reflects real current team +
+  // depth_chart_order, so each request gets the ACTUAL current top players.
+  let _nflDepthChartCache: { byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>; ts: number } | null = null;
+  const NFL_DEPTH_CHART_TTL = 60 * 60 * 1000; // 1 hour
+
+  async function getLiveNflRosterTiers(): Promise<Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>> {
+    if (_nflDepthChartCache && (Date.now() - _nflDepthChartCache.ts) < NFL_DEPTH_CHART_TTL) {
+      return _nflDepthChartCache.byTeam;
+    }
+    try {
+      const resp = await fetch("https://api.sleeper.app/v1/players/nfl", { signal: AbortSignal.timeout(15000) });
+      if (!resp.ok) throw new Error(`Sleeper ${resp.status}`);
+      const allPlayers: Record<string, any> = await resp.json();
+
+      const byTeamPos: Record<string, Record<string, any[]>> = {};
+      for (const p of Object.values(allPlayers)) {
+        const team = (p as any).team;
+        const pos = (p as any).position;
+        if (!team || !["QB", "RB", "WR", "TE"].includes(pos)) continue;
+        if ((p as any).status !== "Active") continue;
+        byTeamPos[team] ??= { QB: [], RB: [], WR: [], TE: [] };
+        byTeamPos[team][pos].push(p);
+      }
+      const rankByDepth = (list: any[]) =>
+        [...list].sort((a, b) => (a.depth_chart_order ?? 99) - (b.depth_chart_order ?? 99));
+
+      const byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }> = {};
+      for (const [team, pos] of Object.entries(byTeamPos)) {
+        const qbs = rankByDepth(pos.QB), rbs = rankByDepth(pos.RB), wrs = rankByDepth(pos.WR), tes = rankByDepth(pos.TE);
+        if (!qbs[0] || !rbs[0] || !wrs[0] || !tes[0]) continue; // incomplete team — skip rather than guess
+        byTeam[team] = {
+          qb: qbs[0].full_name,
+          rb1: rbs[0].full_name,
+          wr1: wrs[0].full_name,
+          wr2: wrs[1]?.full_name ?? wrs[0].full_name,
+          te1: tes[0].full_name,
+        };
+      }
+      _nflDepthChartCache = { byTeam, ts: Date.now() };
+      return byTeam;
+    } catch (err) {
+      console.warn(`[NFL Props] Sleeper roster fetch failed, falling back to static roster: ${(err as Error).message}`);
+      // Fall back to the static map only if the live fetch fails outright —
+      // this keeps the endpoint from going empty during a Sleeper outage.
+      return NFL_ROSTER_TIERS;
+    }
+  }
+
+  // ── Real per-player NFL gamelog cache (2025 season = most recent completed
+  // season; used for L5 recent-game stats until 2026 games are actually played) ──
+  const _nflPlayerLogCache: Map<string, { games: Array<Record<string, number>>; ts: number }> = new Map();
+  const NFL_PLAYER_LOG_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+  /** Fetch a player's last-5 real games (receiving/rushing/passing stats) from ESPN. */
+  async function fetchNflPlayerRecentGames(playerName: string): Promise<Array<Record<string, number>>> {
+    const cached = _nflPlayerLogCache.get(playerName);
+    if (cached && (Date.now() - cached.ts) < NFL_PLAYER_LOG_TTL) return cached.games;
+
+    try {
+      const espnId = await resolveESPNId(playerName, "NFL");
+      if (!espnId) return [];
+
+      // 2026 season has no games played yet — use 2025 (last completed season)
+      // for real recent-game stats. Once 2026 games exist this will naturally
+      // pick them up (see season-preference loop below).
+      const currentYear = new Date().getFullYear();
+      const candidateSeasons = [currentYear, currentYear - 1];
+      let names: string[] = [];
+      let allGames: Array<{ date: string; stats: Record<string, number> }> = [];
+
+      for (const season of candidateSeasons) {
+        try {
+          const url = `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${espnId}/gamelog?season=${season}`;
+          const resp = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
+          if (!resp.ok) continue;
+          const data: any = await resp.json();
+          const seasonNames: string[] = data.names ?? [];
+          if (seasonNames.length) names = seasonNames;
+          const eventsMap: Record<string, any> = data.events ?? {};
+          for (const stype of (data.seasonTypes ?? [])) {
+            for (const cat of (stype.categories ?? [])) {
+              for (const ev of (cat.events ?? [])) {
+                const eid = String(ev.eventId ?? "");
+                const evInfo = eventsMap[eid] ?? {};
+                const statVals: any[] = ev.stats ?? [];
+                const statObj: Record<string, number> = {};
+                seasonNames.forEach((n, i) => {
+                  const v = parseFloat(statVals[i]);
+                  if (!isNaN(v)) statObj[n] = v;
+                });
+                allGames.push({ date: evInfo.gameDate ?? "", stats: statObj });
+              }
+            }
+          }
+          if (allGames.length > 0) break; // found a season with real games — stop
+        } catch { /* try next season */ }
+      }
+
+      allGames.sort((a, b) => (b.date || "").localeCompare(a.date || "")); // newest first
+      const last5 = allGames.slice(0, 5).map(g => g.stats);
+      _nflPlayerLogCache.set(playerName, { games: last5, ts: Date.now() });
+      return last5;
+    } catch {
+      return [];
+    }
+  }
+
+  function avg(nums: number[]): number {
+    if (!nums.length) return 0;
+    return nums.reduce((a, b) => a + b, 0) / nums.length;
+  }
+  function stdev(nums: number[], mean: number): number {
+    if (nums.length < 2) return Math.max(mean * 0.28, 1);
+    const variance = nums.reduce((s, n) => s + (n - mean) ** 2, 0) / (nums.length - 1);
+    return Math.sqrt(variance) || Math.max(mean * 0.28, 1);
+  }
+
   async function buildNflPropsData(slate: string): Promise<PropRow[]> {
-    // 1. Fetch games from ESPN scoreboard
+    // 1. Fetch games from ESPN scoreboard — includes REAL live DraftKings
+    // spread/total/moneyline lines for scheduled games (no Odds API needed).
     const scoreboardUrl = slate === "today"
       ? "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
       : "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100";
@@ -16424,42 +16545,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     } catch { /* use empty */ }
 
-    // 2. Fetch odds from Odds API
-    const oddsKey = process.env.ODDS_API_KEY ?? "";
-    let oddsMap: Record<string, { spread: number; total: number }> = {};
-    if (oddsKey) {
-      try {
-        const oddsUrl = `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?regions=us&markets=h2h,spreads,totals&apiKey=${oddsKey}`;
-        const oddsResp = await fetch(oddsUrl, { signal: AbortSignal.timeout(8000) });
-        if (oddsResp.ok) {
-          const oddsData: any[] = await oddsResp.json();
-          for (const game of oddsData) {
-            const homeTeam = game.home_team ?? "";
-            const awayTeam = game.away_team ?? "";
-            let spread = 0;
-            let total = 44;
-            // Parse from bookmakers
-            for (const bk of game.bookmakers ?? []) {
-              for (const mkt of bk.markets ?? []) {
-                if (mkt.key === "spreads") {
-                  const homeOutcome = (mkt.outcomes ?? []).find((o: any) => o.name === homeTeam);
-                  if (homeOutcome?.point !== undefined) spread = homeOutcome.point;
-                }
-                if (mkt.key === "totals") {
-                  const overOutcome = (mkt.outcomes ?? []).find((o: any) => o.name === "Over");
-                  if (overOutcome?.point !== undefined) total = overOutcome.point;
-                }
-              }
-              break; // first bookmaker is enough
-            }
-            const key = `${homeTeam}|${awayTeam}`.toLowerCase();
-            oddsMap[key] = { spread, total };
-          }
-        }
-      } catch { /* odds unavailable */ }
-    }
-
-    // 3. Build game list
+    // 2. Build game list directly from ESPN's own odds block (real DraftKings lines).
     const games: NflGame[] = [];
 
     if (espnGames.length > 0) {
@@ -16474,25 +16560,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const homeTeam = homeComp.team?.abbreviation ?? homeComp.team?.name ?? "UNK";
           const awayTeam = awayComp.team?.abbreviation ?? awayComp.team?.name ?? "UNK";
 
-          // Try ESPN lines first
           let spread = 0;
           let total = 44;
-          const situation = comp.situation ?? {};
-          const lines: any[] = comp.odds ?? comp.lines ?? [];
-          for (const line of lines) {
-            if (line.spread !== undefined) spread = parseFloat(line.spread) || 0;
-            if (line.overUnder !== undefined) total = parseFloat(line.overUnder) || 44;
-            break;
+          const oddsBlock = (comp.odds ?? [])[0];
+          if (oddsBlock) {
+            if (typeof oddsBlock.spread === "number") {
+              // ESPN's `spread` is relative to the home team's favorite/underdog status
+              spread = oddsBlock.homeTeamOdds?.favorite ? -Math.abs(oddsBlock.spread) : Math.abs(oddsBlock.spread);
+            }
+            if (typeof oddsBlock.overUnder === "number") total = oddsBlock.overUnder;
           }
-
-          // Overlay with Odds API if available
-          const oddsKey2 = `${homeComp.team?.displayName ?? homeTeam}|${awayComp.team?.displayName ?? awayTeam}`.toLowerCase();
-          if (oddsMap[oddsKey2]) {
-            spread = oddsMap[oddsKey2].spread;
-            total  = oddsMap[oddsKey2].total;
-          }
-
-          // Fallback defaults
           if (!total || total < 30) total = 44;
 
           const gameTime = ev.date ?? comp.date ?? null;
@@ -16501,234 +16578,191 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
 
-    // Fallback: if no ESPN games found, create stub games for current week using roster tiers
-    if (games.length === 0 && slate !== "today") {
-      // Generate placeholder matchups from roster keys so we have something to project
-      const teams = Object.keys(NFL_ROSTER_TIERS);
-      for (let i = 0; i < teams.length; i += 2) {
-        if (i + 1 >= teams.length) break;
-        games.push({
-          gameId: `stub_${teams[i]}_${teams[i+1]}`,
-          homeTeam: teams[i],
-          awayTeam: teams[i+1],
-          spread: 0,
-          total: 44,
-          gameTime: null,
-          weather: null,
-        });
-      }
+    // 2b. Filter games by day-of-week for Sunday/MNF/TNF slates so each tab
+    // actually differs from the full "week" list. Times from ESPN are UTC;
+    // convert to US/Eastern (NFL's scheduling reference zone) before reading
+    // the day-of-week / hour so a Sunday night UTC-Monday game still counts
+    // as Sunday, etc.
+    const slateLower = (slate || "").toLowerCase();
+    if (slateLower === "sunday" || slateLower === "mnf" || slateLower === "tnf") {
+      const filtered = games.filter((g) => {
+        if (!g.gameTime) return false;
+        const d = new Date(g.gameTime);
+        if (isNaN(d.getTime())) return false;
+        const et = new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const day = et.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu
+        if (slateLower === "sunday") return day === 0;
+        if (slateLower === "mnf") return day === 1;
+        if (slateLower === "tnf") return day === 4;
+        return true;
+      });
+      games.length = 0;
+      games.push(...filtered);
     }
 
-    // 4. Generate prop rows for each game
+    // No fallback stub games — if ESPN has no scheduled games for this slate,
+    // we correctly return zero rows rather than fabricating matchups.
+    if (games.length === 0) return [];
+
+    // 3. Generate prop rows for each game using REAL per-player recent-game
+    // stats pulled live from ESPN gamelogs (2025 season — most recent completed
+    // season — used for L5 samples until 2026 games have been played), with
+    // LIVE current rosters from Sleeper (catches trades/depth-chart changes).
     const rows: PropRow[] = [];
+    const bookPct = 53.5; // standard -115 vig-implied probability, used as the book baseline
+    const liveRosters = await getLiveNflRosterTiers();
 
     for (const game of games) {
       for (const side of ["home", "away"] as const) {
         const teamAbbr = side === "home" ? game.homeTeam : game.awayTeam;
         const oppAbbr  = side === "home" ? game.awayTeam : game.homeTeam;
 
-        // Implied team score from total + spread
-        // home implied = total/2 - spread/2  (spread is from home perspective)
-        // away implied = total/2 + spread/2
-        const homeImplied = game.total / 2 - game.spread / 2;
-        const awayImplied = game.total / 2 + game.spread / 2;
-        const teamImpliedScore = side === "home" ? homeImplied : awayImplied;
-        const teamImpliedTDs   = teamImpliedScore / 6.5; // rough TDs per game
-
-        const roster = NFL_ROSTER_TIERS[teamAbbr];
+        const roster = liveRosters[teamAbbr] ?? NFL_ROSTER_TIERS[teamAbbr];
         if (!roster) continue;
 
-        // Book implied % at -115 standard (53.5%)
-        const bookPct = 53.5;
+        // Fetch real recent-game logs for this team's skill players in parallel.
+        const [qbGames, rb1Games, wr1Games, wr2Games, te1Games] = await Promise.all([
+          fetchNflPlayerRecentGames(roster.qb),
+          fetchNflPlayerRecentGames(roster.rb1),
+          fetchNflPlayerRecentGames(roster.wr1),
+          fetchNflPlayerRecentGames(roster.wr2),
+          fetchNflPlayerRecentGames(roster.te1),
+        ]);
 
-        // ── QB Pass Yards ──────────────────────────────────────────────────
-        const qbPassAtt = 36;
-        const qbYPA     = 7.2;
-        const qbPassMean = qbPassAtt * qbYPA; // ~259 yards
-        const qbPassLine = 239.5;
-        const qbPassSD   = qbPassMean * 0.22;
-        const qbPassModel = normalExceedProb(qbPassLine, qbPassMean, qbPassSD) * 100;
-        const qbPassEdge  = qbPassModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.qb, "Pass Yds O/U", qbPassLine, teamAbbr),
-          playerName: roster.qb, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Pass Yds O/U", line: qbPassLine,
-          bookPct, modelPct: Math.round(qbPassModel * 10) / 10,
-          edge: Math.round(qbPassEdge * 10) / 10,
-          confidence: qbPassEdge > 10 ? "Strong" : qbPassEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [248, 271, 234, 310, 255],
-          redZoneShare: null, targetShare: null, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.qb} averages ~${Math.round(qbPassMean)} pass yds/game vs ${qbPassLine} line`,
-        });
+        // ── QB Pass Yards (real L5 passing yards) ────────────────────────────
+        const qbYds = qbGames.map(g => g.passingYards).filter(v => v != null);
+        if (qbYds.length >= 2) {
+          const qbMean = avg(qbYds);
+          const qbSD   = stdev(qbYds, qbMean);
+          const qbLine = Math.round((qbMean - 5) * 2) / 2; // book line typically shades slightly under true mean
+          const qbModel = normalExceedProb(qbLine, qbMean, qbSD) * 100;
+          const qbEdge  = qbModel - bookPct;
+          rows.push({
+            id: makeEdgeId(roster.qb, "Pass Yds O/U", qbLine, teamAbbr),
+            playerName: roster.qb, team: teamAbbr, opponent: oppAbbr,
+            spread: game.spread, total: game.total,
+            market: "Pass Yds O/U", line: qbLine,
+            bookPct, modelPct: Math.round(qbModel * 10) / 10,
+            edge: Math.round(qbEdge * 10) / 10,
+            confidence: qbEdge > 10 ? "Strong" : qbEdge > 5 ? "Medium" : "Thin",
+            lastNGames: qbYds,
+            redZoneShare: null, targetShare: null, defRank: null,
+            weather: game.weather, gameTime: game.gameTime, homeAway: side,
+            notes: `${roster.qb} averaged ${Math.round(qbMean)} pass yds over last ${qbYds.length} real games (2025 season) vs ${qbLine} line`,
+          } as any);
+        }
 
-        // ── RB1 Rush Yards ─────────────────────────────────────────────────
-        const rb1Carries   = 20;
-        const rb1YPC       = teamImpliedScore > 20 ? 4.3 : 3.9;
-        const rb1RushMean  = rb1Carries * rb1YPC * 0.60; // 60% rush yard share
-        const rb1RushLine  = 74.5;
-        const rb1RushSD    = rb1RushMean * 0.25;
-        const rb1RushModel = normalExceedProb(rb1RushLine, rb1RushMean, rb1RushSD) * 100;
-        const rb1RushEdge  = rb1RushModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.rb1, "Rush Yds O/U", rb1RushLine, teamAbbr),
-          playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Rush Yds O/U", line: rb1RushLine,
-          bookPct, modelPct: Math.round(rb1RushModel * 10) / 10,
-          edge: Math.round(rb1RushEdge * 10) / 10,
-          confidence: rb1RushEdge > 10 ? "Strong" : rb1RushEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [68, 91, 55, 110, 72],
-          redZoneShare: 0.35, targetShare: null, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.rb1} projected ${Math.round(rb1RushMean)} rush yds (${rb1Carries} carries * ${rb1YPC} YPC * 60% share)`,
-        });
+        // ── RB1 Rush Yards (real L5 rushing yards) ───────────────────────────
+        const rb1Yds = rb1Games.map(g => g.rushingYards).filter(v => v != null);
+        if (rb1Yds.length >= 2) {
+          const rb1Mean = avg(rb1Yds);
+          const rb1SD   = stdev(rb1Yds, rb1Mean);
+          const rb1Line = Math.round((rb1Mean - 3) * 2) / 2;
+          const rb1Model = normalExceedProb(rb1Line, rb1Mean, rb1SD) * 100;
+          const rb1Edge  = rb1Model - bookPct;
+          const rb1TDs = rb1Games.map(g => g.rushingTouchdowns).filter(v => v != null);
+          rows.push({
+            id: makeEdgeId(roster.rb1, "Rush Yds O/U", rb1Line, teamAbbr),
+            playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
+            spread: game.spread, total: game.total,
+            market: "Rush Yds O/U", line: rb1Line,
+            bookPct, modelPct: Math.round(rb1Model * 10) / 10,
+            edge: Math.round(rb1Edge * 10) / 10,
+            confidence: rb1Edge > 10 ? "Strong" : rb1Edge > 5 ? "Medium" : "Thin",
+            lastNGames: rb1Yds,
+            redZoneShare: null, targetShare: null, defRank: null,
+            weather: game.weather, gameTime: game.gameTime, homeAway: side,
+            notes: `${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over last ${rb1Yds.length} real games (2025 season) vs ${rb1Line} line`,
+          } as any);
 
-        // ── RB1 Anytime TD ────────────────────────────────────────────────
-        const rb1RZShare = 0.35;
-        const rb1TDLambda = teamImpliedTDs * rb1RZShare;
-        const rb1TDModel  = poissonProb(rb1TDLambda, 1) * 100;
-        const rb1TDEdge   = rb1TDModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
-          playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Anytime TD", line: 0.5,
-          bookPct, modelPct: Math.round(rb1TDModel * 10) / 10,
-          edge: Math.round(rb1TDEdge * 10) / 10,
-          confidence: rb1TDEdge > 10 ? "Strong" : rb1TDEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [1, 0, 1, 0, 1],
-          redZoneShare: rb1RZShare, targetShare: null, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `Lambda=${rb1TDLambda.toFixed(2)} (${teamImpliedTDs.toFixed(2)} team TDs * ${(rb1RZShare*100).toFixed(0)}% RZ share)`,
-        });
+          // ── RB1 Anytime TD (real L5 TD rate via Poisson) ───────────────────
+          if (rb1TDs.length >= 2) {
+            const rb1TDLambda = avg(rb1TDs);
+            const rb1TDModel  = poissonProb(rb1TDLambda, 1) * 100;
+            const rb1TDEdge   = rb1TDModel - bookPct;
+            rows.push({
+              id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
+              playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
+              spread: game.spread, total: game.total,
+              market: "Anytime TD", line: 0.5,
+              bookPct, modelPct: Math.round(rb1TDModel * 10) / 10,
+              edge: Math.round(rb1TDEdge * 10) / 10,
+              confidence: rb1TDEdge > 10 ? "Strong" : rb1TDEdge > 5 ? "Medium" : "Thin",
+              lastNGames: rb1TDs,
+              redZoneShare: null, targetShare: null, defRank: null,
+              weather: game.weather, gameTime: game.gameTime, homeAway: side,
+              notes: `${roster.rb1}: ${rb1TDLambda.toFixed(2)} rushing TDs/game over last ${rb1TDs.length} real games (2025 season)`,
+            } as any);
+          }
+        }
 
-        // ── WR1 Receiving Yards ────────────────────────────────────────────
-        const wr1Targets  = 9;
-        const wr1CatchPct = 0.68;
-        const wr1YPR      = 13.5;
-        const wr1RecMean  = wr1Targets * wr1CatchPct * wr1YPR; // ~82 rec yards
-        const wr1RecLine  = 69.5;
-        const wr1RecSD    = wr1RecMean * 0.28;
-        const wr1RecModel = normalExceedProb(wr1RecLine, wr1RecMean, wr1RecSD) * 100;
-        const wr1RecEdge  = wr1RecModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.wr1, "Rec Yds O/U", wr1RecLine, teamAbbr),
-          playerName: roster.wr1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Rec Yds O/U", line: wr1RecLine,
-          bookPct, modelPct: Math.round(wr1RecModel * 10) / 10,
-          edge: Math.round(wr1RecEdge * 10) / 10,
-          confidence: wr1RecEdge > 10 ? "Strong" : wr1RecEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [72, 95, 51, 88, 64],
-          redZoneShare: 0.25, targetShare: 0.27, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.wr1}: ${wr1Targets} tgt * ${(wr1CatchPct*100).toFixed(0)}% catch * ${wr1YPR} YPR = ${Math.round(wr1RecMean)} yds`,
-        });
+        // ── WR1 / WR2 / TE1 Receiving Yards + Receptions (real L5 data) ─────
+        const buildReceivingRows = (playerName: string, games: Array<Record<string, number>>, tag: string) => {
+          const recYds = games.map(g => g.receivingYards).filter(v => v != null);
+          const recs   = games.map(g => g.receptions).filter(v => v != null);
+          const tds    = games.map(g => g.receivingTouchdowns).filter(v => v != null);
+          if (recYds.length >= 2) {
+            const mean = avg(recYds);
+            const sd   = stdev(recYds, mean);
+            const line = Math.round((mean - 3) * 2) / 2;
+            const model = normalExceedProb(line, mean, sd) * 100;
+            const edge  = model - bookPct;
+            rows.push({
+              id: makeEdgeId(playerName, "Rec Yds O/U", line, teamAbbr),
+              playerName, team: teamAbbr, opponent: oppAbbr,
+              spread: game.spread, total: game.total,
+              market: "Rec Yds O/U", line,
+              bookPct, modelPct: Math.round(model * 10) / 10,
+              edge: Math.round(edge * 10) / 10,
+              confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+              lastNGames: recYds,
+              redZoneShare: null, targetShare: null, defRank: null,
+              weather: game.weather, gameTime: game.gameTime, homeAway: side,
+              notes: `${playerName} (${tag}) averaged ${Math.round(mean)} rec yds over last ${recYds.length} real games (2025 season) vs ${line} line`,
+            } as any);
+          }
+          if (recs.length >= 2) {
+            const meanR = avg(recs);
+            const lineR = Math.max(1.5, Math.round((meanR - 1) * 2) / 2);
+            const modelR = poissonProb(meanR, Math.ceil(lineR)) * 100;
+            const edgeR  = modelR - bookPct;
+            rows.push({
+              id: makeEdgeId(playerName, "Receptions O/U", lineR, teamAbbr),
+              playerName, team: teamAbbr, opponent: oppAbbr,
+              spread: game.spread, total: game.total,
+              market: "Receptions O/U", line: lineR,
+              bookPct, modelPct: Math.round(modelR * 10) / 10,
+              edge: Math.round(edgeR * 10) / 10,
+              confidence: edgeR > 10 ? "Strong" : edgeR > 5 ? "Medium" : "Thin",
+              lastNGames: recs,
+              redZoneShare: null, targetShare: null, defRank: null,
+              weather: game.weather, gameTime: game.gameTime, homeAway: side,
+              notes: `${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over last ${recs.length} real games (2025 season) vs ${lineR} line`,
+            } as any);
+          }
+          if (tds.length >= 2) {
+            const lambda = avg(tds);
+            const model = poissonProb(lambda, 1) * 100;
+            const edge  = model - bookPct;
+            rows.push({
+              id: makeEdgeId(playerName, "Anytime TD", 0.5, teamAbbr),
+              playerName, team: teamAbbr, opponent: oppAbbr,
+              spread: game.spread, total: game.total,
+              market: "Anytime TD", line: 0.5,
+              bookPct, modelPct: Math.round(model * 10) / 10,
+              edge: Math.round(edge * 10) / 10,
+              confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+              lastNGames: tds,
+              redZoneShare: null, targetShare: null, defRank: null,
+              weather: game.weather, gameTime: game.gameTime, homeAway: side,
+              notes: `${playerName} (${tag}): ${lambda.toFixed(2)} receiving TDs/game over last ${tds.length} real games (2025 season)`,
+            } as any);
+          }
+        };
 
-        // ── WR1 Anytime TD ────────────────────────────────────────────────
-        const wr1TDShare  = 0.25;
-        const wr1TDLambda = teamImpliedTDs * wr1TDShare;
-        const wr1TDModel  = poissonProb(wr1TDLambda, 1) * 100;
-        const wr1TDEdge   = wr1TDModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.wr1, "Anytime TD", 0.5, teamAbbr),
-          playerName: roster.wr1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Anytime TD", line: 0.5,
-          bookPct, modelPct: Math.round(wr1TDModel * 10) / 10,
-          edge: Math.round(wr1TDEdge * 10) / 10,
-          confidence: wr1TDEdge > 10 ? "Strong" : wr1TDEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [0, 1, 0, 1, 0],
-          redZoneShare: wr1TDShare, targetShare: 0.27, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `Lambda=${wr1TDLambda.toFixed(2)} (${teamImpliedTDs.toFixed(2)} team TDs * ${(wr1TDShare*100).toFixed(0)}% WR1 RZ share)`,
-        });
-
-        // ── WR2 Receiving Yards ────────────────────────────────────────────
-        const wr2Targets  = 6;
-        const wr2CatchPct = 0.65;
-        const wr2YPR      = 12.0;
-        const wr2RecMean  = wr2Targets * wr2CatchPct * wr2YPR; // ~47 rec yards
-        const wr2RecLine  = 44.5;
-        const wr2RecSD    = wr2RecMean * 0.30;
-        const wr2RecModel = normalExceedProb(wr2RecLine, wr2RecMean, wr2RecSD) * 100;
-        const wr2RecEdge  = wr2RecModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.wr2, "Rec Yds O/U", wr2RecLine, teamAbbr),
-          playerName: roster.wr2, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Rec Yds O/U", line: wr2RecLine,
-          bookPct, modelPct: Math.round(wr2RecModel * 10) / 10,
-          edge: Math.round(wr2RecEdge * 10) / 10,
-          confidence: wr2RecEdge > 10 ? "Strong" : wr2RecEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [38, 52, 29, 71, 44],
-          redZoneShare: 0.20, targetShare: 0.18, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.wr2}: ${wr2Targets} tgt * ${(wr2CatchPct*100).toFixed(0)}% catch * ${wr2YPR} YPR = ${Math.round(wr2RecMean)} yds`,
-        });
-
-        // ── TE1 Receiving Yards ────────────────────────────────────────────
-        const te1Targets  = 6;
-        const te1CatchPct = 0.72;
-        const te1YPR      = 10.5;
-        const te1RecMean  = te1Targets * te1CatchPct * te1YPR; // ~45 rec yards
-        const te1RecLine  = 44.5;
-        const te1RecSD    = te1RecMean * 0.28;
-        const te1RecModel = normalExceedProb(te1RecLine, te1RecMean, te1RecSD) * 100;
-        const te1RecEdge  = te1RecModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.te1, "Rec Yds O/U", te1RecLine, teamAbbr),
-          playerName: roster.te1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Rec Yds O/U", line: te1RecLine,
-          bookPct, modelPct: Math.round(te1RecModel * 10) / 10,
-          edge: Math.round(te1RecEdge * 10) / 10,
-          confidence: te1RecEdge > 10 ? "Strong" : te1RecEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [41, 58, 33, 67, 39],
-          redZoneShare: 0.15, targetShare: 0.16, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.te1}: ${te1Targets} tgt * ${(te1CatchPct*100).toFixed(0)}% catch * ${te1YPR} YPR = ${Math.round(te1RecMean)} yds`,
-        });
-
-        // ── TE1 Anytime TD ────────────────────────────────────────────────
-        const te1TDShare  = 0.15;
-        const te1TDLambda = teamImpliedTDs * te1TDShare;
-        const te1TDModel  = poissonProb(te1TDLambda, 1) * 100;
-        const te1TDEdge   = te1TDModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.te1, "Anytime TD", 0.5, teamAbbr),
-          playerName: roster.te1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Anytime TD", line: 0.5,
-          bookPct, modelPct: Math.round(te1TDModel * 10) / 10,
-          edge: Math.round(te1TDEdge * 10) / 10,
-          confidence: te1TDEdge > 10 ? "Strong" : te1TDEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [0, 1, 0, 0, 1],
-          redZoneShare: te1TDShare, targetShare: 0.16, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `Lambda=${te1TDLambda.toFixed(2)} (${teamImpliedTDs.toFixed(2)} team TDs * ${(te1TDShare*100).toFixed(0)}% TE RZ share)`,
-        });
-
-        // ── WR1 Receptions O/U ─────────────────────────────────────────────
-        const wr1RecLambda = wr1Targets * wr1CatchPct; // expected receptions
-        const wr1RecpLine  = 5.5;
-        const wr1RecpModel = poissonProb(wr1RecLambda, Math.ceil(wr1RecpLine)) * 100;
-        const wr1RecpEdge  = wr1RecpModel - bookPct;
-        rows.push({
-          id: makeEdgeId(roster.wr1, "Receptions O/U", wr1RecpLine, teamAbbr),
-          playerName: roster.wr1, team: teamAbbr, opponent: oppAbbr,
-          spread: game.spread, total: game.total,
-          market: "Receptions O/U", line: wr1RecpLine,
-          bookPct, modelPct: Math.round(wr1RecpModel * 10) / 10,
-          edge: Math.round(wr1RecpEdge * 10) / 10,
-          confidence: wr1RecpEdge > 10 ? "Strong" : wr1RecpEdge > 5 ? "Medium" : "Thin",
-          lastNGames: [6, 8, 5, 7, 6],
-          redZoneShare: 0.25, targetShare: 0.27, defRank: null,
-          weather: game.weather, gameTime: game.gameTime, homeAway: side,
-          notes: `${roster.wr1}: ${wr1Targets} targets * ${(wr1CatchPct*100).toFixed(0)}% catch rate = ${wr1RecLambda.toFixed(1)} exp. receptions`,
-        });
+        buildReceivingRows(roster.wr1, wr1Games, "WR1");
+        buildReceivingRows(roster.wr2, wr2Games, "WR2");
+        buildReceivingRows(roster.te1, te1Games, "TE1");
       }
     }
 
@@ -16776,7 +16810,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // Sort by edge descending
       rows = rows.sort((a, b) => b.edge - a.edge);
 
-      res.json({ props: rows, count: rows.length, cachedAt: new Date(nflPropsCache[cacheKey].ts).toISOString() });
+      // Client (EndZone.tsx) reads `rows`; keep `props` alongside for any other
+      // consumer that may still expect the old key.
+      const clientRows = rows.map(r => ({ ...r, player: r.playerName }));
+      res.json({ rows: clientRows, props: rows, count: rows.length, cachedAt: new Date(nflPropsCache[cacheKey].ts).toISOString() });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/props error:", e.message);
       res.status(500).json({ error: e.message });
