@@ -16516,7 +16516,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // depth_chart_order, so each request gets the ACTUAL current top players.
   let _nflDepthChartCache: { byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>; ts: number } | null = null;
   const NFL_DEPTH_CHART_TTL = 60 * 60 * 1000; // 1 hour
-  let _espnNflRosterCache: { byTeam: Record<string, Set<string>>; ts: number } | null = null;
+  type EspnNflDepth = {
+    active: Set<string>;
+    depth: Record<"QB" | "RB" | "WR" | "TE", string[]>;
+  };
+  let _espnNflRosterCache: { byTeam: Record<string, EspnNflDepth>; ts: number } | null = null;
   const ESPN_NFL_ROSTER_TTL = 6 * 60 * 60 * 1000;
   let _nflRosterVerification: { verifiedTeams: Set<string>; checkedAt: string } = {
     verifiedTeams: new Set(),
@@ -16538,25 +16542,36 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
    * on that team's active offense. Results are cached because this checks all
    * 32 clubs.
    */
-  async function getEspnActiveNflRosters(): Promise<Record<string, Set<string>>> {
+  async function getEspnActiveNflRosters(): Promise<Record<string, EspnNflDepth>> {
     if (_espnNflRosterCache && (Date.now() - _espnNflRosterCache.ts) < ESPN_NFL_ROSTER_TTL) {
       return _espnNflRosterCache.byTeam;
     }
-    const byTeam: Record<string, Set<string>> = {};
+    const byTeam: Record<string, EspnNflDepth> = {};
     await Promise.allSettled(NFL_TEAM_ABBRS.map(async team => {
       const slug = ESPN_TEAM_SLUG[team] ?? team.toLowerCase();
       const r = await fetch(
-        `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/teams/${slug}/roster`,
+        `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/teams/${slug}/depthcharts`,
         { signal: AbortSignal.timeout(12000) }
       );
       if (!r.ok) throw new Error(`ESPN ${team} ${r.status}`);
       const d: any = await r.json();
-      const offense = (d?.athletes ?? []).find((group: any) => group.position === "offense");
-      const activeNames = (offense?.items ?? [])
-        .filter((p: any) => p?.status?.type !== "practice-squad" && p?.status?.type !== "injured-reserve")
-        .map((p: any) => normalizeNflPlayerName(p.fullName ?? p.displayName ?? ""))
-        .filter(Boolean);
-      if (activeNames.length) byTeam[team] = new Set(activeNames);
+      const offense = (d?.depthchart ?? []).find((chart: any) =>
+        Object.keys(chart?.positions ?? {}).some(k => ["qb","rb","wr1","wr2","te"].includes(k))
+      );
+      const positions = offense?.positions ?? {};
+      const namesAt = (keys: string[]) => keys.flatMap(key =>
+        (positions[key]?.athletes ?? [])
+          .map((p: any) => normalizeNflPlayerName(p.displayName ?? p.fullName ?? ""))
+          .filter(Boolean)
+      );
+      const depth = {
+        QB: namesAt(["qb"]),
+        RB: namesAt(["rb"]),
+        WR: namesAt(["wr1", "wr2", "wr3"]),
+        TE: namesAt(["te"]),
+      };
+      const active = new Set([...depth.QB, ...depth.RB, ...depth.WR, ...depth.TE]);
+      if (active.size) byTeam[team] = { active, depth };
     }));
     if (Object.keys(byTeam).length) {
       _espnNflRosterCache = { byTeam, ts: Date.now() };
@@ -16590,14 +16605,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const byTeam: Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }> = {};
       for (const [team, pos] of Object.entries(byTeamPos)) {
-        const espnActive = espnRosters[team];
-        const crossVerified = (list: any[]) => {
+        const espnTeam = espnRosters[team];
+        const crossVerified = (list: any[], position: "QB" | "RB" | "WR" | "TE") => {
           const ranked = rankByDepth(list);
-          if (!espnActive?.size) return ranked;
-          const confirmed = ranked.filter(p => espnActive.has(normalizeNflPlayerName(p.full_name ?? "")));
+          if (!espnTeam?.active?.size) return ranked;
+          const byName = new Map(ranked.map(p => [normalizeNflPlayerName(p.full_name ?? ""), p]));
+          const espnOrdered = espnTeam.depth[position].map(name => byName.get(name)).filter(Boolean);
+          const remainingConfirmed = ranked.filter(p =>
+            espnTeam.active.has(normalizeNflPlayerName(p.full_name ?? "")) &&
+            !espnOrdered.includes(p)
+          );
+          const confirmed = [...espnOrdered, ...remainingConfirmed];
           return confirmed.length ? confirmed : ranked;
         };
-        const qbs = crossVerified(pos.QB), rbs = crossVerified(pos.RB), wrs = crossVerified(pos.WR), tes = crossVerified(pos.TE);
+        const qbs = crossVerified(pos.QB, "QB"), rbs = crossVerified(pos.RB, "RB");
+        const wrs = crossVerified(pos.WR, "WR"), tes = crossVerified(pos.TE, "TE");
         if (!qbs[0] || !rbs[0] || !wrs[0] || !tes[0]) continue; // incomplete team — skip rather than guess
         byTeam[team] = {
           qb: qbs[0].full_name,
@@ -16608,7 +16630,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         };
       }
       _nflRosterVerification = {
-        verifiedTeams: new Set(Object.keys(byTeam).filter(team => Boolean(espnRosters[team]?.size))),
+        verifiedTeams: new Set(Object.keys(byTeam).filter(team => Boolean(espnRosters[team]?.active?.size))),
         checkedAt: new Date().toISOString(),
       };
       _nflDepthChartCache = { byTeam, ts: Date.now() };
