@@ -13066,7 +13066,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     for (const entry of sorted) {
       for (const pick of entry.picks) {
         if (pick.score == null || !Number.isFinite(Number(pick.score)) || Number(pick.score) <= 0) {
-          const cached = (btsPicksCache[entry.date] ?? []).find(e => e.playerId === pick.playerId);
+          const cached = (btsPicksCache[entry.date] ?? []).find(e => String(e.playerId) === String(pick.playerId));
           const repaired = cached ? computeEntryProb(cached) : 0;
           if (repaired > 0) pick.score = repaired;
         }
