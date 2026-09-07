@@ -13049,6 +13049,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const sig   = 1 / (1 + Math.exp(-logit));
       return Math.round((0.45 + sig * 0.37) * 100);
     }
+    // If the live composite is incomplete, derive a transparent fallback from
+    // the player's Steamer AVG and expected plate appearances rather than
+    // persisting a null. P(at least one hit) = 1 - (1 - AVG)^PA.
+    const steamerAvg = Number(snap.steamerProjection?.projAVG);
+    const expectedPA = Number(snap.expectedPA ?? 4.2);
+    if (Number.isFinite(steamerAvg) && steamerAvg > 0 && steamerAvg < 1) {
+      return Math.round((1 - Math.pow(1 - steamerAvg, expectedPA)) * 100);
+    }
     // Fallback: use stored value
     const stored = snap.hitProbabilityPct ?? snap.hitProbability ?? e.hitProbability ?? null;
     if (stored == null) return 0;
