@@ -16544,12 +16544,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
     let espnGames: any[] = [];
     try {
-      const sbResp = await fetch(scoreboardUrl, { signal: AbortSignal.timeout(8000) });
+      const sbResp = await fetch(scoreboardUrl, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
+      console.log(`[NFL Props DEBUG] scoreboard fetch status=${sbResp.status} url=${scoreboardUrl}`);
       if (sbResp.ok) {
         const sbData: any = await sbResp.json();
         espnGames = sbData?.events ?? [];
+        console.log(`[NFL Props DEBUG] scoreboard events=${espnGames.length}`);
+      } else {
+        console.log(`[NFL Props DEBUG] scoreboard non-ok body=${(await sbResp.text()).slice(0,300)}`);
       }
-    } catch { /* use empty */ }
+    } catch (e) { console.log(`[NFL Props DEBUG] scoreboard fetch EXCEPTION: ${(e as Error).message}`); }
 
     // 2. Build game list directly from ESPN's own odds block (real DraftKings lines).
     const games: NflGame[] = [];
