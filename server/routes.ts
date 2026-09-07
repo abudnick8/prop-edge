@@ -9627,6 +9627,43 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // Live MLB current-team resolver — guards against showing a player's
+  // OLD team after an in-season trade (e.g. Luis García Jr. traded from
+  // the Nationals to the Yankees mid-2026). Keyed by MLB playerId (not
+  // name, since multiple active players can share a name) and cached for
+  // 6 hours so we don't hammer the MLB Stats API on every pick render.
+  // ─────────────────────────────────────────────────────────────────────
+  const _mlbCurrentTeamCache = new Map<number, { name: string; ts: number }>();
+  const MLB_TEAM_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+  async function resolveMlbCurrentTeam(playerId: number, fallbackTeam: string): Promise<string> {
+    if (!playerId) return fallbackTeam;
+    const cached = _mlbCurrentTeamCache.get(playerId);
+    if (cached && (Date.now() - cached.ts) < MLB_TEAM_CACHE_TTL) return cached.name;
+    try {
+      const r = await fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=currentTeam`);
+      const d: any = await r.json();
+      const teamName: string | null = d?.people?.[0]?.currentTeam?.name ?? null;
+      if (teamName) {
+        _mlbCurrentTeamCache.set(playerId, { name: teamName, ts: Date.now() });
+        return teamName;
+      }
+    } catch { /* non-fatal — fall back to whatever team we already had */ }
+    return fallbackTeam;
+  }
+  /** Bulk-resolve current teams for an array of BTS-style pick entries (mutates a shallow copy). */
+  async function resolveMlbTeamsForPicks<T extends { playerId: number; team?: string; snapshot?: any }>(entries: T[]): Promise<T[]> {
+    return Promise.all(entries.map(async (e) => {
+      const liveTeam = await resolveMlbCurrentTeam(e.playerId, e.team ?? "");
+      if (liveTeam === e.team) return e;
+      return {
+        ...e,
+        team: liveTeam,
+        snapshot: e.snapshot ? { ...e.snapshot, team: liveTeam } : e.snapshot,
+      };
+    }));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /api/bts-picks  — Beat‑the‑Streak daily hitter recommendations
   // ─────────────────────────────────────────────────────────────────────
   app.get("/api/bts-picks", async (req, res) => {
@@ -12290,6 +12327,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         ? Math.round((btsSeasonRecord.wins / seasonTotal) * 100)
         : null;
 
+      // ── Official Double Down: a single, strictly-gated BONUS pick ──────────
+      // Unlike the always-shown "doubleDowns" alternates list below (which is
+      // just informational next-best options), this is a real second Pick of
+      // the Day. It only fires when a non-#1 candidate independently clears a
+      // high bar on its OWN analysis — confidence tier A, a probability well
+      // above the normal floor, and (when a Ballpark Pal matchup sim exists
+      // for that player) a Favorable-or-better grade — so it should NOT
+      // appear every day, only when the analytics genuinely align.
+      const DOUBLE_DOWN_MIN_PROB = 78;
+      const bestPickForDD = finalPicks[0] ?? null;
+      const ddQualifies = (c: any) =>
+        c.confidenceTier === "A" &&
+        (c.hitProbability ?? 0) >= DOUBLE_DOWN_MIN_PROB &&
+        (c.subScores?.bppComponent == null || c.subScores.bppComponent >= 0.62) &&
+        !c.isScratched;
+      const ddCandidates = finalPicks.slice(1).filter(ddQualifies);
+      // Prefer a qualifier from an independent game (true double-down/parlay value);
+      // fall back to the best qualifier even if it shares the top pick's game.
+      let doubleDownPick: any =
+        ddCandidates.find((c: any) => c.game?.gamePk && c.game?.gamePk !== bestPickForDD?.game?.gamePk)
+        ?? ddCandidates[0]
+        ?? null;
+      let doubleDownReason: string | null = null;
+      if (doubleDownPick) {
+        const bpp = doubleDownPick.subScores?.bppComponent;
+        const bppLabel = bpp == null ? null : (bpp >= 0.75 ? "Strongly Favorable" : "Favorable");
+        const parts = [
+          `${doubleDownPick.hitProbability}% hit probability (A-tier)`,
+          bppLabel ? `${bppLabel} Ballpark Pal matchup sim` : null,
+          doubleDownPick.game?.gamePk && doubleDownPick.game.gamePk !== bestPickForDD?.game?.gamePk ? "independent game from the main pick" : null,
+        ].filter(Boolean);
+        doubleDownReason = `Double Down unlocked: ${parts.join(" · ")}.`;
+      }
+
+      // ── Live team safeguard: correct any stale team labels from in-season
+      // trades before sending picks to the client (see resolveMlbTeamsForPicks). ──
+      const picksForClient   = await resolveMlbTeamsForPicks(finalPicks);
+      const bestPickForClient = picksForClient[0] ?? null;
+      const doubleDownForClient = doubleDownPick
+        ? (picksForClient.find((p: any) => p.playerId === doubleDownPick.playerId) ?? doubleDownPick)
+        : null;
+
       res.json({
         date:          targetDate,
         generatedAt:   new Date().toISOString(),
@@ -12299,10 +12378,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         projectedCount,
         scratchedCount,
         slate:        slateGames,
-        picks:        finalPicks,
-        bestPick:     finalPicks[0] ?? null,
-        doubleDowns:  finalPicks.slice(1, 4),
-        mbPicks:      finalPicks.filter((p: any) => p._mbExtraSlot),
+        picks:        picksForClient,
+        bestPick:     bestPickForClient,
+        doubleDowns:  picksForClient.slice(1, 4),
+        doubleDownPick:   doubleDownForClient,
+        doubleDownReason,
+        mbPicks:      picksForClient.filter((p: any) => p._mbExtraSlot),
         dataLimited:  games.filter((g: any) => !g.teams?.home?.probablePitcher || !g.teams?.away?.probablePitcher).length,
         // Grading / record data
         todayRecord:  { wins: todayWins, losses: todayLosses, pending: todayPending, winPct: todayWinPct },

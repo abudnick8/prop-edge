@@ -175,11 +175,11 @@ function Chip({ label, value, highlight }: { label: string; value: string; highl
 }
 
 // ─── Pick card ───────────────────────────────────────────────────────────────
-function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; isOwner?: boolean; onRemove?: (playerId: number, name: string) => void }) {
+function PickCard({ pick, rank, isOwner, onRemove, isDoubleDown = false, reason }: { pick: any; rank: number; isOwner?: boolean; onRemove?: (playerId: number, name: string) => void; isDoubleDown?: boolean; reason?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const isBest = rank === 1;
+  const isBest = rank === 1 && !isDoubleDown;
   // Owner can scratch a player any time the result is still pending (even after lock time)
   // This is specifically for handling non-starters, injuries, lineup scratches
   const canRemove = isOwner && (!pick.result || pick.result === "pending");
@@ -188,9 +188,9 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
     <div
       className="rounded-2xl border overflow-hidden transition-all"
       style={{
-        background: pick.result === "win" ? "rgba(34,197,94,0.04)" : pick.result === "loss" ? "rgba(248,113,113,0.04)" : isBest ? "rgba(250,204,21,0.06)" : "#fff",
-        borderColor: pick.result === "win" ? "rgba(34,197,94,0.30)" : pick.result === "loss" ? "rgba(248,113,113,0.22)" : isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
-        boxShadow: isBest ? "0 0 20px rgba(250,204,21,0.15)" : "0 1px 4px rgba(19,35,58,0.06)",
+        background: pick.result === "win" ? "rgba(34,197,94,0.04)" : pick.result === "loss" ? "rgba(248,113,113,0.04)" : isDoubleDown ? "rgba(96,165,250,0.06)" : isBest ? "rgba(250,204,21,0.06)" : "#fff",
+        borderColor: pick.result === "win" ? "rgba(34,197,94,0.30)" : pick.result === "loss" ? "rgba(248,113,113,0.22)" : isDoubleDown ? "rgba(96,165,250,0.40)" : isBest ? "rgba(250,204,21,0.45)" : "rgba(19,35,58,0.10)",
+        boxShadow: isDoubleDown ? "0 0 20px rgba(96,165,250,0.15)" : isBest ? "0 0 20px rgba(250,204,21,0.15)" : "0 1px 4px rgba(19,35,58,0.06)",
       }}
     >
       {/* Header */}
@@ -199,17 +199,22 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
         <div
           className="rounded-full w-7 h-7 flex items-center justify-center text-[11px] font-black flex-shrink-0"
           style={{
-            background: isBest ? "#facc15" : rank <= 3 ? "rgba(250,204,21,0.15)" : "rgba(19,35,58,0.07)",
-            color: isBest ? "#1a1a1a" : rank <= 3 ? "#b8930a" : "var(--muted-foreground)",
+            background: isDoubleDown ? "#60a5fa" : isBest ? "#facc15" : rank <= 3 ? "rgba(250,204,21,0.15)" : "rgba(19,35,58,0.07)",
+            color: isDoubleDown ? "#fff" : isBest ? "#1a1a1a" : rank <= 3 ? "#b8930a" : "var(--muted-foreground)",
           }}
         >
-          #{rank}
+          {isDoubleDown ? "⚡" : `#${rank}`}
         </div>
 
         {/* Name + team */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-black text-sm text-foreground truncate">{pick.name}</p>
+            {isDoubleDown && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "#60a5fa", color: "#fff" }}>
+                ⚡ DOUBLE DOWN
+              </span>
+            )}
             {isBest && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "#facc15", color: "#1a1a1a" }}>
                 🏆 BEST PICK
@@ -270,6 +275,13 @@ function PickCard({ pick, rank, isOwner, onRemove }: { pick: any; rank: number; 
             <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold" style={{ color: "#22c55e" }}>
               <CheckCircle size={10} />
               ✅ Auto-swapped in — {pick.swappedFrom} was scratched from lineup
+            </div>
+          )}
+          {/* Double Down reason — why this bonus pick's analytics aligned today */}
+          {isDoubleDown && reason && (
+            <div className="flex items-start gap-1 mt-1 text-[10px] font-semibold" style={{ color: "#3b82f6" }}>
+              <Zap size={10} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>{reason}</span>
             </div>
           )}
           {/* Override badge — player failed normal gates but extreme metrics qualified */}
@@ -1241,6 +1253,12 @@ function SlateCard({ game }: { game: any }) {
 // ─── Main BTS page ───────────────────────────────────────────────────────────
 // ─── How to Read Panel ──────────────────────────────────────────────────
 const BTS_GLOSSARY = [
+  {
+    term: "Double Down",
+    label: "Bonus Second Pick",
+    emoji: "⚡",
+    def: "An optional second Pick of the Day, shown ONLY when a non-#1 candidate independently clears a high bar on its own analytics: A-tier confidence, hit probability ≥ 78%, and (when available) a Favorable-or-better Ballpark Pal matchup sim. This is deliberately rare — it will not appear every day, only when a second player's analysis genuinely aligns.",
+  },
   {
     term: "Hit Prob %",
     label: "Hit Probability",
@@ -4782,6 +4800,8 @@ export default function BTS() {
   const picks: any[] = data?.picks ?? [];
   const bestPick = data?.bestPick;
   const doubleDowns: any[] = data?.doubleDowns ?? [];
+  const doubleDownPick: any = data?.doubleDownPick ?? null;
+  const doubleDownReason: string | null = data?.doubleDownReason ?? null;
   const mbPicks: any[] = data?.mbPicks ?? [];
   const todayRecord = data?.todayRecord ?? { wins: 0, losses: 0, pending: 0, winPct: null };
   const seasonRecord = data?.seasonRecord ?? { wins: 0, losses: 0, winPct: null };
@@ -5399,6 +5419,27 @@ export default function BTS() {
               {showAllPicks ? "Show top 5 only" : `Show all slots (${picks.length} picks + ${10 - picks.length} empty)`}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Official Double Down pick — a second, strictly-gated Pick of the Day.
+          Only appears when a non-#1 candidate independently clears a high bar
+          on its own analytics (A-tier confidence + high probability + a
+          Favorable-or-better Ballpark Pal sim when available). Not shown daily
+          on purpose — it's a bonus, not a guarantee. */}
+      {!isLoading && doubleDownPick && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Zap size={15} style={{ color: "#60a5fa" }} />
+            <p className="text-sm font-black text-foreground">Double Down Pick</p>
+            <span
+              className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+              style={{ background: "rgba(96,165,250,0.15)", color: "#3b82f6" }}
+            >
+              BONUS
+            </span>
+          </div>
+          <PickCard pick={doubleDownPick} rank={1} isDoubleDown reason={doubleDownReason} />
         </div>
       )}
 
