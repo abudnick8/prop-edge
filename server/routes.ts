@@ -16534,7 +16534,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   ];
   const ESPN_TEAM_SLUG: Record<string, string> = { WAS: "wsh" };
   const normalizeNflPlayerName = (name: string) =>
-    name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    name.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/(jr|sr|ii|iii|iv)$/, "");
 
   /**
    * ESPN is the independent roster-membership source. Sleeper still supplies
