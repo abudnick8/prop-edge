@@ -1257,7 +1257,7 @@ const BTS_GLOSSARY = [
     term: "Double Down",
     label: "Bonus Second Pick",
     emoji: "⚡",
-    def: "An optional second Pick of the Day, shown ONLY when a non-#1 candidate independently clears a high bar on its own analytics: A-tier confidence, hit probability ≥ 78%, and (when available) a Favorable-or-better Ballpark Pal matchup sim. This is deliberately rare — it will not appear every day, only when a second player's analysis genuinely aligns.",
+    def: "An optional second Pick of the Day, shown ONLY when a non-#1 candidate independently clears a high bar on its own analytics: hit probability ≥ 80% and (when available) a Favorable-or-better Ballpark Pal matchup sim, with A-tier confidence counted as an extra bonus signal when a sportsbook edge is available. This is deliberately rare — it will not appear every day, only when a second player's analysis genuinely aligns.",
   },
   {
     term: "Hit Prob %",

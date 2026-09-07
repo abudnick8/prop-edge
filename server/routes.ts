@@ -12335,10 +12335,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // above the normal floor, and (when a Ballpark Pal matchup sim exists
       // for that player) a Favorable-or-better grade — so it should NOT
       // appear every day, only when the analytics genuinely align.
-      const DOUBLE_DOWN_MIN_PROB = 78;
+      // NOTE: confidenceTier "A" requires a live sportsbook edge (edge >= +6%),
+      // which needs a working Odds API key. While that key is dead, no pick can
+      // ever reach tier A on edge alone — so we gate primarily on the model's
+      // own hit-probability + Ballpark Pal grade (both always live/available),
+      // and treat tier "A" as a bonus signal rather than a hard requirement so
+      // Double Down can still fire correctly once odds data is restored too.
+      const DOUBLE_DOWN_MIN_PROB = 80;
       const bestPickForDD = finalPicks[0] ?? null;
       const ddQualifies = (c: any) =>
-        c.confidenceTier === "A" &&
         (c.hitProbability ?? 0) >= DOUBLE_DOWN_MIN_PROB &&
         (c.subScores?.bppComponent == null || c.subScores.bppComponent >= 0.62) &&
         !c.isScratched;
@@ -12354,7 +12359,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const bpp = doubleDownPick.subScores?.bppComponent;
         const bppLabel = bpp == null ? null : (bpp >= 0.75 ? "Strongly Favorable" : "Favorable");
         const parts = [
-          `${doubleDownPick.hitProbability}% hit probability (A-tier)`,
+          `${doubleDownPick.hitProbability}% hit probability`,
+          doubleDownPick.confidenceTier === "A" ? "A-tier confidence" : null,
           bppLabel ? `${bppLabel} Ballpark Pal matchup sim` : null,
           doubleDownPick.game?.gamePk && doubleDownPick.game.gamePk !== bestPickForDD?.game?.gamePk ? "independent game from the main pick" : null,
         ].filter(Boolean);
