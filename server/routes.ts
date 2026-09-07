@@ -21319,7 +21319,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const LOCK_BEFORE_MS = 15 * 60 * 1000; // 15 min before earliest game
 
       // ── WEEKLY LOCK: once this week's picks are saved to history, serve them frozen ──
-      if (nflWeeklyPicksHistory[weekLabel] && nflWeeklyPicksHistory[weekLabel].games?.length) {
+      if (
+        nflWeeklyPicksHistory[weekLabel]?.games?.length &&
+        nflWeeklyPicksHistory[weekLabel].rosterVersion === 2
+      ) {
         const weekEntry = nflWeeklyPicksHistory[weekLabel];
         const frozenNfl = {
           week: weekLabel,
@@ -22021,7 +22024,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const nflResult = { week: weekLabel, primary: nflPrimary, runnerUp: nflRunnerUp, games: scoredNfl, gamesAnalyzed: scoredNfl.length, fetchedAt: new Date().toISOString(), liveData: nflGames.length > 0 };
 
-      if (nflPrimary && nflGames.length > 0 && !nflWeeklyPicksHistory[weekLabel]) {
+      if (
+        nflPrimary &&
+        nflGames.length > 0 &&
+        (!nflWeeklyPicksHistory[weekLabel] || nflWeeklyPicksHistory[weekLabel].rosterVersion !== 2)
+      ) {
         const nflPickSnap = (p: any) => p ? ({
           pickTeam: p.pickTeam, oppTeam: p.oppTeam, homeTeam: p.homeTeam, awayTeam: p.awayTeam,
           pickSide: p.pickSide, pickML: p.pickML, spread: p.spread, total: p.total,
@@ -22034,6 +22041,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         }) : null;
         nflWeeklyPicksHistory[weekLabel] = {
           week: weekLabel,
+          rosterVersion: 2,
           primary: nflPickSnap(nflPrimary),
           runnerUp: nflPickSnap(nflRunnerUp),
         };
