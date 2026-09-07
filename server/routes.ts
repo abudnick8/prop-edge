@@ -16632,8 +16632,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         const teamAbbr = side === "home" ? game.homeTeam : game.awayTeam;
         const oppAbbr  = side === "home" ? game.awayTeam : game.homeTeam;
 
-        const roster = liveRosters[teamAbbr] ?? NFL_ROSTER_TIERS[teamAbbr];
-        if (!roster) { console.log(`[NFL Props DEBUG] no roster for ${teamAbbr}`); continue; }
+        // ESPN and Sleeper disagree on a few team abbreviations (e.g. ESPN's
+        // "WSH" vs Sleeper's "WAS") — normalize before the roster lookup.
+        const ABBR_ALIAS: Record<string, string> = { WSH: "WAS", JAC: "JAX", LA: "LAR" };
+        const rosterKey = ABBR_ALIAS[teamAbbr] ?? teamAbbr;
+        const roster = liveRosters[rosterKey] ?? NFL_ROSTER_TIERS[rosterKey] ?? NFL_ROSTER_TIERS[teamAbbr];
+        if (!roster) continue;
 
         // Fetch real recent-game logs for this team's skill players in parallel.
         const [qbGames, rb1Games, wr1Games, wr2Games, te1Games] = await Promise.all([
