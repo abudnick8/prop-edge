@@ -16746,15 +16746,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         params: { levelsToInclude: "player" },
         headers: LINEMATE_HEADERS, timeout: 12000,
       });
-      const rows: any[] = resp.data?.markets ?? resp.data ?? [];
+      // Real shape: a flat array of market rows. Player name lives at
+      // row.player.fullName, market key at row.name, and each book's line +
+      // odds live at row.books.draftkings.over/under.current.{value, odds.american}.
+      const rows: any[] = Array.isArray(resp.data) ? resp.data : (resp.data?.markets ?? resp.data?.data ?? []);
       for (const row of Array.isArray(rows) ? rows : []) {
-        const dk = row?.bookLines?.draftkings;
-        if (!dk || typeof dk.line !== "number" || !row.playerName || !row.marketName) continue;
-        byKey[dkPropKey(row.playerName, row.marketName)] = {
-          line: dk.line,
-          overOdds: typeof dk.overOdds === "number" ? dk.overOdds : null,
-          underOdds: typeof dk.underOdds === "number" ? dk.underOdds : null,
-        };
+        const playerName: string | undefined = row?.player?.fullName;
+        const marketName: string | undefined = row?.name;
+        const dk = row?.books?.draftkings;
+        if (!playerName || !marketName || !dk) continue;
+        const overVal = dk.over?.current?.value;
+        const underVal = dk.under?.current?.value;
+        const line = typeof overVal === "number" ? overVal : (typeof underVal === "number" ? underVal : null);
+        if (line == null) continue;
+        const overOdds = typeof dk.over?.current?.odds?.american === "number" ? dk.over.current.odds.american : null;
+        const underOdds = typeof dk.under?.current?.odds?.american === "number" ? dk.under.current.odds.american : null;
+        byKey[dkPropKey(playerName, marketName)] = { line, overOdds, underOdds };
       }
       if (Object.keys(byKey).length) {
         _nflDkPropCache = { byKey, ts: Date.now() };
