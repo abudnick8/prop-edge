@@ -12295,15 +12295,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           return true;
         })
         // Cache order reflects when a player was added, not current quality.
-        // Always present the highest Moneyball grade/score first; probability
-        // breaks ties and missing grades sort to the bottom.
+        // Rank strictly by hit probability (highest chance to get a hit first) —
+        // this is the number displayed on the card, so the displayed order must
+        // match it. mbScore is a separate composite grade shown on its own badge
+        // and must NOT override probability ordering (previously it did, which
+        // pushed lower-probability Moneyball-slot picks above higher-probability
+        // main picks). Missing probabilities sort to the bottom.
         .sort((a: any, b: any) => {
-          const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
-          const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
-          if (bGrade !== aGrade) return bGrade - aGrade;
           const aProb = Number.isFinite(Number(a.hitProbability)) ? Number(a.hitProbability) : -1;
           const bProb = Number.isFinite(Number(b.hitProbability)) ? Number(b.hitProbability) : -1;
-          return bProb - aProb;
+          if (bProb !== aProb) return bProb - aProb;
+          const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
+          const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
+          return bGrade - aGrade;
         });
 
       const confirmedCount = finalPicks.filter(p => p.lineupSource === "confirmed").length;
@@ -16466,6 +16470,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     gameTime: string | null;
     homeAway: "home" | "away";
     notes: string;
+    onDraftKings: boolean;
   }
 
   // Hardcoded player roster tiers — SEED ONLY. At runtime all team assignments
@@ -16712,6 +16717,80 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return Math.sqrt(variance) || Math.max(mean * 0.28, 1);
   }
 
+  // ── DraftKings player-prop line lookup (via Linemate's aggregated book feed) ──
+  // Linemate already carries `bookLines.draftkings.{line, overOdds, underOdds}`
+  // per player/market — this is the ACTUAL DraftKings-posted number, unlike the
+  // self-generated `mean - shading` estimate used as a last-resort fallback below.
+  let _nflDkPropCache: { byKey: Record<string, { line: number; overOdds: number | null; underOdds: number | null }>; ts: number } | null = null;
+  const NFL_DK_PROP_TTL = 8 * 60 * 1000; // 8 minutes — matches Linemate's own cache cadence
+
+  const NFL_DK_MARKET_KEY: Record<string, string> = {
+    "Pass Yds O/U":      "PASSING_YARDS",
+    "Rush Yds O/U":      "RUSHING_YARDS",
+    "Rec Yds O/U":       "RECEIVING_YARDS",
+    "Receptions O/U":    "RECEPTIONS",
+    "Anytime TD":        "ANYTIME_TOUCHDOWN",
+  };
+
+  function dkPropKey(playerName: string, market: string): string {
+    return `${normalizeNflPlayerName(playerName)}|${market}`;
+  }
+
+  async function getDraftKingsNflPropLines(): Promise<Record<string, { line: number; overOdds: number | null; underOdds: number | null }>> {
+    if (_nflDkPropCache && (Date.now() - _nflDkPropCache.ts) < NFL_DK_PROP_TTL) {
+      return _nflDkPropCache.byKey;
+    }
+    const byKey: Record<string, { line: number; overOdds: number | null; underOdds: number | null }> = {};
+    try {
+      const resp = await axios.get("https://api.linemate.io/api/nfl/v2/markets", {
+        params: { levelsToInclude: "player" },
+        headers: LINEMATE_HEADERS, timeout: 12000,
+      });
+      const rows: any[] = resp.data?.markets ?? resp.data ?? [];
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const dk = row?.bookLines?.draftkings;
+        if (!dk || typeof dk.line !== "number" || !row.playerName || !row.marketName) continue;
+        byKey[dkPropKey(row.playerName, row.marketName)] = {
+          line: dk.line,
+          overOdds: typeof dk.overOdds === "number" ? dk.overOdds : null,
+          underOdds: typeof dk.underOdds === "number" ? dk.underOdds : null,
+        };
+      }
+      if (Object.keys(byKey).length) {
+        _nflDkPropCache = { byKey, ts: Date.now() };
+      }
+    } catch (e: any) {
+      console.warn("[NFL Props] DraftKings/Linemate line fetch failed, using model-derived lines:", e.message);
+      return _nflDkPropCache?.byKey ?? {};
+    }
+    return byKey;
+  }
+
+  /**
+   * Prefer the real DraftKings-posted line + odds for this player/market.
+   * Falls back to the model's own mean-derived line only when DraftKings has
+   * not posted a number for this player yet (e.g. very early in the week).
+   */
+  function resolveDkLine(
+    dkLines: Record<string, { line: number; overOdds: number | null; underOdds: number | null }>,
+    playerName: string, marketLabel: string, fallbackLine: number, fallbackBookPct: number
+  ): { line: number; bookPct: number; onDraftKings: boolean } {
+    const marketKey = NFL_DK_MARKET_KEY[marketLabel];
+    const dk = marketKey ? dkLines[dkPropKey(playerName, marketKey)] : undefined;
+    if (!dk) return { line: fallbackLine, bookPct: fallbackBookPct, onDraftKings: false };
+    const overPct = dk.overOdds != null ? impliedProbFromML(dk.overOdds) * 100 : null;
+    const underPct = dk.underOdds != null ? impliedProbFromML(dk.underOdds) * 100 : null;
+    // De-vig when both sides are known; otherwise use the single known side.
+    let bookPct = fallbackBookPct;
+    if (overPct != null && underPct != null) {
+      const total = overPct + underPct;
+      bookPct = total > 0 ? (overPct / total) * 100 : fallbackBookPct;
+    } else if (overPct != null) {
+      bookPct = overPct;
+    }
+    return { line: dk.line, bookPct, onDraftKings: true };
+  }
+
   async function buildNflPropsData(slate: string): Promise<PropRow[]> {
     // 1. Fetch games from ESPN scoreboard — includes REAL live DraftKings
     // spread/total/moneyline lines for scheduled games (no Odds API needed).
@@ -16798,8 +16877,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     // season — used for L5 samples until 2026 games have been played), with
     // LIVE current rosters from Sleeper (catches trades/depth-chart changes).
     const rows: PropRow[] = [];
-    const bookPct = 53.5; // standard -115 vig-implied probability, used as the book baseline
-    const liveRosters = await getLiveNflRosterTiers();
+    const bookPct = 53.5; // standard -115 vig-implied probability, used ONLY when DraftKings has no posted line yet
+    const [liveRosters, dkLines] = await Promise.all([
+      getLiveNflRosterTiers(),
+      getDraftKingsNflPropLines(),
+    ]);
 
     for (const game of games) {
       for (const side of ["home", "away"] as const) {
@@ -16822,26 +16904,28 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           fetchNflPlayerRecentGames(roster.te1),
         ]);
 
-        // ── QB Pass Yards (real L5 passing yards) ────────────────────────────
+        // ── QB Pass Yards (real L5 passing yards, DraftKings line) ───────────
         const qbYds = qbGames.map(g => g.passingYards).filter(v => v != null);
         if (qbYds.length >= 2) {
           const qbMean = avg(qbYds);
           const qbSD   = stdev(qbYds, qbMean);
-          const qbLine = Math.round((qbMean - 5) * 2) / 2; // book line typically shades slightly under true mean
-          const qbModel = normalExceedProb(qbLine, qbMean, qbSD) * 100;
-          const qbEdge  = qbModel - bookPct;
+          const qbFallbackLine = Math.round((qbMean - 5) * 2) / 2; // used only if DK has no posted line
+          const qbDk = resolveDkLine(dkLines, roster.qb, "Pass Yds O/U", qbFallbackLine, bookPct);
+          const qbModel = normalExceedProb(qbDk.line, qbMean, qbSD) * 100;
+          const qbEdge  = qbModel - qbDk.bookPct;
           rows.push({
-            id: makeEdgeId(roster.qb, "Pass Yds O/U", qbLine, teamAbbr),
+            id: makeEdgeId(roster.qb, "Pass Yds O/U", qbDk.line, teamAbbr),
             playerName: roster.qb, team: teamAbbr, opponent: oppAbbr,
             spread: game.spread, total: game.total,
-            market: "Pass Yds O/U", line: qbLine,
-            bookPct, modelPct: Math.round(qbModel * 10) / 10,
+            market: "Pass Yds O/U", line: qbDk.line,
+            bookPct: Math.round(qbDk.bookPct * 10) / 10, modelPct: Math.round(qbModel * 10) / 10,
             edge: Math.round(qbEdge * 10) / 10,
             confidence: qbEdge > 10 ? "Strong" : qbEdge > 5 ? "Medium" : "Thin",
             lastNGames: qbYds,
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
-            notes: `${roster.qb} averaged ${Math.round(qbMean)} pass yds over last ${qbYds.length} real games (2025 season) vs ${qbLine} line`,
+            onDraftKings: qbDk.onDraftKings,
+            notes: `${roster.qb} averaged ${Math.round(qbMean)} pass yds over last ${qbYds.length} real games (2025 season) vs ${qbDk.line} ${qbDk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
           } as any);
         }
 
@@ -16850,41 +16934,45 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (rb1Yds.length >= 2) {
           const rb1Mean = avg(rb1Yds);
           const rb1SD   = stdev(rb1Yds, rb1Mean);
-          const rb1Line = Math.round((rb1Mean - 3) * 2) / 2;
-          const rb1Model = normalExceedProb(rb1Line, rb1Mean, rb1SD) * 100;
-          const rb1Edge  = rb1Model - bookPct;
+          const rb1FallbackLine = Math.round((rb1Mean - 3) * 2) / 2;
+          const rb1Dk = resolveDkLine(dkLines, roster.rb1, "Rush Yds O/U", rb1FallbackLine, bookPct);
+          const rb1Model = normalExceedProb(rb1Dk.line, rb1Mean, rb1SD) * 100;
+          const rb1Edge  = rb1Model - rb1Dk.bookPct;
           const rb1TDs = rb1Games.map(g => g.rushingTouchdowns).filter(v => v != null);
           rows.push({
-            id: makeEdgeId(roster.rb1, "Rush Yds O/U", rb1Line, teamAbbr),
+            id: makeEdgeId(roster.rb1, "Rush Yds O/U", rb1Dk.line, teamAbbr),
             playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
             spread: game.spread, total: game.total,
-            market: "Rush Yds O/U", line: rb1Line,
-            bookPct, modelPct: Math.round(rb1Model * 10) / 10,
+            market: "Rush Yds O/U", line: rb1Dk.line,
+            bookPct: Math.round(rb1Dk.bookPct * 10) / 10, modelPct: Math.round(rb1Model * 10) / 10,
             edge: Math.round(rb1Edge * 10) / 10,
             confidence: rb1Edge > 10 ? "Strong" : rb1Edge > 5 ? "Medium" : "Thin",
             lastNGames: rb1Yds,
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
-            notes: `${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over last ${rb1Yds.length} real games (2025 season) vs ${rb1Line} line`,
+            onDraftKings: rb1Dk.onDraftKings,
+            notes: `${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over last ${rb1Yds.length} real games (2025 season) vs ${rb1Dk.line} ${rb1Dk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
           } as any);
 
-          // ── RB1 Anytime TD (real L5 TD rate via Poisson) ───────────────────
+          // ── RB1 Anytime TD (real L5 TD rate via Poisson, DraftKings odds) ───
           if (rb1TDs.length >= 2) {
             const rb1TDLambda = avg(rb1TDs);
+            const rb1TDDk = resolveDkLine(dkLines, roster.rb1, "Anytime TD", 0.5, bookPct);
             const rb1TDModel  = poissonProb(rb1TDLambda, 1) * 100;
-            const rb1TDEdge   = rb1TDModel - bookPct;
+            const rb1TDEdge   = rb1TDModel - rb1TDDk.bookPct;
             rows.push({
               id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
               playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Anytime TD", line: 0.5,
-              bookPct, modelPct: Math.round(rb1TDModel * 10) / 10,
+              bookPct: Math.round(rb1TDDk.bookPct * 10) / 10, modelPct: Math.round(rb1TDModel * 10) / 10,
               edge: Math.round(rb1TDEdge * 10) / 10,
               confidence: rb1TDEdge > 10 ? "Strong" : rb1TDEdge > 5 ? "Medium" : "Thin",
               lastNGames: rb1TDs,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              notes: `${roster.rb1}: ${rb1TDLambda.toFixed(2)} rushing TDs/game over last ${rb1TDs.length} real games (2025 season)`,
+              onDraftKings: rb1TDDk.onDraftKings,
+              notes: `${roster.rb1}: ${rb1TDLambda.toFixed(2)} rushing TDs/game over last ${rb1TDs.length} real games (2025 season)${rb1TDDk.onDraftKings ? " · DraftKings odds priced in" : ""}`,
             } as any);
           }
         }
@@ -16897,58 +16985,64 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (recYds.length >= 2) {
             const mean = avg(recYds);
             const sd   = stdev(recYds, mean);
-            const line = Math.round((mean - 3) * 2) / 2;
-            const model = normalExceedProb(line, mean, sd) * 100;
-            const edge  = model - bookPct;
+            const fallbackLine = Math.round((mean - 3) * 2) / 2;
+            const dk = resolveDkLine(dkLines, playerName, "Rec Yds O/U", fallbackLine, bookPct);
+            const model = normalExceedProb(dk.line, mean, sd) * 100;
+            const edge  = model - dk.bookPct;
             rows.push({
-              id: makeEdgeId(playerName, "Rec Yds O/U", line, teamAbbr),
+              id: makeEdgeId(playerName, "Rec Yds O/U", dk.line, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
-              market: "Rec Yds O/U", line,
-              bookPct, modelPct: Math.round(model * 10) / 10,
+              market: "Rec Yds O/U", line: dk.line,
+              bookPct: Math.round(dk.bookPct * 10) / 10, modelPct: Math.round(model * 10) / 10,
               edge: Math.round(edge * 10) / 10,
               confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
               lastNGames: recYds,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              notes: `${playerName} (${tag}) averaged ${Math.round(mean)} rec yds over last ${recYds.length} real games (2025 season) vs ${line} line`,
+              onDraftKings: dk.onDraftKings,
+              notes: `${playerName} (${tag}) averaged ${Math.round(mean)} rec yds over last ${recYds.length} real games (2025 season) vs ${dk.line} ${dk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
             } as any);
           }
           if (recs.length >= 2) {
             const meanR = avg(recs);
-            const lineR = Math.max(1.5, Math.round((meanR - 1) * 2) / 2);
-            const modelR = poissonProb(meanR, Math.ceil(lineR)) * 100;
-            const edgeR  = modelR - bookPct;
+            const fallbackLineR = Math.max(1.5, Math.round((meanR - 1) * 2) / 2);
+            const dkR = resolveDkLine(dkLines, playerName, "Receptions O/U", fallbackLineR, bookPct);
+            const modelR = poissonProb(meanR, Math.ceil(dkR.line)) * 100;
+            const edgeR  = modelR - dkR.bookPct;
             rows.push({
-              id: makeEdgeId(playerName, "Receptions O/U", lineR, teamAbbr),
+              id: makeEdgeId(playerName, "Receptions O/U", dkR.line, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
-              market: "Receptions O/U", line: lineR,
-              bookPct, modelPct: Math.round(modelR * 10) / 10,
+              market: "Receptions O/U", line: dkR.line,
+              bookPct: Math.round(dkR.bookPct * 10) / 10, modelPct: Math.round(modelR * 10) / 10,
               edge: Math.round(edgeR * 10) / 10,
               confidence: edgeR > 10 ? "Strong" : edgeR > 5 ? "Medium" : "Thin",
               lastNGames: recs,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              notes: `${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over last ${recs.length} real games (2025 season) vs ${lineR} line`,
+              onDraftKings: dkR.onDraftKings,
+              notes: `${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over last ${recs.length} real games (2025 season) vs ${dkR.line} ${dkR.onDraftKings ? "DraftKings" : "model-estimated"} line`,
             } as any);
           }
           if (tds.length >= 2) {
             const lambda = avg(tds);
+            const dkTd = resolveDkLine(dkLines, playerName, "Anytime TD", 0.5, bookPct);
             const model = poissonProb(lambda, 1) * 100;
-            const edge  = model - bookPct;
+            const edge  = model - dkTd.bookPct;
             rows.push({
               id: makeEdgeId(playerName, "Anytime TD", 0.5, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Anytime TD", line: 0.5,
-              bookPct, modelPct: Math.round(model * 10) / 10,
+              bookPct: Math.round(dkTd.bookPct * 10) / 10, modelPct: Math.round(model * 10) / 10,
               edge: Math.round(edge * 10) / 10,
               confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
               lastNGames: tds,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              notes: `${playerName} (${tag}): ${lambda.toFixed(2)} receiving TDs/game over last ${tds.length} real games (2025 season)`,
+              onDraftKings: dkTd.onDraftKings,
+              notes: `${playerName} (${tag}): ${lambda.toFixed(2)} receiving TDs/game over last ${tds.length} real games (2025 season)${dkTd.onDraftKings ? " · DraftKings odds priced in" : ""}`,
             } as any);
           }
         };

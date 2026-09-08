@@ -4821,12 +4821,15 @@ export default function BTS() {
       };
     })
     .sort((a: any, b: any) => {
-      const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
-      const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
-      if (bGrade !== aGrade) return bGrade - aGrade;
+      // Rank by hit probability (highest % to get a hit first) — this must match
+      // what's shown on each card. mbScore is a separate composite grade and
+      // only breaks ties, never overrides probability order.
       const aProb = Number.isFinite(Number(a.hitProbability)) ? Number(a.hitProbability) : -1;
       const bProb = Number.isFinite(Number(b.hitProbability)) ? Number(b.hitProbability) : -1;
-      return bProb - aProb;
+      if (bProb !== aProb) return bProb - aProb;
+      const aGrade = Number.isFinite(Number(a.mbScore)) ? Number(a.mbScore) : -1;
+      const bGrade = Number.isFinite(Number(b.mbScore)) ? Number(b.mbScore) : -1;
+      return bGrade - aGrade;
     });
   const visiblePicks = showAllPicks ? picksWithLive : picksWithLive.slice(0, 5);
 
