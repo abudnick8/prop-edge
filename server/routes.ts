@@ -16497,6 +16497,58 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     };
   }
 
+  function selectNflTouchdownOver(
+    recentTds: number[],
+    overBookPct: number,
+    role: "RB1" | "WR1" | "WR2" | "TE1",
+    impliedTeamTotal: number
+  ): {
+    pickSide: "Over";
+    modelPct: number;
+    bookPct: number;
+    edge: number;
+    confidence: "Strong" | "Medium" | "Thin";
+    scoredGames: number;
+    contextPct: number;
+  } | null {
+    if (recentTds.length < 2) return null;
+
+    // Anytime TD is a scorer market, not a normal symmetric O/U market.
+    // Recent scoring supplies the ceiling while role and team scoring
+    // environment provide a conservative floor for a volatile small sample.
+    const scoredGames = recentTds.filter(td => td > 0).length;
+    // A TD Over needs repeated recent scoring evidence. Role alone cannot turn
+    // a cold streak into a recommendation.
+    if (scoredGames < 2) return null;
+    const cappedTdRate = avg(recentTds.map(td => Math.min(4, Math.max(0, td))));
+    const recentPct = poissonProb(cappedTdRate, 1) * 100;
+    const rolePrior: Record<typeof role, number> = {
+      RB1: 48,
+      WR1: 38,
+      WR2: 27,
+      TE1: 29,
+    };
+    const environmentAdjustment = Math.max(-8, Math.min(10, (impliedTeamTotal - 22) * 1.4));
+    const contextPct = Math.max(8, Math.min(75, rolePrior[role] + environmentAdjustment));
+
+    // Do not let a five-game zero streak create a near-certain Under. Use the
+    // stronger of the observed scorer signal and the role/environment baseline,
+    // then require the resulting Over to beat the sportsbook's no-vig price.
+    const modelPct = Math.max(recentPct, contextPct);
+    const edge = modelPct - overBookPct;
+    if (edge <= 0) return null;
+
+    return {
+      pickSide: "Over",
+      modelPct: Math.round(modelPct * 10) / 10,
+      bookPct: Math.round(overBookPct * 10) / 10,
+      edge: Math.round(edge * 10) / 10,
+      confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+      scoredGames,
+      contextPct: Math.round(contextPct * 10) / 10,
+    };
+  }
+
   // Hardcoded player roster tiers — SEED ONLY. At runtime all team assignments
   // are overridden by getSleeperRoster() + resolveTeam() for live accuracy.
   // Format: { team: abbr, players: [...] }
@@ -16943,6 +16995,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // live roster source cannot verify a team.
         const roster = liveRosters[rosterKey];
         if (!roster) continue;
+        const impliedTeamTotal = side === "home"
+          ? game.total / 2 - game.spread / 2
+          : game.total / 2 + game.spread / 2;
 
         // Fetch real recent-game logs for this team's skill players in parallel.
         const [qbGames, rb1Games, wr1Games, wr2Games, te1Games] = await Promise.all([
@@ -17005,21 +17060,22 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (rb1TDs.length >= 2) {
             const rb1TDLambda = avg(rb1TDs);
             const rb1TDDk = resolveDkLine(dkLines, roster.rb1, "Anytime TD", 0.5, bookPct, rosterKey);
-            const rb1TDModel  = poissonProb(rb1TDLambda, 1) * 100;
-            const rb1TDPick = selectNflPropSide(rb1TDModel, rb1TDDk.bookPct);
-            rows.push({
-              id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
-              playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
-              spread: game.spread, total: game.total,
-              market: "Anytime TD", line: 0.5,
-              pickSide: rb1TDPick.pickSide, bookPct: rb1TDPick.bookPct, modelPct: rb1TDPick.modelPct,
-              edge: rb1TDPick.edge, confidence: rb1TDPick.confidence,
-              lastNGames: rb1TDs,
-              redZoneShare: null, targetShare: null, defRank: null,
-              weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              onDraftKings: rb1TDDk.onDraftKings,
-              notes: `Pick: ${rb1TDPick.pickSide.toUpperCase()} 0.5 anytime TD. ${roster.rb1} averaged ${rb1TDLambda.toFixed(2)} rushing TDs per game over the last ${rb1TDs.length} real games (2025 season). The model gives the ${rb1TDPick.pickSide.toLowerCase()} a ${rb1TDPick.modelPct}% chance versus the book's ${rb1TDPick.bookPct}%${rb1TDDk.onDraftKings ? " using DraftKings odds" : ""}.`,
-            } as any);
+            const rb1TDPick = selectNflTouchdownOver(rb1TDs, rb1TDDk.bookPct, "RB1", impliedTeamTotal);
+            if (rb1TDPick) {
+              rows.push({
+                id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
+                playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
+                spread: game.spread, total: game.total,
+                market: "Anytime TD", line: 0.5,
+                pickSide: "Over", bookPct: rb1TDPick.bookPct, modelPct: rb1TDPick.modelPct,
+                edge: rb1TDPick.edge, confidence: rb1TDPick.confidence,
+                lastNGames: rb1TDs,
+                redZoneShare: null, targetShare: null, defRank: null,
+                weather: game.weather, gameTime: game.gameTime, homeAway: side,
+                onDraftKings: rb1TDDk.onDraftKings,
+                notes: `Pick: OVER 0.5 anytime TD. ${roster.rb1} scored in ${rb1TDPick.scoredGames} of the last ${rb1TDs.length} games and averaged ${rb1TDLambda.toFixed(2)} rushing TDs. The RB1 role and ${impliedTeamTotal.toFixed(1)} implied team points produce a ${rb1TDPick.contextPct}% scoring baseline. TDs are high-variance, so the model only publishes the Over when its ${rb1TDPick.modelPct}% estimate beats the book's ${rb1TDPick.bookPct}%.`,
+              } as any);
+            }
           }
         }
 
@@ -17072,21 +17128,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           if (tds.length >= 2) {
             const lambda = avg(tds);
             const dkTd = resolveDkLine(dkLines, playerName, "Anytime TD", 0.5, bookPct, rosterKey);
-            const model = poissonProb(lambda, 1) * 100;
-            const pickTd = selectNflPropSide(model, dkTd.bookPct);
-            rows.push({
-              id: makeEdgeId(playerName, "Anytime TD", 0.5, teamAbbr),
-              playerName, team: teamAbbr, opponent: oppAbbr,
-              spread: game.spread, total: game.total,
-              market: "Anytime TD", line: 0.5,
-              pickSide: pickTd.pickSide, bookPct: pickTd.bookPct, modelPct: pickTd.modelPct,
-              edge: pickTd.edge, confidence: pickTd.confidence,
-              lastNGames: tds,
-              redZoneShare: null, targetShare: null, defRank: null,
-              weather: game.weather, gameTime: game.gameTime, homeAway: side,
-              onDraftKings: dkTd.onDraftKings,
-              notes: `Pick: ${pickTd.pickSide.toUpperCase()} 0.5 anytime TD. ${playerName} (${tag}) averaged ${lambda.toFixed(2)} receiving TDs per game over the last ${tds.length} real games (2025 season). The model gives the ${pickTd.pickSide.toLowerCase()} a ${pickTd.modelPct}% chance versus the book's ${pickTd.bookPct}%${dkTd.onDraftKings ? " using DraftKings odds" : ""}.`,
-            } as any);
+            const tdRole = (tag === "WR1" || tag === "WR2" || tag === "TE1") ? tag : "WR2";
+            const pickTd = selectNflTouchdownOver(tds, dkTd.bookPct, tdRole, impliedTeamTotal);
+            if (pickTd) {
+              rows.push({
+                id: makeEdgeId(playerName, "Anytime TD", 0.5, teamAbbr),
+                playerName, team: teamAbbr, opponent: oppAbbr,
+                spread: game.spread, total: game.total,
+                market: "Anytime TD", line: 0.5,
+                pickSide: "Over", bookPct: pickTd.bookPct, modelPct: pickTd.modelPct,
+                edge: pickTd.edge, confidence: pickTd.confidence,
+                lastNGames: tds,
+                redZoneShare: null, targetShare: null, defRank: null,
+                weather: game.weather, gameTime: game.gameTime, homeAway: side,
+                onDraftKings: dkTd.onDraftKings,
+                notes: `Pick: OVER 0.5 anytime TD. ${playerName} (${tag}) scored in ${pickTd.scoredGames} of the last ${tds.length} games and averaged ${lambda.toFixed(2)} receiving TDs. The ${tag} role and ${impliedTeamTotal.toFixed(1)} implied team points produce a ${pickTd.contextPct}% scoring baseline. TDs are high-variance, so the model only publishes the Over when its ${pickTd.modelPct}% estimate beats the book's ${pickTd.bookPct}%.`,
+              } as any);
+            }
           }
         };
 
