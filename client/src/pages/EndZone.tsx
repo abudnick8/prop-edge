@@ -26,6 +26,7 @@ interface PropRow {
   total?: string;
   market: string;
   line: number | string;
+  pickSide: "Over" | "Under";
   bookPct: number;
   modelPct: number;
   edge: number;
@@ -42,6 +43,8 @@ interface StreakEntry {
   date: string;
   player: string;
   market: string;
+  pickSide?: "Over" | "Under";
+  line?: number | string;
   edge: number;
   result: "W" | "L" | "pending";
 }
@@ -210,12 +213,30 @@ function ResultBadge({ result }: { result: "W" | "L" | "pending" }) {
 }
 
 // ─── Model vs Book bar ────────────────────────────────────────────────────────
-function ModelVsBookBar({ modelPct, bookPct }: { modelPct: number; bookPct: number }) {
+function PickSideBadge({ side }: { side: "Over" | "Under" }) {
+  const isOver = side === "Over";
+  return (
+    <span
+      data-testid={`badge-pick-side-${side.toLowerCase()}`}
+      style={{
+        fontSize: 12, fontWeight: 900, padding: "4px 9px", borderRadius: 7,
+        color: isOver ? "#166534" : "#991b1b",
+        background: isOver ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.12)",
+        border: `1px solid ${isOver ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.30)"}`,
+        whiteSpace: "nowrap", letterSpacing: "0.04em",
+      }}
+    >
+      {side.toUpperCase()}
+    </span>
+  );
+}
+
+function ModelVsBookBar({ modelPct, bookPct, pickSide }: { modelPct: number; bookPct: number; pickSide: "Over" | "Under" }) {
   return (
     <div style={{ margin: "12px 0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-        <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Book {bookPct.toFixed(0)}%</span>
-        <span style={{ fontSize: 11, color: modelPct > 60 ? "#16a34a" : modelPct > 50 ? "#b8930a" : "#f87171", fontWeight: 700 }}>Model {modelPct.toFixed(0)}%</span>
+        <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Book {pickSide} {bookPct.toFixed(0)}%</span>
+        <span style={{ fontSize: 11, color: modelPct > 60 ? "#16a34a" : modelPct > 50 ? "#b8930a" : "#f87171", fontWeight: 700 }}>Model {pickSide} {modelPct.toFixed(0)}%</span>
       </div>
       <div style={{ background: "rgba(19,35,58,0.08)", borderRadius: 6, height: 10, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${bookPct}%`, background: "rgba(61,75,88,0.35)", borderRadius: 6 }} />
@@ -237,7 +258,7 @@ function DetailDrawer({
   onLock: (p: PropRow) => void;
   lockedPick: any;
 }) {
-  const isLocked = lockedPick && (lockedPick.player === prop.player && lockedPick.market === prop.market);
+  const isLocked = lockedPick && (lockedPick.player === prop.player && lockedPick.market === prop.market && lockedPick.pickSide === prop.pickSide);
   const edgeColor = prop.edge > 0 ? "#16a34a" : "#f87171";
 
   return (
@@ -274,10 +295,25 @@ function DetailDrawer({
           </button>
         </div>
 
-        {/* Market + Line */}
+        {/* Recommendation + Market */}
+        <div
+          data-testid={`recommendation-${prop.id ?? prop.player}`}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            background: prop.pickSide === "Over" ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.09)",
+            border: `1px solid ${prop.pickSide === "Over" ? "rgba(34,197,94,0.28)" : "rgba(239,68,68,0.24)"}`,
+            borderRadius: 12, padding: "12px 14px", marginBottom: 14,
+          }}
+        >
+          <div>
+            <p style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Model Pick</p>
+            <p style={{ fontSize: 20, color: NAVY, fontWeight: 900 }}>{prop.pickSide.toUpperCase()} {prop.line}</p>
+          </div>
+          <PickSideBadge side={prop.pickSide} />
+        </div>
+
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
           <MarketBadge market={prop.market} />
-          <span style={{ fontWeight: 700, fontSize: 14, color: NAVY }}>Line: {prop.line}</span>
           <ConfBadge conf={prop.confidence} />
         </div>
 
@@ -292,7 +328,7 @@ function DetailDrawer({
         </div>
 
         {/* Model vs Book */}
-        <ModelVsBookBar modelPct={prop.modelPct} bookPct={prop.bookPct} />
+        <ModelVsBookBar modelPct={prop.modelPct} bookPct={prop.bookPct} pickSide={prop.pickSide} />
 
         {/* Last N Games sparkline */}
         {prop.lastNGames && prop.lastNGames.length > 0 && (
@@ -345,7 +381,7 @@ function DetailDrawer({
             transition: "opacity 0.15s",
           }}
         >
-          {isLocked ? <><CheckCircle size={16} /> Pick Locked!</> : <><Lock size={16} /> Lock This Pick</>}
+          {isLocked ? <><CheckCircle size={16} /> Pick Locked!</> : <><Lock size={16} /> Lock {prop.pickSide} {prop.line}</>}
         </button>
       </div>
     </>
@@ -430,7 +466,9 @@ function StreakTracker({ data }: { data: StreakData | null | undefined }) {
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "rgba(19,35,58,0.03)", borderRadius: 8 }}>
                 <span style={{ fontSize: 10, color: MUTED, fontWeight: 600, minWidth: 60 }}>{entry.date}</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: NAVY, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.player}</span>
-                <span style={{ fontSize: 10, color: MUTED, minWidth: 60, textAlign: "right" }}>{entry.market}</span>
+                <span style={{ fontSize: 10, color: MUTED, minWidth: 82, textAlign: "right" }}>
+                  {entry.pickSide ? `${entry.pickSide} ${entry.line ?? ""}` : entry.market}
+                </span>
                 <span style={{ fontSize: 10, color: entry.edge > 0 ? "#16a34a" : "#f87171", fontWeight: 700, minWidth: 40, textAlign: "right" }}>+{entry.edge.toFixed(1)}%</span>
                 <ResultBadge result={entry.result} />
               </div>
@@ -472,14 +510,14 @@ function PropsTable({ rows, onSelect, lockedPick, onLock }: {
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
         <thead>
           <tr style={{ background: "rgba(19,35,58,0.05)" }}>
-            {["Player", "Opp", "Market", "Line", "Book%", "Model%", "Edge%", "Conf", "★"].map((h) => (
+            {["Player", "Opp", "Market", "Pick", "Book%", "Model%", "Edge%", "Conf", "★"].map((h) => (
               <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => {
-            const isLocked = lockedPick && lockedPick.player === row.player && lockedPick.market === row.market;
+            const isLocked = lockedPick && lockedPick.player === row.player && lockedPick.market === row.market && lockedPick.pickSide === row.pickSide;
             return (
               <tr
                 key={i}
@@ -497,7 +535,12 @@ function PropsTable({ rows, onSelect, lockedPick, onLock }: {
                   {row.spread && <p style={{ fontSize: 10, color: MUTED }}>{row.spread}</p>}
                 </td>
                 <td style={{ padding: "10px 12px" }}><MarketBadge market={row.market} /></td>
-                <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, color: NAVY }}>{row.line}</td>
+                <td data-testid={`pick-side-${row.id ?? i}`} style={{ padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <PickSideBadge side={row.pickSide} />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>{row.line}</span>
+                  </div>
+                </td>
                 <td style={{ padding: "10px 12px", fontSize: 12, color: MUTED }}>{row.bookPct.toFixed(0)}%</td>
                 <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, color: row.modelPct > 60 ? "#16a34a" : row.modelPct > 50 ? "#b8930a" : "#f87171" }}>
                   {row.modelPct.toFixed(0)}%
@@ -518,7 +561,7 @@ function PropsTable({ rows, onSelect, lockedPick, onLock }: {
                       display: "flex", alignItems: "center", gap: 4,
                     }}
                   >
-                    {isLocked ? <><CheckCircle size={12} /> Locked</> : <><Star size={12} /> Lock</>}
+                    {isLocked ? <><CheckCircle size={12} /> Locked</> : <><Star size={12} /> Lock {row.pickSide}</>}
                   </button>
                 </td>
               </tr>
@@ -673,7 +716,9 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
                 border: `1px solid ${actionColor(p.recommendedAction)}40` }}>
                 {p.recommendedAction}
               </span>
-              <span style={{ fontSize: 11, color: MUTED }}>Owned: <b style={{ color: NAVY }}>{p.ownershipPct}%</b></span>
+              <span style={{ fontSize: 11, color: MUTED }}>
+                Owned: <b style={{ color: NAVY }}>{p.ownershipPct >= 0 ? `${p.ownershipPct}%` : "Check league"}</b>
+              </span>
               <span style={{ fontSize: 11, color: MUTED }}>Proj: <b style={{ color: NAVY }}>{p.weeklyProjectedPts} pts</b></span>
               {(p as any).newsHighlighted && (
                 <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
@@ -964,8 +1009,8 @@ function HandcuffPanel({ data }: { data: HandcuffPair[] }) {
           </div>
           <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.4, marginBottom: 8 }}>{h.reason}</p>
           <div style={{ display: "flex", gap: 12 }}>
-            <span style={{ fontSize: 11, color: MUTED }}>Handcuff owned: <b style={{ color: NAVY }}>{h.handcuffOwnershipPct}%</b></span>
-            <span style={{ fontSize: 11, color: MUTED }}>Starter owned: <b style={{ color: NAVY }}>{h.starterOwnershipPct}%</b></span>
+            <span style={{ fontSize: 11, color: MUTED }}>Handcuff owned: <b style={{ color: NAVY }}>{h.handcuffOwnershipPct >= 0 ? `${h.handcuffOwnershipPct}%` : "Check league"}</b></span>
+            <span style={{ fontSize: 11, color: MUTED }}>Starter owned: <b style={{ color: NAVY }}>{h.starterOwnershipPct >= 0 ? `${h.starterOwnershipPct}%` : "Check league"}</b></span>
           </div>
         </div>
       ))}
@@ -1841,7 +1886,9 @@ function FantasyToolsPanel({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, color: MUTED }}>Owned: <b style={{ color: NAVY }}>{t.ownershipPct}%</b></span>
+                <span style={{ fontSize: 11, color: MUTED }}>
+                  Owned: <b style={{ color: NAVY }}>{t.ownershipPct >= 0 ? `${t.ownershipPct}%` : "Check league"}</b>
+                </span>
                 <span style={{ fontSize: 11, color: MUTED }}>Opp OFF rank: <b style={{ color: NAVY }}>#{t.oppOffenseRank}</b></span>
                 <span style={{ fontSize: 11, color: MUTED }}>Proj pts: <b style={{ color: NAVY }}>{t.projPoints}</b></span>
               </div>
@@ -3054,10 +3101,14 @@ export default function EndZone() {
   const handleLock = (prop: PropRow) => {
     setLockedPick(prop);
     lockPickMutation.mutate({
-      player: prop.player,
+      propId: prop.id,
+      playerName: prop.player,
       team: prop.team,
       market: prop.market,
       line: prop.line,
+      pickSide: prop.pickSide,
+      modelPct: prop.modelPct,
+      bookPct: prop.bookPct,
       edge: prop.edge,
       confidence: prop.confidence,
     });
@@ -3197,8 +3248,9 @@ export default function EndZone() {
               <AnalysisInfo
                 title="How projections are graded"
                 items={[
-                  { label: "Model %", desc: "Our model's estimated probability the prop hits, based on season stats, last 5 games, matchup quality, and pace." },
-                  { label: "Book %", desc: "Implied probability from the bookmaker's odds (juice removed). Model % vs Book % = your edge." },
+                  { label: "Pick", desc: "Every row explicitly selects Over or Under. The displayed model probability, book probability, and edge all refer to that recommended side." },
+                  { label: "Model %", desc: "Our model's estimated probability the recommended Over or Under hits, based on recent game logs and the posted DraftKings line." },
+                  { label: "Book %", desc: "Implied probability for the same recommended side from the bookmaker's odds (juice removed). Model % vs Book % = your edge." },
                   { label: "Edge %", desc: "Model % minus Book %. Positive edge means our model sees value the market hasn't fully priced." },
                   { label: "Confidence", desc: "Strong (≥70% model, ≥7% edge) · Medium (55–69%, 4–6% edge) · Thin (<55% or <4% edge). Only Strong/Medium appear by default." },
                   { label: "Recent avg", desc: "Cross-validated against L5 game log. If recent average diverges >25% from season baseline, a safeguard flag is applied." },

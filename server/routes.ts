@@ -16286,6 +16286,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     status: string | null;        // "Active" | "Inactive" | "IR" | null
     injury_status: string | null; // "Questionable" | "Doubtful" | "Out" | null
     years_exp: number | null;
+    depth_chart_order: number | null;
   }
   let _sleeperRosterCache: { players: Record<string, SleeperPlayer>; ts: number; week: number } | null = null;
 
@@ -16341,6 +16342,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           status:        p.status     ?? null,
           injury_status: p.injury_status ?? null,
           years_exp:     p.years_exp  ?? null,
+          depth_chart_order: typeof p.depth_chart_order === "number" ? p.depth_chart_order : null,
         };
       }
       _sleeperRosterCache = { players, ts: now, week: curWeek };
@@ -16458,6 +16460,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     total: number;
     market: string;
     line: number;
+    pickSide: "Over" | "Under";
     bookPct: number;
     modelPct: number;
     edge: number;
@@ -16471,6 +16474,27 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     homeAway: "home" | "away";
     notes: string;
     onDraftKings: boolean;
+  }
+
+  function selectNflPropSide(overModelPct: number, overBookPct: number): {
+    pickSide: "Over" | "Under";
+    modelPct: number;
+    bookPct: number;
+    edge: number;
+    confidence: "Strong" | "Medium" | "Thin";
+  } {
+    const overEdge = overModelPct - overBookPct;
+    const pickSide: "Over" | "Under" = overEdge >= 0 ? "Over" : "Under";
+    const modelPct = pickSide === "Over" ? overModelPct : 100 - overModelPct;
+    const bookPct = pickSide === "Over" ? overBookPct : 100 - overBookPct;
+    const edge = modelPct - bookPct;
+    return {
+      pickSide,
+      modelPct: Math.round(modelPct * 10) / 10,
+      bookPct: Math.round(bookPct * 10) / 10,
+      edge: Math.round(edge * 10) / 10,
+      confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+    };
   }
 
   // Hardcoded player roster tiers — SEED ONLY. At runtime all team assignments
@@ -16641,10 +16665,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       _nflDepthChartCache = { byTeam, ts: Date.now() };
       return byTeam;
     } catch (err) {
-      console.warn(`[NFL Props] Sleeper roster fetch failed, falling back to static roster: ${(err as Error).message}`);
-      // Fall back to the static map only if the live fetch fails outright —
-      // this keeps the endpoint from going empty during a Sleeper outage.
-      return NFL_ROSTER_TIERS;
+      console.warn(`[NFL Props] Live roster fetch failed; suppressing props rather than guessing: ${(err as Error).message}`);
+      return {};
     }
   }
 
@@ -16721,7 +16743,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Linemate already carries `bookLines.draftkings.{line, overOdds, underOdds}`
   // per player/market — this is the ACTUAL DraftKings-posted number, unlike the
   // self-generated `mean - shading` estimate used as a last-resort fallback below.
-  let _nflDkPropCache: { byKey: Record<string, { line: number; overOdds: number | null; underOdds: number | null }>; ts: number } | null = null;
+  type NflBookProp = {
+    line: number;
+    overOdds: number | null;
+    underOdds: number | null;
+    team: string | null;
+    position: string | null;
+  };
+  let _nflDkPropCache: { byKey: Record<string, NflBookProp>; ts: number } | null = null;
   const NFL_DK_PROP_TTL = 8 * 60 * 1000; // 8 minutes — matches Linemate's own cache cadence
 
   const NFL_DK_MARKET_KEY: Record<string, string> = {
@@ -16736,11 +16765,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return `${normalizeNflPlayerName(playerName)}|${market}`;
   }
 
-  async function getDraftKingsNflPropLines(): Promise<Record<string, { line: number; overOdds: number | null; underOdds: number | null }>> {
+  async function getDraftKingsNflPropLines(): Promise<Record<string, NflBookProp>> {
     if (_nflDkPropCache && (Date.now() - _nflDkPropCache.ts) < NFL_DK_PROP_TTL) {
       return _nflDkPropCache.byKey;
     }
-    const byKey: Record<string, { line: number; overOdds: number | null; underOdds: number | null }> = {};
+    const byKey: Record<string, NflBookProp> = {};
     try {
       const resp = await axios.get("https://api.linemate.io/api/nfl/v2/markets", {
         params: { levelsToInclude: "player" },
@@ -16761,7 +16790,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         if (line == null) continue;
         const overOdds = typeof dk.over?.current?.odds?.american === "number" ? dk.over.current.odds.american : null;
         const underOdds = typeof dk.under?.current?.odds?.american === "number" ? dk.under.current.odds.american : null;
-        byKey[dkPropKey(playerName, marketName)] = { line, overOdds, underOdds };
+        byKey[dkPropKey(playerName, marketName)] = {
+          line,
+          overOdds,
+          underOdds,
+          team: row?.team?.code ?? null,
+          position: row?.player?.position ?? null,
+        };
       }
       if (Object.keys(byKey).length) {
         _nflDkPropCache = { byKey, ts: Date.now() };
@@ -16779,12 +16814,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
    * not posted a number for this player yet (e.g. very early in the week).
    */
   function resolveDkLine(
-    dkLines: Record<string, { line: number; overOdds: number | null; underOdds: number | null }>,
-    playerName: string, marketLabel: string, fallbackLine: number, fallbackBookPct: number
+    dkLines: Record<string, NflBookProp>,
+    playerName: string, marketLabel: string, fallbackLine: number, fallbackBookPct: number,
+    expectedTeam?: string
   ): { line: number; bookPct: number; onDraftKings: boolean } {
     const marketKey = NFL_DK_MARKET_KEY[marketLabel];
     const dk = marketKey ? dkLines[dkPropKey(playerName, marketKey)] : undefined;
-    if (!dk) return { line: fallbackLine, bookPct: fallbackBookPct, onDraftKings: false };
+    const normalizedExpectedTeam = expectedTeam === "WSH" ? "WAS" : expectedTeam;
+    const normalizedBookTeam = dk?.team === "WSH" ? "WAS" : dk?.team;
+    if (!dk || (normalizedExpectedTeam && normalizedBookTeam && normalizedExpectedTeam !== normalizedBookTeam)) {
+      return { line: fallbackLine, bookPct: fallbackBookPct, onDraftKings: false };
+    }
     const overPct = dk.overOdds != null ? impliedProbFromML(dk.overOdds) * 100 : null;
     const underPct = dk.underOdds != null ? impliedProbFromML(dk.underOdds) * 100 : null;
     // De-vig when both sides are known; otherwise use the single known side.
@@ -16899,7 +16939,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // "WSH" vs Sleeper's "WAS") — normalize before the roster lookup.
         const ABBR_ALIAS: Record<string, string> = { WSH: "WAS", JAC: "JAX", LA: "LAR" };
         const rosterKey = ABBR_ALIAS[teamAbbr] ?? teamAbbr;
-        const roster = liveRosters[rosterKey] ?? NFL_ROSTER_TIERS[rosterKey] ?? NFL_ROSTER_TIERS[teamAbbr];
+        // Accuracy first: never revive a stale static depth chart when the
+        // live roster source cannot verify a team.
+        const roster = liveRosters[rosterKey];
         if (!roster) continue;
 
         // Fetch real recent-game logs for this team's skill players in parallel.
@@ -16917,22 +16959,21 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const qbMean = avg(qbYds);
           const qbSD   = stdev(qbYds, qbMean);
           const qbFallbackLine = Math.round((qbMean - 5) * 2) / 2; // used only if DK has no posted line
-          const qbDk = resolveDkLine(dkLines, roster.qb, "Pass Yds O/U", qbFallbackLine, bookPct);
+          const qbDk = resolveDkLine(dkLines, roster.qb, "Pass Yds O/U", qbFallbackLine, bookPct, rosterKey);
           const qbModel = normalExceedProb(qbDk.line, qbMean, qbSD) * 100;
-          const qbEdge  = qbModel - qbDk.bookPct;
+          const qbPick = selectNflPropSide(qbModel, qbDk.bookPct);
           rows.push({
             id: makeEdgeId(roster.qb, "Pass Yds O/U", qbDk.line, teamAbbr),
             playerName: roster.qb, team: teamAbbr, opponent: oppAbbr,
             spread: game.spread, total: game.total,
             market: "Pass Yds O/U", line: qbDk.line,
-            bookPct: Math.round(qbDk.bookPct * 10) / 10, modelPct: Math.round(qbModel * 10) / 10,
-            edge: Math.round(qbEdge * 10) / 10,
-            confidence: qbEdge > 10 ? "Strong" : qbEdge > 5 ? "Medium" : "Thin",
+            pickSide: qbPick.pickSide, bookPct: qbPick.bookPct, modelPct: qbPick.modelPct,
+            edge: qbPick.edge, confidence: qbPick.confidence,
             lastNGames: qbYds,
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
             onDraftKings: qbDk.onDraftKings,
-            notes: `${roster.qb} averaged ${Math.round(qbMean)} pass yds over last ${qbYds.length} real games (2025 season) vs ${qbDk.line} ${qbDk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
+            notes: `Pick: ${qbPick.pickSide.toUpperCase()} ${qbDk.line}. ${roster.qb} averaged ${Math.round(qbMean)} pass yds over the last ${qbYds.length} real games (2025 season). The model gives the ${qbPick.pickSide.toLowerCase()} a ${qbPick.modelPct}% chance versus the book's ${qbPick.bookPct}% at the ${qbDk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
           } as any);
         }
 
@@ -16942,44 +16983,42 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           const rb1Mean = avg(rb1Yds);
           const rb1SD   = stdev(rb1Yds, rb1Mean);
           const rb1FallbackLine = Math.round((rb1Mean - 3) * 2) / 2;
-          const rb1Dk = resolveDkLine(dkLines, roster.rb1, "Rush Yds O/U", rb1FallbackLine, bookPct);
+          const rb1Dk = resolveDkLine(dkLines, roster.rb1, "Rush Yds O/U", rb1FallbackLine, bookPct, rosterKey);
           const rb1Model = normalExceedProb(rb1Dk.line, rb1Mean, rb1SD) * 100;
-          const rb1Edge  = rb1Model - rb1Dk.bookPct;
+          const rb1Pick = selectNflPropSide(rb1Model, rb1Dk.bookPct);
           const rb1TDs = rb1Games.map(g => g.rushingTouchdowns).filter(v => v != null);
           rows.push({
             id: makeEdgeId(roster.rb1, "Rush Yds O/U", rb1Dk.line, teamAbbr),
             playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
             spread: game.spread, total: game.total,
             market: "Rush Yds O/U", line: rb1Dk.line,
-            bookPct: Math.round(rb1Dk.bookPct * 10) / 10, modelPct: Math.round(rb1Model * 10) / 10,
-            edge: Math.round(rb1Edge * 10) / 10,
-            confidence: rb1Edge > 10 ? "Strong" : rb1Edge > 5 ? "Medium" : "Thin",
+            pickSide: rb1Pick.pickSide, bookPct: rb1Pick.bookPct, modelPct: rb1Pick.modelPct,
+            edge: rb1Pick.edge, confidence: rb1Pick.confidence,
             lastNGames: rb1Yds,
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
             onDraftKings: rb1Dk.onDraftKings,
-            notes: `${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over last ${rb1Yds.length} real games (2025 season) vs ${rb1Dk.line} ${rb1Dk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
+            notes: `Pick: ${rb1Pick.pickSide.toUpperCase()} ${rb1Dk.line}. ${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over the last ${rb1Yds.length} real games (2025 season). The model gives the ${rb1Pick.pickSide.toLowerCase()} a ${rb1Pick.modelPct}% chance versus the book's ${rb1Pick.bookPct}% at the ${rb1Dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
           } as any);
 
           // ── RB1 Anytime TD (real L5 TD rate via Poisson, DraftKings odds) ───
           if (rb1TDs.length >= 2) {
             const rb1TDLambda = avg(rb1TDs);
-            const rb1TDDk = resolveDkLine(dkLines, roster.rb1, "Anytime TD", 0.5, bookPct);
+            const rb1TDDk = resolveDkLine(dkLines, roster.rb1, "Anytime TD", 0.5, bookPct, rosterKey);
             const rb1TDModel  = poissonProb(rb1TDLambda, 1) * 100;
-            const rb1TDEdge   = rb1TDModel - rb1TDDk.bookPct;
+            const rb1TDPick = selectNflPropSide(rb1TDModel, rb1TDDk.bookPct);
             rows.push({
               id: makeEdgeId(roster.rb1, "Anytime TD", 0.5, teamAbbr),
               playerName: roster.rb1, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Anytime TD", line: 0.5,
-              bookPct: Math.round(rb1TDDk.bookPct * 10) / 10, modelPct: Math.round(rb1TDModel * 10) / 10,
-              edge: Math.round(rb1TDEdge * 10) / 10,
-              confidence: rb1TDEdge > 10 ? "Strong" : rb1TDEdge > 5 ? "Medium" : "Thin",
+              pickSide: rb1TDPick.pickSide, bookPct: rb1TDPick.bookPct, modelPct: rb1TDPick.modelPct,
+              edge: rb1TDPick.edge, confidence: rb1TDPick.confidence,
               lastNGames: rb1TDs,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: rb1TDDk.onDraftKings,
-              notes: `${roster.rb1}: ${rb1TDLambda.toFixed(2)} rushing TDs/game over last ${rb1TDs.length} real games (2025 season)${rb1TDDk.onDraftKings ? " · DraftKings odds priced in" : ""}`,
+              notes: `Pick: ${rb1TDPick.pickSide.toUpperCase()} 0.5 anytime TD. ${roster.rb1} averaged ${rb1TDLambda.toFixed(2)} rushing TDs per game over the last ${rb1TDs.length} real games (2025 season). The model gives the ${rb1TDPick.pickSide.toLowerCase()} a ${rb1TDPick.modelPct}% chance versus the book's ${rb1TDPick.bookPct}%${rb1TDDk.onDraftKings ? " using DraftKings odds" : ""}.`,
             } as any);
           }
         }
@@ -16993,63 +17032,60 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const mean = avg(recYds);
             const sd   = stdev(recYds, mean);
             const fallbackLine = Math.round((mean - 3) * 2) / 2;
-            const dk = resolveDkLine(dkLines, playerName, "Rec Yds O/U", fallbackLine, bookPct);
+            const dk = resolveDkLine(dkLines, playerName, "Rec Yds O/U", fallbackLine, bookPct, rosterKey);
             const model = normalExceedProb(dk.line, mean, sd) * 100;
-            const edge  = model - dk.bookPct;
+            const pick = selectNflPropSide(model, dk.bookPct);
             rows.push({
               id: makeEdgeId(playerName, "Rec Yds O/U", dk.line, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Rec Yds O/U", line: dk.line,
-              bookPct: Math.round(dk.bookPct * 10) / 10, modelPct: Math.round(model * 10) / 10,
-              edge: Math.round(edge * 10) / 10,
-              confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+              pickSide: pick.pickSide, bookPct: pick.bookPct, modelPct: pick.modelPct,
+              edge: pick.edge, confidence: pick.confidence,
               lastNGames: recYds,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: dk.onDraftKings,
-              notes: `${playerName} (${tag}) averaged ${Math.round(mean)} rec yds over last ${recYds.length} real games (2025 season) vs ${dk.line} ${dk.onDraftKings ? "DraftKings" : "model-estimated"} line`,
+              notes: `Pick: ${pick.pickSide.toUpperCase()} ${dk.line}. ${playerName} (${tag}) averaged ${Math.round(mean)} receiving yds over the last ${recYds.length} real games (2025 season). The model gives the ${pick.pickSide.toLowerCase()} a ${pick.modelPct}% chance versus the book's ${pick.bookPct}% at the ${dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
             } as any);
           }
           if (recs.length >= 2) {
             const meanR = avg(recs);
             const fallbackLineR = Math.max(1.5, Math.round((meanR - 1) * 2) / 2);
-            const dkR = resolveDkLine(dkLines, playerName, "Receptions O/U", fallbackLineR, bookPct);
+            const dkR = resolveDkLine(dkLines, playerName, "Receptions O/U", fallbackLineR, bookPct, rosterKey);
             const modelR = poissonProb(meanR, Math.ceil(dkR.line)) * 100;
-            const edgeR  = modelR - dkR.bookPct;
+            const pickR = selectNflPropSide(modelR, dkR.bookPct);
             rows.push({
               id: makeEdgeId(playerName, "Receptions O/U", dkR.line, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Receptions O/U", line: dkR.line,
-              bookPct: Math.round(dkR.bookPct * 10) / 10, modelPct: Math.round(modelR * 10) / 10,
-              edge: Math.round(edgeR * 10) / 10,
-              confidence: edgeR > 10 ? "Strong" : edgeR > 5 ? "Medium" : "Thin",
+              pickSide: pickR.pickSide, bookPct: pickR.bookPct, modelPct: pickR.modelPct,
+              edge: pickR.edge, confidence: pickR.confidence,
               lastNGames: recs,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: dkR.onDraftKings,
-              notes: `${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over last ${recs.length} real games (2025 season) vs ${dkR.line} ${dkR.onDraftKings ? "DraftKings" : "model-estimated"} line`,
+              notes: `Pick: ${pickR.pickSide.toUpperCase()} ${dkR.line}. ${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over the last ${recs.length} real games (2025 season). The model gives the ${pickR.pickSide.toLowerCase()} a ${pickR.modelPct}% chance versus the book's ${pickR.bookPct}% at the ${dkR.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
             } as any);
           }
           if (tds.length >= 2) {
             const lambda = avg(tds);
-            const dkTd = resolveDkLine(dkLines, playerName, "Anytime TD", 0.5, bookPct);
+            const dkTd = resolveDkLine(dkLines, playerName, "Anytime TD", 0.5, bookPct, rosterKey);
             const model = poissonProb(lambda, 1) * 100;
-            const edge  = model - dkTd.bookPct;
+            const pickTd = selectNflPropSide(model, dkTd.bookPct);
             rows.push({
               id: makeEdgeId(playerName, "Anytime TD", 0.5, teamAbbr),
               playerName, team: teamAbbr, opponent: oppAbbr,
               spread: game.spread, total: game.total,
               market: "Anytime TD", line: 0.5,
-              bookPct: Math.round(dkTd.bookPct * 10) / 10, modelPct: Math.round(model * 10) / 10,
-              edge: Math.round(edge * 10) / 10,
-              confidence: edge > 10 ? "Strong" : edge > 5 ? "Medium" : "Thin",
+              pickSide: pickTd.pickSide, bookPct: pickTd.bookPct, modelPct: pickTd.modelPct,
+              edge: pickTd.edge, confidence: pickTd.confidence,
               lastNGames: tds,
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: dkTd.onDraftKings,
-              notes: `${playerName} (${tag}): ${lambda.toFixed(2)} receiving TDs/game over last ${tds.length} real games (2025 season)${dkTd.onDraftKings ? " · DraftKings odds priced in" : ""}`,
+              notes: `Pick: ${pickTd.pickSide.toUpperCase()} 0.5 anytime TD. ${playerName} (${tag}) averaged ${lambda.toFixed(2)} receiving TDs per game over the last ${tds.length} real games (2025 season). The model gives the ${pickTd.pickSide.toLowerCase()} a ${pickTd.modelPct}% chance versus the book's ${pickTd.bookPct}%${dkTd.onDraftKings ? " using DraftKings odds" : ""}.`,
             } as any);
           }
         };
@@ -17060,7 +17096,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
 
-    return rows;
+    // End Zone is a sportsbook-prop surface. Never display a model-estimated
+    // player or line when the current DraftKings feed cannot verify it.
+    return rows.filter(row => row.onDraftKings);
   }
 
   // ── GET /api/nfl/props ─────────────────────────────────────────────────────
@@ -17403,7 +17441,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const userId = (req as any).user?.id ?? (req as any).user?.userId;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
 
-      const { propId, playerName, team, market, line, modelPct, bookPct, edge, confidence, gameDate } = req.body ?? {};
+      const { propId, playerName, team, market, line, pickSide, modelPct, bookPct, edge, confidence, gameDate } = req.body ?? {};
       if (!playerName || !market || line == null) {
         return res.status(400).json({ error: "Missing required fields: playerName, market, line" });
       }
@@ -17421,6 +17459,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         date: today,
         pickId: propId ?? makeEdgeId(playerName, market, line, team ?? ""),
         playerName, market, line,
+        pickSide: pickSide === "Under" ? "Under" : "Over",
         modelPct: modelPct ?? 0,
         bookPct: bookPct ?? 53.5,
         edge: edge ?? 0,
@@ -17434,7 +17473,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       streak.totalDays = (streak.totalDays ?? 0) + 1;
       saveNflStreak(userId, streak);
 
-      console.log(`[EndZone] User ${userId} locked pick: ${playerName} ${market} ${line} on ${today}`);
+      console.log(`[EndZone] User ${userId} locked pick: ${playerName} ${pickEntry.pickSide} ${line} ${market} on ${today}`);
       res.json({ ok: true, pick: pickEntry, streak });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/lock-pick error:", e.message);
@@ -17568,12 +17607,37 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       const positionScarcityBonus: Record<string, number> = { RB: 8, WR: 5, TE: 10, QB: 0 };
 
-      // Resolve live teams from Sleeper for every seed player
-      const waiverWithLiveTeams = await resolveTeams(WAIVER_SEED, sleeperRoster);
+      // Build the board from the live 24-hour add feed whenever it is
+      // available. Static names are emergency-only because waiver narratives
+      // and depth-chart relationships become stale quickly.
+      const liveTrendingSeeds = sleeperTrending
+        .map((trend, index) => {
+          const p = sleeperRoster[trend.player_id];
+          if (!p?.full_name || !p.team || !p.position || p.status !== "Active") return null;
+          if (!["QB", "RB", "WR", "TE"].includes(p.position)) return null;
+          return {
+            playerName: p.full_name,
+            team: p.team,
+            position: p.position,
+            ownershipPct: getOwnership(p.full_name, -1),
+            baseScore: Math.max(52, 88 - index),
+            reason: `Added in ${trend.count.toLocaleString()} Sleeper leagues over the last 24 hours; current team and active status verified live.`,
+          };
+        })
+        .filter(Boolean) as typeof WAIVER_SEED;
+      const waiverCandidates = liveTrendingSeeds.length >= 5
+        ? liveTrendingSeeds
+        : (await resolveTeams(WAIVER_SEED, sleeperRoster)).filter(p => {
+            const live = Object.values(sleeperRoster).find(r =>
+              normalizeNflPlayerName(r.full_name) === normalizeNflPlayerName(p.playerName)
+            );
+            return Boolean(live?.team && live.status === "Active");
+          });
+      const waiverWithLiveTeams = waiverCandidates;
       const result = waiverWithLiveTeams
         .map((p) => ({ ...p, ownershipPct: getOwnership(p.playerName, p.ownershipPct) }))
         // ── HARD FILTER: waiver wire = must be owned by ≤50% of leagues ──
-        .filter((p) => p.ownershipPct <= 50)
+        .filter((p) => p.ownershipPct < 0 || p.ownershipPct <= 50)
         .map((p) => {
         let pickupScore = p.baseScore;
 
@@ -17591,7 +17655,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // Position scarcity bonus
         pickupScore = Math.min(100, pickupScore + (positionScarcityBonus[p.position] ?? 0));
 
-        const ownershipTier = p.ownershipPct < 20 ? "low" : p.ownershipPct <= 50 ? "medium" : "high";
+        const ownershipTier = p.ownershipPct < 0 ? "unknown" : p.ownershipPct < 20 ? "low" : p.ownershipPct <= 50 ? "medium" : "high";
 
         let trend: "rising" | "stable" | "hot";
         if (pickupScore >= 85) trend = "hot";
@@ -17620,8 +17684,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           ownershipTier,
           newsHighlighted: inNews,
           fpRanked: inFpRankings,
-          sources: ["Sleeper", "FantasyPros", "Yahoo Fantasy"].filter((s, i) => [
-            sleeperTrending.length > 0, inFpRankings, true
+          sources: ["Sleeper", "FantasyPros"].filter((s, i) => [
+            sleeperTrending.length > 0, inFpRankings
           ][i]),
         };
       });
@@ -17910,15 +17974,48 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Resolve live teams for starters and handcuffs
       const sleeperRosterHC = await getSleeperRoster();
-      // Handcuff data has starter/handcuff fields (not playerName) — resolve both
-      const handcuffWithLiveTeams = await Promise.all(
-        HANDCUFF_DATA.map(async (pair) => {
-          // Resolve the team from the STARTER's current team
-          const resolvedTeam = await resolveTeam(pair.starter, pair.team, sleeperRosterHC);
-          // Also verify handcuff hasn't changed team
-          return { ...pair, team: resolvedTeam };
-        })
-      );
+      const liveRbsByTeam: Record<string, SleeperPlayer[]> = {};
+      for (const p of Object.values(sleeperRosterHC)) {
+        if (p.position !== "RB" || p.status !== "Active" || !p.team) continue;
+        (liveRbsByTeam[p.team] ??= []).push(p);
+      }
+      const liveHandcuffs = Object.entries(liveRbsByTeam).flatMap(([team, backs]) => {
+        const ranked = backs.sort((a, b) =>
+          (a.depth_chart_order ?? 99) - (b.depth_chart_order ?? 99)
+        );
+        if (!ranked[0] || !ranked[1] || ranked[0].depth_chart_order == null) return [];
+        return [{
+          starter: ranked[0].full_name,
+          handcuff: ranked[1].full_name,
+          team,
+          injuryRisk: ranked[0].injury_status ? 7 : 5,
+          handcuffOwnershipPct: -1,
+          starterOwnershipPct: -1,
+          reason: `${ranked[1].full_name} is the current No. 2 running back behind ${ranked[0].full_name} on the live depth chart.`,
+        }];
+      });
+      // If the live feed is sparse, only retain seed pairs when both players
+      // are active and currently belong to the same team.
+      const verifiedSeedHandcuffs = HANDCUFF_DATA.filter(pair => {
+        const starter = Object.values(sleeperRosterHC).find(p =>
+          normalizeNflPlayerName(p.full_name) === normalizeNflPlayerName(pair.starter)
+        );
+        const backup = Object.values(sleeperRosterHC).find(p =>
+          normalizeNflPlayerName(p.full_name) === normalizeNflPlayerName(pair.handcuff)
+        );
+        return Boolean(
+          starter?.status === "Active" && backup?.status === "Active" &&
+          starter.team && starter.team === backup.team
+        );
+      }).map(pair => {
+        const starter = Object.values(sleeperRosterHC).find(p =>
+          normalizeNflPlayerName(p.full_name) === normalizeNflPlayerName(pair.starter)
+        );
+        return { ...pair, team: starter?.team ?? pair.team };
+      });
+      const handcuffWithLiveTeams = liveHandcuffs.length >= 16
+        ? liveHandcuffs
+        : verifiedSeedHandcuffs;
 
       const result = handcuffWithLiveTeams.map((p) => {
         let handcuffPriority: "Must Own" | "High Value" | "Monitor";
@@ -19373,21 +19470,47 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflStreamingDSTCache.data);
       }
 
-      const DST_DATA = [
-        { team: "PIT", opponent: "TEN", matchupGrade: "A",  ownershipPct: 38, oppOffenseRank: 30, projPoints: 13.2, note: "TEN rebuilding offense; Steelers D-line pressure and turnover upside at home." },
-        { team: "NYJ", opponent: "CAR", matchupGrade: "A",  ownershipPct: 22, oppOffenseRank: 31, projPoints: 12.8, note: "CAR offense youngest in league entering 2026. NYJ D-line creates pressure and turnovers." },
-        { team: "NE",  opponent: "LV",  matchupGrade: "A",  ownershipPct: 19, oppOffenseRank: 29, projPoints: 11.5, note: "LV offense has been terrible. NE streaming option with upside" },
-        { team: "DEN", opponent: "JAX", matchupGrade: "A",  ownershipPct: 24, oppOffenseRank: 28, projPoints: 12.1, note: "JAX offense struggling. DEN at home is a legitimate weekly DST" },
-        { team: "MIA", opponent: "IND", matchupGrade: "B",  ownershipPct: 31, oppOffenseRank: 22, projPoints: 10.4, note: "IND offense has moments but Richardson INT-prone. Miami sacks QB" },
-        { team: "PHI", opponent: "WAS", matchupGrade: "B",  ownershipPct: 48, oppOffenseRank: 24, projPoints: 9.8,  note: "WAS offense inconsistent. PHI D-line adds sack pressure even as a streaming option" },
-        { team: "GB",  opponent: "CHI", matchupGrade: "B",  ownershipPct: 30, oppOffenseRank: 22, projPoints: 10.1, note: "CHI improving but still developing. GB D has upside at Lambeau in 2026." },
-        { team: "BAL", opponent: "CLE", matchupGrade: "B",  ownershipPct: 55, oppOffenseRank: 23, projPoints: 9.6,  note: "CLE QB situation is a mess. BAL D is elite but owned in deeper leagues" },
-        { team: "KC",  opponent: "DEN", matchupGrade: "B",  ownershipPct: 61, oppOffenseRank: 21, projPoints: 9.2,  note: "DEN offense improved but KC D still formidable; only stream if available" },
-      ];
-
-      // Sort by projected points
+      const OFFENSE_RANK: Record<string, number> = {
+        TEN: 30, CAR: 31, LV: 29, JAX: 28, WAS: 24, CLE: 23, CHI: 22,
+        IND: 22, DEN: 21, NYG: 27, NE: 26, NO: 25, ARI: 20, ATL: 19,
+      };
+      const sbResp = await fetch(
+        "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100",
+        { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      if (!sbResp.ok) throw new Error(`ESPN schedule ${sbResp.status}`);
+      const sbData: any = await sbResp.json();
+      const DST_DATA: any[] = [];
+      for (const event of (sbData?.events ?? [])) {
+        const competition = event?.competitions?.[0];
+        const home = competition?.competitors?.find((c: any) => c.homeAway === "home")?.team?.abbreviation;
+        const away = competition?.competitors?.find((c: any) => c.homeAway === "away")?.team?.abbreviation;
+        if (!home || !away) continue;
+        for (const [team, opponent, isHome] of [[home, away, true], [away, home, false]] as const) {
+          const normalizedTeam = team === "WSH" ? "WAS" : team;
+          const normalizedOpponent = opponent === "WSH" ? "WAS" : opponent;
+          const oppOffenseRank = OFFENSE_RANK[normalizedOpponent] ?? 16;
+          const projPoints = Math.round((6.5 + (oppOffenseRank - 16) * 0.24 + (isHome ? 0.8 : 0)) * 10) / 10;
+          const matchupGrade = projPoints >= 10 ? "A" : projPoints >= 8 ? "B" : projPoints >= 6.5 ? "C" : "D";
+          DST_DATA.push({
+            team: normalizedTeam,
+            opponent: normalizedOpponent,
+            matchupGrade,
+            ownershipPct: -1,
+            oppOffenseRank,
+            projPoints,
+            note: `${normalizedTeam} faces ${normalizedOpponent} ${isHome ? "at home" : "on the road"} in the current ESPN weekly schedule.`,
+            gameTime: event.date ?? null,
+          });
+        }
+      }
       DST_DATA.sort((a, b) => b.projPoints - a.projPoints);
-      const result = { teams: DST_DATA, fetchedAt: new Date().toISOString() };
+      const result = {
+        teams: DST_DATA.slice(0, 12),
+        week: sbData?.week?.number ?? getCurrentNFLWeek(),
+        fetchedAt: new Date().toISOString(),
+        scheduleSource: "ESPN",
+      };
       _nflStreamingDSTCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
