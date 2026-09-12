@@ -19286,6 +19286,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         fetchedAt: new Date().toISOString(),
         liveData: liveGames.length >= 3,
         injurySourceActive: espnOutPlayers.size > 0,
+        currentWeek: getCurrentNFLWeek() || 1,
         forecast: gameScriptForecast,
       };
       _nflGameScriptCache = { data: result, ts: now };
