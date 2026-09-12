@@ -731,6 +731,24 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
                   border: `1px solid ${SOURCE_STYLE[s]?.border ?? "rgba(19,35,58,0.15)"}` }}>{s}</span>
               ))}
             </div>
+            {((p as any).upcomingSchedule ?? []).length > 0 && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: MUTED }}>NEXT {(p as any).upcomingSchedule.length} WEEKS</span>
+                  {(p as any).favorableStretch && (
+                    <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 10,
+                      background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>FAVORABLE STRETCH</span>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {(p as any).upcomingSchedule.map((u: any, k: number) => (
+                    <div key={k} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 8, background: "rgba(19,35,58,0.05)", color: NAVY }}>
+                      Wk{u.week} vs {u.opponent} <b style={{ color: u.grade === "A" ? "#16a34a" : u.grade === "B" ? GOLD_COLOR : u.grade === "C" ? "#f97316" : "#ef4444" }}>{u.grade}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1202,6 +1220,28 @@ function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
                       })}
                     </div>
                   </div>
+
+                  {/* 1-3 week ahead outlook — who this team's offense faces next */}
+                  {((row as any).upcomingOpponents ?? []).length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase",
+                        letterSpacing: "0.06em", marginBottom: 5 }}>Upcoming Matchups — {row.team} Offense</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {(row as any).upcomingOpponents.map((u: any, ui: number) => {
+                          const ug = (u[`grade${posFilter}`] as string) ?? "C";
+                          const uc = gradeColor(ug);
+                          return (
+                            <div key={ui} style={{ border: `1px solid ${uc.border}`, background: uc.bg, borderRadius: 8,
+                              padding: "5px 9px", textAlign: "center", minWidth: 64 }}>
+                              <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>Wk {u.week}</div>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_COLOR }}>{u.isHome ? "vs" : "@"} {u.opponent}</div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: uc.text }}>{ug}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1573,6 +1613,35 @@ function FantasyToolsPanel({
               </div>
             </div>
           ))}
+
+          {/* 1-3 week ahead outlook (schedule + tendency based — no lines posted yet) */}
+          {(gameScript?.forecast ?? []).length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 6 }}>📅 1-3 Week Outlook</div>
+              <p style={{ fontSize: 10, color: MUTED, marginBottom: 10, fontStyle: "italic" }}>
+                Future weeks have no posted Vegas lines yet, so these scripts are estimated from schedule + opponent defensive strength instead of live spreads/totals.
+              </p>
+              {gameScript.forecast.map((wk: any, wi: number) => (
+                <div key={wi} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: GOLD_COLOR, marginBottom: 6 }}>Week {wk.week}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(wk.games ?? []).map((g: any, gi: number) => (
+                      <div key={gi} style={{ background: "rgba(19,35,58,0.03)", borderRadius: 10, border: "1px solid rgba(19,35,58,0.08)", padding: "8px 10px" }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 4 }}>{g.away} @ {g.home}</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          {[g.awayScript, g.homeScript].map((t: any, ti: number) => (
+                            <div key={ti} style={{ fontSize: 10, color: MUTED }}>
+                              <b style={{ color: NAVY }}>{t.team}</b>: {t.script} <span style={{ color: t.passRatePct >= 60 ? "#16a34a" : MUTED }}>({t.passRatePct}% pass)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1738,6 +1807,18 @@ function FantasyToolsPanel({
                         <span style={{ fontWeight: 700, color: NAVY }}>{m.val}</span>
                       </div>
                     ))}
+                    {(p.forecast ?? []).length > 0 && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 4 }}>NEXT {p.forecast.length} WEEKS</div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {p.forecast.map((f: any, k: number) => (
+                            <div key={k} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "rgba(19,35,58,0.06)", color: NAVY }}>
+                              Wk{f.week} vs {f.opponent} <b style={{ color: gradeColor(f.grade) }}>{f.grade}</b>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1893,6 +1974,20 @@ function FantasyToolsPanel({
                 <span style={{ fontSize: 11, color: MUTED }}>Proj pts: <b style={{ color: NAVY }}>{t.projPoints}</b></span>
               </div>
               <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>{t.note}</div>
+              {(t.upcoming ?? []).length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(19,35,58,0.08)" }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, marginBottom: 4 }}>STREAMING OUTLOOK — NEXT {t.upcoming.length} WEEKS</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {t.upcoming.map((u: any, k: number) => (
+                      <div key={k} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 8, background: "rgba(19,35,58,0.05)", color: NAVY, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span>Wk{u.week} vs {u.opponent}</span>
+                        <b style={{ color: gradeColor(u.matchupGrade) }}>{u.matchupGrade}</b>
+                        <span style={{ color: MUTED }}>({u.projPoints}pt)</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

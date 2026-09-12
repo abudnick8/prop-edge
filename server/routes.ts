@@ -16315,6 +16315,129 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     return year - 1; // Jan-June still points to prior season year for stats
   }
 
+  // ── Shared 1-3 week forward schedule ──────────────────────────────
+  // Every "stream/start/pick ahead of time" tool (Stream DST, Matchup Heatmap,
+  // Start/Sit, Waiver Radar) needs the same answer to "who does team X play
+  // over the next few weeks" — fetch it once here and cache it so each tool
+  // doesn't hit ESPN separately for the same weeks.
+  type UpcomingGame = { week: number; opponent: string; isHome: boolean; gameTime: string | null };
+  let _nflForwardScheduleCache: { data: Record<string, UpcomingGame[]>; weeks: number[]; ts: number } | null = null;
+
+  async function getForwardSchedule(spanWeeks: number = 3): Promise<{ byTeam: Record<string, UpcomingGame[]>; weeks: number[] }> {
+    const TTL = 30 * 60 * 1000;
+    const now = Date.now();
+    const currentWeek = getCurrentNFLWeek() || 1;
+    const weekNumbers = Array.from({ length: spanWeeks }, (_, i) => currentWeek + i).filter(w => w >= 1 && w <= 18);
+
+    if (_nflForwardScheduleCache && (now - _nflForwardScheduleCache.ts) < TTL &&
+        _nflForwardScheduleCache.weeks.length === weekNumbers.length &&
+        _nflForwardScheduleCache.weeks[0] === weekNumbers[0]) {
+      return { byTeam: _nflForwardScheduleCache.data, weeks: _nflForwardScheduleCache.weeks };
+    }
+
+    const byTeam: Record<string, UpcomingGame[]> = {};
+    const weeksReturned: number[] = [];
+    try {
+      const weekFetches = await Promise.allSettled(weekNumbers.map(async wk => {
+        const sbResp = await fetch(
+          `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${wk}&seasontype=2&limit=100`,
+          { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } }
+        );
+        if (!sbResp.ok) throw new Error(`ESPN schedule wk${wk} ${sbResp.status}`);
+        const sbData: any = await sbResp.json();
+        return { wk, sbData };
+      }));
+      for (const settled of weekFetches) {
+        if (settled.status !== "fulfilled") continue;
+        const { wk, sbData } = settled.value;
+        const resolvedWeek = sbData?.week?.number ?? wk;
+        weeksReturned.push(resolvedWeek);
+        for (const event of (sbData?.events ?? [])) {
+          const competition = event?.competitions?.[0];
+          const home = competition?.competitors?.find((c: any) => c.homeAway === "home")?.team?.abbreviation;
+          const away = competition?.competitors?.find((c: any) => c.homeAway === "away")?.team?.abbreviation;
+          if (!home || !away) continue;
+          for (const [team, opponent, isHome] of [[home, away, true], [away, home, false]] as const) {
+            const normalizedTeam = team === "WSH" ? "WAS" : team;
+            const normalizedOpponent = opponent === "WSH" ? "WAS" : opponent;
+            (byTeam[normalizedTeam] ??= []).push({ week: resolvedWeek, opponent: normalizedOpponent, isHome, gameTime: event.date ?? null });
+          }
+        }
+      }
+      for (const team of Object.keys(byTeam)) byTeam[team].sort((a, b) => a.week - b.week);
+    } catch { /* non-fatal — callers should handle an empty schedule gracefully */ }
+
+    const weeks = Array.from(new Set(weeksReturned)).sort((a, b) => a - b);
+    _nflForwardScheduleCache = { data: byTeam, weeks: weeks.length ? weeks : weekNumbers, ts: now };
+    return { byTeam, weeks: weeks.length ? weeks : weekNumbers };
+  }
+
+  // ── Shared lightweight defensive rank table (1 = toughest, 32 = easiest) ──
+  // Used by any tool that needs a quick "how good is this defense vs this
+  // position" grade for an *opponent* several weeks out (Start/Sit, Waiver
+  // Radar forecasts). Matchup Heatmap has its own richer, narrative table —
+  // this compact one is for lightweight forward-looking grades elsewhere.
+  const NFL_DEF_RANKS_LITE: Record<string, { QB: number; RB: number; WR: number; TE: number }> = {
+    "ARI": { QB: 28, RB: 24, WR: 26, TE: 22 },
+    "ATL": { QB: 18, RB: 14, WR: 16, TE: 20 },
+    "BAL": { QB: 5, RB: 8, WR: 4, TE: 7 },
+    "BUF": { QB: 12, RB: 18, WR: 15, TE: 14 },
+    "CAR": { QB: 29, RB: 27, WR: 30, TE: 28 },
+    "CHI": { QB: 20, RB: 16, WR: 18, TE: 17 },
+    "CIN": { QB: 10, RB: 12, WR: 11, TE: 9 },
+    "CLE": { QB: 8, RB: 6, WR: 7, TE: 11 },
+    "DAL": { QB: 14, RB: 10, WR: 13, TE: 16 },
+    "DEN": { QB: 6, RB: 9, WR: 5, TE: 8 },
+    "DET": { QB: 22, RB: 20, WR: 21, TE: 19 },
+    "GB": { QB: 16, RB: 19, WR: 17, TE: 15 },
+    "HOU": { QB: 11, RB: 7, WR: 10, TE: 12 },
+    "IND": { QB: 25, RB: 22, WR: 24, TE: 26 },
+    "JAX": { QB: 27, RB: 25, WR: 28, TE: 24 },
+    "KC": { QB: 3, RB: 5, WR: 2, TE: 4 },
+    "LAC": { QB: 17, RB: 15, WR: 19, TE: 18 },
+    "LAR": { QB: 21, RB: 17, WR: 22, TE: 21 },
+    "LV": { QB: 30, RB: 28, WR: 29, TE: 30 },
+    "MIA": { QB: 15, RB: 11, WR: 14, TE: 13 },
+    "MIN": { QB: 9, RB: 13, WR: 8, TE: 10 },
+    "NE": { QB: 4, RB: 3, WR: 6, TE: 3 },
+    "NO": { QB: 13, RB: 21, WR: 12, TE: 23 },
+    "NYG": { QB: 26, RB: 32, WR: 27, TE: 29 },
+    "NYJ": { QB: 2, RB: 4, WR: 3, TE: 2 },
+    "PHI": { QB: 7, RB: 2, WR: 9, TE: 6 },
+    "PIT": { QB: 1, RB: 1, WR: 1, TE: 1 },
+    "SEA": { QB: 23, RB: 23, WR: 23, TE: 25 },
+    "SF": { QB: 19, RB: 26, WR: 20, TE: 27 },
+    "TB": { QB: 24, RB: 29, WR: 25, TE: 20 },
+    "TEN": { QB: 31, RB: 31, WR: 31, TE: 32 },
+    "WAS": { QB: 32, RB: 32, WR: 32, TE: 20 },
+  };
+  function gradeRankLite(rank: number): string {
+    if (rank <= 8) return "A";
+    if (rank <= 16) return "B";
+    if (rank <= 24) return "C";
+    return "D";
+  }
+
+  // Look up a player's team abbreviation and return its next N opponents,
+  // each annotated with that opponent's defensive grade at `position`.
+  // Used by Start/Sit and Waiver Radar to show 1-3 weeks of matchup outlook.
+  async function getUpcomingMatchupGrades(teamAbbr: string, position: "QB" | "RB" | "WR" | "TE", spanWeeks: number = 3) {
+    const { byTeam } = await getForwardSchedule(spanWeeks);
+    const normalizedTeam = teamAbbr === "WSH" ? "WAS" : teamAbbr;
+    const games = byTeam[normalizedTeam] ?? [];
+    return games.slice(0, spanWeeks).map(g => {
+      const oppRanks = NFL_DEF_RANKS_LITE[g.opponent];
+      const rank = oppRanks ? oppRanks[position] : null;
+      return {
+        week: g.week,
+        opponent: g.opponent,
+        isHome: g.isHome,
+        defRank: rank,
+        grade: rank != null ? gradeRankLite(rank) : null,
+      };
+    });
+  }
+
   async function getSleeperRoster(): Promise<Record<string, SleeperPlayer>> {
     const now      = Date.now();
     const TTL      = 6 * 60 * 60 * 1000; // 6 hours
@@ -17751,9 +17874,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // No cap — sort all by pickupScore descending and return everything
       result.sort((a, b) => b.pickupScore - a.pickupScore);
 
+      // ── 1-3 week schedule-strength forecast ────────────────────────────
+      // A hot waiver add can still run into a brutal 3-week slate — surface
+      // each candidate's next opponents' defensive grade at their position
+      // so you can plan the pickup beyond just this week.
+      let resultWithForecast = result;
+      try {
+        const { byTeam: waiverSchedule } = await getForwardSchedule(3);
+        resultWithForecast = result.map(p => {
+          const teamAbbr = p.team === "WSH" ? "WAS" : p.team;
+          const games = (waiverSchedule[teamAbbr] ?? []).slice(0, 3);
+          const posKey = (["QB", "RB", "WR", "TE"].includes(p.position) ? p.position : "WR") as "QB" | "RB" | "WR" | "TE";
+          const upcomingSchedule = games.map(g => {
+            const oppRanks = NFL_DEF_RANKS_LITE[g.opponent];
+            const rank = oppRanks ? oppRanks[posKey] : null;
+            return { week: g.week, opponent: g.opponent, isHome: g.isHome, defRank: rank, grade: rank != null ? gradeRankLite(rank) : null };
+          });
+          const favorableStretch = upcomingSchedule.length > 0 && upcomingSchedule.every(g => g.grade === "A" || g.grade === "B");
+          return { ...p, upcomingSchedule, favorableStretch };
+        });
+      } catch { /* non-fatal — ship without the forecast field if schedule fetch fails */ }
+
       const isOffSeason = getCurrentNFLWeek() === 0;
-      _nflWaiverCache = { data: result, ts: now };
-      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length, isOffSeason, season: getNFLSeasonYear() });
+      _nflWaiverCache = { data: resultWithForecast, ts: now };
+      return res.json({ data: resultWithForecast, cachedAt: new Date(now).toISOString(), count: resultWithForecast.length, isOffSeason, season: getNFLSeasonYear() });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/waiver-radar error:", e.message);
       res.status(500).json({ error: e.message });
@@ -18322,6 +18466,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const validPositions = ["QB", "RB", "WR", "TE"];
       const sortPos: "QB" | "RB" | "WR" | "TE" = (posParam && validPositions.includes(posParam)) ? posParam as "QB" | "RB" | "WR" | "TE" : "QB";
 
+      // ── 1-3 week forward schedule so "who's my team facing soon" is visible ──
+      // in advance, not just this week's opponent.
+      const { byTeam: scheduleByTeam, weeks: weekNumbersMH } = await getForwardSchedule(3);
+
       const result = Object.entries(MATCHUP_DATA).map(([team, d]) => ({
         team,
         QB: d.QB.rank, gradeQB: gradeRank(d.QB.rank),
@@ -18334,12 +18482,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           WR: { allowedYpg: d.WR.allowedYpg, allowedTdPg: d.WR.allowedTdPg, trend: trendLabel(d.WR.recentTrend), keyPlayers: d.WR.keyPlayers, why: d.WR.why },
           TE: { allowedYpg: d.TE.allowedYpg, allowedTdPg: d.TE.allowedTdPg, trend: trendLabel(d.TE.recentTrend), keyPlayers: d.TE.keyPlayers, why: d.TE.why },
         },
+        // For an offense on this team, how good/bad are its next matchups —
+        // i.e. the opponent defense's grade at the position you're rostering.
+        upcomingOpponents: (scheduleByTeam[team] ?? []).slice(0, 3).map(g => {
+          const oppDef = MATCHUP_DATA[g.opponent];
+          return {
+            week: g.week,
+            opponent: g.opponent,
+            isHome: g.isHome,
+            gradeQB: oppDef ? gradeRank(oppDef.QB.rank) : null,
+            gradeRB: oppDef ? gradeRank(oppDef.RB.rank) : null,
+            gradeWR: oppDef ? gradeRank(oppDef.WR.rank) : null,
+            gradeTE: oppDef ? gradeRank(oppDef.TE.rank) : null,
+          };
+        }),
       }));
 
       result.sort((a, b) => (b as any)[sortPos] - (a as any)[sortPos]);
 
       _nflMatchupCache = { data: result, ts: now };
-      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length });
+      return res.json({ data: result, forecastWeeks: weekNumbersMH, cachedAt: new Date(now).toISOString(), count: result.length });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/matchup-heatmap error:", e.message);
       res.status(500).json({ error: e.message });
@@ -19076,7 +19238,56 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         },
       ]; // end seed fallback
 
-      const result = { games: GAME_SCRIPT_DATA, fetchedAt: new Date().toISOString(), liveData: liveGames.length >= 3, injurySourceActive: espnOutPlayers.size > 0 };
+      // ── 1-3 week forecast (no future odds exist yet, so use schedule +
+      // season-to-date tendency instead of live lines for the out-weeks) ──
+      let gameScriptForecast: Array<{ week: number; games: any[] }> = [];
+      try {
+        const { byTeam: gsSchedule, weeks: gsWeeks } = await getForwardSchedule(3);
+        const futureWeeks = gsWeeks.slice(1); // skip current week — that's GAME_SCRIPT_DATA above
+        const seenPairs = new Set<string>();
+        for (const wk of futureWeeks) {
+          const weekGames: any[] = [];
+          for (const [team, games] of Object.entries(gsSchedule)) {
+            const g = games.find(x => x.week === wk);
+            if (!g || !g.isHome) continue; // only emit once per matchup, from the home side
+            const home = team, away = g.opponent;
+            const pairKey = `${wk}:${home}:${away}`;
+            if (seenPairs.has(pairKey)) continue;
+            seenPairs.add(pairKey);
+            // Tendency proxy: better-ranked defense (lower rank number) you face
+            // pushes your own offense toward a "Playing From Behind" pass-heavy
+            // script; facing a weak defense skews "Comfortable Lead" run-heavy.
+            const homeOppRanks = NFL_DEF_RANKS_LITE[away];
+            const awayOppRanks = NFL_DEF_RANKS_LITE[home];
+            const homeAvgFaced = homeOppRanks ? (homeOppRanks.QB + homeOppRanks.RB + homeOppRanks.WR + homeOppRanks.TE) / 4 : 16;
+            const awayAvgFaced = awayOppRanks ? (awayOppRanks.QB + awayOppRanks.RB + awayOppRanks.WR + awayOppRanks.TE) / 4 : 16;
+            const scriptFor = (avgFaced: number) => {
+              // Lower avgFaced = tougher opponent defense = lean pass-heavy/behind script.
+              if (avgFaced <= 12) return "Playing From Behind";
+              if (avgFaced >= 22) return "Comfortable Lead";
+              return "Neutral / High Scoring";
+            };
+            const homeScriptLabel = scriptFor(homeAvgFaced);
+            const awayScriptLabel = scriptFor(awayAvgFaced);
+            const passRateFor = (script: string) => script === "Playing From Behind" ? 64 : script === "Comfortable Lead" ? 51 : 58;
+            weekGames.push({
+              week: wk, away, home,
+              basis: "schedule + season-to-date tendency (no posted lines yet for this week)",
+              homeScript: { team: home, script: homeScriptLabel, passRatePct: passRateFor(homeScriptLabel), opponentDefStrength: homeOppRanks ? Math.round(homeAvgFaced) : null },
+              awayScript: { team: away, script: awayScriptLabel, passRatePct: passRateFor(awayScriptLabel), opponentDefStrength: awayOppRanks ? Math.round(awayAvgFaced) : null },
+            });
+          }
+          if (weekGames.length) gameScriptForecast.push({ week: wk, games: weekGames });
+        }
+      } catch { /* non-fatal — ship current-week data without the forecast */ }
+
+      const result = {
+        games: GAME_SCRIPT_DATA,
+        fetchedAt: new Date().toISOString(),
+        liveData: liveGames.length >= 3,
+        injurySourceActive: espnOutPlayers.size > 0,
+        forecast: gameScriptForecast,
+      };
       _nflGameScriptCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -19324,11 +19535,19 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const startPlayer = score1 >= score2 ? player1 : player2;
       const reasoning = `${startPlayer.name} edges out based on projected points (${startPlayer.projPts}), matchup (${startPlayer.matchupGrade}), and confidence (${startPlayer.confidence}/10).`;
 
+      // 1-3 week forward outlook so you can plan starts beyond this week too.
+      const posForForecast = (player1.position !== "?" ? player1.position : player2.position) as "QB" | "RB" | "WR" | "TE";
+      const validForecastPos = ["QB", "RB", "WR", "TE"].includes(posForForecast) ? posForForecast : "WR";
+      const [forecast1, forecast2] = await Promise.all([
+        player1.team && player1.team !== "?" ? getUpcomingMatchupGrades(player1.team, (player1.position !== "?" ? player1.position as any : validForecastPos), 3) : [],
+        player2.team && player2.team !== "?" ? getUpcomingMatchupGrades(player2.team, (player2.position !== "?" ? player2.position as any : validForecastPos), 3) : [],
+      ]);
+
       const result = {
         start: startPlayer.name,
         reasoning,
-        p1: { name: player1.name, ...player1 },
-        p2: { name: player2.name, ...player2 },
+        p1: { name: player1.name, ...player1, forecast: forecast1 },
+        p2: { name: player2.name, ...player2, forecast: forecast2 },
       };
       _nflStartSitCache[cacheKey] = { data: result, ts: now };
       return res.json(result);
@@ -19520,6 +19739,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ── GET /api/nfl/streaming-dst ───────────────────────────────────────────────
+  // Returns a 3-week-ahead forecast (current week + next 2) so DST streamers
+  // can plan pickups in advance instead of only seeing the current slate.
   app.get("/api/nfl/streaming-dst", async (req: Request, res: Response) => {
     try {
       const TTL = 30 * 60 * 1000;
@@ -19532,40 +19753,89 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         TEN: 30, CAR: 31, LV: 29, JAX: 28, WAS: 24, CLE: 23, CHI: 22,
         IND: 22, DEN: 21, NYG: 27, NE: 26, NO: 25, ARI: 20, ATL: 19,
       };
-      const sbResp = await fetch(
-        "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100",
-        { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } }
-      );
-      if (!sbResp.ok) throw new Error(`ESPN schedule ${sbResp.status}`);
-      const sbData: any = await sbResp.json();
-      const DST_DATA: any[] = [];
-      for (const event of (sbData?.events ?? [])) {
-        const competition = event?.competitions?.[0];
-        const home = competition?.competitors?.find((c: any) => c.homeAway === "home")?.team?.abbreviation;
-        const away = competition?.competitors?.find((c: any) => c.homeAway === "away")?.team?.abbreviation;
-        if (!home || !away) continue;
-        for (const [team, opponent, isHome] of [[home, away, true], [away, home, false]] as const) {
-          const normalizedTeam = team === "WSH" ? "WAS" : team;
-          const normalizedOpponent = opponent === "WSH" ? "WAS" : opponent;
-          const oppOffenseRank = OFFENSE_RANK[normalizedOpponent] ?? 16;
-          const projPoints = Math.round((6.5 + (oppOffenseRank - 16) * 0.24 + (isHome ? 0.8 : 0)) * 10) / 10;
-          const matchupGrade = projPoints >= 10 ? "A" : projPoints >= 8 ? "B" : projPoints >= 6.5 ? "C" : "D";
-          DST_DATA.push({
-            team: normalizedTeam,
-            opponent: normalizedOpponent,
-            matchupGrade,
-            ownershipPct: -1,
-            oppOffenseRank,
-            projPoints,
-            note: `${normalizedTeam} faces ${normalizedOpponent} ${isHome ? "at home" : "on the road"} in the current ESPN weekly schedule.`,
-            gameTime: event.date ?? null,
-          });
+      const currentWeek = getCurrentNFLWeek() || 1;
+      const FORECAST_SPAN = 3; // current week + next 2
+      const weekNumbers = Array.from({ length: FORECAST_SPAN }, (_, i) => currentWeek + i).filter(w => w >= 1 && w <= 18);
+
+      const weekFetches = await Promise.allSettled(weekNumbers.map(async wk => {
+        const sbResp = await fetch(
+          `https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${wk}&seasontype=2&limit=100`,
+          { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } }
+        );
+        if (!sbResp.ok) throw new Error(`ESPN schedule wk${wk} ${sbResp.status}`);
+        const sbData: any = await sbResp.json();
+        return { wk, sbData };
+      }));
+
+      // team -> array of per-week matchup rows (sorted by week ascending)
+      const byTeam: Record<string, any[]> = {};
+      const weeksReturned: number[] = [];
+
+      for (const settled of weekFetches) {
+        if (settled.status !== "fulfilled") continue;
+        const { wk, sbData } = settled.value;
+        const resolvedWeek = sbData?.week?.number ?? wk;
+        weeksReturned.push(resolvedWeek);
+        for (const event of (sbData?.events ?? [])) {
+          const competition = event?.competitions?.[0];
+          const home = competition?.competitors?.find((c: any) => c.homeAway === "home")?.team?.abbreviation;
+          const away = competition?.competitors?.find((c: any) => c.homeAway === "away")?.team?.abbreviation;
+          if (!home || !away) continue;
+          for (const [team, opponent, isHome] of [[home, away, true], [away, home, false]] as const) {
+            const normalizedTeam = team === "WSH" ? "WAS" : team;
+            const normalizedOpponent = opponent === "WSH" ? "WAS" : opponent;
+            const oppOffenseRank = OFFENSE_RANK[normalizedOpponent] ?? 16;
+            const projPoints = Math.round((6.5 + (oppOffenseRank - 16) * 0.24 + (isHome ? 0.8 : 0)) * 10) / 10;
+            const matchupGrade = projPoints >= 10 ? "A" : projPoints >= 8 ? "B" : projPoints >= 6.5 ? "C" : "D";
+            const row = {
+              week: resolvedWeek,
+              team: normalizedTeam,
+              opponent: normalizedOpponent,
+              matchupGrade,
+              ownershipPct: -1,
+              oppOffenseRank,
+              projPoints,
+              note: `${normalizedTeam} faces ${normalizedOpponent} ${isHome ? "at home" : "on the road"} in Week ${resolvedWeek}.`,
+              gameTime: event.date ?? null,
+            };
+            (byTeam[normalizedTeam] ??= []).push(row);
+          }
         }
       }
+
+      for (const team of Object.keys(byTeam)) {
+        byTeam[team].sort((a, b) => a.week - b.week);
+      }
+
+      const sortedWeeks = Array.from(new Set(weeksReturned)).sort((a, b) => a - b);
+      const thisWeekNum = sortedWeeks[0] ?? currentWeek;
+
+      // This-week list (unchanged shape for existing consumers), now enriched
+      // with each team's next two matchups for an at-a-glance forward look.
+      const DST_DATA = Object.values(byTeam)
+        .map(rows => rows.find(r => r.week === thisWeekNum))
+        .filter((r): r is any => !!r)
+        .map(r => ({
+          ...r,
+          upcoming: byTeam[r.team].filter(u => u.week > thisWeekNum).slice(0, FORECAST_SPAN - 1),
+        }));
       DST_DATA.sort((a, b) => b.projPoints - a.projPoints);
+
+      // Full forecast grid: one entry per week, each with its own ranked list —
+      // lets the UI page through "this week / next week / two weeks out".
+      const forecast = sortedWeeks.map(wk => {
+        const rows = Object.values(byTeam)
+          .map(teamRows => teamRows.find(r => r.week === wk))
+          .filter((r): r is any => !!r)
+          .sort((a, b) => b.projPoints - a.projPoints);
+        return { week: wk, teams: rows.slice(0, 12) };
+      });
+
       const result = {
         teams: DST_DATA.slice(0, 12),
-        week: sbData?.week?.number ?? getCurrentNFLWeek(),
+        week: thisWeekNum,
+        forecastWeeks: sortedWeeks,
+        forecast,
         fetchedAt: new Date().toISOString(),
         scheduleSource: "ESPN",
       };
