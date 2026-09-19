@@ -16892,9 +16892,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const espnId = espnIdHint || await resolveESPNId(playerName, "NFL");
       if (!espnId) return [];
 
-      // 2026 season has no games played yet — use 2025 (last completed season)
-      // for real recent-game stats. Once 2026 games exist this will naturally
-      // pick them up (see season-preference loop below).
+      // Early in a season, the current year alone may only have 1-2 games
+      // played so far — not enough for a meaningful "last 5 games" sample.
+      // Walk backwards from the current season and keep accumulating games
+      // from prior seasons until we have at least 5 (or run out of seasons),
+      // then sort/slice to the 5 most recent by date below. This also still
+      // works correctly once a season has 5+ games of its own, since it
+      // simply stops needing the older season at that point.
       const currentYear = new Date().getFullYear();
       const candidateSeasons = [currentYear, currentYear - 1];
       let names: string[] = [];
@@ -16924,7 +16928,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               }
             }
           }
-          if (allGames.length > 0) break; // found a season with real games — stop
+          if (allGames.length >= 5) break; // have a full L5 sample — stop
         } catch { /* try next season */ }
       }
 
