@@ -245,15 +245,76 @@ function FeatureGuard({
   return <>{children}</>;
 }
 
-// Owner-only guard
+// ── Owner-only guard — shows an inline access-code prompt instead of a redirect ──
+function OwnerCodeGate() {
+  const { login } = useAuth();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Invalid access code.");
+        return;
+      }
+      login(data.token, data.user);
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+      <div style={{ background: "#13233A", borderRadius: 16, padding: "32px 28px", maxWidth: 360, width: "100%", color: "#F6F1E7" }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Access Code Required</div>
+        <div style={{ fontSize: 13, opacity: 0.65, lineHeight: 1.5, marginBottom: 20 }}>
+          Enter the access code to view this section.
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            value={code}
+            onChange={e => setCode(e.target.value)}
+            placeholder="Enter code"
+            autoComplete="off"
+            autoFocus
+            className="w-full px-4 py-3 rounded-xl border-2 text-center text-lg font-black tracking-[0.3em] uppercase outline-none transition-all"
+            style={{ background: "#F6F1E7", borderColor: code ? "#F6F1E7" : "rgba(246,241,231,0.3)", color: "#131A24" }}
+          />
+          {error && (
+            <div style={{ fontSize: 12, color: "#f5a8a8" }}>{error}</div>
+          )}
+          <button
+            type="submit"
+            disabled={loading || !code.trim()}
+            className="w-full py-3 rounded-xl font-black text-sm transition-all disabled:opacity-40"
+            style={{ background: "#F6F1E7", color: "#13233A" }}
+          >
+            {loading ? "Checking…" : "Unlock"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function OwnerGuard({ children }: { children: React.ReactNode }) {
   const { isOwner, isLoading } = useAuth();
-  const [, navigate] = useHashLocation();
   if (isLoading) return null;
-  if (!isOwner) {
-    setTimeout(() => navigate("/"), 0);
-    return null;
-  }
+  if (!isOwner) return <OwnerCodeGate />;
   return <>{children}</>;
 }
 
@@ -358,8 +419,11 @@ function AppInner() {
 }
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
+// The app itself is open to everyone — no email/password/PIN required.
+// Owner-only sections (Insights, Book) are protected separately by OwnerGuard,
+// which prompts for the access code inline rather than blocking the whole app.
 function AuthGuard() {
-  const { isLoggedIn, isLoading } = useAuth();
+  const { isLoading } = useAuth();
   const [location] = useHashLocation();
 
   if (location.startsWith("/reset-pin")) return <ResetPIN />;
@@ -372,7 +436,6 @@ function AuthGuard() {
     );
   }
 
-  if (!isLoggedIn) return <Login />;
   return <AppInner />;
 }
 
