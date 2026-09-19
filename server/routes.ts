@@ -16726,6 +16726,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   };
   let _espnNflRosterCache: { byTeam: Record<string, EspnNflDepth>; ts: number } | null = null;
   const ESPN_NFL_ROSTER_TTL = 6 * 60 * 60 * 1000;
+  // Normalized player name -> ESPN athlete id, harvested directly from the
+  // depth-chart payload above (site.web.api.espn.com — NOT the Akamai-blocked
+  // site.api.espn.com search endpoint). This lets prop-building resolve every
+  // rostered starter's ESPN id without ever calling the blocked search API,
+  // which previously made resolveESPNId() silently fail for any player not
+  // already in the small hardcoded ESPN_ID_CACHE, zeroing out End Zone props.
+  let _espnNflIdIndex: Record<string, string> = {};
   let _nflRosterVerification: { verifiedTeams: Set<string>; checkedAt: string } = {
     verifiedTeams: new Set(),
     checkedAt: "",
@@ -16768,6 +16775,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           .map((p: any) => normalizeNflPlayerName(p.displayName ?? p.fullName ?? ""))
           .filter(Boolean)
       );
+      // Harvest every listed athlete's ESPN id at the same time — the depth
+      // chart payload already includes `id` per athlete (verified directly
+      // against ESPN's own response), so this is free and avoids ever
+      // calling the blocked site.api.espn.com search endpoint per-player.
+      for (const posKey of ["qb", "rb", "wr1", "wr2", "wr3", "te"]) {
+        for (const p of (positions[posKey]?.athletes ?? [])) {
+          const norm = normalizeNflPlayerName(p.displayName ?? p.fullName ?? "");
+          const id = p.id != null ? String(p.id) : "";
+          if (norm && id) _espnNflIdIndex[norm] = id;
+        }
+      }
       const depth = {
         QB: namesAt(["qb"]),
         RB: namesAt(["rb"]),
@@ -16781,6 +16799,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       _espnNflRosterCache = { byTeam, ts: Date.now() };
     }
     return byTeam;
+  }
+
+  /** Merged normalized-name -> ESPN athlete id index, refreshed alongside the
+   *  depth-chart roster cache above. Populated entirely from the non-blocked
+   *  depth-chart endpoint, so it stays available even while site.api.espn.com
+   *  search is Akamai-blocked for this server's outbound IP. */
+  async function getEspnNflIdIndex(): Promise<Record<string, string>> {
+    if (!_espnNflRosterCache || (Date.now() - _espnNflRosterCache.ts) >= ESPN_NFL_ROSTER_TTL) {
+      await getEspnActiveNflRosters();
+    }
+    return _espnNflIdIndex;
   }
 
   async function getLiveNflRosterTiers(): Promise<Record<string, { qb: string; rb1: string; wr1: string; wr2: string; te1: string }>> {
@@ -16851,12 +16880,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   const NFL_PLAYER_LOG_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
   /** Fetch a player's last-5 real games (receiving/rushing/passing stats) from ESPN. */
-  async function fetchNflPlayerRecentGames(playerName: string): Promise<Array<Record<string, number>>> {
+  async function fetchNflPlayerRecentGames(playerName: string, espnIdHint?: string): Promise<Array<Record<string, number>>> {
     const cached = _nflPlayerLogCache.get(playerName);
     if (cached && (Date.now() - cached.ts) < NFL_PLAYER_LOG_TTL) return cached.games;
 
     try {
-      const espnId = await resolveESPNId(playerName, "NFL");
+      // Prefer an id already harvested from ESPN's depth-chart endpoint
+      // (site.web.api.espn.com, not blocked) over resolveESPNId(), which
+      // falls back to the Akamai-blocked site.api.espn.com search API and
+      // silently returns null for the large majority of NFL starters.
+      const espnId = espnIdHint || await resolveESPNId(playerName, "NFL");
       if (!espnId) return [];
 
       // 2026 season has no games played yet — use 2025 (last completed season)
@@ -17100,10 +17133,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     // LIVE current rosters from Sleeper (catches trades/depth-chart changes).
     const rows: PropRow[] = [];
     const bookPct = 53.5; // standard -115 vig-implied probability, used ONLY when DraftKings has no posted line yet
-    const [liveRosters, dkLines] = await Promise.all([
+    const [liveRosters, dkLines, espnIdIndex] = await Promise.all([
       getLiveNflRosterTiers(),
       getDraftKingsNflPropLines(),
+      getEspnNflIdIndex(),
     ]);
+    const espnId = (playerName: string) => espnIdIndex[normalizeNflPlayerName(playerName)];
 
     for (const game of games) {
       for (const side of ["home", "away"] as const) {
@@ -17122,13 +17157,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           ? game.total / 2 - game.spread / 2
           : game.total / 2 + game.spread / 2;
 
-        // Fetch real recent-game logs for this team's skill players in parallel.
+        // Fetch real recent-game logs for this team's skill players in parallel,
+        // passing each player's ESPN id (harvested from the non-blocked
+        // depth-chart endpoint above) so this never has to fall back to the
+        // blocked site.api.espn.com search API.
         const [qbGames, rb1Games, wr1Games, wr2Games, te1Games] = await Promise.all([
-          fetchNflPlayerRecentGames(roster.qb),
-          fetchNflPlayerRecentGames(roster.rb1),
-          fetchNflPlayerRecentGames(roster.wr1),
-          fetchNflPlayerRecentGames(roster.wr2),
-          fetchNflPlayerRecentGames(roster.te1),
+          fetchNflPlayerRecentGames(roster.qb, espnId(roster.qb)),
+          fetchNflPlayerRecentGames(roster.rb1, espnId(roster.rb1)),
+          fetchNflPlayerRecentGames(roster.wr1, espnId(roster.wr1)),
+          fetchNflPlayerRecentGames(roster.wr2, espnId(roster.wr2)),
+          fetchNflPlayerRecentGames(roster.te1, espnId(roster.te1)),
         ]);
 
         // ── QB Pass Yards (real L5 passing yards, DraftKings line) ───────────
