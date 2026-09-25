@@ -68,6 +68,7 @@ interface GameLine {
   homeTeam: string;
   gameTime: string | null;
   status: string;
+  linesPending?: boolean;
   openingInserted: string | null;
   currentInserted: string | null;
   numBets: number | null;
@@ -1752,6 +1753,9 @@ function GameCard({ game }: { game: GameLine }) {
                   )}
                 </p>
               )}
+              {game.linesPending && (
+                <p className="text-[10px] font-semibold text-amber-500/80 whitespace-nowrap">Lines pending</p>
+              )}
             </div>
             {/* Share button */}
             <button
@@ -1879,6 +1883,17 @@ function GameCard({ game }: { game: GameLine }) {
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-border px-4 py-4 space-y-4">
+
+          {/* Lines not posted yet notice */}
+          {game.linesPending && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+              <span className="text-amber-400 mt-0.5">⏳</span>
+              <div>
+                <span className="font-bold text-amber-400">Lines not posted yet</span>
+                <span className="text-foreground/60 ml-1">— sportsbooks haven't opened betting on this game yet. Check back closer to game time for spread, total, and moneyline data.</span>
+              </div>
+            </div>
+          )}
 
           {/* ★ Bet Recommendation — shown first, most prominent section */}
           {rec && !game.finalScore && <RecCard rec={rec} />}
@@ -2295,10 +2310,19 @@ export default function LineMovement() {
         <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
 
-      {/* ── Sharp Money Panel ── always reflects today's live action, so only show it on the Today tab */}
-      {day === "today" && (
+      {/* ── Sharp Money Panel ── live book comparison; filtered to the selected day.
+          Previous Day has no data source (once a game starts, sharp/soft book
+          markets close and there's no historical snapshot), so it's hidden there
+          with an explanation instead of showing an empty panel. */}
+      {day !== "previous" && (
         <div className="mt-2">
-          <SharpMoneyPanel />
+          <SharpMoneyPanel day={day} />
+        </div>
+      )}
+      {day === "previous" && (
+        <div className="mt-2 flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.2)" }}>
+          <span className="text-muted-foreground mt-0.5">ℹ️</span>
+          <span className="text-foreground/60">Sharp/public money charts aren't available for past games — once a game starts, sportsbooks close those markets and no historical snapshot is kept. The score-vs-line grading below is the closest equivalent for graded games.</span>
         </div>
       )}
 
