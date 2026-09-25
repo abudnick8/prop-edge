@@ -711,30 +711,40 @@ function etDateStrToday(offsetDays = 0): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function SharpMoneyPanel({ day = "today" }: { day?: "today" | "next" }) {
+export function SharpMoneyPanel({ day = "today" }: { day?: "today" | "next" | "previous" }) {
   const [sportFilter, setSportFilter] = useState<string>("ALL");
+  const isHistorical = day === "previous";
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["sharp-money"],
+    queryKey: ["sharp-money", day],
     queryFn: async () => {
-      const res = await fetch("/api/sharp-money");
+      const res = await fetch(isHistorical ? "/api/sharp-money?day=previous" : "/api/sharp-money");
       if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ games: SharpGameData[]; updatedAt: string }>;
+      return res.json() as Promise<{ games: SharpGameData[]; updatedAt: string | null; historical?: boolean }>;
     },
-    refetchInterval: 15 * 60 * 1000,
-    staleTime:       14 * 60 * 1000,
+    // Historical snapshots only change once every ~20 min (the capture-job
+    // cadence) and never for a day that's already fully in the past, so no
+    // need to poll it as aggressively as the live feed.
+    refetchInterval: isHistorical ? 30 * 60 * 1000 : 15 * 60 * 1000,
+    staleTime:       isHistorical ? 25 * 60 * 1000 : 14 * 60 * 1000,
   });
 
+  // Backend already scopes historical results to the right ET day; live
+  // today/next results need the same client-side ET-day filter as before.
   const targetET  = day === "next" ? etDateStrToday(1) : etDateStrToday(0);
-  const allGames  = (data?.games || []).filter(g => gameEtDate(g.startTime) === targetET);
+  const allGames  = isHistorical ? (data?.games || []) : (data?.games || []).filter(g => gameEtDate(g.startTime) === targetET);
   const games     = allGames.filter(g => sportFilter === "ALL" || g.sport === sportFilter);
   const sharpCount = allGames.filter(g => g.sharpScore >= 60).length;
   const rlmCount   = allGames.filter(g => g.rlmDetected).length;
 
   const updatedAt = data?.updatedAt
-    ? new Date(data.updatedAt).toLocaleTimeString("en-US", {
-        hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
-      }) + " CT"
+    ? (isHistorical
+        ? new Date(data.updatedAt).toLocaleString("en-US", {
+            month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
+          }) + " CT"
+        : new Date(data.updatedAt).toLocaleTimeString("en-US", {
+            hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
+          }) + " CT")
     : null;
 
   const sportCounts = ["NBA", "MLB", "NHL", "NFL"].reduce((acc, s) => {
@@ -750,10 +760,12 @@ export function SharpMoneyPanel({ day = "today" }: { day?: "today" | "next" }) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <BarChart2 size={15} style={{ color: NAV }} />
-            <h2 style={{ fontSize: 15, fontWeight: 900, color: FG, margin: 0 }}>Sharp Money{day === "next" ? " — Tomorrow" : ""}</h2>
+            <h2 style={{ fontSize: 15, fontWeight: 900, color: FG, margin: 0 }}>Sharp Money{day === "next" ? " — Tomorrow" : isHistorical ? " — Closing Lines (Yesterday)" : ""}</h2>
           </div>
           <p style={{ fontSize: 10, color: MUTED, margin: "2px 0 0 0" }}>
-            Pinnacle · ESPN · ActionNetwork{updatedAt ? ` · ${updatedAt}` : ""}
+            {isHistorical
+              ? `Last snapshot before kickoff${updatedAt ? ` · captured ${updatedAt}` : ""}`
+              : `Pinnacle · ESPN · ActionNetwork${updatedAt ? ` · ${updatedAt}` : ""}`}
           </p>
         </div>
         <button
@@ -856,7 +868,9 @@ export function SharpMoneyPanel({ day = "today" }: { day?: "today" | "next" }) {
         <div style={{ textAlign: "center", padding: "32px 0" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: FG, margin: 0 }}>No games found</p>
           <p style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-            {day === "next"
+            {isHistorical
+              ? "No sharp-money history captured for this day yet — historical tracking just started, so it'll fill in for future Previous Day views"
+              : day === "next"
               ? (sportFilter !== "ALL" ? `No ${sportFilter} games with lines posted for tomorrow yet` : "Books haven't posted lines for tomorrow's games yet — check back later")
               : (sportFilter !== "ALL" ? `No ${sportFilter} games today` : "No games found across all sports")}
           </p>

@@ -297,6 +297,28 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS book_tx_account_idx ON book_transactions(account_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS book_tx_slip_idx    ON book_transactions(slip_id)`);
 
+    // ── Sharp Money snapshots (persistent across redeploys) ───────────────────
+    // Periodic captures of the live Sharp Money panel data, so Previous Day
+    // can show "how the market looked right before the game" once a market
+    // closes and the live feed no longer has the game. game_key mirrors the
+    // sharp_money.ts cache key: `${sport}:${normalizedHome}:${normalizedAway}`.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sharp_money_snapshots (
+        id           SERIAL PRIMARY KEY,
+        game_key     TEXT NOT NULL,
+        sport        TEXT NOT NULL,
+        home_team    TEXT NOT NULL,
+        away_team    TEXT NOT NULL,
+        start_time   TIMESTAMPTZ,
+        captured_at  TIMESTAMPTZ DEFAULT NOW(),
+        data         JSONB NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS sharp_money_snap_key_idx   ON sharp_money_snapshots(game_key, captured_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS sharp_money_snap_start_idx ON sharp_money_snapshots(start_time)`);
+    // Keep only the last ~10 days of snapshots so the table doesn't grow unbounded.
+    await pool.query(`DELETE FROM sharp_money_snapshots WHERE captured_at < NOW() - INTERVAL '10 days'`);
+
     console.log("[DB] Migrations complete");
   } catch (err: any) {
     console.warn("[DB] Migration warning:", err.message);

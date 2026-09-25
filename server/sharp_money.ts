@@ -94,7 +94,7 @@ export interface SharpGameData {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function normalize(name: string): string {
+export function normalize(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 

@@ -2310,21 +2310,13 @@ export default function LineMovement() {
         <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
 
-      {/* ── Sharp Money Panel ── live book comparison; filtered to the selected day.
-          Previous Day has no data source (once a game starts, sharp/soft book
-          markets close and there's no historical snapshot), so it's hidden there
-          with an explanation instead of showing an empty panel. */}
-      {day !== "previous" && (
-        <div className="mt-2">
-          <SharpMoneyPanel day={day} />
-        </div>
-      )}
-      {day === "previous" && (
-        <div className="mt-2 flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.2)" }}>
-          <span className="text-muted-foreground mt-0.5">ℹ️</span>
-          <span className="text-foreground/60">Sharp/public money charts aren't available for past games — once a game starts, sportsbooks close those markets and no historical snapshot is kept. The score-vs-line grading below is the closest equivalent for graded games.</span>
-        </div>
-      )}
+      {/* ── Sharp Money Panel ── live book comparison for Today/Next Day;
+          Previous Day shows the last snapshot captured before each game's
+          kickoff (from the periodic history job), since live markets close
+          once a game starts and can't be re-fetched. */}
+      <div className="mt-2">
+        <SharpMoneyPanel day={day} />
+      </div>
 
       {/* Content */}
       {isLoading ? (
