@@ -6947,12 +6947,215 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Kick off initial fetch immediately (don't await — non-blocking)
   refreshGameTimeLookup().catch(() => {});
 
+  // ── Day-bucketing helpers shared by /api/line-movement (previous/today/next) ──
+  const ET_DATE_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+  const etDateStr = (d: Date): string => ET_DATE_FMT.format(d);
+
+  const LM_ALT_MIN_TOTAL: Record<string, number> = { MLB: 6, NBA: 180, NHL: 4.5, NFL: 30 };
+  const LM_ALT_MAX_TOTAL: Record<string, number> = { MLB: 16, NBA: 260, NHL: 9,   NFL: 65 };
+  const lmIsAltLine = (o: any, label: string): boolean => {
+    const minT = LM_ALT_MIN_TOTAL[label];
+    const maxT = LM_ALT_MAX_TOTAL[label];
+    if (o.total != null && minT != null && (o.total < minT || o.total > maxT)) return true;
+    if (label === "MLB" && o.spread_away != null && Math.abs(Math.abs(o.spread_away) - 1.5) > 0.1) return true;
+    return false;
+  };
+
+  // Same thresholds as the client-side sharpSignal() heuristic in LineMovement.tsx,
+  // reused here so previous-day grading matches what users see on live games.
+  function lmSharpPick(
+    moneyA: number | null, publicA: number | null,
+    moneyB: number | null, publicB: number | null,
+    sideA: string, sideB: string,
+  ): { side: string | null; divergence: number | null } {
+    const divA = (moneyA != null && publicA != null) ? moneyA - publicA : null;
+    const divB = (moneyB != null && publicB != null) ? moneyB - publicB : null;
+    if (divA != null && (divB == null || divA >= divB) && divA >= 15) return { side: sideA, divergence: divA };
+    if (divB != null && divB >= 15) return { side: sideB, divergence: divB };
+    return { side: null, divergence: null };
+  }
+
+  // ── Previous-day lines: completed games only, with final score + grading ──
+  async function buildPreviousDayLines(): Promise<any[]> {
+    const nowUtc = new Date();
+    const targetET = etDateStr(new Date(nowUtc.getTime() - 86400000));
+    const centerUtc = new Date(nowUtc.getTime() - 86400000);
+    const datesToCheck = [-1, 0, 1].map(off =>
+      new Date(centerUtc.getTime() + off * 86400000).toISOString().slice(0, 10).replace(/-/g, "")
+    );
+
+    const sports = [
+      { slug: "nba", label: "NBA" },
+      { slug: "mlb", label: "MLB" },
+      { slug: "nhl", label: "NHL" },
+      { slug: "nfl", label: "NFL" },
+    ];
+    const results: any[] = [];
+
+    await Promise.allSettled(sports.map(async ({ slug, label }) => {
+      try {
+        const anHeaders: Record<string, string> = {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "Accept": "application/json",
+          "Referer": "https://www.actionnetwork.com/",
+        };
+
+        const seenIds = new Set<string>();
+        const allGames: any[] = [];
+        for (const date of datesToCheck) {
+          const url = `https://api.actionnetwork.com/web/v1/scoreboard/${slug}?date=${date}`;
+          const { data } = await axios.get(url, { timeout: 10000, headers: anHeaders }).catch(() => ({ data: {} }));
+          for (const g of (data?.games ?? [])) {
+            if (!seenIds.has(String(g.id))) { seenIds.add(String(g.id)); allGames.push(g); }
+          }
+        }
+
+        const games = allGames.filter((g: any) => {
+          const status = (g.status ?? "").toLowerCase();
+          if (status !== "complete" && status !== "closed" && status !== "final") return false;
+          const st = g.start_time ? new Date(g.start_time) : null;
+          if (!st) return false;
+          return etDateStr(st) === targetET;
+        });
+
+        for (const game of games) {
+          const teams: any[] = game.teams ?? [];
+          const awayTeamObj = teams.find((t: any) => t.id === game.away_team_id) ?? teams[0] ?? {};
+          const homeTeamObj = teams.find((t: any) => t.id === game.home_team_id) ?? teams[1] ?? {};
+          const awayTeam = awayTeamObj.full_name ?? awayTeamObj.display_name ?? "Away";
+          const homeTeam = homeTeamObj.full_name ?? homeTeamObj.display_name ?? "Home";
+          const gameTime = game.start_time ?? null;
+
+          const awayScore = game.boxscore?.total_away_points ?? null;
+          const homeScore = game.boxscore?.total_home_points ?? null;
+          if (awayScore == null || homeScore == null) continue; // can't grade without a final score
+
+          // Only pre-kickoff, full-game-market odds represent the true closing line
+          const startMs = gameTime ? new Date(gameTime).getTime() : null;
+          const oddsArr: any[] = (game.odds ?? [])
+            .filter((o: any) => (o.type ?? "game") === "game")
+            .filter((o: any) => !startMs || !o.inserted || new Date(o.inserted).getTime() <= startMs)
+            .sort((a: any, b: any) => (a.inserted ?? "").localeCompare(b.inserted ?? ""));
+          if (oddsArr.length < 1) continue;
+
+          const fullGameOdds = oddsArr.filter((o: any) => !lmIsAltLine(o, label));
+          const oddsForLines = fullGameOdds.length > 0 ? fullGameOdds : oddsArr;
+
+          const opening = oddsForLines[0];
+          const withLines  = oddsForLines.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
+          const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null || o.total_over_public != null);
+          const closing = oddsForLines[oddsForLines.length - 1];
+          const bestLines  = withLines.length  > 0 ? withLines[withLines.length - 1]   : closing;
+          const bestPublic = withPublic.length > 0 ? withPublic[withPublic.length - 1] : closing;
+
+          const spreadOpen  = opening.spread_away ?? null;
+          const spreadClose = bestLines.spread_away ?? null;
+          const spreadMove  = (spreadOpen != null && spreadClose != null) ? +(spreadClose - spreadOpen).toFixed(1) : null;
+
+          const totalOpen  = opening.total ?? null;
+          const totalClose = bestLines.total ?? null;
+          const totalMove  = (totalOpen != null && totalClose != null) ? +(totalClose - totalOpen).toFixed(1) : null;
+
+          const mlAwayOpen  = opening.ml_away ?? null;
+          const mlHomeOpen  = opening.ml_home ?? null;
+          const mlAwayClose = bestLines.ml_away ?? null;
+          const mlHomeClose = bestLines.ml_home ?? null;
+
+          const spreadAwayPublic = bestPublic.spread_away_public ?? null;
+          const spreadAwayMoney  = bestPublic.spread_away_money  ?? null;
+          const spreadHomePublic = bestPublic.spread_home_public ?? null;
+          const spreadHomeMoney  = bestPublic.spread_home_money  ?? null;
+          const totalOverPublic  = bestPublic.total_over_public  ?? null;
+          const totalOverMoney   = bestPublic.total_over_money   ?? null;
+          const totalUnderPublic = bestPublic.total_under_public ?? null;
+          const totalUnderMoney  = bestPublic.total_under_money  ?? null;
+          const mlAwayPublic     = bestPublic.ml_away_public     ?? null;
+          const mlAwayMoney      = bestPublic.ml_away_money      ?? null;
+          const mlHomePublic     = bestPublic.ml_home_public     ?? null;
+          const mlHomeMoney      = bestPublic.ml_home_money      ?? null;
+          const numBets = bestPublic.num_bets ?? closing.num_bets ?? game.num_bets ?? null;
+
+          if (spreadClose == null && totalClose == null && mlAwayClose == null && mlHomeClose == null) continue;
+
+          // ── Grade the closing line + sharp side against the actual result ──
+          const totalScore = awayScore + homeScore;
+          let atsResult: "away" | "home" | "push" | null = null;
+          if (spreadClose != null) {
+            const margin = (awayScore + spreadClose) - homeScore;
+            atsResult = margin > 0 ? "away" : margin < 0 ? "home" : "push";
+          }
+          let totalResult: "over" | "under" | "push" | null = null;
+          if (totalClose != null) {
+            totalResult = totalScore > totalClose ? "over" : totalScore < totalClose ? "under" : "push";
+          }
+          const mlResult: "away" | "home" | "tie" = awayScore > homeScore ? "away" : awayScore < homeScore ? "home" : "tie";
+
+          const spreadSharp = lmSharpPick(spreadAwayMoney, spreadAwayPublic, spreadHomeMoney, spreadHomePublic, "away", "home");
+          const totalSharp  = lmSharpPick(totalOverMoney, totalOverPublic, totalUnderMoney, totalUnderPublic, "over", "under");
+          const mlSharp     = lmSharpPick(mlAwayMoney, mlAwayPublic, mlHomeMoney, mlHomePublic, "away", "home");
+
+          const spreadSharpWon = spreadSharp.side != null && atsResult   != null ? (spreadSharp.side === atsResult && atsResult !== "push") : null;
+          const totalSharpWon  = totalSharp.side  != null && totalResult  != null ? (totalSharp.side  === totalResult && totalResult !== "push") : null;
+          const mlSharpWon     = mlSharp.side     != null ? (mlSharp.side === mlResult) : null;
+
+          results.push({
+            id: `lm-${slug}-${game.id}`,
+            sport: label,
+            awayTeam,
+            homeTeam,
+            gameTime,
+            status: "final",
+            openingInserted: opening.inserted ?? null,
+            currentInserted: closing.inserted ?? null,
+            numBets,
+            finalScore: { away: awayScore, home: homeScore },
+            spread: {
+              open: spreadOpen, current: spreadClose, move: spreadMove,
+              awayPublic: spreadAwayPublic, awayMoney: spreadAwayMoney,
+              homePublic: spreadHomePublic, homeMoney: spreadHomeMoney,
+            },
+            total: {
+              open: totalOpen, current: totalClose, move: totalMove,
+              overPublic: totalOverPublic, overMoney: totalOverMoney,
+              underPublic: totalUnderPublic, underMoney: totalUnderMoney,
+            },
+            moneyline: {
+              awayOpen: mlAwayOpen, awayCurrent: mlAwayClose,
+              homeOpen: mlHomeOpen, homeCurrent: mlHomeClose,
+              awayPublic: mlAwayPublic, awayMoney: mlAwayMoney,
+              homePublic: mlHomePublic, homeMoney: mlHomeMoney,
+            },
+            grading: {
+              atsResult, totalResult, mlResult,
+              spreadSharpSide: spreadSharp.side, spreadSharpDivergence: spreadSharp.divergence, spreadSharpWon,
+              totalSharpSide: totalSharp.side, totalSharpDivergence: totalSharp.divergence, totalSharpWon,
+              mlSharpSide: mlSharp.side, mlSharpDivergence: mlSharp.divergence, mlSharpWon,
+            },
+          });
+        }
+      } catch (e: any) {
+        console.warn(`[LineMovement Previous] ${slug} error:`, e.message);
+      }
+    }));
+
+    results.sort((a, b) => new Date(b.gameTime ?? 0).getTime() - new Date(a.gameTime ?? 0).getTime());
+    return results;
+  }
+
   app.get("/api/line-movement", async (req, res) => {
     try {
-      const cacheKey = "lm";
+      const dayParam = String(req.query.day ?? "today");
+      const day: "previous" | "today" | "next" = dayParam === "previous" ? "previous" : dayParam === "next" ? "next" : "today";
+      const cacheKey = `lm:${day}`;
       const cached = LINE_MOVEMENT_CACHE.get(cacheKey);
       if (cached && Date.now() - cached.ts < LM_TTL) {
         return res.json(cached.data);
+      }
+
+      if (day === "previous") {
+        const data = await buildPreviousDayLines();
+        LINE_MOVEMENT_CACHE.set(cacheKey, { data, ts: Date.now() });
+        return res.json(data);
       }
 
       const nowUtc = new Date();
@@ -6961,6 +7164,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const todayUtc     = nowUtc.toISOString().slice(0, 10).replace(/-/g, "");
       const tomorrowUtc  = new Date(nowUtc.getTime() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
       const datesToCheck = [yesterdayUtc, todayUtc, tomorrowUtc];
+
+      const targetET = day === "next" ? etDateStr(new Date(nowUtc.getTime() + 86400000)) : etDateStr(nowUtc);
 
       const sports = [
         { slug: "nba", label: "NBA" },
@@ -6990,15 +7195,13 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             }
           }
 
-          // Only games within next 48h (or already in-progress)
-          const cutoff = new Date(nowUtc.getTime() + 48 * 3600 * 1000);
+          // Only games on the target ET calendar day (or already in-progress); exclude completed
           const games = allGames.filter((g: any) => {
-            const st = g.start_time ? new Date(g.start_time) : null;
-            if (!st) return true;
-            // Include in-progress + scheduled within 48h; exclude completed
             const status = (g.status ?? "").toLowerCase();
             if (status === "complete" || status === "closed" || status === "final") return false;
-            return st <= cutoff;
+            const st = g.start_time ? new Date(g.start_time) : null;
+            if (!st) return true;
+            return etDateStr(st) === targetET;
           });
 
           // ── Step 2: For each game, build the LM entry ──
@@ -7789,7 +7992,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Find the game from the line movement cache
-      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm:today");
       const game = lmCache?.data?.find((g: any) => g.id === gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found in line movement cache. Refresh the page first." });
@@ -7933,7 +8136,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Find the game from the line movement cache
-      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm:today");
       const game = lmCache?.data?.find((g: any) => g.id === gameId);
       if (!game) {
         return res.status(404).json({ error: "Game not found — refresh line movement data first." });
@@ -8396,7 +8599,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
       // Pull games from the line movement cache (or fetch fresh if needed)
       let games: any[] = [];
-      const lmCache = LINE_MOVEMENT_CACHE.get("lm");
+      const lmCache = LINE_MOVEMENT_CACHE.get("lm:today");
       if (lmCache && Date.now() - lmCache.ts < LM_TTL) {
         games = lmCache.data;
       } else {

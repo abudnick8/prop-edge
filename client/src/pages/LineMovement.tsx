@@ -46,6 +46,21 @@ interface MoneylineData {
   homeMoney?: number | null;
 }
 
+interface GameGrading {
+  atsResult: "away" | "home" | "push" | null;
+  totalResult: "over" | "under" | "push" | null;
+  mlResult: "away" | "home" | "tie";
+  spreadSharpSide: "away" | "home" | null;
+  spreadSharpDivergence: number | null;
+  spreadSharpWon: boolean | null;
+  totalSharpSide: "over" | "under" | null;
+  totalSharpDivergence: number | null;
+  totalSharpWon: boolean | null;
+  mlSharpSide: "away" | "home" | null;
+  mlSharpDivergence: number | null;
+  mlSharpWon: boolean | null;
+}
+
 interface GameLine {
   id: string;
   sport: string;
@@ -59,10 +74,13 @@ interface GameLine {
   spread: LineData;
   total: LineData;
   moneyline: MoneylineData;
+  finalScore?: { away: number; home: number } | null;
+  grading?: GameGrading | null;
 }
 
 const SPORT_EMOJI: Record<string, string> = { NBA: "🏀", MLB: "⚾", NHL: "🏒", NFL: "🏈" };
 const SPORTS = ["All", "NBA", "MLB", "NHL", "NFL"];
+type LmDay = "previous" | "today" | "next";
 
 // ── Trigger List ──────────────────────────────────────────────────────────────
 
@@ -1501,6 +1519,97 @@ function ChartDrawer({
 }
 
 // ── GameCard ───────────────────────────────────────────────────────────────────
+// ── GameGradeSummary ── Final score + how the closing line/sharp money graded out (previous-day view)
+function GameGradeSummary({ game }: { game: GameLine }) {
+  const finalScore = game.finalScore;
+  const grading = game.grading;
+  if (!finalScore || !grading) return null;
+
+  const awayShort = game.awayTeam.split(" ").pop() ?? game.awayTeam;
+  const homeShort = game.homeTeam.split(" ").pop() ?? game.homeTeam;
+  const awayWon = finalScore.away > finalScore.home;
+  const homeWon = finalScore.home > finalScore.away;
+
+  function resultChip(label: string, won: boolean | null) {
+    if (won == null) return null;
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+        style={{
+          color: won ? "#4ade80" : "#f87171",
+          background: won ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
+        }}
+      >
+        {won ? <CheckCircle size={10} /> : <XCircle size={10} />} {label}
+      </span>
+    );
+  }
+
+  const atsText = grading.atsResult === "push" ? "Push"
+    : grading.atsResult === "away" ? `${awayShort} covered ${fmtLine(game.spread.current)}`
+    : grading.atsResult === "home" ? `${homeShort} covered ${fmtLine(game.spread.current != null ? -game.spread.current : null)}`
+    : "—";
+  const totalText = grading.totalResult === "push" ? "Push"
+    : grading.totalResult === "over" ? `Over hit (${finalScore.away + finalScore.home} vs ${game.total.current})`
+    : grading.totalResult === "under" ? `Under hit (${finalScore.away + finalScore.home} vs ${game.total.current})`
+    : "—";
+
+  const sharpRows: { label: string; side: string; divergence: number | null; won: boolean | null }[] = [];
+  if (grading.spreadSharpSide) {
+    sharpRows.push({
+      label: "Spread",
+      side: grading.spreadSharpSide === "away" ? awayShort : homeShort,
+      divergence: grading.spreadSharpDivergence,
+      won: grading.spreadSharpWon,
+    });
+  }
+  if (grading.totalSharpSide) {
+    sharpRows.push({
+      label: "Total",
+      side: grading.totalSharpSide === "over" ? "Over" : "Under",
+      divergence: grading.totalSharpDivergence,
+      won: grading.totalSharpWon,
+    });
+  }
+  if (grading.mlSharpSide) {
+    sharpRows.push({
+      label: "Moneyline",
+      side: grading.mlSharpSide === "away" ? awayShort : homeShort,
+      divergence: grading.mlSharpDivergence,
+      won: grading.mlSharpWon,
+    });
+  }
+
+  return (
+    <div className="px-4 pb-3 pt-1 border-t border-border/60 bg-accent/10">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-black uppercase tracking-wide text-foreground/70">Final</span>
+        <span className="text-sm font-bold text-foreground">
+          <span className={awayWon ? "text-foreground" : "text-foreground/70"}>{awayShort} {finalScore.away}</span>
+          <span className="text-foreground/70"> – </span>
+          <span className={homeWon ? "text-foreground" : "text-foreground/70"}>{finalScore.home} {homeShort}</span>
+        </span>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[11px] text-foreground/80">
+        {grading.atsResult != null && <span>ATS: <span className="font-semibold text-foreground">{atsText}</span></span>}
+        {grading.totalResult != null && <span>Total: <span className="font-semibold text-foreground">{totalText}</span></span>}
+      </div>
+      {sharpRows.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mt-2">
+          <DollarSign size={10} className="text-green-400" />
+          <span className="text-[10px] font-bold text-foreground/70">Sharp money call:</span>
+          {sharpRows.map(r => (
+            <span key={r.label} className="flex items-center gap-1">
+              <span className="text-[10px] text-foreground/70">{r.label} ({r.side}{r.divergence != null ? `, +${r.divergence}pt gap` : ""})</span>
+              {resultChip(r.won ? "Hit" : "Missed", r.won)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameCard({ game }: { game: GameLine }) {
   const [expanded, setExpanded] = useState(false);
   const [showResearch, setShowResearch] = useState(false);
@@ -1542,6 +1651,7 @@ function GameCard({ game }: { game: GameLine }) {
     staleTime: 5 * 60 * 1000,
     retry: 2,
     retryDelay: 1500,
+    enabled: !game.finalScore,
   });
   const ciqAvailable = ciqData?.available === true;
   const ciqGrade     = ciqAvailable ? (ciqData.grade as string) : null;
@@ -1709,7 +1819,7 @@ function GameCard({ game }: { game: GameLine }) {
             {hasPublicData && (
               <Badge className="text-[9px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">$ DATA</Badge>
             )}
-            {rec && <RecBadge rec={rec} />}
+            {rec && !game.finalScore && <RecBadge rec={rec} />}
             {ciqAvailable && ciqGrade && (
               <span
                 className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md border flex-shrink-0"
@@ -1722,7 +1832,7 @@ function GameCard({ game }: { game: GameLine }) {
                 🧠 {ciqGrade}{ciqPickTeam ? ` · ${ciqPickTeam}` : ""}
               </span>
             )}
-            {hasResearchWorthy && (
+            {hasResearchWorthy && !game.finalScore && (
               <button
                 onClick={(e) => { e.stopPropagation(); setShowResearch(!showResearch); }}
                 className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors border ${
@@ -1740,8 +1850,11 @@ function GameCard({ game }: { game: GameLine }) {
         )}
       </div>
 
+      {/* Final score + grading — previous-day view only */}
+      <GameGradeSummary game={game} />
+
       {/* Steam Intel Banner — auto-shows WHY the line moved (injuries, news, weather, sharp $) */}
-      {(hasSteam || isRLM || isSharpDiv) && (
+      {!game.finalScore && (hasSteam || isRLM || isSharpDiv) && (
         <SteamIntelBanner gameId={game.id} triggered={hasSteam || isRLM || isSharpDiv} />
       )}
 
@@ -1768,10 +1881,12 @@ function GameCard({ game }: { game: GameLine }) {
         <div className="border-t border-border px-4 py-4 space-y-4">
 
           {/* ★ Bet Recommendation — shown first, most prominent section */}
-          {rec && <RecCard rec={rec} />}
+          {rec && !game.finalScore && <RecCard rec={rec} />}
 
           {/* ★ Clubhouse IQ Pick — AI analysis from Edge Crew v3 grade engine */}
-          <CIQPickPanel game={game} ciqData={ciqData} isLoading={ciqLoading} isFetching={ciqFetching} refetch={ciqRefetch} />
+          {!game.finalScore && (
+            <CIQPickPanel game={game} ciqData={ciqData} isLoading={ciqLoading} isFetching={ciqFetching} refetch={ciqRefetch} />
+          )}
 
           {/* MLB public % unavailable notice */}
           {game.sport === "MLB" && game.spread.awayPublic == null && game.moneyline.awayPublic == null && (
@@ -1925,6 +2040,7 @@ function GameCard({ game }: { game: GameLine }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function LineMovement() {
+  const [day, setDay] = useState<LmDay>("today");
   const [sport, setSport] = useState("All");
   const [showSteamOnly, setShowSteamOnly] = useState(false);
   const [showMovedOnly, setShowMovedOnly] = useState(false);
@@ -1949,10 +2065,10 @@ export default function LineMovement() {
   }
 
   const { data: games = [], isLoading, dataUpdatedAt, refetch, isFetching } = useQuery<GameLine[]>({
-    queryKey: ["/api/line-movement"],
-    queryFn: () => apiRequest("GET", "/api/line-movement").then(r => r.json()),
-    refetchInterval: 5 * 60 * 1000, // auto-refresh every 5 min
-    staleTime: 4 * 60 * 1000,
+    queryKey: ["/api/line-movement", day],
+    queryFn: () => apiRequest("GET", `/api/line-movement?day=${day}`).then(r => r.json()),
+    refetchInterval: day === "today" ? 5 * 60 * 1000 : false, // only the live "today" view needs to auto-refresh
+    staleTime: day === "today" ? 4 * 60 * 1000 : 10 * 60 * 1000,
   });
 
   const { data: bookErrors = [] } = useBookErrors(!isLoading);
@@ -2005,7 +2121,11 @@ export default function LineMovement() {
             {isFetching && <RefreshCw size={13} className="text-muted-foreground animate-spin" />}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            Opening → current lines for today's games · spread, total & moneyline · public % + sharp money
+            {day === "previous"
+              ? "Yesterday's final scores · graded against the closing lines & sharp money"
+              : day === "next"
+              ? "Opening lines for tomorrow's games · spread, total & moneyline · public % + sharp money"
+              : "Opening → current lines for today's games · spread, total & moneyline · public % + sharp money"}
             {lastUpdated && <span className="ml-1 text-foreground/70">· updated {lastUpdated}</span>}
           </p>
         </div>
@@ -2049,11 +2169,37 @@ export default function LineMovement() {
         </div>
       </div>
 
+      {/* Day switcher — Previous / Today / Next */}
+      <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1.5" role="tablist" aria-label="Select day">
+        {([
+          { key: "previous", label: "Previous Day", icon: "◀" },
+          { key: "today", label: "Today", icon: null },
+          { key: "next", label: "Next Day", icon: "▶" },
+        ] as { key: LmDay; label: string; icon: string | null }[]).map(opt => (
+          <button
+            key={opt.key}
+            role="tab"
+            aria-selected={day === opt.key}
+            onClick={() => setDay(opt.key)}
+            data-testid={`day-toggle-${opt.key}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+              day === opt.key
+                ? "bg-primary/15 text-primary border border-primary/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
+            }`}
+          >
+            {opt.icon === "◀" && <ChevronDown size={12} className="rotate-90" />}
+            {opt.label}
+            {opt.icon === "▶" && <ChevronDown size={12} className="-rotate-90" />}
+          </button>
+        ))}
+      </div>
+
       {/* Summary stat bar */}
       {!isLoading && (games as GameLine[]).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-card border border-border rounded-xl px-4 py-3">
-            <p className="text-xs text-muted-foreground">Games Today</p>
+            <p className="text-xs text-muted-foreground">{day === "previous" ? "Games Yesterday" : day === "next" ? "Games Tomorrow" : "Games Today"}</p>
             <p className="text-2xl font-bold text-foreground mt-0.5">{(games as GameLine[]).length}</p>
           </div>
           <div className="bg-card border border-red-500/20 rounded-xl px-4 py-3">
@@ -2149,10 +2295,12 @@ export default function LineMovement() {
         <BookErrorsSection errors={bookErrors as BookError[]} />
       )}
 
-      {/* ── Sharp Money Panel ── */}
-      <div className="mt-2">
-        <SharpMoneyPanel />
-      </div>
+      {/* ── Sharp Money Panel ── always reflects today's live action, so only show it on the Today tab */}
+      {day === "today" && (
+        <div className="mt-2">
+          <SharpMoneyPanel />
+        </div>
+      )}
 
       {/* Content */}
       {isLoading ? (
@@ -2163,11 +2311,17 @@ export default function LineMovement() {
         <div className="text-center py-16 border border-dashed border-border rounded-xl">
           <Activity size={32} className="mx-auto text-foreground/70 mb-3" />
           <p className="text-sm font-medium text-foreground">
-            {(games as GameLine[]).length === 0 ? "No games found for today" : "No games match the current filter"}
+            {(games as GameLine[]).length === 0
+              ? (day === "previous" ? "No completed games found for yesterday" : day === "next" ? "No games found for tomorrow yet" : "No games found for today")
+              : "No games match the current filter"}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {(games as GameLine[]).length === 0
-              ? "Lines will appear here as books post odds for today's games."
+              ? (day === "previous"
+                  ? "Final scores & grading show up here once yesterday's games wrap and books settle."
+                  : day === "next"
+                  ? "Lines will appear here once books post odds for tomorrow's games."
+                  : "Lines will appear here as books post odds for today's games.")
               : "Try a different sport or filter."}
           </p>
         </div>
