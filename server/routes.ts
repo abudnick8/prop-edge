@@ -13,6 +13,7 @@ import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
 import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
+import { startSharpMoneyHistoryJob, getSharpMoneyHistoryForDay, etDateStr as smhEtDateStr } from "./sharp_money_history";
 import { db } from "./db";
 import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
 import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
@@ -6780,9 +6781,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ── Sharp Money endpoints ───────────────────────────────────────────────────
-  // GET /api/sharp-money — all sports, top sharp plays today
-  app.get("/api/sharp-money", async (_req, res) => {
+  // GET /api/sharp-money — all sports, top sharp plays today.
+  // ?day=previous returns the last stored pre-game snapshot for yesterday's
+  // (ET) games instead of a live fetch, since live markets are closed by then.
+  app.get("/api/sharp-money", async (req, res) => {
     try {
+      const day = typeof req.query.day === "string" ? req.query.day : "today";
+      if (day === "previous") {
+        const targetET = smhEtDateStr(new Date(Date.now() - 86400000));
+        const { games, asOf } = await getSharpMoneyHistoryForDay(targetET);
+        return res.json({ games, updatedAt: asOf, historical: true });
+      }
       const data = await fetchSharpMoneyAllSports();
       res.json({ games: data, updatedAt: new Date().toISOString() });
     } catch (e: any) {
@@ -6885,6 +6894,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Initial fetch at startup + refresh every 2 hours
   fetchSbrMlbConsensus().catch(() => {});
   setInterval(() => fetchSbrMlbConsensus().catch(() => {}), SBR_MLB_TTL);
+
+  // Sharp Money history: periodically snapshot the live panel data so
+  // Previous Day can show a closing snapshot once markets close.
+  startSharpMoneyHistoryJob();
 
   // Helper: match a team name against SBR entries by last word of team name
   function matchSbrEntry(awayTeam: string, homeTeam: string): SbrMlbEntry | null {
