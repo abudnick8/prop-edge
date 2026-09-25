@@ -7217,70 +7217,91 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             const oddsArr: any[] = (game.odds ?? []).sort((a: any, b: any) =>
               (a.inserted ?? "").localeCompare(b.inserted ?? "")
             );
-            if (oddsArr.length < 1) continue;
 
-            // ── Filter out alt lines / F5 lines ──────────────────────────────
-            // MLB run line is always ±1.5; totals < 6 are F5/alt lines.
-            // NBA/NHL spreads are rarely > 20; NFL rarely > 30.
-            // Any entry with a suspiciously small total (< 6 for MLB, < 150 for NBA/NHL
-            // ML context) or a non-standard spread is an alt/F5 — exclude it from
-            // opening/current line calculations to prevent false steam signals.
-            // Minimum realistic full-game totals by sport
-            const MIN_TOTAL: Record<string, number> = { MLB: 6, NBA: 180, NHL: 4.5, NFL: 30 };
-            const MAX_TOTAL: Record<string, number> = { MLB: 16, NBA: 260, NHL: 9,   NFL: 65 };
+            // ── Defaults — used as-is when the book hasn't posted any lines yet ──
+            // (previously the whole game was dropped here; now we keep it visible
+            // as a scheduled game with a "lines not posted yet" state, and still
+            // try ESPN as a fallback source below.)
+            let openingInsertedAt: string | null = null;
+            let currentInsertedAt: string | null = null;
+            let spreadOpen: number | null = null, spreadCurrent: number | null = null, spreadMove: number | null = null;
+            let totalOpen: number | null = null, totalCurrent: number | null = null, totalMove: number | null = null;
+            let mlAwayOpen: number | null = null, mlHomeOpen: number | null = null, mlAwayCurrent: number | null = null, mlHomeCurrent: number | null = null;
+            let spreadAwayPublic: number | null = null, spreadAwayMoney: number | null = null;
+            let spreadHomePublic: number | null = null, spreadHomeMoney: number | null = null;
+            let totalOverPublic: number | null = null, totalOverMoney: number | null = null;
+            let totalUnderPublic: number | null = null, totalUnderMoney: number | null = null;
+            let mlAwayPublic: number | null = null, mlAwayMoney: number | null = null;
+            let mlHomePublic: number | null = null, mlHomeMoney: number | null = null;
+            let numBets: number | null = game.num_bets ?? null;
 
-            const isAltLine = (o: any): boolean => {
-              const minT = MIN_TOTAL[label];
-              const maxT = MAX_TOTAL[label];
-              // Filter out F5, alt, or live-score entries that have unrealistic totals
-              if (o.total != null && minT != null && (o.total < minT || o.total > maxT)) return true;
-              if (label === "MLB") {
-                // Run line is always ±1.5 — any other spread value is an alt line
-                if (o.spread_away != null && Math.abs(Math.abs(o.spread_away) - 1.5) > 0.1) return true;
-              }
-              return false;
-            };
-            const fullGameOdds = oddsArr.filter((o: any) => !isAltLine(o));
-            const oddsForLines = fullGameOdds.length > 0 ? fullGameOdds : oddsArr;
+            if (oddsArr.length > 0) {
+              // ── Filter out alt lines / F5 lines ──────────────────────────────
+              // MLB run line is always ±1.5; totals < 6 are F5/alt lines.
+              // NBA/NHL spreads are rarely > 20; NFL rarely > 30.
+              // Any entry with a suspiciously small total (< 6 for MLB, < 150 for NBA/NHL
+              // ML context) or a non-standard spread is an alt/F5 — exclude it from
+              // opening/current line calculations to prevent false steam signals.
+              // Minimum realistic full-game totals by sport
+              const MIN_TOTAL: Record<string, number> = { MLB: 6, NBA: 180, NHL: 4.5, NFL: 30 };
+              const MAX_TOTAL: Record<string, number> = { MLB: 16, NBA: 260, NHL: 9,   NFL: 65 };
 
-            const opening = oddsForLines[0];
-            // Current = latest entry that has at least some data
-            const withLines  = oddsForLines.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
-            const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null || o.total_over_public != null);
-            const current = oddsForLines[oddsForLines.length - 1];
-            const bestLines  = withLines.length  > 0 ? withLines[withLines.length - 1]   : current;
-            const bestPublic = withPublic.length > 0 ? withPublic[withPublic.length - 1] : current;
+              const isAltLine = (o: any): boolean => {
+                const minT = MIN_TOTAL[label];
+                const maxT = MAX_TOTAL[label];
+                // Filter out F5, alt, or live-score entries that have unrealistic totals
+                if (o.total != null && minT != null && (o.total < minT || o.total > maxT)) return true;
+                if (label === "MLB") {
+                  // Run line is always ±1.5 — any other spread value is an alt line
+                  if (o.spread_away != null && Math.abs(Math.abs(o.spread_away) - 1.5) > 0.1) return true;
+                }
+                return false;
+              };
+              const fullGameOdds = oddsArr.filter((o: any) => !isAltLine(o));
+              const oddsForLines = fullGameOdds.length > 0 ? fullGameOdds : oddsArr;
 
-            // Spread
-            let spreadOpen    = opening.spread_away ?? null;
-            let spreadCurrent = bestLines.spread_away ?? null;
-            let spreadMove    = (spreadOpen != null && spreadCurrent != null) ? +(spreadCurrent - spreadOpen).toFixed(1) : null;
+              const opening = oddsForLines[0];
+              // Current = latest entry that has at least some data
+              const withLines  = oddsForLines.filter((o: any) => o.spread_away != null || o.total != null || o.ml_away != null);
+              const withPublic = oddsArr.filter((o: any) => o.spread_away_public != null || o.ml_away_public != null || o.total_over_public != null);
+              const current = oddsForLines[oddsForLines.length - 1];
+              const bestLines  = withLines.length  > 0 ? withLines[withLines.length - 1]   : current;
+              const bestPublic = withPublic.length > 0 ? withPublic[withPublic.length - 1] : current;
 
-            // Total
-            let totalOpen    = opening.total ?? null;
-            let totalCurrent = bestLines.total ?? null;
-            let totalMove    = (totalOpen != null && totalCurrent != null) ? +(totalCurrent - totalOpen).toFixed(1) : null;
+              openingInsertedAt = opening.inserted ?? null;
+              currentInsertedAt = current.inserted  ?? null;
 
-            // ML
-            let mlAwayOpen    = opening.ml_away  ?? null;
-            let mlHomeOpen    = opening.ml_home  ?? null;
-            let mlAwayCurrent = bestLines.ml_away ?? null;
-            let mlHomeCurrent = bestLines.ml_home ?? null;
+              // Spread
+              spreadOpen    = opening.spread_away ?? null;
+              spreadCurrent = bestLines.spread_away ?? null;
+              spreadMove    = (spreadOpen != null && spreadCurrent != null) ? +(spreadCurrent - spreadOpen).toFixed(1) : null;
 
-            // Public / sharp %
-            let spreadAwayPublic = bestPublic.spread_away_public ?? null;
-            let spreadAwayMoney  = bestPublic.spread_away_money  ?? null;
-            let spreadHomePublic = bestPublic.spread_home_public ?? null;
-            let spreadHomeMoney  = bestPublic.spread_home_money  ?? null;
-            let totalOverPublic  = bestPublic.total_over_public  ?? null;
-            let totalOverMoney   = bestPublic.total_over_money   ?? null;
-            let totalUnderPublic = bestPublic.total_under_public ?? null;
-            let totalUnderMoney  = bestPublic.total_under_money  ?? null;
-            let mlAwayPublic     = bestPublic.ml_away_public     ?? null;
-            let mlAwayMoney      = bestPublic.ml_away_money      ?? null;
-            let mlHomePublic     = bestPublic.ml_home_public     ?? null;
-            let mlHomeMoney      = bestPublic.ml_home_money      ?? null;
-            const numBets        = bestPublic.num_bets ?? current.num_bets ?? game.num_bets ?? null;
+              // Total
+              totalOpen    = opening.total ?? null;
+              totalCurrent = bestLines.total ?? null;
+              totalMove    = (totalOpen != null && totalCurrent != null) ? +(totalCurrent - totalOpen).toFixed(1) : null;
+
+              // ML
+              mlAwayOpen    = opening.ml_away  ?? null;
+              mlHomeOpen    = opening.ml_home  ?? null;
+              mlAwayCurrent = bestLines.ml_away ?? null;
+              mlHomeCurrent = bestLines.ml_home ?? null;
+
+              // Public / sharp %
+              spreadAwayPublic = bestPublic.spread_away_public ?? null;
+              spreadAwayMoney  = bestPublic.spread_away_money  ?? null;
+              spreadHomePublic = bestPublic.spread_home_public ?? null;
+              spreadHomeMoney  = bestPublic.spread_home_money  ?? null;
+              totalOverPublic  = bestPublic.total_over_public  ?? null;
+              totalOverMoney   = bestPublic.total_over_money   ?? null;
+              totalUnderPublic = bestPublic.total_under_public ?? null;
+              totalUnderMoney  = bestPublic.total_under_money  ?? null;
+              mlAwayPublic     = bestPublic.ml_away_public     ?? null;
+              mlAwayMoney      = bestPublic.ml_away_money      ?? null;
+              mlHomePublic     = bestPublic.ml_home_public     ?? null;
+              mlHomeMoney      = bestPublic.ml_home_money      ?? null;
+              numBets          = bestPublic.num_bets ?? current.num_bets ?? game.num_bets ?? null;
+            }
 
             // ── Step 3: If lines are missing, supplement with ESPN odds ──
             const hasLines = spreadCurrent != null || totalCurrent != null || mlAwayCurrent != null;
@@ -7293,7 +7314,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
                   nfl: { sn:"football",   lg:"nfl" },
                 };
                 const esp = espnSportMap[slug];
-                if (!esp) continue;
+                if (!esp) throw new Error("no-espn-mapping");
 
                 // Find matching ESPN event by team name
                 for (const date of datesToCheck) {
@@ -7352,8 +7373,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               } catch { /* ESPN supplement failed — continue with what we have */ }
             }
 
-            // Skip if still no lines at all
-            if (spreadCurrent == null && totalCurrent == null && mlAwayCurrent == null && mlHomeCurrent == null) continue;
+            // No longer skipped when lines are missing — the game still shows on
+            // the schedule with linesPending: true so "Next Day" (and occasionally
+            // "Today") aren't left empty just because a book hasn't posted odds yet.
+            const linesPending = spreadCurrent == null && totalCurrent == null && mlAwayCurrent == null && mlHomeCurrent == null;
 
             results.push({
               id: `lm-${slug}-${game.id}`,
@@ -7362,8 +7385,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               homeTeam,
               gameTime,
               status: game.status ?? "scheduled",
-              openingInserted: opening.inserted ?? null,
-              currentInserted: current.inserted  ?? null,
+              linesPending,
+              openingInserted: openingInsertedAt,
+              currentInserted: currentInsertedAt,
               numBets,
               spread: {
                 open:       spreadOpen,

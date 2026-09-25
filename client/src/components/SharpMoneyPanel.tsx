@@ -687,7 +687,31 @@ function GameCard({ game }: { game: SharpGameData }) {
 }
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
-export function SharpMoneyPanel() {
+// ET calendar-day string for a game's ISO start time — mirrors the backend's
+// etDateStr() so "today"/"next" here line up with the day switcher on the page.
+function gameEtDate(iso: string | null): string | null {
+  if (!iso) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(iso));
+    const y  = parts.find(p => p.type === "year")?.value;
+    const m  = parts.find(p => p.type === "month")?.value;
+    const dd = parts.find(p => p.type === "day")?.value;
+    if (!y || !m || !dd) return null;
+    return `${y}-${m}-${dd}`;
+  } catch {
+    return null;
+  }
+}
+function etDateStrToday(offsetDays = 0): string {
+  const d = new Date(Date.now() + offsetDays * 86400000);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const y = parts.find(p => p.type === "year")?.value;
+  const m = parts.find(p => p.type === "month")?.value;
+  const dd = parts.find(p => p.type === "day")?.value;
+  return `${y}-${m}-${dd}`;
+}
+
+export function SharpMoneyPanel({ day = "today" }: { day?: "today" | "next" }) {
   const [sportFilter, setSportFilter] = useState<string>("ALL");
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
@@ -701,7 +725,8 @@ export function SharpMoneyPanel() {
     staleTime:       14 * 60 * 1000,
   });
 
-  const allGames  = data?.games || [];
+  const targetET  = day === "next" ? etDateStrToday(1) : etDateStrToday(0);
+  const allGames  = (data?.games || []).filter(g => gameEtDate(g.startTime) === targetET);
   const games     = allGames.filter(g => sportFilter === "ALL" || g.sport === sportFilter);
   const sharpCount = allGames.filter(g => g.sharpScore >= 60).length;
   const rlmCount   = allGames.filter(g => g.rlmDetected).length;
@@ -725,7 +750,7 @@ export function SharpMoneyPanel() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <BarChart2 size={15} style={{ color: NAV }} />
-            <h2 style={{ fontSize: 15, fontWeight: 900, color: FG, margin: 0 }}>Sharp Money</h2>
+            <h2 style={{ fontSize: 15, fontWeight: 900, color: FG, margin: 0 }}>Sharp Money{day === "next" ? " — Tomorrow" : ""}</h2>
           </div>
           <p style={{ fontSize: 10, color: MUTED, margin: "2px 0 0 0" }}>
             Pinnacle · ESPN · ActionNetwork{updatedAt ? ` · ${updatedAt}` : ""}
@@ -831,7 +856,9 @@ export function SharpMoneyPanel() {
         <div style={{ textAlign: "center", padding: "32px 0" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: FG, margin: 0 }}>No games found</p>
           <p style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-            {sportFilter !== "ALL" ? `No ${sportFilter} games today` : "No games found across all sports"}
+            {day === "next"
+              ? (sportFilter !== "ALL" ? `No ${sportFilter} games with lines posted for tomorrow yet` : "Books haven't posted lines for tomorrow's games yet — check back later")
+              : (sportFilter !== "ALL" ? `No ${sportFilter} games today` : "No games found across all sports")}
           </p>
         </div>
       )}
