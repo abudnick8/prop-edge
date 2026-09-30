@@ -13,6 +13,7 @@ import * as fs from "fs";
 import { loadMLWeights, applyMLWeights } from "./ml-weights";
 import { logPicks } from "./pick_logger";
 import { fetchSharpMoneyAllSports, fetchSharpMoneyBySport, fetchSharpMoneyForGame } from "./sharp_money";
+import { buildRealSnapTrends } from "./nfl_snap_data";
 import { db } from "./db";
 import { signJWT, verifyJWT, hashPIN, checkPIN, isValidPIN, isValidEmail } from "./auth";
 import { requireAuth, requireBasic, requirePro, requireOwner } from "./middleware";
@@ -18174,241 +18175,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   });
 
   // ── GET /api/nfl/snap-trends ──────────────────────────────────────────────
+  // Real weekly offense-snap % + target share, sourced live from nflverse
+  // (Pro Football Reference box scores). Self-heals as the season progresses:
+  // whatever weeks are published (currently 1-3, growing weekly) is what's
+  // returned — no fixed-window assumption baked in.
   app.get("/api/nfl/snap-trends", async (req: Request, res: Response) => {
     try {
-      const TTL = 30 * 60 * 1000; // 30 min
+      const TTL = 60 * 60 * 1000; // 1h — underlying nflverse data refreshes ~4x/day
       const now = Date.now();
       if (_nflSnapCache && (now - _nflSnapCache.ts) < TTL) {
-        return res.json({ data: _nflSnapCache.data, cachedAt: new Date(_nflSnapCache.ts).toISOString(), count: _nflSnapCache.data.length });
+        return res.json({ data: _nflSnapCache.data, cachedAt: new Date(_nflSnapCache.ts).toISOString(), count: _nflSnapCache.data.length, season: getNFLSeasonYear() });
       }
 
-      // snapPcts: 10 values, index 0 = most recent week (Wk 17), index 9 = oldest (Wk 8)
-      // weekLabels: corresponding week labels for each data point
-      const SNAP_TRENDS_DATA = [
-        // WRs
-        { playerName: "Puka Nacua",         team: "LAR", position: "WR",
-          snapPcts:   [91, 88, 86, 83, 80, 77, 74, 72, 70, 68],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 28, touches: 9, routes: 92,
-          note: "Route participation up 6 straight weeks; clear WR1 role fully cemented" },
-        { playerName: "Rome Odunze",        team: "CHI", position: "WR",
-          snapPcts:   [82, 88, 91, 86, 83, 78, 72, 65, 58, 50],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 21, touches: 7, routes: 84,
-          note: "Year 2 with Caleb Williams; dip in Wk 17 from slight ankle concern — still featured" },
-        { playerName: "Dontayvion Wicks",   team: "GB",  position: "WR",
-          snapPcts:   [78, 70, 62, 55, 48, 41, 38, 35, 32, 30],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 22, touches: 8, routes: 80,
-          note: "Replacing veteran slot role; Jordan Love targeting heavily — steepest rising curve on roster" },
-        { playerName: "Rashid Shaheed",     team: "NO",  position: "WR",
-          snapPcts:   [69, 71, 73, 70, 68, 66, 64, 67, 65, 63],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 17, touches: 6, routes: 71,
-          note: "Consistent deep-route role; 10-game band tight (63–73%) — stable deployment" },
-        { playerName: "Elijah Moore",       team: "CLE", position: "WR",
-          snapPcts:   [84, 79, 73, 67, 60, 55, 50, 47, 43, 40],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 26, touches: 10, routes: 87,
-          note: "Slot target share surging post-Cooper trade; more than doubled snaps over 10-week span" },
-        { playerName: "Wan'Dale Robinson",  team: "NYG", position: "WR",
-          snapPcts:   [90, 91, 89, 90, 88, 87, 86, 85, 84, 83],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 30, touches: 11, routes: 93,
-          note: "Floor machine — 83–91% snap range over 10 games. Elite consistency for PPR" },
-        { playerName: "Khalil Shakir",      team: "BUF", position: "WR",
-          snapPcts:   [76, 80, 82, 79, 76, 74, 71, 68, 65, 62],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 18, touches: 7, routes: 78,
-          note: "Allen slot weapon; slight dip Wk 17 from blowout — role rock-solid all season" },
-        { playerName: "Joshua Palmer",      team: "LAC", position: "WR",
-          snapPcts:   [72, 70, 69, 68, 67, 66, 65, 64, 63, 62],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 20, touches: 7, routes: 74,
-          note: "Herbert's steady slot receiver; minimal variance (62–72% band) — reliable floor" },
-        { playerName: "Jaxon Smith-Njigba", team: "SEA", position: "WR",
-          snapPcts:   [86, 82, 79, 75, 70, 65, 60, 55, 50, 45],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 25, touches: 9, routes: 88,
-          note: "JSN's rise has been near-linear all season — Geno's clear #1 by Wk 17" },
-        { playerName: "Michael Wilson",     team: "ARI", position: "WR",
-          snapPcts:   [68, 62, 57, 52, 46, 40, 36, 33, 30, 28],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 19, touches: 6, routes: 70,
-          note: "Kyler check-down; climbing as McBride draws bracket coverage — doubled snaps from Wk 8" },
-        { playerName: "Demario Douglas",    team: "NE",  position: "WR",
-          snapPcts:   [88, 86, 84, 83, 82, 81, 80, 79, 78, 77],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 27, touches: 10, routes: 90,
-          note: "NE's #1 slot — gradual but consistent rise. Rock-solid PPR floor" },
-        { playerName: "Ja'Lynn Polk",       team: "NE",  position: "WR",
-          snapPcts:   [45, 38, 32, 26, 21, 17, 14, 11, 9, 7],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 13, touches: 5, routes: 46,
-          note: "Best snap-growth rate on the team; 7% → 45% in 10 weeks. Speculative add" },
-        { playerName: "Cedric Tillman",     team: "CLE", position: "WR",
-          snapPcts:   [60, 55, 49, 44, 40, 36, 33, 30, 27, 25],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 16, touches: 6, routes: 62,
-          note: "Red zone usage increasing; Watson targeting in key situations — rising steadily" },
-        { playerName: "Xavier Legette",     team: "CAR", position: "WR",
-          snapPcts:   [55, 61, 67, 63, 58, 52, 46, 40, 34, 28],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 18, touches: 7, routes: 57,
-          note: "Peak at Wk 15 (67%) — slight dip Wk 17. Still net rising trend over full window" },
-        { playerName: "Quentin Johnston",   team: "LAC", position: "WR",
-          snapPcts:   [55, 48, 42, 36, 30, 25, 21, 18, 15, 13],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 14, touches: 5, routes: 57,
-          note: "Year 2 emergence — 13% to 55% over 10 weeks. Deep-route role solidifying fast" },
-        // RBs
-        { playerName: "Jaylen Warren",      team: "PIT", position: "RB",
-          snapPcts:   [55, 48, 43, 38, 34, 30, 27, 24, 21, 19],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 18, touches: 12, routes: 56,
-          note: "Najee usage trending down; Warren 3rd-down role expanding each week" },
-        { playerName: "Jaleel McLaughlin",  team: "DEN", position: "RB",
-          snapPcts:   [44, 36, 30, 24, 19, 15, 12, 10, 8, 7],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 12, touches: 10, routes: 45,
-          note: "7% to 44% over 10 weeks — explosive growth. Change-of-pace role fully established" },
-        { playerName: "Keaton Mitchell",    team: "BAL", position: "RB",
-          snapPcts:   [62, 54, 47, 41, 35, 30, 26, 22, 18, 15],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 10, touches: 11, routes: 63,
-          note: "Henry preservation strategy — Mitchell snaps nearly quadrupled over 10-game span" },
-        { playerName: "Tyler Allgeier",     team: "ATL", position: "RB",
-          snapPcts:   [38, 32, 29, 26, 23, 21, 19, 17, 15, 14],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 8, touches: 9, routes: 39,
-          note: "Bijan injury concern keeps snaps inflated; steady climb over full window" },
-        { playerName: "Tank Bigsby",        team: "JAX", position: "RB",
-          snapPcts:   [50, 44, 40, 36, 33, 30, 27, 25, 23, 22],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 14, touches: 13, routes: 51,
-          note: "Etienne absence gave Bigsby full workload; snaps never receded after starter return" },
-        { playerName: "Tyjae Spears",       team: "TEN", position: "RB",
-          snapPcts:   [60, 56, 53, 50, 47, 44, 42, 40, 38, 36],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 17, touches: 11, routes: 62,
-          note: "Pass-catching specialist; gradual but unbroken climb all season" },
-        { playerName: "Roschon Johnson",    team: "CHI", position: "RB",
-          snapPcts:   [35, 28, 23, 19, 15, 12, 10, 8, 7, 6],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 9, touches: 8, routes: 36,
-          note: "Swift injury history; Johnson from 6% to 35% as insurance snaps compound" },
-        { playerName: "Kimani Vidal",       team: "LAC", position: "RB",
-          snapPcts:   [33, 27, 22, 18, 15, 12, 10, 9, 8, 7],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 8, touches: 7, routes: 34,
-          note: "Gus Edwards handcuff; speed back getting consistent touches now" },
-        // TEs
-        { playerName: "Chigoziem Okonkwo",  team: "TEN", position: "TE",
-          snapPcts:   [88, 83, 79, 74, 69, 63, 58, 53, 48, 44],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 24, touches: 8, routes: 90,
-          note: "New OC scheme features TE heavily; doubled snaps from Wk 8 — FantasyPros top add" },
-        { playerName: "Cade Otton",         team: "TB",  position: "TE",
-          snapPcts:   [85, 81, 78, 74, 70, 66, 63, 60, 57, 54],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 22, touches: 8, routes: 87,
-          note: "Red zone target share up steadily as Evans ages; consistent upward trend" },
-        { playerName: "Luke Musgrave",      team: "GB",  position: "TE",
-          snapPcts:   [80, 74, 68, 61, 54, 48, 43, 38, 33, 29],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 21, touches: 7, routes: 82,
-          note: "Love's go-to TE; snaps nearly tripled over 10 weeks after Knox injury vacancy" },
-        { playerName: "Dalton Kincaid",     team: "BUF", position: "TE",
-          snapPcts:   [75, 70, 65, 60, 55, 50, 46, 42, 38, 35],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 19, touches: 7, routes: 77,
-          note: "Knox injuries opened major snap share; Allen RZ TE target rate climbing" },
-        { playerName: "Trey McBride",       team: "ARI", position: "TE",
-          snapPcts:   [92, 90, 91, 89, 88, 87, 90, 88, 86, 85],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 31, touches: 12, routes: 94,
-          note: "Elite TE1 — narrow band (85–92%) over 10 games. Kyler's most trusted target" },
-        { playerName: "Charlie Kolar",      team: "BAL", position: "TE",
-          snapPcts:   [55, 48, 42, 36, 30, 25, 21, 18, 15, 12],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 12, touches: 5, routes: 57,
-          note: "Andrews injury insurance; 12% to 55% — Lamar check-down TE role established" },
-        { playerName: "Tyler Conklin",      team: "NYJ", position: "TE",
-          snapPcts:   [70, 66, 62, 59, 57, 55, 53, 52, 50, 49],
-          weekLabels: ["Wk 17","Wk 16","Wk 15","Wk 14","Wk 13","Wk 12","Wk 11","Wk 10","Wk 9","Wk 8"],
-          targetShare: 16, touches: 6, routes: 72,
-          note: "Rodgers safety valve; slow but consistent rise — 49% to 70% over 10 weeks" },
-      ];
+      const season = getNFLSeasonYear();
+      const currentWeek = getCurrentNFLWeek();
+      let result = await buildRealSnapTrends(season, currentWeek);
 
-      const avg = (arr: number[]) => parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1));
-      const basePtsByPos: Record<string, number> = { QB: 20, RB: 11, WR: 10, TE: 7 };
-
-      // Resolve live teams
+      // Team assignments can lag a beat right after trades/signings — reconcile
+      // against the live Sleeper roster the same way every other End Zone panel does.
       const sleeperRosterSnap = await getSleeperRoster();
-      const snapWithLiveTeams = await resolveTeams(SNAP_TRENDS_DATA, sleeperRosterSnap);
-
-      const result = snapWithLiveTeams.map((p) => {
-        const s = p.snapPcts as number[];
-        const wl = p.weekLabels as string[];
-
-        // Moving averages (index 0 = most recent)
-        const avg3  = avg(s.slice(0, 3));
-        const avg5  = avg(s.slice(0, 5));
-        const avg10 = avg(s.slice(0, 10));
-
-        // Prior-window averages for delta computation
-        const prior3  = avg(s.slice(3, 6));   // weeks 4-6
-        const prior5  = avg(s.slice(5, 10));  // weeks 6-10
-
-        // Deltas
-        const delta1  = parseFloat((s[0] - s[1]).toFixed(1));       // wk1 vs wk2
-        const delta3  = parseFloat((avg3 - prior3).toFixed(1));     // L3 avg vs prior 3
-        const delta5  = parseFloat((avg5 - prior5).toFixed(1));     // L5 avg vs prior 5
-        const delta10 = parseFloat((s[0] - s[9]).toFixed(1));       // most recent vs 10-week baseline
-
-        // Trend direction based on 3-game MA vs prior 3
-        const snapTrend = delta3 >= 4 ? "rising" : delta3 <= -4 ? "falling" : "stable";
-
-        // Human-readable trend window label
-        const trendWindow = `${delta3 >= 0 ? "▲" : "▼"} ${delta3 >= 0 ? "+" : ""}${delta3}% (L3 vs prior 3)`;        
-
-        // Week range labels for each window
-        const weekRange3  = `${wl[2]}–${wl[0]}`;   // e.g. "Wk 15–Wk 17"
-        const weekRange5  = `${wl[4]}–${wl[0]}`;   // e.g. "Wk 13–Wk 17"
-        const weekRange10 = `${wl[9]}–${wl[0]}`;   // e.g. "Wk 8–Wk 17"
-
-        const ownershipTier = s[0] < 30 ? "low" : s[0] <= 50 ? "medium" : "high";
-        const snapDelta = parseFloat((s[0] - s[2]).toFixed(1)); // legacy compat
-        const weeklyProjectedPts = parseFloat(((basePtsByPos[p.position] ?? 10) + p.targetShare * 0.15 + delta3 * 0.05).toFixed(1));
-        return {
-          playerName: p.playerName,
-          team: p.team,
-          position: p.position,
-          snapPcts: s,
-          weekLabels: wl,
-          targetShare: p.targetShare,
-          touches: p.touches ?? null,
-          routes: p.routes ?? null,
-          snapTrend,
-          trendWindow,
-          delta1,
-          avg3, delta3, weekRange3,
-          avg5, delta5, weekRange5,
-          avg10, delta10, weekRange10,
-          snapDelta,
-          note: p.note,
-          weeklyProjectedPts,
-          ownershipTier,
-        };
-      });
+      result = await resolveTeams(result, sleeperRosterSnap);
 
       _nflSnapCache = { data: result, ts: now };
-      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length, season: getNFLSeasonYear() });
+      return res.json({ data: result, cachedAt: new Date(now).toISOString(), count: result.length, season });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/snap-trends error:", e.message);
       res.status(500).json({ error: e.message });
     }
   });
+
 
   // ── GET /api/nfl/handcuffs ────────────────────────────────────────────────
   app.get("/api/nfl/handcuffs", async (req: Request, res: Response) => {

@@ -77,19 +77,19 @@ interface SnapTrendPlayer {
   playerName: string; team: string; position: string;
   snapPcts: number[];
   weekLabels: string[];
-  targetShare: number;
+  targetShare: number | null;
   touches: number | null;
   routes: number | null;
-  snapTrend: "rising" | "falling" | "stable";
+  snapTrend: "rising" | "falling" | "stable" | "new";
   trendWindow: string;
-  delta1: number;
-  avg3: number; delta3: number; weekRange3: string;
-  avg5: number; delta5: number; weekRange5: string;
-  avg10: number; delta10: number; weekRange10: string;
-  snapDelta: number;
+  delta1: number | null;
+  avg3: number; delta3: number | null; weekRange3: string;
+  avg5: number; delta5: number | null; weekRange5: string;
+  avg10: number; delta10: number | null; weekRange10: string;
+  snapDelta: number | null;
   note: string;
   ownershipTier: string;
-  weeklyProjectedPts: number;
+  weeklyProjectedPts: number | null;
 }
 interface HandcuffPair {
   starter: string; handcuff: string; team: string;
@@ -790,14 +790,30 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
   const [window, setWindow] = useState<"1G" | "3G" | "5G" | "10G">("3G");
   const [expanded, setExpanded] = useState<number | null>(null);
 
+  // Early in the season most players have only played 1-3 games — the 5G/10G
+  // windows need more history than exists yet, so we disable them instead of
+  // showing misleading N/A comparisons. Self-heals as more weeks are played.
+  const maxWeeksAvailable = data.reduce((m, p) => Math.max(m, p.snapPcts.length), 0);
+  const windowAvailable = (w: "1G" | "3G" | "5G" | "10G") =>
+    w === "1G" ? maxWeeksAvailable >= 2 :
+    w === "3G" ? maxWeeksAvailable >= 1 :
+    w === "5G" ? maxWeeksAvailable >= 6 :
+    maxWeeksAvailable >= 2; // 10G just needs >=2 games to show a full-span delta
+
+  // Auto-fall back to a window that actually has data if the season is early
+  // and the previously-selected window is no longer meaningful.
+  useEffect(() => {
+    if (!windowAvailable(window)) setWindow("3G");
+  }, [maxWeeksAvailable]);
+
   // Filter by trend relative to selected window
-  const getTrend = (p: SnapTrendPlayer) => {
-    if (window === "1G") return p.delta1 >= 3 ? "rising" : p.delta1 <= -3 ? "falling" : "stable";
+  const getTrend = (p: SnapTrendPlayer): "rising" | "falling" | "stable" | "new" => {
+    if (window === "1G") return p.delta1 == null ? "new" : p.delta1 >= 3 ? "rising" : p.delta1 <= -3 ? "falling" : "stable";
     if (window === "3G") return p.snapTrend; // pre-computed from delta3
-    if (window === "5G") return p.delta5 >= 4 ? "rising" : p.delta5 <= -4 ? "falling" : "stable";
-    return p.delta10 >= 10 ? "rising" : p.delta10 <= -10 ? "falling" : "stable";
+    if (window === "5G") return p.delta5 == null ? "new" : p.delta5 >= 4 ? "rising" : p.delta5 <= -4 ? "falling" : "stable";
+    return p.delta10 == null ? "new" : p.delta10 >= 10 ? "rising" : p.delta10 <= -10 ? "falling" : "stable";
   };
-  const getDelta = (p: SnapTrendPlayer) => {
+  const getDelta = (p: SnapTrendPlayer): number | null => {
     if (window === "1G") return p.delta1;
     if (window === "3G") return p.delta3;
     if (window === "5G") return p.delta5;
@@ -810,7 +826,7 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
     return p.avg10;
   };
   const getRange = (p: SnapTrendPlayer) => {
-    if (window === "1G") return `${p.weekLabels[1]} vs ${p.weekLabels[0]}`;
+    if (window === "1G") return p.weekLabels[1] ? `${p.weekLabels[1]} vs ${p.weekLabels[0]}` : p.weekLabels[0];
     if (window === "3G") return p.weekRange3;
     if (window === "5G") return p.weekRange5;
     return p.weekRange10;
@@ -818,8 +834,9 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
 
   const filtered = filter === "all" ? data : data.filter(p => getTrend(p) === filter);
   const trendColor = (t: string) => t === "rising" ? "#16a34a" : t === "falling" ? "#ef4444" : MUTED;
-  const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : "→";
-  const deltaColor = (d: number) => d > 0 ? "#16a34a" : d < 0 ? "#ef4444" : MUTED;
+  const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : t === "new" ? "•" : "→";
+  const deltaColor = (d: number | null) => d == null ? MUTED : d > 0 ? "#16a34a" : d < 0 ? "#ef4444" : MUTED;
+  const fmtDelta = (d: number | null) => d == null ? "—" : `${d >= 0 ? "+" : ""}${d}%`;
 
   // 10-bar sparkline, full width, colour-coded by direction, oldest left / newest right (gold)
   const SnapSparkline = ({ vals, wks }: { vals: number[]; wks: string[] }) => {
@@ -873,14 +890,19 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
       {/* Controls row: window + trend filter on one line */}
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 12, flexWrap: "nowrap", overflowX: "auto" }}>
         <span style={{ fontSize: 10, color: MUTED, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>Window:</span>
-        {(["1G", "3G", "5G", "10G"] as const).map(w => (
-          <button key={w} onClick={() => setWindow(w)}
-            style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0,
-              background: window === w ? NAVY_COLOR : "rgba(19,35,58,0.07)",
-              color: window === w ? BG_COLOR : MUTED }}>
-            {w}
-          </button>
-        ))}
+        {(["1G", "3G", "5G", "10G"] as const).map(w => {
+          const available = windowAvailable(w);
+          return (
+            <button key={w} onClick={() => available && setWindow(w)} disabled={!available}
+              title={available ? undefined : `Not enough games played yet this season (need ${w === "5G" ? 6 : 2}+, have ${maxWeeksAvailable})`}
+              style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none",
+                cursor: available ? "pointer" : "not-allowed", flexShrink: 0, opacity: available ? 1 : 0.35,
+                background: window === w ? NAVY_COLOR : "rgba(19,35,58,0.07)",
+                color: window === w ? BG_COLOR : MUTED }}>
+              {w}
+            </button>
+          );
+        })}
         <div style={{ width: 1, height: 16, background: "rgba(19,35,58,0.15)", flexShrink: 0, margin: "0 2px" }} />
         {(["all", "rising", "falling"] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -917,13 +939,15 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
                     {trendArrow(trend)} {p.snapPcts[0]}%
                   </span>
                   <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor(delta) }}>
-                    ({delta >= 0 ? "+" : ""}{delta}%{window !== "1G" ? " MA" : ""} · {range})
+                    ({fmtDelta(delta)}{delta != null && window !== "1G" ? " MA" : ""} · {range})
                   </span>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
-                  <div style={{ fontSize: 10, color: MUTED }}>Tgt <b style={{ color: NAVY_COLOR }}>{p.targetShare}%</b> · {p.ownershipTier} own.</div>
                   <div style={{ fontSize: 10, color: MUTED }}>
-                    <b style={{ color: GOLD_COLOR }}>{p.weeklyProjectedPts}</b> pts proj. {isOpen ? "▲" : "▼"}
+                    {p.targetShare != null ? <>Tgt <b style={{ color: NAVY_COLOR }}>{p.targetShare}%</b> · </> : null}{p.ownershipTier} own.
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED }}>
+                    {p.weeklyProjectedPts != null ? <><b style={{ color: GOLD_COLOR }}>{p.weeklyProjectedPts}</b> pts proj. </> : null}{isOpen ? "▲" : "▼"}
                   </div>
                 </div>
               </div>
@@ -948,7 +972,7 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
                     <span style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>{m.label}</span>
                     <span style={{ fontSize: 12, fontWeight: 800, color: NAVY_COLOR }}>{m.val}%</span>
                     <span style={{ fontSize: 9, fontWeight: 700, color: deltaColor(m.delta) }}>
-                      {m.delta >= 0 ? "+" : ""}{m.delta}%
+                      {fmtDelta(m.delta)}
                     </span>
                   </div>
                 ))}
@@ -992,9 +1016,9 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
                     })}
                   </div>
                   <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, color: MUTED }}>3G MA: <b style={{ color: NAVY_COLOR }}>{p.avg3}%</b> <span style={{ color: deltaColor(p.delta3) }}>({p.delta3 >= 0 ? "+" : ""}{p.delta3}% vs prior 3)</span></span>
-                    <span style={{ fontSize: 10, color: MUTED }}>5G MA: <b style={{ color: NAVY_COLOR }}>{p.avg5}%</b> <span style={{ color: deltaColor(p.delta5) }}>({p.delta5 >= 0 ? "+" : ""}{p.delta5}% vs prior 5)</span></span>
-                    <span style={{ fontSize: 10, color: MUTED }}>10G base: <b style={{ color: NAVY_COLOR }}>{p.avg10}%</b> <span style={{ color: deltaColor(p.delta10) }}>({p.delta10 >= 0 ? "+" : ""}{p.delta10}% full span)</span></span>
+                    <span style={{ fontSize: 10, color: MUTED }}>3G MA: <b style={{ color: NAVY_COLOR }}>{p.avg3}%</b> <span style={{ color: deltaColor(p.delta3) }}>({fmtDelta(p.delta3)} vs prior 3)</span></span>
+                    <span style={{ fontSize: 10, color: MUTED }}>5G MA: <b style={{ color: NAVY_COLOR }}>{p.avg5}%</b> <span style={{ color: deltaColor(p.delta5) }}>({fmtDelta(p.delta5)} vs prior 5)</span></span>
+                    <span style={{ fontSize: 10, color: MUTED }}>10G base: <b style={{ color: NAVY_COLOR }}>{p.avg10}%</b> <span style={{ color: deltaColor(p.delta10) }}>({fmtDelta(p.delta10)} full span)</span></span>
                   </div>
                 </div>
               )}
