@@ -787,8 +787,14 @@ function WaiverRadarPanel({ data }: { data: WaiverPlayer[] }) {
 
 function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
   const [filter, setFilter] = useState<"all" | "rising" | "falling">("all");
+  const [posFilter, setPosFilter] = useState<"ALL" | "QB" | "RB" | "WR" | "TE">("ALL");
   const [window, setWindow] = useState<"1G" | "3G" | "5G" | "10G">("3G");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const positions = ["ALL", "QB", "RB", "WR", "TE"] as const;
+  // Fullbacks are rare and functionally RB-adjacent — bucket them under RB
+  // rather than giving them a dedicated (near-empty) tab.
+  const matchesPosFilter = (p: SnapTrendPlayer) =>
+    posFilter === "ALL" ? true : posFilter === "RB" ? (p.position === "RB" || p.position === "FB") : p.position === posFilter;
 
   // Early in the season most players have only played 1-3 games — the 5G/10G
   // windows need more history than exists yet, so we disable them instead of
@@ -832,7 +838,9 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
     return p.weekRange10;
   };
 
-  const filtered = filter === "all" ? data : data.filter(p => getTrend(p) === filter);
+  const filtered = data
+    .filter(matchesPosFilter)
+    .filter(p => filter === "all" ? true : getTrend(p) === filter);
   const trendColor = (t: string) => t === "rising" ? "#16a34a" : t === "falling" ? "#ef4444" : MUTED;
   const trendArrow = (t: string) => t === "rising" ? "▲" : t === "falling" ? "▼" : t === "new" ? "•" : "→";
   const deltaColor = (d: number | null) => d == null ? MUTED : d > 0 ? "#16a34a" : d < 0 ? "#ef4444" : MUTED;
@@ -886,6 +894,17 @@ function SnapTrendsPanel({ data }: { data: SnapTrendPlayer[] }) {
           { label: "Ownership tier", desc: "Low = under 30% · Medium = 30–60% · High = 60%+ in ESPN/Yahoo leagues." },
         ]}
       />
+
+      {/* Position filter row */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        {positions.map(p => (
+          <button key={p} onClick={() => setPosFilter(p)}
+            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+              background: posFilter === p ? NAVY_COLOR : "rgba(19,35,58,0.07)", color: posFilter === p ? BG_COLOR : MUTED }}>
+            {p}
+          </button>
+        ))}
+      </div>
 
       {/* Controls row: window + trend filter on one line */}
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 12, flexWrap: "nowrap", overflowX: "auto" }}>
