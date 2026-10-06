@@ -1361,15 +1361,20 @@ function BettingEdgePanel({
           <AnalysisInfo
             title="How line movement is analyzed"
             items={[
-              { label: "Spread Move", desc: "Difference between opening spread and current spread. A line moving against the public bet % direction signals sharp (professional) money." },
-              { label: "Sharp Action", desc: "⚡ SHARP ACTION fires when ≥60% of public bets are on one side but the line moves the opposite way — strong indicator of sharp/syndicate action." },
-              { label: "Public Bets %", desc: "Percentage of total bet tickets (not money) on each side. High public % on a team whose line is moving away = reverse line movement." },
-              { label: "Total Move", desc: "Change in the game total (Over/Under) from open to current. Closing total drops often signal weather or key offensive injuries." },
-              { label: "Data source", desc: "The Odds API (real sportsbook lines). Sharp note is generated when spread move and public % disagree by 2+ points." },
+              { label: "Spread Move", desc: "Opening line vs. current consensus line, shown as the home team's spread. A line moving against the public side signals sharp (professional) money." },
+              { label: "Sharp Action", desc: "⚡ SHARP ACTION fires when ≥60% of bets are on one side but the line moves at least half a point the other way (reverse line movement)." },
+              { label: "Public Bets / Money", desc: "Bets = share of tickets; Money = share of dollars. When the money majority is on the side with fewer tickets, bigger bettors are on that side." },
+              { label: "Total Move", desc: "Change in the game total from open to current. Big total drops often signal weather or key offensive injuries." },
+              { label: "Data source", desc: "Action Network — consensus line across sportsbooks, opening line, and public bets/money %. Refreshes every few minutes; no API key needed." },
             ]}
           />
           {!lineMovement?.games?.length && (
             <p style={{ color: MUTED, fontSize: 13 }}>No line movement data — check back closer to game week.</p>
+          )}
+          {lineMovement?.games?.length > 0 && lineMovement?.fetchedAt && (
+            <p style={{ color: MUTED, fontSize: 10, margin: 0 }}>
+              Live from Action Network · updated {new Date(lineMovement.fetchedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </p>
           )}
           {(lineMovement?.games ?? []).map((g: any, i: number) => {
             const lineMove = g.currentSpread - g.openSpread;
@@ -1397,12 +1402,15 @@ function BettingEdgePanel({
                     <div style={{ fontSize: 15, fontWeight: 900, color: lineMove !== 0 ? (lineMove > 0 ? "#16a34a" : "#ef4444") : MUTED }}>
                       {lineMove > 0 ? `+${lineMove.toFixed(1)}` : lineMove.toFixed(1)}
                     </div>
-                    <div style={{ fontSize: 10, color: MUTED }}>{g.openSpread > 0 ? "+" : ""}{g.openSpread} → {g.currentSpread > 0 ? "+" : ""}{g.currentSpread}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{g.spreadTeam ?? g.home} {g.openSpread > 0 ? "+" : ""}{g.openSpread} → {g.currentSpread > 0 ? "+" : ""}{g.currentSpread}</div>
                   </div>
                   <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
                     <div style={{ fontSize: 9, color: MUTED, fontWeight: 700, marginBottom: 2 }}>PUBLIC BETS</div>
-                    <div style={{ fontSize: 15, fontWeight: 900, color: NAVY }}>{g.publicBetPct}%</div>
-                    <div style={{ fontSize: 10, color: MUTED }}>on {g.publicFavor}</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: NAVY }}>{g.publicBetPct != null ? `${g.publicBetPct}%` : "—"}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>
+                      {g.publicFavor ? `on ${g.publicFavor}` : "splits not posted"}
+                      {g.publicMoneyPct != null ? ` · ${g.publicMoneyPct}% $` : ""}
+                    </div>
                   </div>
                   <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
                     <div style={{ fontSize: 9, color: MUTED, fontWeight: 700, marginBottom: 2 }}>TOTAL MOVE</div>
@@ -1546,11 +1554,11 @@ function BettingEdgePanel({
           <AnalysisInfo
             title="How the first-half model works"
             items={[
-              { label: "H1 Total Proj", desc: "Model-projected first-half scoring based on team pace, recent H1 averages, and the Vegas game total. Compare to the market H1 line to find edge." },
-              { label: "H1 Spread Proj", desc: "Which team is favored in the first half and by how much. H1 spreads often diverge from full-game spreads — useful for live or first-half bets." },
+              { label: "H1 Total Proj", desc: "The current full-game line split into each team's implied points, times that team's real first-half share of scoring this season (and the opponent's first-half share allowed), blended toward the league rate." },
+              { label: "H1 Spread Proj", desc: "Projected first-half margin from the same team-level first-half splits, shown as the home team's spread." },
               { label: "Edge", desc: "Over = our model projects more first-half scoring than the market line. Under = model projects less. Neutral = within 0.5 of the market." },
               { label: "Why H1?", desc: "First-half totals attract less sharp action than full-game lines, creating more exploitable edges. Trailing teams also adjust their script in H2." },
-              { label: "Inputs", desc: "Team first-half scoring averages (L4 wks), Vegas total, spread (game script), pace rankings, and any weather flags from the Weather panel." },
+              { label: "Inputs", desc: "Current consensus full-game and first-half lines (Action Network) and every completed game's quarter-by-quarter scores this season (ESPN)." },
             ]}
           />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
@@ -1561,12 +1569,20 @@ function BettingEdgePanel({
           )}
           {(firstHalf?.games ?? []).map((g: any, i: number) => (
             <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
-              <div style={{ fontWeight: 800, fontSize: 14, color: NAVY, marginBottom: 4 }}>{g.away} @ {g.home}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: NAVY }}>{g.away} @ {g.home}</div>
+                {g.gameTime && <div style={{ fontSize: 10, color: MUTED }}>{g.gameTime}</div>}
+              </div>
+              {g.awayH1Share != null && (
+                <div style={{ fontSize: 10, color: MUTED, marginBottom: 6 }}>
+                  1H share of scoring: {g.away} {g.awayH1Share}% · {g.home} {g.homeH1Share}%
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
                   <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>H1 TOTAL PROJ</div>
                   <div style={{ fontSize: 16, fontWeight: 900, color: NAVY }}>{g.h1TotalProj}</div>
-                  <div style={{ fontSize: 10, color: MUTED }}>Mkt: {g.h1TotalLine}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>Mkt: {g.h1TotalLine}{g.h1TotalOpen != null && g.h1TotalOpen !== g.h1TotalLine ? ` (open ${g.h1TotalOpen})` : ""}</div>
                 </div>
                 <div style={{ background: "rgba(19,35,58,0.04)", borderRadius: 8, padding: "8px 10px" }}>
                   <div style={{ fontSize: 9, color: MUTED, fontWeight: 700 }}>H1 SPREAD PROJ</div>
