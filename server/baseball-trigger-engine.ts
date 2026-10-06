@@ -14,6 +14,7 @@
  */
 
 import axios from "axios";
+import { actionNetworkAsOddsApi } from "./nfl-live-data";
 import { broadcast } from "./ws";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -285,10 +286,27 @@ function impliedProb(ml: number): number {
   return Math.abs(ml) / (Math.abs(ml) + 100);
 }
 
+async function fetchOddsFromActionNetwork(): Promise<boolean> {
+  try {
+    const games = await actionNetworkAsOddsApi("mlb");
+    const newMap: Record<string, { homeML: number; awayML: number }> = {};
+    for (const g of games) {
+      const m = g.bookmakers?.[0]?.markets?.find((x: any) => x.key === "h2h");
+      const h = m?.outcomes?.find((o: any) => o.name === g.home_team), a = m?.outcomes?.find((o: any) => o.name === g.away_team);
+      if (h?.price != null && a?.price != null) newMap[g.home_team] = { homeML: h.price, awayML: a.price };
+    }
+    if (!Object.keys(newMap).length) return false;
+    oddsMap = newMap; lastOddsTs = Date.now();
+    console.log(`[TriggerEngine] odds refreshed from Action Network — ${Object.keys(newMap).length} games`);
+    return true;
+  } catch (e: any) { console.warn("[TriggerEngine] Action Network odds failed:", e.message); return false; }
+}
+
 async function fetchOdds(): Promise<void> {
   const key = process.env.ODDS_API_KEY;
   if (!key) {
-    console.warn("[TriggerEngine] ODDS_API_KEY not set — running model-only mode");
+    if (await fetchOddsFromActionNetwork()) return;
+    console.warn("[TriggerEngine] no odds source available — running model-only mode");
     lastOddsTs = Date.now(); // prevent repeated log spam
     return;
   }
@@ -299,6 +317,7 @@ async function fetchOdds(): Promise<void> {
     );
     if (!Array.isArray(r.data)) {
       console.warn("[TriggerEngine] odds API unexpected response:", JSON.stringify(r.data).slice(0, 200));
+      if (await fetchOddsFromActionNetwork()) return;
       lastOddsTs = Date.now();
       return;
     }
@@ -321,6 +340,7 @@ async function fetchOdds(): Promise<void> {
     lastOddsTs = Date.now();
   } catch (e: any) {
     console.warn("[TriggerEngine] odds fetch failed:", e.message, "| remaining map:", Object.keys(oddsMap).length, "entries");
+    if (await fetchOddsFromActionNetwork()) return;
     // Keep lastOddsTs stale so UI shows orange freshness warning
     // but don't clear existing odds — they degrade gracefully
   }
