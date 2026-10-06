@@ -10,7 +10,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Sport = "All" | "MLB" | "NBA" | "NFL" | "NHL";
-type Tab = "overview" | "matchups" | "park" | "deepdive";
+type Tab = "overview" | "matchups" | "park" | "deepdive" | "arsenal";
 
 interface PlayerSearchResult {
   espnId: string;
@@ -96,6 +96,7 @@ const DETAIL_TABS: { key: Tab; label: string }[] = [
   { key: "matchups", label: "Matchups" },
   { key: "park", label: "Park / Venue" },
   { key: "deepdive", label: "Deep Dive" },
+  { key: "arsenal", label: "Pitches" }, // MLB pitchers only (filtered at render)
 ];
 
 const MLB_PARKS = [
@@ -807,6 +808,415 @@ function OverviewTab({ player }: { player: PlayerData }) {
   );
 }
 
+
+
+
+/** Savant-style pitch movement plot: horizontal break vs induced vertical break (inches), catcher's view. */
+function MovementChart({ data, selected, onSelect }: { data: ArsenalData; selected: string | null; onSelect: (t: string) => void }) {
+  const S = 320, pad = 26, MAX = 24;
+  const sc = (S - pad * 2) / (MAX * 2);
+  const X = (in_: number) => S / 2 + Math.max(-MAX, Math.min(MAX, in_)) * sc;
+  const Y = (in_: number) => S / 2 - Math.max(-MAX, Math.min(MAX, in_)) * sc;
+  const armRight = data.throws === "L"; // LHP arm side is catcher's right
+  return (
+    <svg viewBox={`0 0 ${S} ${S}`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto" }} role="img" aria-label="Pitch movement chart">
+      <rect x={0} y={0} width={S} height={S} rx={14} fill="#F7F4EC" />
+      {[6, 12, 18, 24].map(r => (
+        <circle key={r} cx={S / 2} cy={S / 2} r={r * sc} fill="none" stroke="rgba(19,35,58,0.10)" strokeDasharray={r === 24 ? undefined : "3 4"} />
+      ))}
+      <line x1={pad} x2={S - pad} y1={S / 2} y2={S / 2} stroke="rgba(19,35,58,0.25)" />
+      <line y1={pad} y2={S - pad} x1={S / 2} x2={S / 2} stroke="rgba(19,35,58,0.25)" />
+      {[12, 24].map(r => (
+        <g key={r}>
+          <text x={X(r)} y={S / 2 + 11} fontSize={8} textAnchor="middle" fill="#3D4B58">{r}"</text>
+          <text x={X(-r)} y={S / 2 + 11} fontSize={8} textAnchor="middle" fill="#3D4B58">{r}"</text>
+          <text x={S / 2 + 4} y={Y(r) + 3} fontSize={8} fill="#3D4B58">{r}"</text>
+          <text x={S / 2 + 4} y={Y(-r) + 3} fontSize={8} fill="#3D4B58">-{r}"</text>
+        </g>
+      ))}
+      <text x={S / 2} y={14} fontSize={9} fontWeight={700} textAnchor="middle" fill="#3D4B58">MORE RISE</text>
+      <text x={S / 2} y={S - 6} fontSize={9} fontWeight={700} textAnchor="middle" fill="#3D4B58">MORE DROP</text>
+      <text x={armRight ? S - 8 : 8} y={S / 2 - 6} fontSize={9} fontWeight={700} textAnchor={armRight ? "end" : "start"} fill="#3D4B58">ARM SIDE</text>
+      <text x={armRight ? 8 : S - 8} y={S / 2 - 6} fontSize={9} fontWeight={700} textAnchor={armRight ? "start" : "end"} fill="#3D4B58">GLOVE SIDE</text>
+
+      {data.pitches.map(p => {
+        const dim = selected && selected !== p.type;
+        return (
+          <g key={p.type} opacity={dim ? 0.12 : 1} onClick={() => onSelect(p.type)} style={{ cursor: "pointer" }}>
+            {(p.movement ?? []).map(([hx, vz], i) => (
+              <circle key={i} cx={X(hx)} cy={Y(vz)} r={2.1} fill={p.color} fillOpacity={0.45} />
+            ))}
+          </g>
+        );
+      })}
+      {data.pitches.map(p => {
+        if (p.hBreak == null || p.vBreak == null) return null;
+        const dim = selected && selected !== p.type;
+        return (
+          <g key={`avg-${p.type}`} opacity={dim ? 0.25 : 1} onClick={() => onSelect(p.type)} style={{ cursor: "pointer" }}>
+            <circle cx={X(p.hBreak)} cy={Y(p.vBreak)} r={selected === p.type ? 13 : 11} fill="#fff" stroke={p.color} strokeWidth={3} />
+            <text x={X(p.hBreak)} y={Y(p.vBreak) + 3.5} fontSize={9} fontWeight={800} textAnchor="middle" fill="#131A24">{p.type}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ─── Pitch Arsenal Tab ────────────────────────────────────────────────────────
+// One combined strike-zone chart (catcher's view): every pitch type is drawn
+// from the pitcher's real release point to its average plate location, bending
+// by its real Statcast movement. Tap a pitch to see where every one of them
+// crossed the plate and how hitters fared against it.
+
+interface ArsenalSplit {
+  pitches: number; usage: number | null; velo: number | null; spin: number | null;
+  hBreak: number | null; vBreak: number | null; plateX: number | null; plateZ: number | null;
+  pa: number; ab: number; hits: number; hr: number; k: number;
+  ba: number | null; slg: number | null; woba: number | null;
+  whiffPct: number | null; kPct: number | null; putAwayPct: number | null;
+  zonePct: number | null; chasePct: number | null; cswPct: number | null; hardHitPct: number | null;
+  extension: number | null; armAngle: number | null; perceivedVelo: number | null; maxVelo: number | null;
+  spinAxis: number | null; spinClock: string | null;
+  bbe: number; avgEV: number | null; avgLA: number | null; barrelPct: number | null; gbPct: number | null;
+  xba: number | null; xslg: number | null; runValueCalc: number | null;
+}
+interface ArsenalPitch extends ArsenalSplit {
+  type: string; name: string; color: string;
+  rv?: number | null; rv100?: number | null; xwoba?: number | null;
+  vsL: ArsenalSplit; vsR: ArsenalSplit;
+  locations: [number | null, number | null, string, string][];
+  movement: [number, number][];
+}
+interface StatcastMetric { label: string; value: number | null; percentile: number | null; fmt: string }
+interface ArsenalData {
+  season: number; total: number; throws: string;
+  releaseX: number | null; releaseZ: number | null; szTop: number; szBot: number;
+  pitches: ArsenalPitch[]; source?: string;
+  profile?: { ip: string | null; era: number | null; metrics: StatcastMetric[] } | null;
+}
+
+/** Savant-style percentile color: deep blue (poor) → grey (avg) → deep red (elite). */
+function pctlColor(p: number): string {
+  const t = Math.max(0, Math.min(100, p)) / 100;
+  const lerp = (a: number, b: number, k: number) => Math.round(a + (b - a) * k);
+  const [lo, mid, hi] = [[50, 95, 210], [180, 180, 180], [214, 40, 40]];
+  const [a, b, k] = t < 0.5 ? [lo, mid, t / 0.5] : [mid, hi, (t - 0.5) / 0.5];
+  return `rgb(${lerp(a[0], b[0], k)},${lerp(a[1], b[1], k)},${lerp(a[2], b[2], k)})`;
+}
+
+function fmtMetric(m: StatcastMetric): string {
+  if (m.value == null) return "—";
+  switch (m.fmt) {
+    case "avg": return fmtAvg(m.value);
+    case "era": return m.value.toFixed(2);
+    case "pct": return `${m.value}%`;
+    case "mph": return `${m.value} mph`;
+    case "rpm": return `${Math.round(m.value)} rpm`;
+    case "ft":  return `${m.value} ft`;
+    case "deg": return `${m.value}°`;
+    default:    return String(m.value);
+  }
+}
+
+const OUTCOME_STYLE: Record<string, { label: string; color: string }> = {
+  whiff:  { label: "Whiff",         color: "#22c55e" },
+  called: { label: "Called strike", color: "#2563eb" },
+  foul:   { label: "Foul",          color: "#94a3b8" },
+  ball:   { label: "Ball",          color: "#cbd5e1" },
+  out:    { label: "In-play out",   color: "#13233A" },
+  hit:    { label: "Hit",           color: "#f97316" },
+  hr:     { label: "Home run",      color: "#dc2626" },
+};
+
+function PitchArsenalTab({ player }: { player: PlayerData }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hand, setHand] = useState<"all" | "L" | "R">("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "whiff" | "hit">("all");
+  const [view, setView] = useState<"paths" | "movement">("paths");
+
+  const url = player.mlbamId ? `/api/intel/pitch-arsenal/${player.mlbamId}` : null;
+  const { data, isFetching, error, refetch } = useQuery<ArsenalData>({
+    queryKey: ["pitch-arsenal", player.mlbamId],
+    queryFn: () => fetch(url!).then(r => { if (!r.ok) throw new Error("arsenal"); return r.json(); }),
+    enabled: !!url,
+    staleTime: 1000 * 60 * 60,
+  });
+
+  if (!player.mlbamId) return <ErrorCard message="MLB ID not resolved for this pitcher." onRetry={() => {}} />;
+  if (isFetching && !data) return <Spinner />;
+  if (error) return <ErrorCard message="Failed to load pitch data." onRetry={() => refetch()} />;
+  if (!data || !data.pitches.length) return <div style={CARD_STYLE}><p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No Statcast pitch data for this pitcher yet.</p></div>;
+
+  // ── Coordinate system (feet → SVG px), catcher's view ──
+  const W = 320, H = 400;
+  const PX = 62;                          // px per foot
+  const cx = W / 2;
+  const groundY = H - 12;                  // z = 0.15 ft
+  const toX = (x: number) => cx + x * PX;
+  const toY = (z: number) => groundY - (z - 0.15) * PX;
+  const relX = Math.max(-2.4, Math.min(2.4, data.releaseX ?? (data.throws === "L" ? 1.8 : -1.8)));
+  const relZ = Math.min(6.2, data.releaseZ ?? 6);
+  const R = { x: toX(relX), y: Math.max(10, toY(relZ)) };
+  const zoneL = toX(-0.83), zoneR = toX(0.83), zoneT = toY(data.szTop), zoneB = toY(data.szBot);
+
+  const splitOf = (p: ArsenalPitch): ArsenalSplit => (hand === "L" ? p.vsL : hand === "R" ? p.vsR : p);
+  const sel = data.pitches.find(p => p.type === selected) ?? null;
+
+  // Pitch path: quadratic curve aimed at the "no-movement" spot and bending into the real plate location
+  const pathFor = (p: ArsenalPitch) => {
+    const sp = splitOf(p);
+    const ex = toX(sp.plateX ?? p.plateX ?? 0), ey = toY(sp.plateZ ?? p.plateZ ?? 2.5);
+    const mx = ((p.hBreak ?? 0) / 12) * PX, mz = ((p.vBreak ?? 0) / 12) * PX;
+    const ax = ex - mx, ay = ey + mz;     // where it would land with no spin-induced movement
+    const c = { x: R.x + 0.82 * (ax - R.x), y: R.y + 0.82 * (ay - R.y) };
+    return { d: `M ${R.x.toFixed(1)} ${R.y.toFixed(1)} Q ${c.x.toFixed(1)} ${c.y.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, ex, ey };
+  };
+
+  const dots = sel
+    ? (sel.locations ?? []).filter(([x, z, o, st]) => x != null && z != null
+        && (hand === "all" || st === hand)
+        && (outcomeFilter === "all" || (outcomeFilter === "whiff" ? o === "whiff" : o === "hit" || o === "hr")))
+    : [];
+
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? "#13233A" : "rgba(19,35,58,0.15)"}`,
+    background: active ? "#13233A" : "#fff", color: active ? "#F6F1E7" : "#3D4B58",
+  });
+  const fmt3 = (v: number | null | undefined) => (v == null ? "—" : fmtAvg(v));
+  const fmtP = (v: number | null | undefined) => (v == null ? "—" : `${v}%`);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <div style={CARD_STYLE}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: "0.5rem" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+            Pitch Arsenal · {data.season}
+          </p>
+          <span style={{ fontSize: 10, color: "#3D4B58" }}>{data.total.toLocaleString()} pitches · {data.throws === "L" ? "LHP" : "RHP"} · catcher's view</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "0.6rem" }}>
+          {([["paths", "Pitch Paths"], ["movement", "Movement"]] as const).map(([k, l]) => (
+            <button key={k} style={{ ...pill(view === k), borderRadius: 8 }} onClick={() => setView(k)}>{l}</button>
+          ))}
+          <span style={{ width: 1, background: "rgba(19,35,58,0.15)", margin: "0 2px" }} />
+          {([["all", "All hitters"], ["L", "vs LHH"], ["R", "vs RHH"]] as const).map(([k, l]) => (
+            <button key={k} style={pill(hand === k)} onClick={() => setHand(k)}>{l}</button>
+          ))}
+        </div>
+
+        {view === "movement" && <MovementChart data={data} selected={sel?.type ?? null}
+          onSelect={(t) => setSelected(sel?.type === t ? null : t)} />}
+
+        {/* ── Combined chart ── */}
+        {view === "paths" && <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto", touchAction: "manipulation" }}
+          role="img" aria-label="Combined pitch movement chart">
+          <rect x={0} y={0} width={W} height={H} rx={14} fill="#F7F4EC" />
+          {/* shadow zone + strike zone grid */}
+          <rect x={toX(-1.1)} y={toY(data.szTop + 0.3)} width={toX(1.1) - toX(-1.1)} height={toY(data.szBot - 0.3) - toY(data.szTop + 0.3)}
+            fill="none" stroke="rgba(19,35,58,0.12)" strokeDasharray="4 4" />
+          <rect x={zoneL} y={zoneT} width={zoneR - zoneL} height={zoneB - zoneT} fill="rgba(255,255,255,0.85)" stroke="#13233A" strokeWidth={1.6} />
+          {[1, 2].map(i => (
+            <g key={i}>
+              <line x1={zoneL + (zoneR - zoneL) * i / 3} x2={zoneL + (zoneR - zoneL) * i / 3} y1={zoneT} y2={zoneB} stroke="rgba(19,35,58,0.25)" />
+              <line y1={zoneT + (zoneB - zoneT) * i / 3} y2={zoneT + (zoneB - zoneT) * i / 3} x1={zoneL} x2={zoneR} stroke="rgba(19,35,58,0.25)" />
+            </g>
+          ))}
+          {/* home plate */}
+          <polygon points={`${toX(-0.71)},${groundY - 10} ${toX(0.71)},${groundY - 10} ${toX(0.71)},${groundY - 4} ${cx},${groundY + 4} ${toX(-0.71)},${groundY - 4}`}
+            fill="#fff" stroke="rgba(19,35,58,0.35)" />
+          {/* release point */}
+          <circle cx={R.x} cy={R.y} r={4} fill="#13233A" />
+          <text x={R.x + (R.x > cx ? -8 : 8)} y={R.y + 4} fontSize={9} fill="#3D4B58" textAnchor={R.x > cx ? "end" : "start"}>Release</text>
+
+          {/* individual pitch locations for the selected pitch */}
+          {dots.map(([x, z, o], i) => (
+            <circle key={i} cx={toX(x!)} cy={toY(z!)} r={o === "hr" || o === "hit" ? 3.4 : 2.6}
+              fill={OUTCOME_STYLE[o]?.color ?? "#999"} fillOpacity={o === "ball" ? 0.55 : 0.85} />
+          ))}
+
+          {/* trajectories — biggest usage drawn first so smaller pitches stay on top */}
+          {data.pitches.map(p => {
+            const { d } = pathFor(p);
+            const dim = sel && sel.type !== p.type;
+            const w = 4 + Math.min(10, (splitOf(p).usage ?? p.usage ?? 0) / 4);
+            return (
+              <g key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)} style={{ cursor: "pointer" }} opacity={dim ? 0.15 : 1}>
+                <path d={d} fill="none" stroke="transparent" strokeWidth={22} />
+                <path d={d} fill="none" stroke={p.color} strokeOpacity={0.35} strokeWidth={w} strokeLinecap="round" />
+                <path d={d} fill="none" stroke={p.color} strokeWidth={2.2} strokeLinecap="round" />
+              </g>
+            );
+          })}
+          {data.pitches.map(p => {
+            const { ex, ey } = pathFor(p);
+            const dim = sel && sel.type !== p.type;
+            return (
+              <g key={`b-${p.type}`} onClick={() => setSelected(sel?.type === p.type ? null : p.type)} style={{ cursor: "pointer" }} opacity={dim ? 0.2 : 1}>
+                <circle cx={ex} cy={ey} r={sel?.type === p.type ? 13 : 11} fill="#fff" stroke={p.color} strokeWidth={3} />
+                <text x={ex} y={ey + 3.5} fontSize={9} fontWeight={800} textAnchor="middle" fill="#131A24">{p.type}</text>
+              </g>
+            );
+          })}
+        </svg>}
+
+        {/* legend / pitch picker */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: "0.6rem" }}>
+          {data.pitches.map(p => (
+            <button key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)}
+              style={{ ...pill(sel?.type === p.type), display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: p.color, display: "inline-block" }} />
+              {p.name} · {splitOf(p).usage ?? "—"}%
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 10, color: "#3D4B58", textAlign: "center", margin: "0.5rem 0 0" }}>
+          {view === "movement"
+            ? "Each dot is one pitch's movement (inches, gravity removed) — big circles are averages. Tap a pitch for details."
+            : sel ? "Dots = every pitch's plate location. Tap the pitch again to show all." : "Each line bends by the pitch's real movement and ends at its average location. Tap a pitch for details."}
+        </p>
+
+        {sel && view === "paths" && (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: "0.6rem" }}>
+              {([["all", "All pitches"], ["whiff", "Whiffs"], ["hit", "Hits allowed"]] as const).map(([k, l]) => (
+                <button key={k} style={pill(outcomeFilter === k)} onClick={() => setOutcomeFilter(k)}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: "0.5rem" }}>
+              {Object.entries(OUTCOME_STYLE).map(([k, v]) => (
+                <span key={k} style={{ fontSize: 9, color: "#3D4B58", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: v.color, display: "inline-block" }} />{v.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Selected pitch detail ── */}
+      {sel && (() => {
+        const sp = splitOf(sel);
+        return (
+          <div style={{ ...CARD_STYLE, borderTop: `4px solid ${sel.color}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.75rem" }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#131A24" }}>{sel.name}</p>
+              <span style={{ fontSize: 11, color: "#3D4B58" }}>
+                {sp.pitches} thrown{hand !== "all" ? ` vs ${hand}HH` : ""} · {sp.pa} PA
+              </span>
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Pitch profile</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+              <StatChip label="USAGE" value={fmtP(sp.usage)} />
+              <StatChip label="MPH" value={fmtNum(sp.velo ?? undefined, 1)} />
+              <StatChip label="SPIN" value={sp.spin != null ? String(sp.spin) : "—"} />
+              <StatChip label="H-BREAK" value={sel.hBreak != null ? `${Math.abs(sel.hBreak)}" ${(sel.hBreak >= 0) === (data.throws === "L") ? "arm" : "glove"}` : "—"} />
+              <StatChip label="IND. VERT" value={sel.vBreak != null ? `${sel.vBreak}"` : "—"} />
+              <StatChip label="ZONE %" value={fmtP(sp.zonePct)} />
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Statcast</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+              <StatChip label="MAX MPH" value={fmtNum(sel.maxVelo ?? undefined, 1)} />
+              <StatChip label="PERCEIVED" value={sel.perceivedVelo != null ? `${sel.perceivedVelo}` : "—"} subtext="mph" />
+              <StatChip label="EXTENSION" value={sel.extension != null ? `${sel.extension} ft` : "—"} highlight={(sel.extension ?? 0) >= 7} />
+              <StatChip label="ARM ANGLE" value={sel.armAngle != null ? `${sel.armAngle}°` : "—"} />
+              <StatChip label="SPIN AXIS" value={sel.spinClock ?? "—"} subtext={sel.spinAxis != null ? `${sel.spinAxis}°` : undefined} />
+              <StatChip label="EXIT VELO" value={sp.avgEV != null ? `${sp.avgEV}` : "—"} subtext="mph" highlight={(sp.avgEV ?? 99) < 87} danger={(sp.avgEV ?? 0) >= 91} />
+              <StatChip label="LAUNCH ANG" value={sp.avgLA != null ? `${sp.avgLA}°` : "—"} />
+              <StatChip label="BARREL %" value={fmtP(sp.barrelPct)} highlight={(sp.barrelPct ?? 99) < 5} danger={(sp.barrelPct ?? 0) >= 10} />
+              <StatChip label="GB %" value={fmtP(sp.gbPct)} highlight={(sp.gbPct ?? 0) >= 50} />
+              <StatChip label="xBA" value={fmt3(sp.xba)} highlight={(sp.xba ?? 1) < 0.2} danger={(sp.xba ?? 0) >= 0.3} />
+              <StatChip label="xSLG" value={fmt3(sp.xslg)} highlight={(sp.xslg ?? 1) < 0.33} danger={(sp.xslg ?? 0) >= 0.5} />
+              {hand !== "all" && sp.runValueCalc != null && <StatChip label="RUN VALUE" value={`${sp.runValueCalc > 0 ? "+" : ""}${sp.runValueCalc}`} highlight={sp.runValueCalc >= 3} danger={sp.runValueCalc <= -3} />}
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>How hitters do against it</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem" }}>
+              <StatChip label="BA" value={fmt3(sp.ba)} highlight={(sp.ba ?? 1) < 0.2} danger={(sp.ba ?? 0) >= 0.3} />
+              <StatChip label="SLG" value={fmt3(sp.slg)} highlight={(sp.slg ?? 1) < 0.33} danger={(sp.slg ?? 0) >= 0.5} />
+              <StatChip label="wOBA" value={fmt3(sp.woba)} highlight={(sp.woba ?? 1) < 0.27} danger={(sp.woba ?? 0) >= 0.36} />
+              {hand === "all" && <StatChip label="xwOBA" value={fmt3(sel.xwoba)} highlight={(sel.xwoba ?? 1) < 0.27} danger={(sel.xwoba ?? 0) >= 0.36} />}
+              <StatChip label="WHIFF %" value={fmtP(sp.whiffPct)} highlight={(sp.whiffPct ?? 0) >= 30} danger={(sp.whiffPct ?? 99) < 15} />
+              <StatChip label="K %" value={fmtP(sp.kPct)} highlight={(sp.kPct ?? 0) >= 30} />
+              <StatChip label="PUTAWAY %" value={fmtP(sp.putAwayPct)} highlight={(sp.putAwayPct ?? 0) >= 25} />
+              <StatChip label="CSW %" value={fmtP(sp.cswPct)} highlight={(sp.cswPct ?? 0) >= 30} />
+              <StatChip label="CHASE %" value={fmtP(sp.chasePct)} highlight={(sp.chasePct ?? 0) >= 32} />
+              <StatChip label="HARD HIT" value={fmtP(sp.hardHitPct)} highlight={(sp.hardHitPct ?? 99) < 33} danger={(sp.hardHitPct ?? 0) >= 45} />
+              <StatChip label="H / HR" value={`${sp.hits} / ${sp.hr}`} />
+              {hand === "all" && sel.rv != null && <StatChip label="RUN VALUE" value={`${sel.rv > 0 ? "+" : ""}${sel.rv}`} highlight={sel.rv >= 5} danger={sel.rv <= -5} />}
+            </div>
+            {hand === "all" && (
+              <p style={{ fontSize: 10, color: "#3D4B58", margin: "0.6rem 0 0" }}>
+                Run value is from the pitcher's side: positive = runs saved.
+                {" "}vs LHH {fmt3(sel.vsL.ba)} BA ({sel.vsL.pitches}) · vs RHH {fmt3(sel.vsR.ba)} BA ({sel.vsR.pitches})
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Season Statcast profile (percentile rankings) ── */}
+      {data.profile && data.profile.metrics.length > 0 && (
+        <div style={CARD_STYLE}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.75rem" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>Statcast Profile · {data.season}</p>
+            <span style={{ fontSize: 10, color: "#3D4B58" }}>MLB percentile · red = elite</span>
+          </div>
+          {data.profile.metrics.map(m => (
+            <div key={m.label} style={{ display: "grid", gridTemplateColumns: "92px 1fr 64px", alignItems: "center", gap: 8, marginBottom: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{m.label}</span>
+              {m.percentile != null ? (
+                <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(19,35,58,0.07)" }}>
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(3, m.percentile)}%`, borderRadius: 999, background: pctlColor(m.percentile) }} />
+                  <div style={{ position: "absolute", top: "50%", left: `${Math.max(3, m.percentile)}%`, transform: "translate(-50%,-50%)", width: 22, height: 22, borderRadius: 999,
+                    background: pctlColor(m.percentile), border: "2px solid #fff", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
+                    {Math.round(m.percentile)}
+                  </div>
+                </div>
+              ) : <span style={{ fontSize: 10, color: "#3D4B58" }}>no percentile</span>}
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#3D4B58", textAlign: "right" }}>{fmtMetric(m)}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.4rem 0 0" }}>
+            Percentiles are from the pitcher's side (e.g. a low xBA allowed ranks high). Source: Baseball Savant.
+          </p>
+        </div>
+      )}
+
+      {/* ── Compare all pitches ── */}
+      <div style={CARD_STYLE}>
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.6rem" }}>
+          All pitches {hand !== "all" ? `vs ${hand}HH` : ""}
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["Pitch", "Use", "MPH", "BA", "SLG", "Whiff", "K%"].map(h => (
+              <th key={h} style={{ padding: "4px 6px", textAlign: h === "Pitch" ? "left" : "center", fontSize: 10, color: "#3D4B58", fontWeight: 700, borderBottom: "1px solid rgba(19,35,58,0.10)" }}>{h}</th>))}</tr></thead>
+            <tbody>{data.pitches.map(p => {
+              const sp = splitOf(p);
+              return (
+                <tr key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)}
+                  style={{ cursor: "pointer", borderBottom: "1px solid rgba(19,35,58,0.05)", background: sel?.type === p.type ? "rgba(212,168,67,0.10)" : "transparent" }}>
+                  <td style={{ padding: "6px", fontWeight: 700, color: "#131A24", whiteSpace: "nowrap" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: p.color, display: "inline-block", marginRight: 6 }} />{p.name}
+                  </td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtP(sp.usage)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtNum(sp.velo ?? undefined, 1)}</td>
+                  <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: (sp.ba ?? 0) >= 0.3 ? "#ef4444" : (sp.ba ?? 1) < 0.2 ? "#22c55e" : "#131A24" }}>{fmt3(sp.ba)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmt3(sp.slg)}</td>
+                  <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: (sp.whiffPct ?? 0) >= 30 ? "#22c55e" : "#131A24" }}>{fmtP(sp.whiffPct)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtP(sp.kPct)}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0" }}>Source: {data.source ?? "Baseball Savant"} · regular season</p>
+      </div>
+    </div>
+  );
+}
 
 // ─── Pitcher Matchups Tab ─────────────────────────────────────────────────────
 // For MLB pitchers the matchup question is "how do opposing hitters fare
@@ -3382,12 +3792,12 @@ export default function PlayerIntel() {
                 padding: "0.25rem",
               }}
             >
-              {DETAIL_TABS.map((tab) => (
+              {DETAIL_TABS.filter(tab => tab.key !== "arsenal" || isMlbPitcher(selectedPlayer)).map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   style={{
-                    flex: 1,
+                    flex: "1 0 auto",
                     padding: "0.5rem 0.5rem",
                     background: activeTab === tab.key ? "#13233A" : "none",
                     border: "none",
@@ -3406,12 +3816,13 @@ export default function PlayerIntel() {
             </div>
 
             {/* ── Tab Content ── */}
-            {activeTab === "overview" && <OverviewTab player={selectedPlayer} />}
+            {(activeTab === "overview" || (activeTab === "arsenal" && !isMlbPitcher(selectedPlayer))) && <OverviewTab player={selectedPlayer} />}
             {activeTab === "matchups" && (isMlbPitcher(selectedPlayer)
               ? <PitcherMatchupsTab player={selectedPlayer} />
               : <MatchupsTab player={selectedPlayer} />)}
             {activeTab === "park" && <ParkTab player={selectedPlayer} />}
             {activeTab === "deepdive" && <DeepDiveTab player={selectedPlayer} />}
+            {activeTab === "arsenal" && isMlbPitcher(selectedPlayer) && <PitchArsenalTab player={selectedPlayer} />}
           </>
         )}
       </div>
