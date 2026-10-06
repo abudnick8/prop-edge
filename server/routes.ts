@@ -18518,11 +18518,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         },
       };
 
+      // `rank` is the DEFENSE's rank (1 = stingiest defense, 32 = most generous).
+      // A low defensive rank (1-8) means a TOUGH matchup for the offense, and a
+      // high rank (25-32) means an EASY matchup. Grades must track the matchup
+      // from the offense's perspective — A = easiest, D = toughest — matching
+      // the legend shown in the UI ("Grade A: Defense ranks 25-32", etc.).
       const gradeRank = (rank: number): string => {
-        if (rank <= 8)  return "A";
-        if (rank <= 16) return "B";
-        if (rank <= 24) return "C";
-        return "D";
+        if (rank <= 8)  return "D";
+        if (rank <= 16) return "C";
+        if (rank <= 24) return "B";
+        return "A";
       };
       const trendLabel = (t: string) => t === "improving" ? "📈 Improving" : t === "declining" ? "📉 Declining" : "➡️ Stable";
 
@@ -18720,9 +18725,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflLineMovCache.data);
       }
 
-      // Fetch current NFL odds from The Odds API (already configured)
+      // Fetch current NFL odds from The Odds API. Use the shared key resolver
+      // (env var, falling back to the key stored in Settings) instead of only
+      // checking process.env — this endpoint previously always fell through
+      // to the static sample games below because ODDS_API_KEY isn't set as a
+      // Railway env var; the real key lives in app Settings like everywhere
+      // else in the app.
       let oddsGames: any[] = [];
-      const oddsKey = process.env.ODDS_API_KEY;
+      const oddsKey = await getOddsApiKey();
       if (oddsKey) {
         try {
           const oddsResp = await fetch(
@@ -18810,23 +18820,35 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflInjuryImpactCache.data);
       }
 
-      // Pull from ESPN injury report
+      // Pull from ESPN injury report. The feed's top-level array is `injuries`
+      // (not `items`), each entry's status is a plain string on the injury
+      // object (not athlete.status.type.description), and name/position/team
+      // live under `athlete.displayName` / `athlete.position.abbreviation` /
+      // `athlete.team.abbreviation`. The previous field paths never matched,
+      // so this always silently returned zero live injuries and fell back
+      // to the static placeholder list below.
       let espnInjuries: any[] = [];
       try {
         const r = await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries", { signal: AbortSignal.timeout(8000) });
         if (r.ok) {
           const d: any = await r.json();
-          for (const team of (d?.items ?? [])) {
+          for (const team of (d?.injuries ?? [])) {
             for (const inj of (team?.injuries ?? [])) {
-              const status = inj?.athlete?.status?.type?.description ?? "";
-              const name = inj?.athlete?.fullName ?? "";
+              const status = inj?.status ?? "";
+              const name = inj?.athlete?.displayName ?? "";
               const pos  = inj?.athlete?.position?.abbreviation ?? "";
-              const tmAbbr = team?.team?.abbreviation ?? "";
-              if (name && ["Questionable", "Doubtful", "Out", "Injured Reserve"].includes(status)) {
-                espnInjuries.push({ playerName: name, position: pos, team: tmAbbr, status, type: inj?.type ?? "" });
+              const tmAbbr = inj?.athlete?.team?.abbreviation ?? "";
+              // Prioritize fantasy-relevant skill positions so the list isn't
+              // dominated by O-line/D-line/secondary injuries.
+              const isSkillPos = ["QB", "RB", "WR", "TE"].includes(pos);
+              if (name && isSkillPos && ["Questionable", "Doubtful", "Out", "Injured Reserve"].includes(status)) {
+                espnInjuries.push({ playerName: name, position: pos, team: tmAbbr, status, type: inj?.details?.type ?? "" });
               }
             }
           }
+          // Most severe statuses first so the top of the list is the most actionable.
+          const severity: Record<string, number> = { "Out": 0, "Injured Reserve": 0, "Doubtful": 1, "Questionable": 2 };
+          espnInjuries.sort((a, b) => (severity[a.status] ?? 3) - (severity[b.status] ?? 3));
         }
       } catch { /* ignore */ }
 
@@ -18983,9 +19005,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflFirstHalfCache.data);
       }
 
-      // Derive from odds data
+      // Derive from odds data. Use the shared key resolver (env var, falling
+      // back to the key stored in Settings) — same reasoning as line-movement
+      // above.
       let oddsGames: any[] = [];
-      const oddsKey = process.env.ODDS_API_KEY;
+      const oddsKey = await getOddsApiKey();
       if (oddsKey) {
         try {
           const r = await fetch(
