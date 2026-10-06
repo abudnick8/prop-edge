@@ -90,7 +90,66 @@ const MLB_TEAM_IDS: Record<string, number> = {
   MIA: 146, MIL: 158, MIN: 142, NYM: 121, NYY: 147, OAK: 133, PHI: 143,
   PIT: 134, SD:  135, SEA: 136, SF:  137, STL: 138, TB:  139, TEX: 140,
   TOR: 141, WSH: 120,
+  // ESPN abbreviations that differ from the MLB Stats API's
+  ATH: 133, CHW: 145,
 };
+
+const MLB_PITCHER_POS = new Set(["SP", "RP", "P", "CP", "MR"]);
+
+/** MLB innings notation ("6.2" = 6⅔) → outs. */
+function ipToOuts(ip: any): number {
+  if (ip == null || ip === "") return 0;
+  const [whole, frac] = String(ip).split(".");
+  return (parseInt(whole, 10) || 0) * 3 + (parseInt(frac ?? "0", 10) || 0);
+}
+/** outs → MLB innings notation as a number (e.g. 476 outs → 158.2). */
+function outsToIp(outs: number): number {
+  return Math.floor(outs / 3) + (outs % 3) / 10;
+}
+
+/** Normalize an MLB Stats API pitching `stat` object into the keys the client reads. */
+function flattenMLBPitching(stat: any): Record<string, any> {
+  if (!stat) return {};
+  const num = (v: any) => (v == null || v === "" || v === "-.--" ? null : parseFloat(String(v)));
+  const outs = stat.outs ?? ipToOuts(stat.inningsPitched);
+  const ip = outsToIp(outs);
+  const innings = outs / 3;
+  const k = stat.strikeOuts ?? null;
+  const bb = stat.baseOnBalls ?? null;
+  const h = stat.hits ?? null;
+  const er = stat.earnedRuns ?? null;
+  const era = num(stat.era) ?? (innings > 0 && er != null ? +(er * 9 / innings).toFixed(2) : null);
+  const whip = num(stat.whip) ?? (innings > 0 ? +(((bb ?? 0) + (h ?? 0)) / innings).toFixed(2) : null);
+  const k9 = num(stat.strikeoutsPer9Inn) ?? (innings > 0 && k != null ? +(k * 9 / innings).toFixed(1) : null);
+  const oppAvg = num(stat.avg);
+  return {
+    gamesPlayed: stat.gamesPlayed ?? null,
+    gamesStarted: stat.gamesStarted ?? null,
+    W: stat.wins ?? null, L: stat.losses ?? null, SV: stat.saves ?? null,
+    IP: ip, ip, outs,
+    ERA: era, era, WHIP: whip, whip,
+    K: k, k, BB: bb, bb, ER: er, er,
+    R: stat.runs ?? null, r: stat.runs ?? null,
+    H_allowed: h, h_allowed: h,
+    HR_allowed: stat.homeRuns ?? null, hr_allowed: stat.homeRuns ?? null,
+    k9, K9: k9,
+    oppAvg, oppOps: num(stat.ops),
+    battersFaced: stat.battersFaced ?? stat.plateAppearances ?? null,
+  };
+}
+
+/** Of several MLB splits (e.g. one per team after a trade, plus a combined row), pick the largest sample. */
+function largestSplit(splits: any[]): any | null {
+  let best: any = null;
+  for (const sp of splits ?? []) {
+    const o = sp?.stat?.outs ?? ipToOuts(sp?.stat?.inningsPitched) ?? 0;
+    const pa = sp?.stat?.plateAppearances ?? sp?.stat?.battersFaced ?? 0;
+    const size = o || pa;
+    const bestSize = best ? ((best.stat?.outs ?? ipToOuts(best.stat?.inningsPitched)) || (best.stat?.plateAppearances ?? 0)) : -1;
+    if (size > bestSize) best = sp;
+  }
+  return best;
+}
 
 // ─── Stat Config per Sport ─────────────────────────────────────────────────
 
@@ -399,7 +458,7 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
     const yr = (g.date_game ?? "").slice(0, 4);
     return yr === String(cfg.seasons[0]);
   });
-  const season = buildSeasonStats(currentSeasonGames.length > 0 ? currentSeasonGames : allGames, sport, position ?? undefined);
+  let season = buildSeasonStats(currentSeasonGames.length > 0 ? currentSeasonGames : allGames, sport, position ?? undefined);
 
   // ── Step 5: Last 10 gamelog ───────────────────────────────────────────────
   const gamelog = allGames.slice(-10);
@@ -407,7 +466,7 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
   // ── Step 6: Home/Away splits ──────────────────────────────────────────────
   const homeGames = allGames.filter(g => !String(g.opp ?? "").startsWith("@"));
   const awayGames = allGames.filter(g =>  String(g.opp ?? "").startsWith("@"));
-  const splits = {
+  let splits: { home: Record<string, any>; away: Record<string, any> } = {
     home: aggregateRawStats(homeGames),
     away: aggregateRawStats(awayGames),
   };
@@ -435,6 +494,30 @@ async function handlePlayerProfile(sport: Sport, espnId: string): Promise<any> {
       const h14 = last14.reduce((s, g) => s + parseInt(g.H ?? "0"), 0);
       const ab14 = last14.reduce((s, g) => s + parseInt(g.AB ?? "0"), 0);
       if (ab14 > 0) avg14 = +(h14 / ab14).toFixed(3);
+    }
+
+    // ── Pitchers: use official MLB Stats API pitching totals ──
+    // The ESPN gamelog aggregate (above) can't produce correct pitching rate
+    // stats — innings are in thirds notation, WHIP isn't in the log, and the
+    // per-game ERA column is a running season ERA. Pull the real season line
+    // and home/away splits from the MLB Stats API instead.
+    const isPitcher = position != null && MLB_PITCHER_POS.has(position.toUpperCase());
+    if (isPitcher && mlbamId) {
+      const yr = cfg.seasons[0];
+      const [seasonRes, haRes] = await Promise.allSettled([
+        axios.get(`https://statsapi.mlb.com/api/v1/people/${mlbamId}/stats?stats=season&group=pitching&season=${yr}&gameType=R`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
+        axios.get(`https://statsapi.mlb.com/api/v1/people/${mlbamId}/stats?stats=statSplits&group=pitching&sitCodes=h,a&season=${yr}&gameType=R`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
+      ]);
+      if (seasonRes.status === "fulfilled") {
+        const best = largestSplit(seasonRes.value.data?.stats?.[0]?.splits ?? []);
+        if (best?.stat) season = { ...flattenMLBPitching(best.stat), isPitcher: true, source: "mlb-statsapi" };
+      }
+      if (haRes.status === "fulfilled") {
+        const all = haRes.value.data?.stats?.[0]?.splits ?? [];
+        const h = largestSplit(all.filter((sp: any) => sp.split?.code === "h"));
+        const a = largestSplit(all.filter((sp: any) => sp.split?.code === "a"));
+        if (h?.stat || a?.stat) splits = { home: flattenMLBPitching(h?.stat), away: flattenMLBPitching(a?.stat) };
+      }
     }
   }
 
@@ -504,15 +587,24 @@ function buildSeasonStats(games: any[], sport: Sport, position?: string | null):
       const ipVal = s.IP != null ? Math.round(s.IP * 10) / 10 : null;
 
       if (isPitcher) {
-        // Pitching stats: ERA/WHIP are rate keys → already averaged
+        // Fallback only (the profile overrides this with MLB Stats API totals
+        // when available). Innings are in thirds notation, so sum outs rather
+        // than decimals, and derive ERA/WHIP from counting stats instead of
+        // averaging the gamelog's running-ERA column.
         const gp = s.gamesPlayed || 1;
         const kPerGame = s.K != null ? +(s.K / gp).toFixed(1) : null;
+        const outs = games.reduce((t, g) => t + ipToOuts(g.IP), 0);
+        const inn = outs / 3;
+        const ipFixed = outs > 0 ? outsToIp(outs) : ipVal;
+        const eraCalc = inn > 0 && s.ER != null ? +(s.ER * 9 / inn).toFixed(2) : (s.ERA ?? null);
+        const whipCalc = inn > 0 ? +(((s.BB ?? 0) + (s.H_allowed ?? 0)) / inn).toFixed(2) : (s.WHIP ?? null);
         return {
           gamesPlayed: s.gamesPlayed,
           isPitcher: true,
-          IP:          ipVal,          ip: ipVal,
-          ERA:         s.ERA ?? null,  era: s.ERA ?? null,
-          WHIP:        s.WHIP ?? null, whip: s.WHIP ?? null,
+          IP:          ipFixed,        ip: ipFixed,
+          ERA:         eraCalc,        era: eraCalc,
+          WHIP:        whipCalc,       whip: whipCalc,
+          k9:          inn > 0 && s.K != null ? +(s.K * 9 / inn).toFixed(1) : null,
           K:           s.K   ?? null,  k:   s.K   ?? null,
           BB:          s.BB  ?? null,  bb:  s.BB  ?? null,
           ER:          s.ER  ?? null,  er:  s.ER  ?? null,
@@ -809,7 +901,7 @@ export function registerPlayerIntelRoutes(app: Express): void {
       const sportUp = sport.toUpperCase() as Sport;
       if (!ESPN_SPORT_MAP[sportUp]) return res.status(400).json({ error: `Unsupported sport: ${sport}` });
 
-      const cacheKey = `profile_v3:${sportUp}:${espnId}`;
+      const cacheKey = `profile_v4:${sportUp}:${espnId}`;
       const cached = getCache(profileCache, cacheKey, ONE_HOUR_MS);
       if (cached) return res.json(cached);
 
@@ -952,9 +1044,15 @@ export function registerPlayerIntelRoutes(app: Express): void {
       const playerIdNum = parseInt(req.params.playerId, 10);
       if (isNaN(playerIdNum)) return res.status(400).json({ error: "playerId must be a numeric MLBAM ID" });
 
-      const cacheKey = `park-splits-career:${playerIdNum}`;
+      const isPitching = String(req.query.group ?? "").toLowerCase() === "pitching";
+      const cacheKey = `park-splits-career:${isPitching ? "pitching" : "hitting"}:${playerIdNum}`;
       const cached = getCache(parkCache, cacheKey, ONE_DAY_MS);
       if (cached) return res.json(cached);
+      if (isPitching) {
+        const result = await buildPitcherParkSplits(playerIdNum);
+        setCache(parkCache, cacheKey, result);
+        return res.json(result);
+      }
 
       console.log(`${LOG_PREFIX} park splits (career) playerId=${playerIdNum}`);
 
@@ -1233,13 +1331,16 @@ export function registerPlayerIntelRoutes(app: Express): void {
       const sportUp = sport.toUpperCase() as Sport;
       if (!ESPN_SPORT_MAP[sportUp]) return res.status(400).json({ error: `Unsupported sport: ${sport}` });
 
-      const cacheKey = `vs-team:${sportUp}:${playerId}:${teamAbbr.toUpperCase()}`;
+      const isPitching = sportUp === "MLB" && String(req.query.group ?? "").toLowerCase() === "pitching";
+      const cacheKey = `vs-team:${sportUp}:${isPitching ? "pitching:" : ""}${playerId}:${teamAbbr.toUpperCase()}`;
       const cached = getCache(vsTeamCache, cacheKey, ONE_HOUR_MS);
       if (cached) return res.json(cached);
 
       console.log(`${LOG_PREFIX} vs-team ${sportUp} player=${playerId} vs ${teamAbbr}`);
 
-      const result = sportUp === "MLB"
+      const result = isPitching
+        ? await fetchMLBPitcherVsTeam(playerId, teamAbbr.toUpperCase())
+        : sportUp === "MLB"
         ? await fetchMLBVsTeam(playerId, teamAbbr.toUpperCase())
         : await fetchESPNVsTeam(sportUp, playerId, teamAbbr.toUpperCase());
 
@@ -1253,6 +1354,22 @@ export function registerPlayerIntelRoutes(app: Express): void {
 
   // ── 7. Team List — /api/intel/teams/:sport ─────────────────────────────────
   // Returns all teams for a sport so the client can do local filtering
+  app.get("/api/intel/pitch-arsenal/:mlbamId", async (req, res) => {
+    try {
+      const id = parseInt(req.params.mlbamId, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "mlbamId must be numeric" });
+      const cacheKey = `pitch-arsenal:${id}`;
+      const cached = getCache(parkCache, cacheKey, 6 * 60 * 60 * 1000);
+      if (cached) return res.json(cached);
+      const result = await buildPitchArsenal(id);
+      setCache(parkCache, cacheKey, result);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[PlayerIntel] pitch-arsenal error:", err?.message);
+      res.status(500).json({ error: "Failed to load pitch arsenal" });
+    }
+  });
+
   app.get("/api/intel/teams/:sport", async (req, res) => {
     try {
       const sportUp = req.params.sport.toUpperCase() as Sport;
@@ -1314,6 +1431,342 @@ function flattenMLBStats(stat: any): Record<string, any> {
     runs:        stat.runs        ?? null,
     stolenBases: stat.stolenBases ?? null,
     gamesPlayed: stat.gamesPlayed ?? null,
+  };
+}
+
+/** Pitcher vs a team: opponents' batting line against him (season + career) and per-batter breakdown. */
+async function fetchMLBPitcherVsTeam(playerId: string, teamAbbr: string): Promise<any> {
+  const teamId = MLB_TEAM_IDS[teamAbbr];
+  if (!teamId) throw new Error(`Unknown MLB team: ${teamAbbr}`);
+  const pid = parseInt(playerId, 10);
+  if (isNaN(pid)) throw new Error("playerId must be numeric MLBAM ID for MLB");
+  const yr = new Date().getFullYear();
+  const base = `https://statsapi.mlb.com/api/v1/people/${pid}/stats`;
+  const [seasonTot, careerTot, perBatter] = await Promise.allSettled([
+    axios.get(`${base}?stats=vsTeamTotal&group=pitching&season=${yr}&opposingTeamId=${teamId}`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
+    axios.get(`${base}?stats=vsTeamTotal&group=pitching&opposingTeamId=${teamId}`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
+    axios.get(`${base}?stats=vsTeam&group=pitching&opposingTeamId=${teamId}`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }),
+  ]);
+  const line = (stat: any) => stat ? {
+    gamesPlayed: stat.gamesPlayed ?? null,
+    plateAppearances: stat.plateAppearances ?? null,
+    atBats: stat.atBats ?? null,
+    hits: stat.hits ?? null,
+    homeRuns: stat.homeRuns ?? null,
+    strikeOuts: stat.strikeOuts ?? null,
+    walks: stat.baseOnBalls ?? null,
+    oppAvg: stat.avg != null ? parseFloat(stat.avg) : null,
+    oppOps: stat.ops != null ? parseFloat(stat.ops) : null,
+    kPct: stat.plateAppearances ? +(100 * (stat.strikeOuts ?? 0) / stat.plateAppearances).toFixed(1) : null,
+  } : null;
+  // The API may return several stat groups (e.g. vsTeamTotal + vsTeam) — select by type.
+  const group = (r: PromiseSettledResult<any>, type: string): any[] => {
+    if (r.status !== "fulfilled") return [];
+    const st: any[] = r.value.data?.stats ?? [];
+    return (st.find(x => x?.type?.displayName === type) ?? st[0])?.splits ?? [];
+  };
+  const pick = (r: PromiseSettledResult<any>) => largestSplit(group(r, "vsTeamTotal"))?.stat ?? null;
+
+  // Per-batter career totals (API returns one row per batter per season)
+  const byBatter: Record<string, any> = {};
+  if (perBatter.status === "fulfilled") {
+    for (const sp of group(perBatter, "vsTeam")) {
+      const name = sp.batter?.fullName; if (!name) continue;
+      const st = sp.stat ?? {};
+      const b = byBatter[name] ??= { batter: name, PA: 0, AB: 0, H: 0, HR: 0, K: 0, BB: 0 };
+      b.PA += st.plateAppearances ?? 0; b.AB += st.atBats ?? 0; b.H += st.hits ?? 0;
+      b.HR += st.homeRuns ?? 0; b.K += st.strikeOuts ?? 0; b.BB += st.baseOnBalls ?? 0;
+    }
+  }
+  const batters = Object.values(byBatter)
+    .map((b: any) => ({ ...b, AVG: b.AB > 0 ? +(b.H / b.AB).toFixed(3) : null }))
+    .sort((a: any, b: any) => b.PA - a.PA)
+    .slice(0, 15);
+
+  return { isPitcher: true, seasonStats: line(pick(seasonTot)), careerStats: line(pick(careerTot)), batters };
+}
+
+/** Pitcher career ballpark splits (last 5 seasons): ERA / WHIP / K/9 / opp AVG per venue. */
+async function buildPitcherParkSplits(pid: number): Promise<any> {
+  const currentYear = new Date().getFullYear();
+  const seasons = [0, 1, 2, 3, 4].map(d => currentYear - d);
+  const base = `https://statsapi.mlb.com/api/v1/people/${pid}/stats`;
+
+  const haRes = await axios.get(`${base}?stats=careerStatSplits&group=pitching&sitCodes=h,a&gameType=R`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS }).catch(() => null);
+  const haAll = haRes?.data?.stats?.[0]?.splits ?? [];
+  const home = flattenMLBPitching(largestSplit(haAll.filter((sp: any) => sp.split?.code === "h"))?.stat);
+  const away = flattenMLBPitching(largestSplit(haAll.filter((sp: any) => sp.split?.code === "a"))?.stat);
+
+  const logs = await Promise.allSettled(seasons.map(yr =>
+    axios.get(`${base}?stats=gameLog&group=pitching&season=${yr}&gameType=R`, { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS })));
+  const games: { gamePk: number; stat: any }[] = [];
+  for (const r of logs) {
+    if (r.status !== "fulfilled") continue;
+    for (const sp of r.value.data?.stats?.[0]?.splits ?? []) {
+      if (sp.game?.gamePk && sp.stat) games.push({ gamePk: sp.game.gamePk, stat: sp.stat });
+    }
+  }
+
+  const pkToVenue: Record<number, string> = {};
+  const pks = Array.from(new Set(games.map(g => g.gamePk)));
+  for (let i = 0; i < pks.length; i += 200) {
+    try {
+      const sched = await axios.get(
+        `https://statsapi.mlb.com/api/v1/schedule?gamePks=${pks.slice(i, i + 200).join(",")}&hydrate=venue&fields=dates,games,gamePk,venue,name`,
+        { timeout: AXIOS_TIMEOUT, headers: AXIOS_HEADERS });
+      for (const d of sched.data?.dates ?? []) for (const g of d.games ?? []) {
+        if (g.gamePk && g.venue?.name) pkToVenue[g.gamePk] = normalizeVenueName(g.venue.name) ?? g.venue.name;
+      }
+    } catch { /* skip chunk */ }
+  }
+
+  const agg: Record<string, any> = {};
+  for (const { gamePk, stat } of games) {
+    const v = pkToVenue[gamePk]; if (!v) continue;
+    const a = agg[v] ??= { G: 0, outs: 0, ER: 0, H: 0, BB: 0, K: 0, HR: 0, AB: 0 };
+    a.G += 1; a.outs += stat.outs ?? ipToOuts(stat.inningsPitched);
+    a.ER += stat.earnedRuns ?? 0; a.H += stat.hits ?? 0; a.BB += stat.baseOnBalls ?? 0;
+    a.K += stat.strikeOuts ?? 0; a.HR += stat.homeRuns ?? 0; a.AB += stat.atBats ?? 0;
+  }
+  const venues: any[] = [];
+  for (const [venue, a] of Object.entries(agg)) {
+    const inn = a.outs / 3;
+    let parkFactor: any = null;
+    try { parkFactor = await getParkFactor(venue); } catch { /* ok */ }
+    venues.push({
+      venue, gamesPlayed: a.G, G: a.G,
+      ip: outsToIp(a.outs), outs: a.outs,
+      era:  inn > 0 ? +(a.ER * 9 / inn).toFixed(2) : null,
+      whip: inn > 0 ? +((a.BB + a.H) / inn).toFixed(2) : null,
+      k9:   inn > 0 ? +(a.K * 9 / inn).toFixed(1) : null,
+      oppAvg: a.AB > 0 ? +(a.H / a.AB).toFixed(3) : null,
+      k: a.K, bb: a.BB, er: a.ER, hits: a.H, hr: a.HR,
+      parkFactor,
+    });
+  }
+  venues.sort((x, y) => y.outs - x.outs);
+  return { isPitcher: true, home, away, venues, careerSeasons: seasons.length };
+}
+
+
+// ─── Pitch Arsenal (Statcast) ───────────────────────────────────────────────
+
+/** Minimal RFC-4180 CSV parser (handles quoted fields with commas). */
+function parseCsv(text: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let row: string[] = [], field = "", q = false;
+  const t = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) {
+      if (c === '"') { if (t[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  const [hdr, ...body] = rows;
+  if (!hdr) return [];
+  return body.map(r => Object.fromEntries(hdr.map((h, i) => [h, r[i] ?? ""])));
+}
+
+const PITCH_COLORS: Record<string, string> = {
+  FF: "#D22D49", SI: "#FE9D00", FC: "#933F2C", CH: "#1DBE3A", FS: "#3BACAC", FO: "#55CCAB",
+  SL: "#EEE716", ST: "#DDB33A", SV: "#93AFD4", CU: "#00D1ED", KC: "#6236CD", CS: "#0068FF",
+  SC: "#60DB33", KN: "#3C44CD", EP: "#888888",
+};
+const SWING_DESC = new Set(["swinging_strike", "swinging_strike_blocked", "foul", "foul_tip", "hit_into_play", "foul_bunt", "missed_bunt", "bunt_foul_tip"]);
+const WHIFF_DESC = new Set(["swinging_strike", "swinging_strike_blocked", "foul_tip", "missed_bunt"]); // Savant counts foul tips as whiffs
+const HIT_EVENTS: Record<string, number> = { single: 1, double: 2, triple: 3, home_run: 4 };
+const NON_AB_EVENTS = new Set(["walk", "intent_walk", "hit_by_pitch", "sac_fly", "sac_bunt", "sac_fly_double_play", "sac_bunt_double_play", "catcher_interf", "truncated_pa"]);
+const K_EVENTS = new Set(["strikeout", "strikeout_double_play"]);
+
+/** Per-pitch outcome code for chart dots. */
+function pitchOutcome(r: Record<string, string>): string {
+  const ev = r.events, d = r.description;
+  if (ev === "home_run") return "hr";
+  if (HIT_EVENTS[ev]) return "hit";
+  if (d === "hit_into_play") return "out";
+  if (WHIFF_DESC.has(d)) return "whiff";
+  if (d === "called_strike") return "called";
+  if (d.startsWith("foul")) return "foul";
+  return "ball";
+}
+
+function summarizePitches(rows: Record<string, string>[], total: number) {
+  const n = (v: string) => (v === "" || v == null ? NaN : parseFloat(v));
+  const mean = (xs: number[]) => { const f = xs.filter(x => !isNaN(x)); return f.length ? f.reduce((a, b) => a + b, 0) / f.length : null; };
+  let swings = 0, whiffs = 0, ab = 0, h = 0, tb = 0, hr = 0, k = 0, pa = 0, bbe = 0, hard = 0, wv = 0, wd = 0, twoStrike = 0, inZone = 0, chase = 0, outZone = 0, called = 0;
+  for (const r of rows) {
+    const d = r.description, ev = r.events;
+    if (SWING_DESC.has(d)) swings++;
+    if (WHIFF_DESC.has(d)) whiffs++;
+    if (d === "called_strike") called++;
+    if (r.strikes === "2") twoStrike++;
+    const zone = parseInt(r.zone, 10);
+    if (zone >= 1 && zone <= 9) inZone++; else if (zone >= 11) { outZone++; if (SWING_DESC.has(d)) chase++; }
+    if (d === "hit_into_play") { bbe++; if (n(r.launch_speed) >= 95) hard++; }
+    if (ev) {
+      pa++;
+      if (!NON_AB_EVENTS.has(ev)) ab++;
+      if (HIT_EVENTS[ev]) { h++; tb += HIT_EVENTS[ev]; }
+      if (ev === "home_run") hr++;
+      if (K_EVENTS.has(ev)) k++;
+    }
+    if (r.woba_denom === "1") { wd++; wv += n(r.woba_value) || 0; }
+  }
+  const pct = (a: number, b: number) => (b > 0 ? +(100 * a / b).toFixed(1) : null);
+  const rate = (a: number, b: number) => (b > 0 ? +(a / b).toFixed(3) : null);
+  const ft2in = (v: number | null) => (v == null ? null : +(v * 12).toFixed(1));
+  const r1 = (v: number | null, d = 1) => (v == null ? null : +v.toFixed(d));
+
+  // Batted-ball / expected stats (Savant: xBA = Σ estimated BA on contact ÷ AB; Ks count as 0)
+  const bbeRows = rows.filter(r => r.description === "hit_into_play");
+  const xbaSum = bbeRows.reduce((t, r) => t + (n(r.estimated_ba_using_speedangle) || 0), 0);
+  const xslgSum = bbeRows.reduce((t, r) => t + (n(r.estimated_slg_using_speedangle) || 0), 0);
+  const barrels = bbeRows.filter(r => r.launch_speed_angle === "6").length;
+  const gbs = bbeRows.filter(r => r.bb_type === "ground_ball").length;
+  const axis = mean(rows.map(r => n(r.spin_axis)));
+  const runExp = rows.reduce((t, r) => t + (n(r.delta_run_exp) || 0), 0);
+  const velos = rows.map(r => n(r.release_speed)).filter(v => !isNaN(v));
+  return {
+    // Statcast pitch characteristics
+    extension: r1(mean(rows.map(r => n(r.release_extension)))),
+    armAngle: r1(mean(rows.map(r => n(r.arm_angle)))),
+    perceivedVelo: r1(mean(rows.map(r => n(r.effective_speed)))),
+    maxVelo: velos.length ? r1(Math.max(...velos)) : null,
+    spinAxis: axis == null ? null : Math.round(axis),
+    spinClock: axis == null ? null : (() => {
+      // Savant convention: 180° = 12:00 (pure backspin), 30° per clock hour
+      const totalMin = Math.round(((((axis / 30) + 6) % 12) * 60) / 15) * 15;
+      let h = Math.floor(totalMin / 60) % 12; if (h === 0) h = 12;
+      return `${h}:${String(totalMin % 60).padStart(2, "0")}`;
+    })(),
+    // Batted-ball quality against
+    bbe: bbeRows.length,
+    avgEV: r1(mean(bbeRows.map(r => n(r.launch_speed)))),
+    avgLA: r1(mean(bbeRows.map(r => n(r.launch_angle)))),
+    barrelPct: pct(barrels, bbeRows.length),
+    gbPct: pct(gbs, bbeRows.length),
+    xba: rate(xbaSum, ab), xslg: rate(xslgSum, ab),
+    runValueCalc: r1(-runExp), // pitcher's side: + = runs saved
+    // Individual movement points (inches): [horizontal, induced vertical]
+    movement: rows.filter(r => r.pfx_x !== "" && r.pfx_z !== "")
+      .map(r => [+(n(r.pfx_x) * 12).toFixed(1), +(n(r.pfx_z) * 12).toFixed(1)] as [number, number]),
+    pitches: rows.length,
+    usage: pct(rows.length, total),
+    velo: mean(rows.map(r => n(r.release_speed))) != null ? +mean(rows.map(r => n(r.release_speed)))!.toFixed(1) : null,
+    spin: mean(rows.map(r => n(r.release_spin_rate))) != null ? Math.round(mean(rows.map(r => n(r.release_spin_rate)))!) : null,
+    hBreak: ft2in(mean(rows.map(r => n(r.pfx_x)))),   // catcher's view, + = toward 1B side
+    vBreak: ft2in(mean(rows.map(r => n(r.pfx_z)))),   // induced vertical break
+    plateX: mean(rows.map(r => n(r.plate_x))),
+    plateZ: mean(rows.map(r => n(r.plate_z))),
+    pa, ab, hits: h, hr, k,
+    ba: rate(h, ab), slg: rate(tb, ab), woba: rate(wv, wd),
+    whiffPct: pct(whiffs, swings), kPct: pct(k, pa), putAwayPct: pct(k, twoStrike),
+    zonePct: pct(inZone, rows.length), chasePct: pct(chase, outZone), cswPct: pct(called + whiffs, rows.length),
+    hardHitPct: pct(hard, bbe),
+  };
+}
+
+async function buildPitchArsenal(mlbamId: number): Promise<any> {
+  const thisYear = new Date().getFullYear();
+  let season = thisYear;
+  let rows: Record<string, string>[] = [];
+  for (const yr of [thisYear, thisYear - 1]) {
+    const url = `https://baseballsavant.mlb.com/statcast_search/csv?all=true&hfGT=R%7C&hfSea=${yr}%7C&player_type=pitcher&pitchers_lookup%5B%5D=${mlbamId}&type=details&min_pitches=0&min_results=0`;
+    const r = await axios.get(url, { timeout: 30000, headers: AXIOS_HEADERS, responseType: "text" });
+    rows = parseCsv(String(r.data)).filter(x => x.pitch_type && x.pitch_type !== "PO");
+    season = yr;
+    if (rows.length >= 50) break;
+  }
+  if (!rows.length) return { season, pitches: [], total: 0 };
+
+  // Official per-pitch run value from Savant's arsenal leaderboard (season-level)
+  const rv: Record<string, { rv: number | null; rv100: number | null; xwoba: number | null }> = {};
+  try {
+    const lb = await axios.get(`https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&pitchType=&year=${season}&team=&min=1&csv=true`,
+      { timeout: 15000, headers: AXIOS_HEADERS, responseType: "text" });
+    for (const x of parseCsv(String(lb.data))) {
+      if (String(x.player_id) !== String(mlbamId)) continue;
+      rv[x.pitch_type] = { rv: x.run_value ? +x.run_value : null, rv100: x.run_value_per_100 ? +x.run_value_per_100 : null, xwoba: x.est_woba ? +x.est_woba : null };
+    }
+  } catch { /* run value optional */ }
+
+  const total = rows.length;
+  const byType: Record<string, Record<string, string>[]> = {};
+  for (const r of rows) (byType[r.pitch_type] ??= []).push(r);
+  const num = (v: string) => (v === "" ? null : +parseFloat(v).toFixed(2));
+  const relX = rows.map(r => parseFloat(r.release_pos_x)).filter(x => !isNaN(x));
+  const relZ = rows.map(r => parseFloat(r.release_pos_z)).filter(x => !isNaN(x));
+  const szTop = rows.map(r => parseFloat(r.sz_top)).filter(x => !isNaN(x));
+  const szBot = rows.map(r => parseFloat(r.sz_bot)).filter(x => !isNaN(x));
+  const avg = (xs: number[]) => (xs.length ? +(xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2) : null);
+
+  const pitches = Object.entries(byType).map(([type, rs]) => {
+    const all = summarizePitches(rs, total);
+    const strip = ({ movement, ...rest }: any) => rest;
+    const vsL = strip(summarizePitches(rs.filter(r => r.stand === "L"), rows.filter(r => r.stand === "L").length));
+    const vsR = strip(summarizePitches(rs.filter(r => r.stand === "R"), rows.filter(r => r.stand === "R").length));
+    return {
+      type, name: rs[0].pitch_name || type, color: PITCH_COLORS[type] ?? "#888888",
+      ...all, ...(rv[type] ?? {}),
+      vsL, vsR,
+      // Every pitch's plate location: [x, z, outcome, batter hand]
+      locations: rs.filter(r => r.plate_x !== "" && r.plate_z !== "")
+        .map(r => [num(r.plate_x), num(r.plate_z), pitchOutcome(r), r.stand] as [number | null, number | null, string, string]),
+    };
+  }).sort((a, b) => b.pitches - a.pitches);
+
+  // Season Statcast profile (values + MLB percentile ranks, Savant style)
+  let profile: any = null;
+  try {
+    const [vals, pcts] = await Promise.all([
+      axios.get(`https://baseballsavant.mlb.com/leaderboard/custom?year=${season}&type=pitcher&filter=&min=1&selections=p_formatted_ip,xba,xslg,xwoba,xera,exit_velocity_avg,barrel_batted_rate,hard_hit_percent,k_percent,bb_percent,whiff_percent,oz_swing_percent,groundballs_percent,fastball_avg_speed,fastball_avg_spin,breaking_avg_spin,release_extension,arm_angle,p_era&csv=true`,
+        { timeout: 15000, headers: AXIOS_HEADERS, responseType: "text" }),
+      axios.get(`https://baseballsavant.mlb.com/leaderboard/percentile-rankings?type=pitcher&year=${season}&csv=true`,
+        { timeout: 15000, headers: AXIOS_HEADERS, responseType: "text" }),
+    ]);
+    const v = parseCsv(String(vals.data)).find(x => String(x.player_id) === String(mlbamId));
+    const pr = parseCsv(String(pcts.data)).find(x => String(x.player_id) === String(mlbamId));
+    const f = (x: any) => (x === "" || x == null ? null : parseFloat(String(x)));
+    if (v || pr) {
+      const metric = (label: string, value: number | null, pctl: any, fmt: string) => ({ label, value, percentile: f(pctl), fmt });
+      profile = {
+        ip: v?.p_formatted_ip ?? null, era: f(v?.p_era),
+        metrics: [
+          metric("xERA",          f(v?.xera),                 pr?.xera,             "era"),
+          metric("xBA",           f(v?.xba),                  pr?.xba,              "avg"),
+          metric("xSLG",          f(v?.xslg),                 pr?.xslg,             "avg"),
+          metric("xwOBA",         f(v?.xwoba),                pr?.xwoba,            "avg"),
+          metric("Avg Exit Velo", f(v?.exit_velocity_avg),    pr?.exit_velocity,    "mph"),
+          metric("Barrel %",      f(v?.barrel_batted_rate),   pr?.brl_percent,      "pct"),
+          metric("Hard-Hit %",    f(v?.hard_hit_percent),     pr?.hard_hit_percent, "pct"),
+          metric("K %",           f(v?.k_percent),            pr?.k_percent,        "pct"),
+          metric("BB %",          f(v?.bb_percent),           pr?.bb_percent,       "pct"),
+          metric("Whiff %",       f(v?.whiff_percent),        pr?.whiff_percent,    "pct"),
+          metric("Chase %",       f(v?.oz_swing_percent),     pr?.chase_percent,    "pct"),
+          metric("GB %",          f(v?.groundballs_percent),  null,                 "pct"),
+          metric("FB Velo",       f(v?.fastball_avg_speed),   pr?.fb_velocity,      "mph"),
+          metric("FB Spin",       f(v?.fastball_avg_spin),    pr?.fb_spin,          "rpm"),
+          metric("Breaking Spin", f(v?.breaking_avg_spin),    pr?.curve_spin,       "rpm"),
+          metric("Extension",     f(v?.release_extension),    null,                 "ft"),
+          metric("Arm Angle",     f(v?.arm_angle),            null,                 "deg"),
+        ].filter(m => m.value != null || m.percentile != null),
+      };
+    }
+  } catch { /* profile optional */ }
+
+  return {
+    season, total, throws: rows[0].p_throws, profile,
+    releaseX: avg(relX), releaseZ: avg(relZ), szTop: avg(szTop) ?? 3.4, szBot: avg(szBot) ?? 1.6,
+    pitches, source: "Baseball Savant (Statcast)",
   };
 }
 

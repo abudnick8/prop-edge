@@ -10,7 +10,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Sport = "All" | "MLB" | "NBA" | "NFL" | "NHL";
-type Tab = "overview" | "matchups" | "park" | "deepdive";
+type Tab = "overview" | "matchups" | "park" | "deepdive" | "arsenal";
 
 interface PlayerSearchResult {
   espnId: string;
@@ -96,6 +96,7 @@ const DETAIL_TABS: { key: Tab; label: string }[] = [
   { key: "matchups", label: "Matchups" },
   { key: "park", label: "Park / Venue" },
   { key: "deepdive", label: "Deep Dive" },
+  { key: "arsenal", label: "Pitches" }, // MLB pitchers only (filtered at render)
 ];
 
 const MLB_PARKS = [
@@ -413,11 +414,30 @@ function PlayerAvatar({
 
 // ─── Stat display helpers ─────────────────────────────────────────────────────
 
+const MLB_PITCHER_POSITIONS = new Set(["SP", "RP", "P", "CP", "MR"]);
+/** True when this is an MLB pitcher — drives pitching-specific views across every tab. */
+function isMlbPitcher(player: { sport?: string; position?: string; season?: Record<string, any> }): boolean {
+  if (player.sport !== "MLB") return false;
+  if (player.season && (player.season as any).isPitcher) return true;
+  return MLB_PITCHER_POSITIONS.has(String(player.position ?? "").toUpperCase());
+}
+/** MLB innings notation ("6.2" = 6⅔) → true innings. */
+function ipToInnings(v: any): number {
+  const [w, f] = String(v ?? "0").split(".");
+  return (parseInt(w, 10) || 0) + (parseInt(f ?? "0", 10) || 0) / 3;
+}
+/** true innings → MLB notation string ("6.2"). */
+function inningsToIp(inn: number): string {
+  const outs = Math.round(inn * 3);
+  return `${Math.floor(outs / 3)}.${outs % 3}`;
+}
+
 function fmtAvg(val: string | number | undefined): string {
   if (val == null || val === "") return "—";
   const n = parseFloat(String(val));
   if (isNaN(n)) return "—";
-  return "." + n.toFixed(3).replace("0.", "").replace(".", "");
+  // .300 style for rates under 1; 1.000+ keeps its leading digit (e.g. OPS 1.012)
+  return n >= 1 ? n.toFixed(3) : n.toFixed(3).replace(/^0/, "");
 }
 
 function fmtPct(val: string | number | undefined): string {
@@ -530,7 +550,10 @@ function OverviewTab({ player }: { player: PlayerData }) {
               <StatChip label="H"    value={fmtNum(s.H_allowed ?? s.h_allowed)} />
               <StatChip label="HR"   value={fmtNum(s.HR_allowed ?? s.hr_allowed)} />
               <StatChip label="ER"   value={fmtNum(s.er ?? s.ER)} />
-              {s.SV != null && <StatChip label="SV" value={fmtNum(s.SV)} highlight={parseInt(String(s.SV ?? 0)) >= 10} />}
+              {s.k9 != null && <StatChip label="K/9" value={fmtNum(s.k9, 1)} highlight={parseFloat(String(s.k9 ?? 0)) >= 9.5} />}
+              {s.W != null && s.L != null && <StatChip label="W-L" value={`${s.W}-${s.L}`} />}
+              {s.oppAvg != null && <StatChip label="OPP AVG" value={fmtAvg(s.oppAvg)} highlight={parseFloat(String(s.oppAvg ?? 1)) < 0.22} />}
+              {s.SV != null && Number(s.SV) > 0 && <StatChip label="SV" value={fmtNum(s.SV)} highlight={parseInt(String(s.SV ?? 0)) >= 10} />}
             </>
           )}
           {sport === "NBA" && (
@@ -781,6 +804,628 @@ function OverviewTab({ player }: { player: PlayerData }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+
+
+/** Savant-style pitch movement plot: horizontal break vs induced vertical break (inches), catcher's view. */
+function MovementChart({ data, selected, onSelect }: { data: ArsenalData; selected: string | null; onSelect: (t: string) => void }) {
+  const S = 320, pad = 26, MAX = 24;
+  const sc = (S - pad * 2) / (MAX * 2);
+  const X = (in_: number) => S / 2 + Math.max(-MAX, Math.min(MAX, in_)) * sc;
+  const Y = (in_: number) => S / 2 - Math.max(-MAX, Math.min(MAX, in_)) * sc;
+  const armRight = data.throws === "L"; // LHP arm side is catcher's right
+  return (
+    <svg viewBox={`0 0 ${S} ${S}`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto" }} role="img" aria-label="Pitch movement chart">
+      <rect x={0} y={0} width={S} height={S} rx={14} fill="#F7F4EC" />
+      {[6, 12, 18, 24].map(r => (
+        <circle key={r} cx={S / 2} cy={S / 2} r={r * sc} fill="none" stroke="rgba(19,35,58,0.10)" strokeDasharray={r === 24 ? undefined : "3 4"} />
+      ))}
+      <line x1={pad} x2={S - pad} y1={S / 2} y2={S / 2} stroke="rgba(19,35,58,0.25)" />
+      <line y1={pad} y2={S - pad} x1={S / 2} x2={S / 2} stroke="rgba(19,35,58,0.25)" />
+      {[12, 24].map(r => (
+        <g key={r}>
+          <text x={X(r)} y={S / 2 + 11} fontSize={8} textAnchor="middle" fill="#3D4B58">{r}"</text>
+          <text x={X(-r)} y={S / 2 + 11} fontSize={8} textAnchor="middle" fill="#3D4B58">{r}"</text>
+          <text x={S / 2 + 4} y={Y(r) + 3} fontSize={8} fill="#3D4B58">{r}"</text>
+          <text x={S / 2 + 4} y={Y(-r) + 3} fontSize={8} fill="#3D4B58">-{r}"</text>
+        </g>
+      ))}
+      <text x={S / 2} y={14} fontSize={9} fontWeight={700} textAnchor="middle" fill="#3D4B58">MORE RISE</text>
+      <text x={S / 2} y={S - 6} fontSize={9} fontWeight={700} textAnchor="middle" fill="#3D4B58">MORE DROP</text>
+      <text x={armRight ? S - 8 : 8} y={S / 2 - 6} fontSize={9} fontWeight={700} textAnchor={armRight ? "end" : "start"} fill="#3D4B58">ARM SIDE</text>
+      <text x={armRight ? 8 : S - 8} y={S / 2 - 6} fontSize={9} fontWeight={700} textAnchor={armRight ? "start" : "end"} fill="#3D4B58">GLOVE SIDE</text>
+
+      {data.pitches.map(p => {
+        const dim = selected && selected !== p.type;
+        return (
+          <g key={p.type} opacity={dim ? 0.12 : 1} onClick={() => onSelect(p.type)} style={{ cursor: "pointer" }}>
+            {(p.movement ?? []).map(([hx, vz], i) => (
+              <circle key={i} cx={X(hx)} cy={Y(vz)} r={2.1} fill={p.color} fillOpacity={0.45} />
+            ))}
+          </g>
+        );
+      })}
+      {data.pitches.map(p => {
+        if (p.hBreak == null || p.vBreak == null) return null;
+        const dim = selected && selected !== p.type;
+        return (
+          <g key={`avg-${p.type}`} opacity={dim ? 0.25 : 1} onClick={() => onSelect(p.type)} style={{ cursor: "pointer" }}>
+            <circle cx={X(p.hBreak)} cy={Y(p.vBreak)} r={selected === p.type ? 13 : 11} fill="#fff" stroke={p.color} strokeWidth={3} />
+            <text x={X(p.hBreak)} y={Y(p.vBreak) + 3.5} fontSize={9} fontWeight={800} textAnchor="middle" fill="#131A24">{p.type}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ─── Pitch Arsenal Tab ────────────────────────────────────────────────────────
+// One combined strike-zone chart (catcher's view): every pitch type is drawn
+// from the pitcher's real release point to its average plate location, bending
+// by its real Statcast movement. Tap a pitch to see where every one of them
+// crossed the plate and how hitters fared against it.
+
+interface ArsenalSplit {
+  pitches: number; usage: number | null; velo: number | null; spin: number | null;
+  hBreak: number | null; vBreak: number | null; plateX: number | null; plateZ: number | null;
+  pa: number; ab: number; hits: number; hr: number; k: number;
+  ba: number | null; slg: number | null; woba: number | null;
+  whiffPct: number | null; kPct: number | null; putAwayPct: number | null;
+  zonePct: number | null; chasePct: number | null; cswPct: number | null; hardHitPct: number | null;
+  extension: number | null; armAngle: number | null; perceivedVelo: number | null; maxVelo: number | null;
+  spinAxis: number | null; spinClock: string | null;
+  bbe: number; avgEV: number | null; avgLA: number | null; barrelPct: number | null; gbPct: number | null;
+  xba: number | null; xslg: number | null; runValueCalc: number | null;
+}
+interface ArsenalPitch extends ArsenalSplit {
+  type: string; name: string; color: string;
+  rv?: number | null; rv100?: number | null; xwoba?: number | null;
+  vsL: ArsenalSplit; vsR: ArsenalSplit;
+  locations: [number | null, number | null, string, string][];
+  movement: [number, number][];
+}
+interface StatcastMetric { label: string; value: number | null; percentile: number | null; fmt: string }
+interface ArsenalData {
+  season: number; total: number; throws: string;
+  releaseX: number | null; releaseZ: number | null; szTop: number; szBot: number;
+  pitches: ArsenalPitch[]; source?: string;
+  profile?: { ip: string | null; era: number | null; metrics: StatcastMetric[] } | null;
+}
+
+/** Savant-style percentile color: deep blue (poor) → grey (avg) → deep red (elite). */
+function pctlColor(p: number): string {
+  const t = Math.max(0, Math.min(100, p)) / 100;
+  const lerp = (a: number, b: number, k: number) => Math.round(a + (b - a) * k);
+  const [lo, mid, hi] = [[50, 95, 210], [180, 180, 180], [214, 40, 40]];
+  const [a, b, k] = t < 0.5 ? [lo, mid, t / 0.5] : [mid, hi, (t - 0.5) / 0.5];
+  return `rgb(${lerp(a[0], b[0], k)},${lerp(a[1], b[1], k)},${lerp(a[2], b[2], k)})`;
+}
+
+function fmtMetric(m: StatcastMetric): string {
+  if (m.value == null) return "—";
+  switch (m.fmt) {
+    case "avg": return fmtAvg(m.value);
+    case "era": return m.value.toFixed(2);
+    case "pct": return `${m.value}%`;
+    case "mph": return `${m.value} mph`;
+    case "rpm": return `${Math.round(m.value)} rpm`;
+    case "ft":  return `${m.value} ft`;
+    case "deg": return `${m.value}°`;
+    default:    return String(m.value);
+  }
+}
+
+const OUTCOME_STYLE: Record<string, { label: string; color: string }> = {
+  whiff:  { label: "Whiff",         color: "#22c55e" },
+  called: { label: "Called strike", color: "#2563eb" },
+  foul:   { label: "Foul",          color: "#94a3b8" },
+  ball:   { label: "Ball",          color: "#cbd5e1" },
+  out:    { label: "In-play out",   color: "#13233A" },
+  hit:    { label: "Hit",           color: "#f97316" },
+  hr:     { label: "Home run",      color: "#dc2626" },
+};
+
+function PitchArsenalTab({ player }: { player: PlayerData }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hand, setHand] = useState<"all" | "L" | "R">("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "whiff" | "hit">("all");
+  const [view, setView] = useState<"paths" | "movement">("paths");
+
+  const url = player.mlbamId ? `/api/intel/pitch-arsenal/${player.mlbamId}` : null;
+  const { data, isFetching, error, refetch } = useQuery<ArsenalData>({
+    queryKey: ["pitch-arsenal", player.mlbamId],
+    queryFn: () => fetch(url!).then(r => { if (!r.ok) throw new Error("arsenal"); return r.json(); }),
+    enabled: !!url,
+    staleTime: 1000 * 60 * 60,
+  });
+
+  if (!player.mlbamId) return <ErrorCard message="MLB ID not resolved for this pitcher." onRetry={() => {}} />;
+  if (isFetching && !data) return <Spinner />;
+  if (error) return <ErrorCard message="Failed to load pitch data." onRetry={() => refetch()} />;
+  if (!data || !data.pitches.length) return <div style={CARD_STYLE}><p style={{ margin: 0, fontSize: 13, color: "#3D4B58" }}>No Statcast pitch data for this pitcher yet.</p></div>;
+
+  // ── Coordinate system (feet → SVG px), catcher's view ──
+  const W = 320, H = 400;
+  const PX = 62;                          // px per foot
+  const cx = W / 2;
+  const groundY = H - 12;                  // z = 0.15 ft
+  const toX = (x: number) => cx + x * PX;
+  const toY = (z: number) => groundY - (z - 0.15) * PX;
+  const relX = Math.max(-2.4, Math.min(2.4, data.releaseX ?? (data.throws === "L" ? 1.8 : -1.8)));
+  const relZ = Math.min(6.2, data.releaseZ ?? 6);
+  const R = { x: toX(relX), y: Math.max(10, toY(relZ)) };
+  const zoneL = toX(-0.83), zoneR = toX(0.83), zoneT = toY(data.szTop), zoneB = toY(data.szBot);
+
+  const splitOf = (p: ArsenalPitch): ArsenalSplit => (hand === "L" ? p.vsL : hand === "R" ? p.vsR : p);
+  const sel = data.pitches.find(p => p.type === selected) ?? null;
+
+  // Pitch path: quadratic curve aimed at the "no-movement" spot and bending into the real plate location
+  const pathFor = (p: ArsenalPitch) => {
+    const sp = splitOf(p);
+    const ex = toX(sp.plateX ?? p.plateX ?? 0), ey = toY(sp.plateZ ?? p.plateZ ?? 2.5);
+    const mx = ((p.hBreak ?? 0) / 12) * PX, mz = ((p.vBreak ?? 0) / 12) * PX;
+    const ax = ex - mx, ay = ey + mz;     // where it would land with no spin-induced movement
+    const c = { x: R.x + 0.82 * (ax - R.x), y: R.y + 0.82 * (ay - R.y) };
+    return { d: `M ${R.x.toFixed(1)} ${R.y.toFixed(1)} Q ${c.x.toFixed(1)} ${c.y.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, ex, ey };
+  };
+
+  const dots = sel
+    ? (sel.locations ?? []).filter(([x, z, o, st]) => x != null && z != null
+        && (hand === "all" || st === hand)
+        && (outcomeFilter === "all" || (outcomeFilter === "whiff" ? o === "whiff" : o === "hit" || o === "hr")))
+    : [];
+
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? "#13233A" : "rgba(19,35,58,0.15)"}`,
+    background: active ? "#13233A" : "#fff", color: active ? "#F6F1E7" : "#3D4B58",
+  });
+  const fmt3 = (v: number | null | undefined) => (v == null ? "—" : fmtAvg(v));
+  const fmtP = (v: number | null | undefined) => (v == null ? "—" : `${v}%`);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <div style={CARD_STYLE}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: "0.5rem" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>
+            Pitch Arsenal · {data.season}
+          </p>
+          <span style={{ fontSize: 10, color: "#3D4B58" }}>{data.total.toLocaleString()} pitches · {data.throws === "L" ? "LHP" : "RHP"} · catcher's view</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "0.6rem" }}>
+          {([["paths", "Pitch Paths"], ["movement", "Movement"]] as const).map(([k, l]) => (
+            <button key={k} style={{ ...pill(view === k), borderRadius: 8 }} onClick={() => setView(k)}>{l}</button>
+          ))}
+          <span style={{ width: 1, background: "rgba(19,35,58,0.15)", margin: "0 2px" }} />
+          {([["all", "All hitters"], ["L", "vs LHH"], ["R", "vs RHH"]] as const).map(([k, l]) => (
+            <button key={k} style={pill(hand === k)} onClick={() => setHand(k)}>{l}</button>
+          ))}
+        </div>
+
+        {view === "movement" && <MovementChart data={data} selected={sel?.type ?? null}
+          onSelect={(t) => setSelected(sel?.type === t ? null : t)} />}
+
+        {/* ── Combined chart ── */}
+        {view === "paths" && <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto", touchAction: "manipulation" }}
+          role="img" aria-label="Combined pitch movement chart">
+          <rect x={0} y={0} width={W} height={H} rx={14} fill="#F7F4EC" />
+          {/* shadow zone + strike zone grid */}
+          <rect x={toX(-1.1)} y={toY(data.szTop + 0.3)} width={toX(1.1) - toX(-1.1)} height={toY(data.szBot - 0.3) - toY(data.szTop + 0.3)}
+            fill="none" stroke="rgba(19,35,58,0.12)" strokeDasharray="4 4" />
+          <rect x={zoneL} y={zoneT} width={zoneR - zoneL} height={zoneB - zoneT} fill="rgba(255,255,255,0.85)" stroke="#13233A" strokeWidth={1.6} />
+          {[1, 2].map(i => (
+            <g key={i}>
+              <line x1={zoneL + (zoneR - zoneL) * i / 3} x2={zoneL + (zoneR - zoneL) * i / 3} y1={zoneT} y2={zoneB} stroke="rgba(19,35,58,0.25)" />
+              <line y1={zoneT + (zoneB - zoneT) * i / 3} y2={zoneT + (zoneB - zoneT) * i / 3} x1={zoneL} x2={zoneR} stroke="rgba(19,35,58,0.25)" />
+            </g>
+          ))}
+          {/* home plate */}
+          <polygon points={`${toX(-0.71)},${groundY - 10} ${toX(0.71)},${groundY - 10} ${toX(0.71)},${groundY - 4} ${cx},${groundY + 4} ${toX(-0.71)},${groundY - 4}`}
+            fill="#fff" stroke="rgba(19,35,58,0.35)" />
+          {/* release point */}
+          <circle cx={R.x} cy={R.y} r={4} fill="#13233A" />
+          <text x={R.x + (R.x > cx ? -8 : 8)} y={R.y + 4} fontSize={9} fill="#3D4B58" textAnchor={R.x > cx ? "end" : "start"}>Release</text>
+
+          {/* individual pitch locations for the selected pitch */}
+          {dots.map(([x, z, o], i) => (
+            <circle key={i} cx={toX(x!)} cy={toY(z!)} r={o === "hr" || o === "hit" ? 3.4 : 2.6}
+              fill={OUTCOME_STYLE[o]?.color ?? "#999"} fillOpacity={o === "ball" ? 0.55 : 0.85} />
+          ))}
+
+          {/* trajectories — biggest usage drawn first so smaller pitches stay on top */}
+          {data.pitches.map(p => {
+            const { d } = pathFor(p);
+            const dim = sel && sel.type !== p.type;
+            const w = 4 + Math.min(10, (splitOf(p).usage ?? p.usage ?? 0) / 4);
+            return (
+              <g key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)} style={{ cursor: "pointer" }} opacity={dim ? 0.15 : 1}>
+                <path d={d} fill="none" stroke="transparent" strokeWidth={22} />
+                <path d={d} fill="none" stroke={p.color} strokeOpacity={0.35} strokeWidth={w} strokeLinecap="round" />
+                <path d={d} fill="none" stroke={p.color} strokeWidth={2.2} strokeLinecap="round" />
+              </g>
+            );
+          })}
+          {data.pitches.map(p => {
+            const { ex, ey } = pathFor(p);
+            const dim = sel && sel.type !== p.type;
+            return (
+              <g key={`b-${p.type}`} onClick={() => setSelected(sel?.type === p.type ? null : p.type)} style={{ cursor: "pointer" }} opacity={dim ? 0.2 : 1}>
+                <circle cx={ex} cy={ey} r={sel?.type === p.type ? 13 : 11} fill="#fff" stroke={p.color} strokeWidth={3} />
+                <text x={ex} y={ey + 3.5} fontSize={9} fontWeight={800} textAnchor="middle" fill="#131A24">{p.type}</text>
+              </g>
+            );
+          })}
+        </svg>}
+
+        {/* legend / pitch picker */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: "0.6rem" }}>
+          {data.pitches.map(p => (
+            <button key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)}
+              style={{ ...pill(sel?.type === p.type), display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: p.color, display: "inline-block" }} />
+              {p.name} · {splitOf(p).usage ?? "—"}%
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 10, color: "#3D4B58", textAlign: "center", margin: "0.5rem 0 0" }}>
+          {view === "movement"
+            ? "Each dot is one pitch's movement (inches, gravity removed) — big circles are averages. Tap a pitch for details."
+            : sel ? "Dots = every pitch's plate location. Tap the pitch again to show all." : "Each line bends by the pitch's real movement and ends at its average location. Tap a pitch for details."}
+        </p>
+
+        {sel && view === "paths" && (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: "0.6rem" }}>
+              {([["all", "All pitches"], ["whiff", "Whiffs"], ["hit", "Hits allowed"]] as const).map(([k, l]) => (
+                <button key={k} style={pill(outcomeFilter === k)} onClick={() => setOutcomeFilter(k)}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: "0.5rem" }}>
+              {Object.entries(OUTCOME_STYLE).map(([k, v]) => (
+                <span key={k} style={{ fontSize: 9, color: "#3D4B58", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: v.color, display: "inline-block" }} />{v.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Selected pitch detail ── */}
+      {sel && (() => {
+        const sp = splitOf(sel);
+        return (
+          <div style={{ ...CARD_STYLE, borderTop: `4px solid ${sel.color}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.75rem" }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#131A24" }}>{sel.name}</p>
+              <span style={{ fontSize: 11, color: "#3D4B58" }}>
+                {sp.pitches} thrown{hand !== "all" ? ` vs ${hand}HH` : ""} · {sp.pa} PA
+              </span>
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Pitch profile</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+              <StatChip label="USAGE" value={fmtP(sp.usage)} />
+              <StatChip label="MPH" value={fmtNum(sp.velo ?? undefined, 1)} />
+              <StatChip label="SPIN" value={sp.spin != null ? String(sp.spin) : "—"} />
+              <StatChip label="H-BREAK" value={sel.hBreak != null ? `${Math.abs(sel.hBreak)}" ${(sel.hBreak >= 0) === (data.throws === "L") ? "arm" : "glove"}` : "—"} />
+              <StatChip label="IND. VERT" value={sel.vBreak != null ? `${sel.vBreak}"` : "—"} />
+              <StatChip label="ZONE %" value={fmtP(sp.zonePct)} />
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>Statcast</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+              <StatChip label="MAX MPH" value={fmtNum(sel.maxVelo ?? undefined, 1)} />
+              <StatChip label="PERCEIVED" value={sel.perceivedVelo != null ? `${sel.perceivedVelo}` : "—"} subtext="mph" />
+              <StatChip label="EXTENSION" value={sel.extension != null ? `${sel.extension} ft` : "—"} highlight={(sel.extension ?? 0) >= 7} />
+              <StatChip label="ARM ANGLE" value={sel.armAngle != null ? `${sel.armAngle}°` : "—"} />
+              <StatChip label="SPIN AXIS" value={sel.spinClock ?? "—"} subtext={sel.spinAxis != null ? `${sel.spinAxis}°` : undefined} />
+              <StatChip label="EXIT VELO" value={sp.avgEV != null ? `${sp.avgEV}` : "—"} subtext="mph" highlight={(sp.avgEV ?? 99) < 87} danger={(sp.avgEV ?? 0) >= 91} />
+              <StatChip label="LAUNCH ANG" value={sp.avgLA != null ? `${sp.avgLA}°` : "—"} />
+              <StatChip label="BARREL %" value={fmtP(sp.barrelPct)} highlight={(sp.barrelPct ?? 99) < 5} danger={(sp.barrelPct ?? 0) >= 10} />
+              <StatChip label="GB %" value={fmtP(sp.gbPct)} highlight={(sp.gbPct ?? 0) >= 50} />
+              <StatChip label="xBA" value={fmt3(sp.xba)} highlight={(sp.xba ?? 1) < 0.2} danger={(sp.xba ?? 0) >= 0.3} />
+              <StatChip label="xSLG" value={fmt3(sp.xslg)} highlight={(sp.xslg ?? 1) < 0.33} danger={(sp.xslg ?? 0) >= 0.5} />
+              {hand !== "all" && sp.runValueCalc != null && <StatChip label="RUN VALUE" value={`${sp.runValueCalc > 0 ? "+" : ""}${sp.runValueCalc}`} highlight={sp.runValueCalc >= 3} danger={sp.runValueCalc <= -3} />}
+            </div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>How hitters do against it</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: "0.4rem" }}>
+              <StatChip label="BA" value={fmt3(sp.ba)} highlight={(sp.ba ?? 1) < 0.2} danger={(sp.ba ?? 0) >= 0.3} />
+              <StatChip label="SLG" value={fmt3(sp.slg)} highlight={(sp.slg ?? 1) < 0.33} danger={(sp.slg ?? 0) >= 0.5} />
+              <StatChip label="wOBA" value={fmt3(sp.woba)} highlight={(sp.woba ?? 1) < 0.27} danger={(sp.woba ?? 0) >= 0.36} />
+              {hand === "all" && <StatChip label="xwOBA" value={fmt3(sel.xwoba)} highlight={(sel.xwoba ?? 1) < 0.27} danger={(sel.xwoba ?? 0) >= 0.36} />}
+              <StatChip label="WHIFF %" value={fmtP(sp.whiffPct)} highlight={(sp.whiffPct ?? 0) >= 30} danger={(sp.whiffPct ?? 99) < 15} />
+              <StatChip label="K %" value={fmtP(sp.kPct)} highlight={(sp.kPct ?? 0) >= 30} />
+              <StatChip label="PUTAWAY %" value={fmtP(sp.putAwayPct)} highlight={(sp.putAwayPct ?? 0) >= 25} />
+              <StatChip label="CSW %" value={fmtP(sp.cswPct)} highlight={(sp.cswPct ?? 0) >= 30} />
+              <StatChip label="CHASE %" value={fmtP(sp.chasePct)} highlight={(sp.chasePct ?? 0) >= 32} />
+              <StatChip label="HARD HIT" value={fmtP(sp.hardHitPct)} highlight={(sp.hardHitPct ?? 99) < 33} danger={(sp.hardHitPct ?? 0) >= 45} />
+              <StatChip label="H / HR" value={`${sp.hits} / ${sp.hr}`} />
+              {hand === "all" && sel.rv != null && <StatChip label="RUN VALUE" value={`${sel.rv > 0 ? "+" : ""}${sel.rv}`} highlight={sel.rv >= 5} danger={sel.rv <= -5} />}
+            </div>
+            {hand === "all" && (
+              <p style={{ fontSize: 10, color: "#3D4B58", margin: "0.6rem 0 0" }}>
+                Run value is from the pitcher's side: positive = runs saved.
+                {" "}vs LHH {fmt3(sel.vsL.ba)} BA ({sel.vsL.pitches}) · vs RHH {fmt3(sel.vsR.ba)} BA ({sel.vsR.pitches})
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Season Statcast profile (percentile rankings) ── */}
+      {data.profile && data.profile.metrics.length > 0 && (
+        <div style={CARD_STYLE}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.75rem" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: 0 }}>Statcast Profile · {data.season}</p>
+            <span style={{ fontSize: 10, color: "#3D4B58" }}>MLB percentile · red = elite</span>
+          </div>
+          {data.profile.metrics.map(m => (
+            <div key={m.label} style={{ display: "grid", gridTemplateColumns: "92px 1fr 64px", alignItems: "center", gap: 8, marginBottom: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#131A24" }}>{m.label}</span>
+              {m.percentile != null ? (
+                <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(19,35,58,0.07)" }}>
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(3, m.percentile)}%`, borderRadius: 999, background: pctlColor(m.percentile) }} />
+                  <div style={{ position: "absolute", top: "50%", left: `${Math.max(3, m.percentile)}%`, transform: "translate(-50%,-50%)", width: 22, height: 22, borderRadius: 999,
+                    background: pctlColor(m.percentile), border: "2px solid #fff", color: "#fff", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
+                    {Math.round(m.percentile)}
+                  </div>
+                </div>
+              ) : <span style={{ fontSize: 10, color: "#3D4B58" }}>no percentile</span>}
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#3D4B58", textAlign: "right" }}>{fmtMetric(m)}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.4rem 0 0" }}>
+            Percentiles are from the pitcher's side (e.g. a low xBA allowed ranks high). Source: Baseball Savant.
+          </p>
+        </div>
+      )}
+
+      {/* ── Compare all pitches ── */}
+      <div style={CARD_STYLE}>
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.6rem" }}>
+          All pitches {hand !== "all" ? `vs ${hand}HH` : ""}
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["Pitch", "Use", "MPH", "BA", "SLG", "Whiff", "K%"].map(h => (
+              <th key={h} style={{ padding: "4px 6px", textAlign: h === "Pitch" ? "left" : "center", fontSize: 10, color: "#3D4B58", fontWeight: 700, borderBottom: "1px solid rgba(19,35,58,0.10)" }}>{h}</th>))}</tr></thead>
+            <tbody>{data.pitches.map(p => {
+              const sp = splitOf(p);
+              return (
+                <tr key={p.type} onClick={() => setSelected(sel?.type === p.type ? null : p.type)}
+                  style={{ cursor: "pointer", borderBottom: "1px solid rgba(19,35,58,0.05)", background: sel?.type === p.type ? "rgba(212,168,67,0.10)" : "transparent" }}>
+                  <td style={{ padding: "6px", fontWeight: 700, color: "#131A24", whiteSpace: "nowrap" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: p.color, display: "inline-block", marginRight: 6 }} />{p.name}
+                  </td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtP(sp.usage)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtNum(sp.velo ?? undefined, 1)}</td>
+                  <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: (sp.ba ?? 0) >= 0.3 ? "#ef4444" : (sp.ba ?? 1) < 0.2 ? "#22c55e" : "#131A24" }}>{fmt3(sp.ba)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmt3(sp.slg)}</td>
+                  <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: (sp.whiffPct ?? 0) >= 30 ? "#22c55e" : "#131A24" }}>{fmtP(sp.whiffPct)}</td>
+                  <td style={{ padding: "6px", textAlign: "center" }}>{fmtP(sp.kPct)}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0" }}>Source: {data.source ?? "Baseball Savant"} · regular season</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pitcher Matchups Tab ─────────────────────────────────────────────────────
+// For MLB pitchers the matchup question is "how do opposing hitters fare
+// against HIM", so this searches opposing teams / batters (not pitchers) and
+// reads every stat from the pitcher's side.
+
+interface PitcherVsTeamData {
+  seasonStats?: Record<string, number | null> | null;
+  careerStats?: Record<string, number | null> | null;
+  batters?: Array<{ batter: string; PA: number; AB: number; H: number; HR: number; K: number; BB: number; AVG: number | null }>;
+}
+
+function PitcherMatchupsTab({ player }: { player: PlayerData }) {
+  const [teamQ, setTeamQ] = useState("");
+  const [team, setTeam] = useState<TeamResult | null>(null);
+  const [batterQ, setBatterQ] = useState("");
+  const [debouncedBatterQ, setDebouncedBatterQ] = useState("");
+  const [batter, setBatter] = useState<PlayerSearchResult | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedBatterQ(batterQ.trim()), 300);
+    return () => clearTimeout(t);
+  }, [batterQ]);
+
+  const { data: teamList } = useQuery<TeamResult[]>({
+    queryKey: ["team-list", "MLB"],
+    queryFn: () => fetch(`/api/intel/teams/MLB`).then(r => r.json()),
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+  const teamMatches = teamQ.trim() && teamList
+    ? teamList.filter(t => [t.name, t.shortName, t.abbr].some(x => x.toLowerCase().includes(teamQ.toLowerCase()))).slice(0, 8)
+    : [];
+
+  const vsUrl = team && player.mlbamId ? `/api/intel/vs-team/MLB/${player.mlbamId}/${team.abbr}?group=pitching` : null;
+  const { data: vs, isFetching: vsLoading } = useQuery<PitcherVsTeamData>({
+    queryKey: ["pitcher-vs-team", player.mlbamId, team?.abbr],
+    queryFn: () => fetch(vsUrl!).then(r => r.json()),
+    enabled: !!vsUrl,
+  });
+
+  const searchUrl = debouncedBatterQ.length >= 2 ? `/api/intel/search?q=${encodeURIComponent(debouncedBatterQ)}&sport=MLB` : null;
+  const { data: batterResults, isFetching: batterSearching } = useQuery<PlayerSearchResult[]>({
+    queryKey: ["batter-search", debouncedBatterQ],
+    queryFn: () => fetch(searchUrl!).then(r => r.json()),
+    enabled: !!searchUrl,
+  });
+  const batterMatches = (batterResults ?? [])
+    .filter(r => r.sport === "MLB" && !MLB_PITCHER_POSITIONS.has(String(r.position ?? "").toUpperCase()))
+    .slice(0, 6);
+
+  const bvpUrl = batter ? `/api/intel/bvp-name?batter=${encodeURIComponent(batter.name)}&pitcher=${encodeURIComponent(player.name)}` : null;
+  const { data: bvp, isFetching: bvpLoading } = useQuery<BvPData>({
+    queryKey: ["bvp", batter?.name, player.name],
+    queryFn: () => fetch(bvpUrl!).then(r => r.json()),
+    enabled: !!bvpUrl,
+  });
+
+  const label: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.75rem" };
+  const inputWrap: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)", borderRadius: "0.75rem", padding: "0.55rem 0.75rem" };
+  const dropdown: React.CSSProperties = { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", overflow: "hidden", marginTop: 4 };
+  const rowBtn: React.CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "0.6rem 0.75rem", background: "none", border: "none", borderBottom: "1px solid rgba(19,35,58,0.06)", cursor: "pointer", textAlign: "left" };
+
+  // Lower opponent AVG/OPS = better for the pitcher
+  const oppLine = (st: Record<string, number | null> | null | undefined, title: string) => {
+    if (!st || !st.plateAppearances) {
+      return <p style={{ margin: 0, fontSize: 12, color: "#3D4B58" }}>{title}: no plate appearances against {team?.abbr}.</p>;
+    }
+    const avg = Number(st.oppAvg ?? 0);
+    return (
+      <div style={{ marginBottom: "0.75rem" }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>{title}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.4rem" }}>
+          <StatChip label="G" value={fmtNum(st.gamesPlayed ?? undefined)} />
+          <StatChip label="PA" value={fmtNum(st.plateAppearances ?? undefined)} />
+          <StatChip label="OPP AVG" value={fmtAvg(st.oppAvg ?? undefined)} highlight={avg > 0 && avg < 0.22} danger={avg >= 0.28} />
+          <StatChip label="OPP OPS" value={fmtAvg(st.oppOps ?? undefined)} highlight={Number(st.oppOps ?? 1) < 0.65} danger={Number(st.oppOps ?? 0) >= 0.8} />
+          <StatChip label="K" value={fmtNum(st.strikeOuts ?? undefined)} />
+          <StatChip label="K%" value={st.kPct != null ? `${st.kPct}%` : "—"} highlight={Number(st.kPct ?? 0) >= 27} />
+          <StatChip label="BB" value={fmtNum(st.walks ?? undefined)} />
+          <StatChip label="H" value={fmtNum(st.hits ?? undefined)} />
+          <StatChip label="HR" value={fmtNum(st.homeRuns ?? undefined)} danger={Number(st.homeRuns ?? 0) >= 3} />
+        </div>
+      </div>
+    );
+  };
+
+  // BvP signal is computed from the batter's side — flip it for the pitcher.
+  const pitcherSignal = bvp?.signal === "strong" ? { text: "Batter has the edge", color: "#ef4444", bg: "rgba(239,68,68,0.10)" }
+    : bvp?.signal === "struggles" ? { text: `${player.name} dominates this hitter`, color: "#22c55e", bg: "rgba(34,197,94,0.10)" }
+    : { text: "Neutral history", color: "#3D4B58", bg: "rgba(61,75,88,0.08)" };
+  const bvpLine = (st: Record<string, any> | null | undefined, title: string) => st ? (
+    <div style={{ marginBottom: "0.75rem" }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0 0 0.4rem" }}>{title}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: "0.4rem" }}>
+        {([["AB", fmtNum(st.AB ?? st.atBats)], ["H", fmtNum(st.H ?? st.hits)], ["HR", fmtNum(st.HR ?? st.homeRuns)],
+           ["K", fmtNum(st.K ?? st.strikeOuts)], ["BB", fmtNum(st.BB ?? st.walks)],
+           ["OPP AVG", fmtAvg(st.AVG ?? st.avg)], ["OPP OPS", fmtAvg(st.OPS ?? st.ops)]] as [string, string][])
+          .filter(([, v]) => v !== "—")
+          .map(([l, v]) => <StatChip key={l} label={l} value={v} />)}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {/* ── Opposing team ── */}
+      <div style={CARD_STYLE}>
+        <p style={label}>Opposing Team</p>
+        {!team ? (
+          <div style={{ position: "relative" }}>
+            <div style={inputWrap}>
+              <Search size={14} color="#3D4B58" />
+              <input value={teamQ} onChange={e => setTeamQ(e.target.value)} placeholder="Search opposing team (e.g. Brewers, NYY)..."
+                style={{ background: "none", border: "none", outline: "none", flex: 1, fontSize: 13, color: "#131A24" }} />
+            </div>
+            {teamMatches.length > 0 && (
+              <div style={dropdown}>
+                {teamMatches.map(t => (
+                  <button key={t.abbr} style={rowBtn} onClick={() => { setTeam(t); setTeamQ(""); }}>
+                    {t.logo ? <img src={t.logo} alt={t.abbr} style={{ width: 28, height: 28, objectFit: "contain" }} /> : null}
+                    <div><p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#131A24" }}>{t.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>{t.abbr}</p></div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#131A24" }}>{player.name} vs {team.name}</p>
+              <button onClick={() => setTeam(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#3D4B58" }}><X size={14} /></button>
+            </div>
+            {vsLoading && <Spinner />}
+            {!vsLoading && vs && (
+              <>
+                {oppLine(vs.seasonStats, `${new Date().getFullYear()} season`)}
+                {oppLine(vs.careerStats, "Career")}
+                {(vs.batters?.length ?? 0) > 0 && (
+                  <div style={{ overflowX: "auto" }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: "#D4A843", textTransform: "uppercase", margin: "0.25rem 0 0.4rem" }}>Career vs current & past {team.abbr} hitters</p>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead><tr>{["Batter", "PA", "H", "HR", "K", "BB", "AVG"].map(h => (
+                        <th key={h} style={{ padding: "4px 6px", textAlign: h === "Batter" ? "left" : "center", fontSize: 10, color: "#3D4B58", fontWeight: 700, borderBottom: "1px solid rgba(19,35,58,0.10)" }}>{h}</th>))}</tr></thead>
+                      <tbody>{vs.batters!.map(b => (
+                        <tr key={b.batter} style={{ borderBottom: "1px solid rgba(19,35,58,0.05)" }}>
+                          <td style={{ padding: "5px 6px", fontWeight: 600, color: "#131A24" }}>{b.batter}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center" }}>{b.PA}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center" }}>{b.H}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center", color: b.HR > 0 ? "#ef4444" : "#131A24" }}>{b.HR}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, color: b.K >= 3 ? "#22c55e" : "#131A24" }}>{b.K}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center" }}>{b.BB}</td>
+                          <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, color: b.AVG == null ? "#3D4B58" : b.AVG < 0.2 ? "#22c55e" : b.AVG >= 0.3 ? "#ef4444" : "#131A24" }}>{b.AVG != null ? fmtAvg(b.AVG) : "—"}</td>
+                        </tr>))}</tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+            {!vsLoading && !player.mlbamId && <p style={{ fontSize: 12, color: "#3D4B58" }}>MLB ID not resolved for this pitcher.</p>}
+          </>
+        )}
+      </div>
+
+      {/* ── Opposing batter (head-to-head) ── */}
+      <div style={CARD_STYLE}>
+        <p style={label}>Opposing Batter</p>
+        {!batter ? (
+          <div style={{ position: "relative" }}>
+            <div style={inputWrap}>
+              <Search size={14} color="#3D4B58" />
+              <input value={batterQ} onChange={e => setBatterQ(e.target.value)} placeholder="Search opposing batter..."
+                style={{ background: "none", border: "none", outline: "none", flex: 1, fontSize: 13, color: "#131A24" }} />
+              {batterSearching && <div style={{ width: 14, height: 14, border: "2px solid rgba(19,35,58,0.15)", borderTop: "2px solid #D4A843", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
+            </div>
+            {debouncedBatterQ.length >= 2 && batterMatches.length > 0 && (
+              <div style={dropdown}>
+                {batterMatches.map(r => (
+                  <button key={r.espnId} style={rowBtn} onClick={() => { setBatter(r); setBatterQ(""); }}>
+                    <PlayerAvatar player={r} size={28} />
+                    <div><p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#131A24" }}>{r.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>{r.teamAbbr}{r.position ? ` · ${r.position}` : ""}</p></div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {debouncedBatterQ.length >= 2 && !batterSearching && batterResults && batterMatches.length === 0 && (
+              <div style={{ ...dropdown, padding: "0.75rem", fontSize: 13, color: "#3D4B58" }}>No batters found for "{debouncedBatterQ}"</div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#131A24" }}>{player.name} vs {batter.name}</p>
+              <button onClick={() => setBatter(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#3D4B58" }}><X size={14} /></button>
+            </div>
+            {bvpLoading && <Spinner />}
+            {!bvpLoading && bvp && (bvp.seasonBvP || bvp.careerBvP) ? (
+              <>
+                <div style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 800, color: pitcherSignal.color, background: pitcherSignal.bg, marginBottom: "0.75rem" }}>{pitcherSignal.text}</div>
+                {bvpLine(bvp.seasonBvP as any, "This season")}
+                {bvpLine(bvp.careerBvP as any, "Career")}
+              </>
+            ) : !bvpLoading && (
+              <p style={{ margin: 0, fontSize: 12, color: "#3D4B58" }}>No head-to-head history between {player.name} and {batter.name}.</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1294,6 +1939,16 @@ const ALL_MLB_STADIUMS: { venue: string; team: string; abbr: string; div: string
   { venue: "Angel Stadium",             team: "Angels",       abbr: "LAA", div: "AL West",    dome: false },
 ];
 
+// Pitcher ballpark options. lowerIsBetter: a smaller ERA/WHIP/opp AVG means the pitcher did better there.
+const PITCHER_STAT_OPTIONS = [
+  { key: "era",    label: "ERA",     fmt: (v: any) => v != null ? Number(v).toFixed(2) : null, max: 6,    isRate: true, lowerIsBetter: true  },
+  { key: "whip",   label: "WHIP",    fmt: (v: any) => v != null ? Number(v).toFixed(2) : null, max: 1.8,  isRate: true, lowerIsBetter: true  },
+  { key: "k9",     label: "K/9",     fmt: (v: any) => v != null ? Number(v).toFixed(1) : null, max: 14,   isRate: true, lowerIsBetter: false },
+  { key: "oppAvg", label: "OPP AVG", fmt: (v: any) => v != null ? fmtAvg(v) : null,            max: 0.35, isRate: true, lowerIsBetter: true  },
+  { key: "k",      label: "K",       fmt: (v: any) => v != null ? fmtNum(v) : null,            max: 100,  isRate: false, lowerIsBetter: false },
+  { key: "ip",     label: "IP",      fmt: (v: any) => v != null ? String(v) : null,            max: 100,  isRate: false, lowerIsBetter: false },
+];
+
 const STAT_OPTIONS = [
   { key: "avg",         label: "AVG",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 0.5,  isRate: true  },
   { key: "ops",         label: "OPS",  fmt: (v: any) => v != null && v > 0 ? fmtAvg(v) : null,     max: 1.2,  isRate: true  },
@@ -1590,12 +2245,14 @@ function SprayChart({ player, selectedVenue }: { player: PlayerData; selectedVen
 
 function ParkTab({ player }: { player: PlayerData }) {
   const isMlb = player.sport === "MLB";
-  const [selectedStat, setSelectedStat] = useState("avg");
+  const isPitcher = isMlbPitcher(player);
+  const [selectedStat, setSelectedStat] = useState(isPitcher ? "era" : "avg");
   const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
   const [filterDiv, setFilterDiv] = useState<string>("All");
+  const [stadiumQ, setStadiumQ] = useState("");
 
   const parkUrl = isMlb && player.mlbamId
-    ? `/api/intel/park-splits/${player.mlbamId}`
+    ? `/api/intel/park-splits/${player.mlbamId}${isPitcher ? "?group=pitching" : ""}`
     : null;
   const {
     data: parkData,
@@ -1603,7 +2260,7 @@ function ParkTab({ player }: { player: PlayerData }) {
     error: parkError,
     refetch: refetchPark,
   } = useQuery<ParkSplitData>({
-    queryKey: ["park-splits", player.espnId],
+    queryKey: ["park-splits", player.espnId, isPitcher ? "pitching" : "hitting"],
     queryFn: () => fetch(parkUrl!).then((r) => r.json()),
     enabled: !!parkUrl,
   });
@@ -1611,7 +2268,22 @@ function ParkTab({ player }: { player: PlayerData }) {
   const home = parkData?.home ?? player.splits?.home;
   const away = parkData?.away ?? player.splits?.away;
 
-  const MLB_SPLIT_ROWS = [
+  const PITCHER_SPLIT_ROWS = [
+    { key: "era",         label: "ERA",     fmt: (v: any) => fmtNum(v, 2), lowerIsBetter: true },
+    { key: "whip",        label: "WHIP",    fmt: (v: any) => fmtNum(v, 2), lowerIsBetter: true },
+    { key: "k9",          label: "K/9",     fmt: (v: any) => fmtNum(v, 1) },
+    { key: "oppAvg",      label: "OPP AVG", fmt: fmtAvg, lowerIsBetter: true },
+    { key: "oppOps",      label: "OPP OPS", fmt: fmtAvg, lowerIsBetter: true },
+    { key: "ip",          label: "IP",      fmt: (v: any) => String(v) },
+    { key: "k",           label: "K",       fmt: (v: any) => fmtNum(v) },
+    { key: "bb",          label: "BB",      fmt: (v: any) => fmtNum(v), lowerIsBetter: true },
+    { key: "h_allowed",   label: "H",       fmt: (v: any) => fmtNum(v), lowerIsBetter: true },
+    { key: "hr_allowed",  label: "HR",      fmt: (v: any) => fmtNum(v), lowerIsBetter: true },
+    { key: "er",          label: "ER",      fmt: (v: any) => fmtNum(v), lowerIsBetter: true },
+    { key: "gamesPlayed", label: "G",       fmt: (v: any) => fmtNum(v) },
+  ];
+
+  const MLB_SPLIT_ROWS: Array<{ key: string; label: string; fmt: (v: any) => string; lowerIsBetter?: boolean }> = isPitcher ? PITCHER_SPLIT_ROWS : [
     { key: "avg",         label: "AVG",   fmt: fmtAvg },
     { key: "obp",         label: "OBP",   fmt: fmtAvg },
     { key: "slg",         label: "SLG",   fmt: fmtAvg },
@@ -1629,11 +2301,11 @@ function ParkTab({ player }: { player: PlayerData }) {
     { key: "gamesPlayed", label: "G",     fmt: (v: any) => fmtNum(v) },
   ];
 
-  function SplitRow({ label, homeVal, awayVal }: { label: string; homeVal: any; awayVal: any }) {
+  function SplitRow({ label, homeVal, awayVal, lowerIsBetter }: { label: string; homeVal: any; awayVal: any; lowerIsBetter?: boolean }) {
     const h = parseFloat(String(homeVal ?? 0)) || 0;
     const a = parseFloat(String(awayVal ?? 0)) || 0;
-    const homeWins = h > a;
-    const awayWins = a > h;
+    const homeWins = lowerIsBetter ? h < a : h > a;
+    const awayWins = lowerIsBetter ? a < h : a > h;
     const homeStr = homeVal != null && homeVal !== "" ? String(homeVal) : "—";
     const awayStr = awayVal != null && awayVal !== "" ? String(awayVal) : "—";
     return (
@@ -1698,7 +2370,9 @@ function ParkTab({ player }: { player: PlayerData }) {
     }
   }
 
-  const selectedStatCfg = STAT_OPTIONS.find(s => s.key === selectedStat) ?? STAT_OPTIONS[0];
+  const statOptions: Array<{ key: string; label: string; fmt: (v: any) => string | null; max: number; isRate: boolean; lowerIsBetter?: boolean }> =
+    isPitcher ? PITCHER_STAT_OPTIONS : STAT_OPTIONS;
+  const selectedStatCfg = statOptions.find(s => s.key === selectedStat) ?? statOptions[0];
 
   // Get values for chart bars — only venues with data
   const venuesWithData = ALL_MLB_STADIUMS
@@ -1723,10 +2397,60 @@ function ParkTab({ player }: { player: PlayerData }) {
     filterDiv === "All" || s.div === filterDiv
   );
 
+  // Stadium search — match by park name, team name, or abbreviation
+  const stadiumMatches = stadiumQ.trim()
+    ? ALL_MLB_STADIUMS.filter(st => {
+        const q = stadiumQ.trim().toLowerCase();
+        return st.venue.toLowerCase().includes(q) || st.team.toLowerCase().includes(q) || st.abbr.toLowerCase() === q;
+      }).slice(0, 8)
+    : [];
+  const pickStadium = (venue: string) => {
+    setSelectedVenue(venue);
+    setStadiumQ("");
+    setTimeout(() => document.getElementById("venue-detail")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {parkLoading && <Spinner />}
       {parkError && <ErrorCard message="Failed to load park split data." onRetry={() => refetchPark()} />}
+
+      {/* ── Stadium search ── */}
+      {isMlb && !parkLoading && parkData && (
+        <div style={{ ...CARD_STYLE, position: "relative", zIndex: 5 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#3D4B58", margin: "0 0 0.6rem" }}>
+            {isPitcher ? "Pitching at a Stadium" : "Hitting at a Stadium"}
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.12)", borderRadius: "0.75rem", padding: "0.55rem 0.75rem" }}>
+            <Search size={14} color="#3D4B58" />
+            <input value={stadiumQ} onChange={e => setStadiumQ(e.target.value)} placeholder="Search stadium or team (e.g. Wrigley, Yankees)..."
+              style={{ background: "none", border: "none", outline: "none", flex: 1, fontSize: 13, color: "#131A24" }} />
+          </div>
+          {stadiumMatches.length > 0 && (
+            <div style={{ position: "absolute", left: "1rem", right: "1rem", zIndex: 50, background: "#fff", border: "1px solid rgba(19,35,58,0.15)", borderRadius: "0.75rem", boxShadow: "0 8px 24px rgba(19,35,58,0.12)", overflow: "hidden", marginTop: 4 }}>
+              {stadiumMatches.map(st => {
+                const v = venueMap.get(st.venue);
+                const summary = !v ? "No games here"
+                  : isPitcher ? `${fmtNum(v.gamesPlayed)} G · ${fmtNum(v.era, 2)} ERA · ${fmtNum(v.whip, 2)} WHIP`
+                  : `${fmtNum(v.gamesPlayed)} G · ${fmtAvg(v.avg)} AVG · ${fmtNum(v.hr)} HR`;
+                return (
+                  <button key={st.venue} onClick={() => pickStadium(st.venue)}
+                    style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "0.6rem 0.75rem", background: "none", border: "none", borderBottom: "1px solid rgba(19,35,58,0.06)", cursor: "pointer", textAlign: "left" }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#131A24" }}>{st.venue}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#3D4B58" }}>{st.team} · {st.abbr}</p>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: v ? "#D4A843" : "#3D4B58", whiteSpace: "nowrap" }}>{summary}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {stadiumQ.trim() && stadiumMatches.length === 0 && (
+            <p style={{ margin: "0.5rem 0 0", fontSize: 12, color: "#3D4B58" }}>No stadiums match "{stadiumQ}".</p>
+          )}
+        </div>
+      )}
 
       {/* ── Home / Away full splits ── */}
       {(home || away) && !parkLoading && (
@@ -1736,12 +2460,15 @@ function ParkTab({ player }: { player: PlayerData }) {
             <span style={{ minWidth: 40 }} />
             <span style={{ fontWeight: 700, fontSize: 12, color: "#131A24", textTransform: "uppercase", letterSpacing: "0.05em" }}>Away</span>
           </div>
-          {MLB_SPLIT_ROWS.map(({ key, label, fmt }) => {
+          {isPitcher && (
+            <p style={{ fontSize: 10, color: "#3D4B58", margin: "0 0 0.5rem", textAlign: "center" }}>Career pitching splits · green = better for the pitcher</p>
+          )}
+          {MLB_SPLIT_ROWS.map(({ key, label, fmt, lowerIsBetter }) => {
             const hVal = home?.[key];
             const aVal = away?.[key];
             if (hVal == null && aVal == null) return null;
             return (
-              <SplitRow key={key} label={label}
+              <SplitRow key={key} label={label} lowerIsBetter={lowerIsBetter}
                 homeVal={hVal != null ? fmt(hVal) : "—"}
                 awayVal={aVal != null ? fmt(aVal) : "—"}
               />
@@ -1762,7 +2489,7 @@ function ParkTab({ player }: { player: PlayerData }) {
               </p>
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {STAT_OPTIONS.map(opt => (
+              {statOptions.map(opt => (
                 <button key={opt.key} onClick={() => setSelectedStat(opt.key)}
                   style={{
                     padding: "3px 8px", borderRadius: "0.5rem", fontSize: 10, fontWeight: 700,
@@ -1814,6 +2541,8 @@ function ParkTab({ player }: { player: PlayerData }) {
                     const isSelected = selectedVenue === s.venue;
                     const color = !hasData
                       ? "rgba(19,35,58,0.10)"
+                      : selectedStatCfg.lowerIsBetter
+                        ? (rawVal <= chartMax * 0.45 ? "#22c55e" : rawVal <= chartMax * 0.7 ? "#D4A843" : "#ef4444")
                       : selectedStatCfg.isRate
                         ? (rawVal >= chartMax * 0.7 ? "#22c55e" : rawVal >= chartMax * 0.4 ? "#D4A843" : "#ef4444")
                         : (rawVal >= chartMax * 0.6 ? "#22c55e" : rawVal >= chartMax * 0.3 ? "#D4A843" : "rgba(19,35,58,0.25)");
@@ -1874,7 +2603,13 @@ function ParkTab({ player }: { player: PlayerData }) {
 
               {/* Legend */}
               <div style={{ display: "flex", gap: 10, marginTop: "0.25rem", flexWrap: "wrap" }}>
-                {selectedStatCfg.isRate ? (
+                {selectedStatCfg.lowerIsBetter ? (
+                  <>
+                    <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 700 }}>■ Dominant (lower is better)</span>
+                    <span style={{ fontSize: 9, color: "#D4A843", fontWeight: 700 }}>■ Average</span>
+                    <span style={{ fontSize: 9, color: "#ef4444", fontWeight: 700 }}>■ Hit hard</span>
+                  </>
+                ) : selectedStatCfg.isRate ? (
                   <>
                     <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 700 }}>■ Elite (&gt;70% of best)</span>
                     <span style={{ fontSize: 9, color: "#D4A843", fontWeight: 700 }}>■ Good (&gt;40%)</span>
@@ -1894,7 +2629,7 @@ function ParkTab({ player }: { player: PlayerData }) {
 
           {/* ── Selected Venue Detail Panel ── */}
           {selectedVenue && (
-            <div style={{
+            <div id="venue-detail" style={{
               marginTop: "0.75rem",
               background: "rgba(19,35,58,0.04)",
               border: "1px solid rgba(19,35,58,0.12)",
@@ -1920,6 +2655,27 @@ function ParkTab({ player }: { player: PlayerData }) {
               {activeVenueData ? (
                 <>
                   {/* Stat grid */}
+                  {isPitcher ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
+                    {([
+                      ["G",       fmtNum(activeVenueData.gamesPlayed)],
+                      ["IP",      activeVenueData.ip != null ? String(activeVenueData.ip) : "—"],
+                      ["ERA",     fmtNum(activeVenueData.era, 2)],
+                      ["WHIP",    fmtNum(activeVenueData.whip, 2)],
+                      ["K/9",     fmtNum(activeVenueData.k9, 1)],
+                      ["OPP AVG", fmtAvg(activeVenueData.oppAvg)],
+                      ["K",       fmtNum(activeVenueData.k)],
+                      ["BB",      fmtNum(activeVenueData.bb)],
+                      ["H",       fmtNum(activeVenueData.hits)],
+                      ["HR",      fmtNum(activeVenueData.hr)],
+                      ["ER",      fmtNum(activeVenueData.er)],
+                    ] as [string, string][]).filter(([, v]) => v !== "—").map(([l, v]) => (
+                      <StatChip key={l} label={l} value={v}
+                        highlight={(l === "ERA" && parseFloat(v) < 3) || (l === "WHIP" && parseFloat(v) < 1.05)}
+                        danger={(l === "ERA" && parseFloat(v) >= 5) || (l === "WHIP" && parseFloat(v) >= 1.5)} />
+                    ))}
+                  </div>
+                  ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: "0.4rem", marginBottom: "0.75rem" }}>
                     {[
                       ["G",   fmtNum(activeVenueData.gamesPlayed)],
@@ -1946,9 +2702,10 @@ function ParkTab({ player }: { player: PlayerData }) {
                       );
                     })}
                   </div>
+                  )}
 
                   {/* Stat bars for all rate stats */}
-                  {STAT_OPTIONS.filter(o => o.isRate).map(opt => {
+                  {!isPitcher && STAT_OPTIONS.filter(o => o.isRate).map(opt => {
                     const raw = parseFloat(String(activeVenueData[opt.key] ?? 0)) || 0;
                     if (raw === 0) return null;
                     const pct = Math.min(100, (raw / opt.max) * 100);
@@ -2003,9 +2760,16 @@ function ParkTab({ player }: { player: PlayerData }) {
               const vData = venueMap.get(s.venue);
               const hasData = vData != null;
               const avg = hasData ? parseFloat(String(vData.avg ?? 0)) || 0 : 0;
+              const era = hasData ? parseFloat(String(vData.era ?? NaN)) : NaN;
+              // Pitchers: color by ERA (green < 3.00, gold < 4.50, red otherwise)
+              const tier = !hasData ? 0 : isPitcher
+                ? (isNaN(era) ? 0 : era < 3 ? 3 : era < 4.5 ? 2 : 1)
+                : (avg >= 0.3 ? 3 : avg >= 0.22 ? 2 : 1);
               const isSelected = selectedVenue === s.venue;
               const bgColor = !hasData
                 ? "rgba(19,35,58,0.04)"
+                : isPitcher
+                  ? (tier === 3 ? "rgba(34,197,94,0.10)" : tier === 2 ? "rgba(212,168,67,0.10)" : "rgba(239,68,68,0.07)")
                 : avg >= 0.3
                   ? "rgba(34,197,94,0.10)"
                   : avg >= 0.22
@@ -2013,6 +2777,8 @@ function ParkTab({ player }: { player: PlayerData }) {
                     : "rgba(239,68,68,0.07)";
               const borderColor = !hasData
                 ? "rgba(19,35,58,0.10)"
+                : isPitcher
+                  ? (tier === 3 ? "rgba(34,197,94,0.30)" : tier === 2 ? "rgba(212,168,67,0.30)" : "rgba(239,68,68,0.25)")
                 : avg >= 0.3
                   ? "rgba(34,197,94,0.30)"
                   : avg >= 0.22
@@ -2034,8 +2800,8 @@ function ParkTab({ player }: { player: PlayerData }) {
                 >
                   <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: isSelected ? "#F6F1E7" : "#131A24" }}>{s.abbr}</p>
                   {hasData ? (
-                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: isSelected ? "#D4A843" : avg >= 0.3 ? "#22c55e" : avg >= 0.22 ? "#D4A843" : "#ef4444" }}>
-                      {fmtAvg(avg)}
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: isSelected ? "#D4A843" : tier === 3 ? "#22c55e" : tier === 2 ? "#D4A843" : "#ef4444" }}>
+                      {isPitcher ? (isNaN(era) ? "—" : `${era.toFixed(2)} ERA`) : fmtAvg(avg)}
                     </p>
                   ) : (
                     <p style={{ margin: 0, fontSize: 9, color: "rgba(19,35,58,0.30)" }}>No data</p>
@@ -2045,13 +2811,15 @@ function ParkTab({ player }: { player: PlayerData }) {
             })}
           </div>
           <p style={{ fontSize: 9, color: "#3D4B58", margin: "0.5rem 0 0" }}>
-            Color = career AVG at that park (last 5 seasons). Tap any stadium for details. {venuesWithData.length}/30 stadiums visited.
+            {isPitcher
+              ? "Color = career ERA at that park (last 5 seasons) — green under 3.00, red 4.50+."
+              : "Color = career AVG at that park (last 5 seasons)."} Tap any stadium for details. {venuesWithData.length}/30 stadiums visited.
           </p>
         </div>
       )}
 
       {/* ── Spray Chart ── */}
-      <SprayChart player={player} selectedVenue={selectedVenue} />
+      {!isPitcher && <SprayChart player={player} selectedVenue={selectedVenue} />}
 
       {/* ── Park Factor summary (home park) ── */}
       {parkData?.parkFactor && (
@@ -2093,7 +2861,7 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
   // Primary stat key per sport/position
   const PITCHER_POS = new Set(["SP", "RP", "P", "CP", "MR"]);
   const GOALIE_POS  = new Set(["G", "GT", "GK"]);
-  const isPitcher = isMlb && PITCHER_POS.has((player.position ?? "").toUpperCase());
+  const isPitcher = isMlbPitcher(player);
   const isGoalie  = player.sport === "NHL" && GOALIE_POS.has((player.position ?? "").toUpperCase());
 
   const primaryKey = isPitcher ? "K"
@@ -2132,9 +2900,11 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
   const L30  = gamelog.slice(0, 30);
   const full = gamelog;
 
+  const statVal = (g: any, key: string): number =>
+    isPitcher && key === "IP" ? ipToInnings(g[key]) : (parseFloat(String(g[key] ?? "0")) || 0);
   function windowAvg(games: typeof gamelog, key: string): number {
     if (!games.length) return 0;
-    const vals = games.map(g => parseFloat(String(g[key] ?? "0")) || 0);
+    const vals = games.map(g => statVal(g, key));
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   }
 
@@ -2335,15 +3105,18 @@ function DeepDiveTab({ player }: { player: PlayerData }) {
               {careerHighGame && (
                 <p style={{ fontSize: 8, color: "#3D4B58", margin: 0 }}>
                   {String(careerHighGame.date_game ?? careerHighGame.date ?? "").slice(5, 10)}
-                  {careerHighGame.opp ? ` vs ${careerHighGame.opp}` : ""}
+                  {careerHighGame.opp ? ` ${/^(vs|@)/.test(String(careerHighGame.opp)) ? careerHighGame.opp : `vs ${careerHighGame.opp}`}` : ""}
                 </p>
               )}
             </div>
             {/* Secondary stat highs */}
             {secondaryKeys.map(({ key, label }) => {
-              const vals2 = full.map(g => parseFloat(String(g[key] ?? "0")) || 0);
-              const hi = vals2.length ? Math.max(...vals2) : 0;
-              if (hi === 0) return null;
+              const vals2 = full.map(g => statVal(g, key));
+              // For pitchers, fewer earned runs / walks is the "best" game.
+              const lowerIsBetter = isPitcher && (key === "ER" || key === "BB");
+              const best = !vals2.length ? 0 : lowerIsBetter ? Math.min(...vals2) : Math.max(...vals2);
+              const hi = isPitcher && key === "IP" ? inningsToIp(best) : best;
+              if (!lowerIsBetter && best === 0) return null;
               return (
                 <div key={key} style={{ background: "rgba(19,35,58,0.04)", border: "1px solid rgba(19,35,58,0.10)", borderRadius: "0.75rem", padding: "0.5rem 0.6rem", textAlign: "center" }}>
                   <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#3D4B58", margin: 0 }}>Best {label}</p>
@@ -2908,7 +3681,29 @@ export default function PlayerIntel() {
                       flexWrap: "wrap",
                     }}
                   >
-                    {selectedPlayer.sport === "MLB" && (
+                    {selectedPlayer.sport === "MLB" && isMlbPitcher(selectedPlayer) && (
+                      <>
+                        <span style={{ fontSize: 12, color: "#131A24" }}>
+                          <span style={{ fontWeight: 800 }}>{fmtNum(selectedPlayer.season.era ?? selectedPlayer.season.ERA, 2)}</span>{" "}
+                          <span style={{ color: "#3D4B58" }}>ERA</span>
+                        </span>
+                        <span style={{ fontSize: 12, color: "#131A24" }}>
+                          <span style={{ fontWeight: 800 }}>{fmtNum(selectedPlayer.season.whip ?? selectedPlayer.season.WHIP, 2)}</span>{" "}
+                          <span style={{ color: "#3D4B58" }}>WHIP</span>
+                        </span>
+                        <span style={{ fontSize: 12, color: "#131A24" }}>
+                          <span style={{ fontWeight: 800 }}>{fmtNum(selectedPlayer.season.k ?? selectedPlayer.season.K)}</span>{" "}
+                          <span style={{ color: "#3D4B58" }}>K</span>
+                        </span>
+                        {selectedPlayer.season.W != null && selectedPlayer.season.L != null && (
+                          <span style={{ fontSize: 12, color: "#131A24" }}>
+                            <span style={{ fontWeight: 800 }}>{selectedPlayer.season.W}-{selectedPlayer.season.L}</span>{" "}
+                            <span style={{ color: "#3D4B58" }}>W-L</span>
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {selectedPlayer.sport === "MLB" && !isMlbPitcher(selectedPlayer) && (
                       <>
                         <span style={{ fontSize: 12, color: "#131A24" }}>
                           <span style={{ fontWeight: 800 }}>{fmtAvg(selectedPlayer.season.avg ?? selectedPlayer.season.AVG)}</span>{" "}
@@ -2997,12 +3792,12 @@ export default function PlayerIntel() {
                 padding: "0.25rem",
               }}
             >
-              {DETAIL_TABS.map((tab) => (
+              {DETAIL_TABS.filter(tab => tab.key !== "arsenal" || isMlbPitcher(selectedPlayer)).map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   style={{
-                    flex: 1,
+                    flex: "1 0 auto",
                     padding: "0.5rem 0.5rem",
                     background: activeTab === tab.key ? "#13233A" : "none",
                     border: "none",
@@ -3021,10 +3816,13 @@ export default function PlayerIntel() {
             </div>
 
             {/* ── Tab Content ── */}
-            {activeTab === "overview" && <OverviewTab player={selectedPlayer} />}
-            {activeTab === "matchups" && <MatchupsTab player={selectedPlayer} />}
+            {(activeTab === "overview" || (activeTab === "arsenal" && !isMlbPitcher(selectedPlayer))) && <OverviewTab player={selectedPlayer} />}
+            {activeTab === "matchups" && (isMlbPitcher(selectedPlayer)
+              ? <PitcherMatchupsTab player={selectedPlayer} />
+              : <MatchupsTab player={selectedPlayer} />)}
             {activeTab === "park" && <ParkTab player={selectedPlayer} />}
             {activeTab === "deepdive" && <DeepDiveTab player={selectedPlayer} />}
+            {activeTab === "arsenal" && isMlbPitcher(selectedPlayer) && <PitchArsenalTab player={selectedPlayer} />}
           </>
         )}
       </div>
