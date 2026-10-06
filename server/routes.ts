@@ -18716,93 +18716,167 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   let _nflStartSitCache: Record<string, { data: any; ts: number }> = {};
   let _nflTradeCache: Record<string, { data: any; ts: number }> = {};
 
+  // ── Action Network NFL board (shared by line-movement + first-half) ───────
+  // Free, keyless source. One call returns the whole NFL week with:
+  //   book 15 = consensus current line (+ public tickets % / money %)
+  //   book 30 = opening line
+  // for both the full game ("event") and first half ("firsthalf").
+  // Replaces The Odds API here — that key expired, and this endpoint used to
+  // invent opening lines and public % with Math.random().
+  let _anNflBoardCache: { data: any[]; ts: number } | null = null;
+  const AN_NFL_ABBR: Record<string, string> = { JAC: "JAX", LA: "LAR" };
+  async function fetchActionNetworkNflBoard(): Promise<any[]> {
+    if (_anNflBoardCache && Date.now() - _anNflBoardCache.ts < 3 * 60 * 1000) return _anNflBoardCache.data;
+    const { data } = await axios.get(
+      "https://api.actionnetwork.com/web/v2/scoreboard/nfl?bookIds=15,30&periods=event,firsthalf",
+      { timeout: 10000, headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json", "Referer": "https://www.actionnetwork.com/",
+      } },
+    );
+    const out: any[] = [];
+    for (const g of (data?.games ?? [])) {
+      const status = String(g.status ?? "").toLowerCase();
+      if (["complete", "closed", "final", "cancelled", "postponed"].includes(status)) continue;
+      const abbrById: Record<number, string> = {};
+      for (const t of (g.teams ?? [])) abbrById[t.id] = AN_NFL_ABBR[t.abbr] ?? t.abbr;
+      const away = abbrById[g.away_team_id] ?? "Away", home = abbrById[g.home_team_id] ?? "Home";
+      const read = (book: string, period: string) => {
+        const m = g.markets?.[book]?.[period] ?? {};
+        const side = (typ: string, sd: string) => (m[typ] ?? []).find((o: any) => o.side === sd) ?? null;
+        const pctOf = (o: any, k: "tickets" | "money") => (o?.bet_info?.[k]?.percent ?? null);
+        const sh = side("spread", "home"), sa = side("spread", "away");
+        const to = side("total", "over"), tu = side("total", "under");
+        const mh = side("moneyline", "home"), ma = side("moneyline", "away");
+        return {
+          spreadHome: sh?.value ?? (sa?.value != null ? -sa.value : null),
+          total: to?.value ?? tu?.value ?? null,
+          mlHome: mh?.odds ?? null, mlAway: ma?.odds ?? null,
+          spreadHomeTickets: pctOf(sh, "tickets"), spreadHomeMoney: pctOf(sh, "money"),
+          spreadAwayTickets: pctOf(sa, "tickets"), spreadAwayMoney: pctOf(sa, "money"),
+          overTickets: pctOf(to, "tickets"), overMoney: pctOf(to, "money"),
+          underTickets: pctOf(tu, "tickets"), underMoney: pctOf(tu, "money"),
+        };
+      };
+      out.push({
+        id: g.id, away, home, start: g.start_time, status, week: g.week,
+        cur: read("15", "event"), open: read("30", "event"),
+        h1Cur: read("15", "firsthalf"), h1Open: read("30", "firsthalf"),
+      });
+    }
+    out.sort((x, y) => String(x.start).localeCompare(String(y.start)));
+    _anNflBoardCache = { data: out, ts: Date.now() };
+    return out;
+  }
+  // Season first-half scoring profile per team from ESPN quarter-by-quarter scores
+  let _nflHalfShareCache: { data: any; ts: number } | null = null;
+  async function fetchNflHalfShares(): Promise<{ teams: Record<string, any>; league: { h1: number; full: number; games: number } }> {
+    if (_nflHalfShareCache && Date.now() - _nflHalfShareCache.ts < 6 * 60 * 60 * 1000) return _nflHalfShareCache.data;
+    const ESPN_FIX: Record<string, string> = { WSH: "WAS" };
+    const teams: Record<string, { g: number; h1For: number; fullFor: number; h1Against: number; fullAgainst: number }> = {};
+    const league = { h1: 0, full: 0, games: 0 };
+    const yr = new Date().getFullYear();
+    const weeks = await Promise.allSettled(Array.from({ length: 18 }, (_, i) => i + 1).map(w =>
+      axios.get(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${w}&dates=${yr}`, { timeout: 8000 })));
+    for (const r of weeks) {
+      if (r.status !== "fulfilled") continue;
+      for (const ev of (r.value.data?.events ?? [])) {
+        if (!ev?.status?.type?.completed) continue;
+        const comp = ev.competitions?.[0]; const cs = comp?.competitors ?? [];
+        if (cs.length !== 2) continue;
+        const line = (c: any) => (c.linescores ?? []).map((l: any) => Number(l.value) || 0);
+        const [a, b] = cs; const la = line(a), lb = line(b);
+        if (la.length < 4 || lb.length < 4) continue;
+        const h1a = la[0] + la[1], h1b = lb[0] + lb[1];
+        const fa = Number(a.score) || la.reduce((x: number, y: number) => x + y, 0);
+        const fb = Number(b.score) || lb.reduce((x: number, y: number) => x + y, 0);
+        const ab = (c: any) => { const x = c.team?.abbreviation ?? ""; return ESPN_FIX[x] ?? x; };
+        for (const [me, h1me, fme, h1op, fop] of [[ab(a), h1a, fa, h1b, fb], [ab(b), h1b, fb, h1a, fa]] as [string, number, number, number, number][]) {
+          const t = teams[me] ??= { g: 0, h1For: 0, fullFor: 0, h1Against: 0, fullAgainst: 0 };
+          t.g++; t.h1For += h1me; t.fullFor += fme; t.h1Against += h1op; t.fullAgainst += fop;
+        }
+        league.h1 += h1a + h1b; league.full += fa + fb; league.games++;
+      }
+    }
+    const data = { teams, league };
+    _nflHalfShareCache = { data, ts: Date.now() };
+    return data;
+  }
+
+  const fmtNflKick = (iso: string | null) => iso
+    ? new Date(iso).toLocaleString("en-US", { timeZone: "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " CT"
+    : "TBD";
+
   // ── GET /api/nfl/line-movement ───────────────────────────────────────────────
   app.get("/api/nfl/line-movement", async (req: Request, res: Response) => {
     try {
-      const TTL = 5 * 60 * 1000;
+      const TTL = 3 * 60 * 1000;
       const now = Date.now();
       if (_nflLineMovCache && (now - _nflLineMovCache.ts) < TTL) {
         return res.json(_nflLineMovCache.data);
       }
 
-      // Fetch current NFL odds from The Odds API. Use the shared key resolver
-      // (env var, falling back to the key stored in Settings) instead of only
-      // checking process.env — this endpoint previously always fell through
-      // to the static sample games below because ODDS_API_KEY isn't set as a
-      // Railway env var; the real key lives in app Settings like everywhere
-      // else in the app.
-      let oddsGames: any[] = [];
-      const oddsKey = await getOddsApiKey();
-      if (oddsKey) {
-        try {
-          const oddsResp = await fetch(
-            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=spreads,totals&oddsFormat=american`,
-            { signal: AbortSignal.timeout(8000) }
-          );
-          if (oddsResp.ok) oddsGames = await oddsResp.json();
-        } catch { /* ignore */ }
-      }
+      const board = await fetchActionNetworkNflBoard();
+      const games = board.filter(g => g.cur.spreadHome != null || g.cur.total != null).map(g => {
+        const { cur, open } = g;
+        const openSpread = open.spreadHome ?? cur.spreadHome;          // home-team spread
+        const currentSpread = cur.spreadHome;
+        const openTotal = open.total ?? cur.total;
+        const currentTotal = cur.total;
+        const lineMove = openSpread != null && currentSpread != null ? +(currentSpread - openSpread).toFixed(1) : 0;
+        const totalMove = openTotal != null && currentTotal != null ? +(currentTotal - openTotal).toFixed(1) : 0;
 
-      // Build line movement data — live from Odds API + consensus tracking
-      const games = oddsGames.slice(0, 16).map((g: any) => {
-        const homeTeam = g.home_team ?? "Home";
-        const awayTeam = g.away_team ?? "Away";
-        const commence = g.commence_time ? new Date(g.commence_time).toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "TBD";
+        // Public side on the spread = side with the majority of tickets
+        const hT = cur.spreadHomeTickets, aT = cur.spreadAwayTickets;
+        const hasSplits = (hT ?? 0) + (aT ?? 0) > 0;
+        const publicOnHome = hasSplits && (hT ?? 0) >= (aT ?? 0);
+        const publicBetPct = hasSplits ? (publicOnHome ? hT : aT) : null;
+        const publicMoneyPct = hasSplits ? (publicOnHome ? cur.spreadHomeMoney : cur.spreadAwayMoney) : null;
+        const publicFavor = hasSplits ? (publicOnHome ? g.home : g.away) : null;
 
-        // Extract spread and total from bookmakers
-        let openSpread = 0; let currentSpread = 0;
-        let openTotal = 44; let currentTotal = 44;
-        let publicBetPct = 50; let publicFavor = homeTeam;
+        // Reverse line movement: ≥60% of tickets on one side, line moves the other way.
+        // Home spread getting bigger negative (lineMove < 0) = line moved toward the home team.
+        const movedTowardHome = lineMove <= -0.5, movedTowardAway = lineMove >= 0.5;
+        const reverseLineMovement = hasSplits && (publicBetPct ?? 0) >= 60 &&
+          ((publicOnHome && movedTowardAway) || (!publicOnHome && movedTowardHome));
+        // Money vs tickets gap — bigger bettors on the less-popular side
+        // Flag only when the money majority sits on the side with FEWER tickets
+        // (≥10-pt gap) — i.e. fewer, larger bets on the unpopular side.
+        const homeGap = (cur.spreadHomeMoney ?? 0) - (cur.spreadHomeTickets ?? 0);
+        const homeMoneyMinorityTickets = (cur.spreadHomeMoney ?? 0) > 50 && (cur.spreadHomeTickets ?? 0) < 50;
+        const awayMoneyMinorityTickets = (cur.spreadAwayMoney ?? 0) > 50 && (cur.spreadAwayTickets ?? 0) < 50;
+        const sharpMoneySide = hasSplits && Math.abs(homeGap) >= 10
+          ? (homeGap > 0 && homeMoneyMinorityTickets ? g.home : homeGap < 0 && awayMoneyMinorityTickets ? g.away : null)
+          : null;
 
-        const bkSpread = g.bookmakers?.find((b: any) => b.key === "draftkings" || b.key === "fanduel" || b.bookmakers?.[0]);
-        const spreadMkt = bkSpread?.markets?.find((m: any) => m.key === "spreads");
-        const totalMkt = bkSpread?.markets?.find((m: any) => m.key === "totals");
-
-        if (spreadMkt?.outcomes) {
-          const homeOutcome = spreadMkt.outcomes.find((o: any) => o.name === homeTeam);
-          currentSpread = homeOutcome?.point ?? 0;
-          openSpread = currentSpread + (Math.random() > 0.5 ? 0.5 : -0.5); // simulated open
-        }
-        if (totalMkt?.outcomes) {
-          const overOutcome = totalMkt.outcomes.find((o: any) => o.name === "Over");
-          currentTotal = overOutcome?.point ?? 44;
-          openTotal = parseFloat((currentTotal + (Math.random() > 0.5 ? 0.5 : -0.5)).toFixed(1));
-        }
-
-        // Simulate public bet % (in prod this would come from Action Network / DraftKings public data)
-        publicBetPct = Math.floor(Math.random() * 35) + 45; // 45-80%
-        publicFavor = Math.random() > 0.5 ? homeTeam : awayTeam;
-
-        const lineMove = currentSpread - openSpread;
-        // Reverse line movement = line moves away from public favor
-        const reverseLineMovement = Math.abs(lineMove) >= 0.5 &&
-          ((publicBetPct > 60 && lineMove > 0) || (publicBetPct < 40 && lineMove < 0));
-
-        const overUnderTrend = currentTotal > openTotal ? "trending Over" : currentTotal < openTotal ? "trending Under" : "stable";
-
+        const sideLbl = (team: string, spr: number | null) => spr == null ? "" : `${team} ${spr > 0 ? "+" : ""}${spr}`;
         let sharpNote = "";
-        if (reverseLineMovement) sharpNote = `Sharp money on ${lineMove > 0 ? awayTeam : homeTeam} — line moving against ${publicBetPct}% public action`;
-        else if (Math.abs(lineMove) >= 1) sharpNote = `${Math.abs(lineMove)} pt move since open — monitor for continued movement`;
+        if (reverseLineMovement) {
+          const sharpSide = publicOnHome ? g.away : g.home;
+          sharpNote = `Reverse line move: ${publicBetPct}% of bets on ${publicFavor}, but the line moved ${Math.abs(lineMove)} pts toward ${sharpSide}`;
+        } else if (sharpMoneySide) {
+          const isHome = sharpMoneySide === g.home;
+          sharpNote = `Money split: ${isHome ? cur.spreadHomeMoney : cur.spreadAwayMoney}% of the money on ${sharpMoneySide} from only ${isHome ? cur.spreadHomeTickets : cur.spreadAwayTickets}% of bets — bigger bettors on ${sharpMoneySide}`;
+        } else if (Math.abs(lineMove) >= 1.5) {
+          sharpNote = `${Math.abs(lineMove)} pt move since open (${sideLbl(g.home, openSpread)} → ${sideLbl(g.home, currentSpread)}) — check injury news`;
+        }
+        if (Math.abs(totalMove) >= 1.5) {
+          sharpNote += (sharpNote ? " · " : "") + `Total moved ${totalMove > 0 ? "up" : "down"} ${Math.abs(totalMove)} (${openTotal} → ${currentTotal})`;
+        }
 
         return {
-          away: awayTeam, home: homeTeam, gameTime: commence,
-          openSpread, currentSpread, openTotal, currentTotal,
-          publicBetPct, publicFavor, overUnderTrend,
-          reverseLineMovement, sharpNote,
-          lineMove: parseFloat(lineMove.toFixed(1)),
+          away: g.away, home: g.home, gameTime: fmtNflKick(g.start), week: g.week,
+          openSpread, currentSpread, openTotal, currentTotal, lineMove, totalMove,
+          spreadTeam: g.home,
+          openMlHome: open.mlHome, openMlAway: open.mlAway, mlHome: cur.mlHome, mlAway: cur.mlAway,
+          publicBetPct, publicMoneyPct, publicFavor,
+          overTicketsPct: cur.overTickets, overMoneyPct: cur.overMoney,
+          overUnderTrend: totalMove > 0 ? "trending Over" : totalMove < 0 ? "trending Under" : "stable",
+          reverseLineMovement, sharpMoneySide, sharpNote,
         };
       });
 
-      // If no live games, provide illustrative data
-      const fallback = [
-        { away: "DAL", home: "PHI", gameTime: "Sun 1:00 PM", openSpread: -3, currentSpread: -4.5, openTotal: 46.5, currentTotal: 45, publicBetPct: 72, publicFavor: "DAL", overUnderTrend: "trending Under", reverseLineMovement: true, lineMove: -1.5, sharpNote: "Sharp money on PHI — line moved 1.5 pts against 72% public on DAL" },
-        { away: "KC",  home: "BUF", gameTime: "Sun 4:25 PM", openSpread: -2.5, currentSpread: -2.5, openTotal: 51, currentTotal: 52.5, publicBetPct: 65, publicFavor: "KC", overUnderTrend: "trending Over", reverseLineMovement: false, lineMove: 0, sharpNote: "Total has moved 1.5 pts to the Over despite early Under action" },
-        { away: "SF",  home: "LAR", gameTime: "Mon 8:15 PM", openSpread: -6, currentSpread: -4.5, openTotal: 48.5, currentTotal: 49, publicBetPct: 58, publicFavor: "SF", overUnderTrend: "stable", reverseLineMovement: false, lineMove: 1.5, sharpNote: "SF line steamed down 1.5 pts — possible injury/weather news" },
-        { away: "MIA", home: "NE",  gameTime: "Sun 1:00 PM", openSpread: -7, currentSpread: -7, openTotal: 42, currentTotal: 40, publicBetPct: 68, publicFavor: "MIA", overUnderTrend: "trending Under", reverseLineMovement: false, lineMove: 0, sharpNote: "Total steamed 2 pts to the Under — weather or QB concern" },
-        { away: "CIN", home: "BAL", gameTime: "Sun 8:20 PM", openSpread: -5.5, currentSpread: -7, openTotal: 49, currentTotal: 47.5, publicBetPct: 55, publicFavor: "BAL", overUnderTrend: "trending Under", reverseLineMovement: true, lineMove: -1.5, sharpNote: "Sharp action on BAL covering — line moved with sharp money despite split public" },
-      ];
-
-      const result = { games: games.length >= 2 ? games : fallback, fetchedAt: new Date().toISOString(), liveOdds: games.length >= 2 };
+      const result = { games, fetchedAt: new Date().toISOString(), liveOdds: games.length > 0, source: "Action Network (consensus line, opening line, public bets & money %)" };
       _nflLineMovCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -18999,57 +19073,49 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── GET /api/nfl/first-half ──────────────────────────────────────────────────
   app.get("/api/nfl/first-half", async (req: Request, res: Response) => {
     try {
-      const TTL = 15 * 60 * 1000;
+      const TTL = 5 * 60 * 1000;
       const now = Date.now();
       if (_nflFirstHalfCache && (now - _nflFirstHalfCache.ts) < TTL) {
         return res.json(_nflFirstHalfCache.data);
       }
 
-      // Derive from odds data. Use the shared key resolver (env var, falling
-      // back to the key stored in Settings) — same reasoning as line-movement
-      // above.
-      let oddsGames: any[] = [];
-      const oddsKey = await getOddsApiKey();
-      if (oddsKey) {
-        try {
-          const r = await fetch(
-            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`,
-            { signal: AbortSignal.timeout(8000) }
-          );
-          if (r.ok) oddsGames = await r.json();
-        } catch { /* ignore */ }
-      }
-
-      const games = oddsGames.slice(0, 12).map((g: any) => {
-        const homeTeam = g.home_team ?? "Home";
-        const awayTeam = g.away_team ?? "Away";
-        const bk = g.bookmakers?.[0];
-        const spreadMkt = bk?.markets?.find((m: any) => m.key === "spreads");
-        const totalMkt = bk?.markets?.find((m: any) => m.key === "totals");
-        const fullSpread = spreadMkt?.outcomes?.find((o: any) => o.name === homeTeam)?.point ?? 0;
-        const fullTotal = totalMkt?.outcomes?.find((o: any) => o.name === "Over")?.point ?? 44;
-
-        // H1 model: H1 total is typically 47-50% of full game total
-        // H1 spread is typically 55-60% of full game spread (home teams tend to cover H1 at higher rate)
-        const h1TotalProj = parseFloat((fullTotal * 0.48).toFixed(1));
-        const h1TotalLine = parseFloat((fullTotal * 0.47).toFixed(1));
-        const h1SpreadProj = parseFloat((fullSpread * 0.55).toFixed(1));
-        const h1SpreadLine = parseFloat((fullSpread * 0.50).toFixed(1));
-        const totalEdge = h1TotalProj > h1TotalLine + 0.5 ? "Over" : h1TotalProj < h1TotalLine - 0.5 ? "Under" : "No Edge";
-        const edgeNote = totalEdge !== "No Edge" ? `Proj (${h1TotalProj}) vs mkt (${h1TotalLine}) = ${Math.abs(h1TotalProj - h1TotalLine).toFixed(1)}pt edge` : "Projection within margin";
-
-        return { away: awayTeam, home: homeTeam, fullTotal, fullSpread, h1TotalProj, h1TotalLine, h1SpreadProj, h1SpreadLine, edge: totalEdge, edgeNote };
+      // Real first-half market lines (consensus + opener) from Action Network.
+      // Projection: split the CURRENT full-game market into implied team totals,
+      // then apply each team's real first-half scoring profile this season
+      // (share of its points scored — and allowed by the opponent — in the
+      // first half, from ESPN quarter scores), shrunk toward the league rate.
+      const [board, shares] = await Promise.all([fetchActionNetworkNflBoard(), fetchNflHalfShares()]);
+      const lgShare = shares.league.full > 0 ? shares.league.h1 / shares.league.full : 0.5;
+      const K = 4; // shrinkage: a team with 4 games counts ~50% own rate / 50% league
+      const shr = (h1: number, full: number, n: number) => full > 0 ? (h1 + K * lgShare * (full / Math.max(n, 1))) / (full + K * (full / Math.max(n, 1))) : lgShare;
+      const scoredShare = (t: string) => { const x = shares.teams[t]; return x ? shr(x.h1For, x.fullFor, x.g) : lgShare; };
+      const allowedShare = (t: string) => { const x = shares.teams[t]; return x ? shr(x.h1Against, x.fullAgainst, x.g) : lgShare; };
+      const games = board.filter(g => g.cur.total != null && g.h1Cur.total != null).map(g => {
+        const fullTotal = g.cur.total, fullSpread = g.cur.spreadHome ?? 0;
+        const h1TotalLine = g.h1Cur.total, h1SpreadLine = g.h1Cur.spreadHome ?? null;
+        const homeImplied = fullTotal / 2 - fullSpread / 2, awayImplied = fullTotal / 2 + fullSpread / 2;
+        const homeH1 = homeImplied * (scoredShare(g.home) + allowedShare(g.away)) / 2;
+        const awayH1 = awayImplied * (scoredShare(g.away) + allowedShare(g.home)) / 2;
+        const h1TotalProj = +(homeH1 + awayH1).toFixed(1);
+        const h1SpreadProj = +(awayH1 - homeH1).toFixed(1); // home-team spread convention
+        const diff = +(h1TotalProj - h1TotalLine).toFixed(1);
+        const edge = diff >= 0.5 ? "Over" : diff <= -0.5 ? "Under" : "No Edge";
+        const h1Move = g.h1Open.total != null ? +(h1TotalLine - g.h1Open.total).toFixed(1) : null;
+        let edgeNote = edge === "No Edge"
+          ? `Proj ${h1TotalProj} vs mkt ${h1TotalLine} — within margin`
+          : `Proj ${h1TotalProj} vs mkt ${h1TotalLine} = ${Math.abs(diff)} pt edge`;
+        if (h1Move) edgeNote += ` · H1 total ${h1Move > 0 ? "up" : "down"} ${Math.abs(h1Move)} since open`;
+        return {
+          away: g.away, home: g.home, gameTime: fmtNflKick(g.start),
+          fullTotal, fullSpread, h1TotalProj, h1TotalLine, h1SpreadProj, h1SpreadLine,
+          h1TotalOpen: g.h1Open.total ?? null, h1SpreadOpen: g.h1Open.spreadHome ?? null,
+          homeH1Share: +(scoredShare(g.home) * 100).toFixed(1), awayH1Share: +(scoredShare(g.away) * 100).toFixed(1),
+          edge, edgeNote,
+        };
       });
 
-      const fallback = [
-        { away: "DAL", home: "PHI", fullTotal: 46.5, fullSpread: -4.5, h1TotalProj: 22.4, h1TotalLine: 21.5, h1SpreadProj: -2.5, h1SpreadLine: -2,   edge: "Over",    edgeNote: "Proj (22.4) vs mkt (21.5) = 0.9pt edge — both offenses score early" },
-        { away: "KC",  home: "BUF", fullTotal: 52.5, fullSpread: -2.5, h1TotalProj: 25.2, h1TotalLine: 24.5, h1SpreadProj: -1.5, h1SpreadLine: -1.5, edge: "Over",    edgeNote: "High-paced offenses both start fast — Over 24.5 has value" },
-        { away: "SF",  home: "LAR", fullTotal: 49.0, fullSpread: -4.5, h1TotalProj: 23.0, h1TotalLine: 23.5, h1SpreadProj: -2.5, h1SpreadLine: -2.5, edge: "Under",   edgeNote: "Proj (23.0) vs mkt (23.5) — defensive first halves for both teams" },
-        { away: "MIA", home: "NE",  fullTotal: 40.0, fullSpread: -7,   h1TotalProj: 18.5, h1TotalLine: 19,   h1SpreadProj: -4,   h1SpreadLine: -3.5, edge: "Under",   edgeNote: "NE backup QB significantly reduces scoring in H1" },
-        { away: "CIN", home: "BAL", fullTotal: 47.5, fullSpread: -7,   h1TotalProj: 22.0, h1TotalLine: 22,   h1SpreadProj: -4,   h1SpreadLine: -3.5, edge: "No Edge", edgeNote: "Model within margin — no strong H1 edge" },
-      ];
-
-      const result = { games: games.length >= 3 ? games : fallback, fetchedAt: new Date().toISOString() };
+      const result = { games, fetchedAt: new Date().toISOString(), leagueH1Share: +(lgShare * 100).toFixed(1), gamesInSample: shares.league.games,
+        source: "Action Network first-half lines · ESPN quarter scores" };
       _nflFirstHalfCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -19103,11 +19169,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         // This endpoint is sometimes unavailable — silently skip on error
       } catch { /* non-fatal */ }
 
-      // ── Live game fetch via Odds API ───────────────────────────────────────
+      // ── Live game lines: Action Network consensus (free, no key) ───────────
       let liveGames: Array<{ home: string; away: string; total: number; spread: number; homeFullName: string; awayFullName: string }> = [];
       try {
+        for (const g of await fetchActionNetworkNflBoard()) {
+          if (g.cur.total == null || g.cur.spreadHome == null) continue;
+          liveGames.push({ home: g.home, away: g.away, total: g.cur.total, spread: g.cur.spreadHome, homeFullName: g.home, awayFullName: g.away });
+        }
+      } catch { /* fall back to Odds API below */ }
+      // ── Fallback: The Odds API (only if Action Network returned nothing) ──
+      try {
         const oddsKey = process.env.ODDS_API_KEY ?? "";
-        if (oddsKey) {
+        if (oddsKey && liveGames.length === 0) {
           const oddsResp = await fetch(
             `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`,
             { signal: AbortSignal.timeout(8000) }
