@@ -1152,7 +1152,7 @@ function MatchupHeatmapPanel({ data }: { data: MatchupRow[] }) {
           { label: "Grade C", desc: "Defense ranks 9–16. Average — lean on player talent, not matchup." },
           { label: "Grade D", desc: "Defense ranks 1–8. Tough draw — consider sitting unless elite talent or no alternative." },
           { label: "Rank #", desc: "1–32 where 32 = easiest for the offense (weakest defense). Higher = better for fantasy." },
-          { label: "Data source", desc: "Weighted 60% full-season yards+TDs allowed per position, 40% last 4 weeks. Tap any team for full breakdown." },
+          { label: "Data source", desc: "This season's real box scores (Sleeper): PPR points, yards and TDs each defense has allowed per game to each position, ranked 1–32. Key defenders = that defense's leaders in sacks, tackles, or passes defended this season." },
         ]}
       />
 
@@ -1493,7 +1493,7 @@ function BettingEdgePanel({
               { label: "Temperature", desc: "≤32°F adds ball-handling difficulty. Sub-zero wind chill with snow historically reduces scoring by 3–7 points vs. the opener." },
               { label: "Precipitation", desc: "≥30% chance triggers a caution flag. Rain/snow above 50% chance = lean Under on game total and fade WR volume props." },
               { label: "DOME", desc: "Dome games are excluded from weather concerns. All indoor teams are marked automatically." },
-              { label: "Data source", desc: "Open-Meteo free forecast API pulled at request time for each outdoor stadium's lat/lon coordinates." },
+              { label: "Data source", desc: "Open-Meteo hourly forecast for each outdoor game's kickoff hour, using this week's schedule from ESPN. Indoor games are listed as Dome." },
             ]}
           />
           {!weather?.games?.length && (
@@ -1753,7 +1753,8 @@ function FantasyToolsPanel({
               { label: "RZ TGTs/G", desc: "Average red zone targets per game this season. Stability here is more predictive of TD scoring than general target volume." },
               { label: "TD/G", desc: "Touchdowns per game. Cross-referenced with RZ share to identify players who are converting their opportunities." },
               { label: "Overall TGT%", desc: "Full-field target share for context. High overall share + high RZ share = true WR1/TE1 alpha." },
-              { label: "Color coding", desc: "Red = 25%+ RZ share (elite). Gold = 15–24% (above avg). Navy = below 15%. Note text explains any relevant matchup context." },
+              { label: "Color coding", desc: "Red = 25%+ RZ share (elite). Gold = 15–24% (above avg). Navy = below 15%." },
+              { label: "Data source", desc: "This season's box scores (Sleeper): red-zone targets, red-zone carries, and TDs per game. Share = player's red-zone targets ÷ his team's red-zone targets in the games he played." },
             ]}
           />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
@@ -1978,18 +1979,18 @@ function FantasyToolsPanel({
           <AnalysisInfo
             title="How ADP value is identified"
             items={[
-              { label: "Value diff", desc: "Consensus rank minus ADP rank. A +15 means the player is going 15 spots later in drafts than experts rank them — you get a discount." },
-              { label: "Consensus rank", desc: "Averaged across FantasyPros, ESPN, Yahoo, and CBS expert rankings, updated weekly during the season and daily at peak draft periods." },
-              { label: "ADP rank", desc: "Average draft position across platforms (Underdog, Sleeper, ESPN, Yahoo). Reflects where real managers are actually taking players." },
+              { label: "Value diff", desc: "Positional ADP rank minus positional production rank. +15 means a player drafted as WR40 is producing like WR25 — real value. Negative = producing below where he was drafted." },
+              { label: "Producing as", desc: "Rank at his position by PPR points per game this season (real box scores, Sleeper)." },
+              { label: "ADP rank", desc: "Sleeper PPR average draft position, ranked within the position." },
               { label: "Target range", desc: "Positive value = target. Negative value = the market has already priced in the hype — avoid overpaying." },
               { label: "Use case", desc: "In redraft: use at your pick. In best ball: stack ADP value at WR/RB in late rounds. In DFS: ADP value often correlates with lower ownership." },
             ]}
           />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
-            Players ranked significantly higher in consensus rankings than their current ADP. Positive value = you're getting them cheaper than they should go.
+            Players producing well above (or below) where they were drafted this season. Positive value = outperforming ADP.
           </p>
           {(adpValue?.players ?? []).map((p: any, i: number) => {
-            const valueDiff = p.consensusRank - p.adpRank;
+            const valueDiff = p.valueDiff ?? (p.adpRank - p.consensusRank);
             return (
               <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid rgba(19,35,58,0.10)", padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2005,8 +2006,9 @@ function FantasyToolsPanel({
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                  <span style={{ fontSize: 11, color: MUTED }}>ADP: <b style={{ color: NAVY }}>#{p.adpRank}</b></span>
-                  <span style={{ fontSize: 11, color: MUTED }}>Consensus Rank: <b style={{ color: NAVY }}>#{p.consensusRank}</b></span>
+                  <span style={{ fontSize: 11, color: MUTED }}>ADP: <b style={{ color: NAVY }}>{p.pprPerGame != null ? `${p.position}${p.adpRank}` : `#${p.adpRank}`}</b></span>
+                  <span style={{ fontSize: 11, color: MUTED }}>{p.pprPerGame != null ? "Producing as" : "Consensus Rank"}: <b style={{ color: NAVY }}>{p.pprPerGame != null ? `${p.position}${p.consensusRank}` : `#${p.consensusRank}`}</b></span>
+                  {p.pprPerGame != null && <span style={{ fontSize: 11, color: MUTED }}>{p.pprPerGame} PPR/g</span>}
                 </div>
                 <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{p.note}</div>
               </div>
@@ -2024,7 +2026,7 @@ function FantasyToolsPanel({
               { label: "Planning rule", desc: "Add a streaming starter 1 week before your key players' byes. Avoid drafting/trading for players on the same bye week as your other starters." },
               { label: "Waiver impact", desc: "High-ownership players on bye weeks often free up adds — their owners may drop them by mistake. Check the waiver wire mid-week." },
               { label: "DFS impact", desc: "Fewer teams playing = smaller player pool. Use bye weeks to find contrarian plays in tournaments (lower ownership, same upside)." },
-              { label: "Data source", desc: "Official NFL schedule. Byes are fixed at season start; playoff bye rules do not apply here (this covers regular season Weeks 1–18)." },
+              { label: "Data source", desc: "This season's official schedule from ESPN (weeks 1–18). A team with no game in a week is on bye." },
             ]}
           />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>All NFL team bye weeks for the current season. Plan your waiver wire adds and streaming plays accordingly.</p>

@@ -33,6 +33,11 @@ import {
 } from "./mlb-analytics";
 import { registerPlayerIntelRoutes } from "./player-intel-routes";
 import {
+  fetchEspnNflSeason, getNflWeekState, getNflWeekGames, getNflByeWeeks, getNflTeamScoring,
+  computeNflDvp, computeNflRedZone, computeNflAdpValue, fetchActionNetworkBoard, actionNetworkAsOddsApi,
+  nflSeasonYear,
+} from "./nfl-live-data";
+import {
   bppIsAvailable, bppGetGames, bppFindGameId, bppGetMatchupsForDate, bppGetMatchup,
   bppGetParkFactorsForDate, bppGetParkFactorForGame, bppGetHitterParkFactors, bppGetHitterParkFactor,
   bppGetAverages, bppGetBatterAverage, bppGetProbabilities, bppGetTeamWinProbability,
@@ -6106,22 +6111,26 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
 
     // ESPN athlete lookup: search by name, return season stats
     async function espnAthleteStats(playerName: string, sport: string): Promise<{ stats: Record<string, number>; source: string; athleteId?: string } | null> {
+      // ESPN season params: NBA/NHL use the season's ENDING year; NFL/MLB the starting year.
+      const _d = new Date(); const _y = _d.getFullYear(); const _m = _d.getMonth() + 1;
+      const winterSeason = (_m > 10 || (_m === 10 && _d.getDate() >= 22)) ? _y + 1 : _y; // NBA/NHL: new season stats after ~Oct 22
+      const mlbSeason = _m >= 3 ? _y : _y - 1;
       const sportMap: Record<string, { slug: string; statsUrl: (id: string) => string }> = {
         NBA: {
           slug: "basketball/nba",
-          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/stats?season=2025&seasontype=2`,
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/stats?season=${winterSeason}&seasontype=2`,
         },
         NFL: {
           slug: "football/nfl",
-          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/stats?season=2024&seasontype=2`,
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/stats?season=${nflSeasonYear()}&seasontype=2`,
         },
         MLB: {
           slug: "baseball/mlb",
-          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${id}/stats?season=2025&seasontype=2`,
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/${id}/stats?season=${mlbSeason}&seasontype=2`,
         },
         NHL: {
           slug: "hockey/nhl",
-          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/${id}/stats?season=2025&seasontype=2`,
+          statsUrl: (id) => `https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/${id}/stats?season=${winterSeason}&seasontype=2`,
         },
       };
       const sportCfg = sportMap[sport];
@@ -6199,7 +6208,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           // Find 2025 season row
           for (const row of rows) {
             const yr = $(row).find("[data-stat='year_id']").text().trim();
-            if (yr === "2025") {
+            if (yr === String(new Date().getMonth() >= 2 ? new Date().getFullYear() : new Date().getFullYear() - 1)) {
               const fields = [
                 "G","PA","AB","R","H","2B","3B","HR","RBI","SB","BB","SO","BA","OBP","SLG",
                 "W","L","ERA","GS","CG","SHO","SV","IP","H_allowed","ER","BB_allowed","SO_pitcher"
@@ -16523,7 +16532,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     // Matches NFL_SEASON_START used elsewhere (Dashboard.tsx, getNflWeekLabel).
     // During off-season returns 0 — callers should still serve data,
     // just skip the week-boundary cache-bust logic.
-    const SEASON_START = new Date("2026-09-09T00:00:00Z").getTime();
+    // Weeks roll over Tuesday morning (after Monday Night Football), not Wednesday,
+    // so Tuesday shows the upcoming week instead of last week's finished games.
+    const SEASON_START = new Date("2026-09-08T10:00:00Z").getTime();
     const SEASON_END   = new Date("2027-01-11T00:00:00Z").getTime();
     const now = Date.now();
     if (now < SEASON_START || now > SEASON_END) return 0; // off-season
@@ -16554,7 +16565,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   async function getForwardSchedule(spanWeeks: number = 3): Promise<{ byTeam: Record<string, UpcomingGame[]>; weeks: number[] }> {
     const TTL = 30 * 60 * 1000;
     const now = Date.now();
-    const currentWeek = getCurrentNFLWeek() || 1;
+    const currentWeek = (await getNflWeekState().then(s => s.currentWeek).catch(() => 0)) || getCurrentNFLWeek() || 1;
     const weekNumbers = Array.from({ length: spanWeeks }, (_, i) => currentWeek + i).filter(w => w >= 1 && w <= 18);
 
     if (_nflForwardScheduleCache && (now - _nflForwardScheduleCache.ts) < TTL &&
@@ -16605,6 +16616,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // position" grade for an *opponent* several weeks out (Start/Sit, Waiver
   // Radar forecasts). Matchup Heatmap has its own richer, narrative table —
   // this compact one is for lightweight forward-looking grades elsewhere.
+  // Refreshed in place from real season data (computeNflDvp) — see refreshNflDefRanksLite().
   const NFL_DEF_RANKS_LITE: Record<string, { QB: number; RB: number; WR: number; TE: number }> = {
     "ARI": { QB: 28, RB: 24, WR: 26, TE: 22 },
     "ATL": { QB: 18, RB: 14, WR: 16, TE: 20 },
@@ -16639,6 +16651,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     "TEN": { QB: 31, RB: 31, WR: 31, TE: 32 },
     "WAS": { QB: 32, RB: 32, WR: 32, TE: 20 },
   };
+  let _defRanksLiteTs = 0;
+  async function refreshNflDefRanksLite(): Promise<void> {
+    if (Date.now() - _defRanksLiteTs < 60 * 60 * 1000) return;
+    const live = await computeNflDvp().catch(() => null);
+    if (!live) return;
+    for (const [team, byPos] of Object.entries(live.teams)) {
+      NFL_DEF_RANKS_LITE[team] = { QB: byPos.QB.rank, RB: byPos.RB.rank, WR: byPos.WR.rank, TE: byPos.TE.rank };
+    }
+    _defRanksLiteTs = Date.now();
+  }
+  setTimeout(() => { refreshNflDefRanksLite().catch(() => {}); }, 15000);
+  setInterval(() => { refreshNflDefRanksLite().catch(() => {}); }, 3 * 60 * 60 * 1000);
   function gradeRankLite(rank: number): string {
     if (rank <= 8) return "A";
     if (rank <= 16) return "B";
@@ -16650,6 +16674,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // each annotated with that opponent's defensive grade at `position`.
   // Used by Start/Sit and Waiver Radar to show 1-3 weeks of matchup outlook.
   async function getUpcomingMatchupGrades(teamAbbr: string, position: "QB" | "RB" | "WR" | "TE", spanWeeks: number = 3) {
+    await refreshNflDefRanksLite().catch(() => {});
     const { byTeam } = await getForwardSchedule(spanWeeks);
     const normalizedTeam = teamAbbr === "WSH" ? "WAS" : teamAbbr;
     const games = byTeam[normalizedTeam] ?? [];
@@ -17332,6 +17357,30 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
 
+    // 2a. Replace with the UPCOMING week from the full-season schedule (ESPN's
+    // default scoreboard keeps last week's finished games until midweek) and
+    // consensus spreads/totals from Action Network.
+    try {
+      const [wkGames, anBoard] = await Promise.all([getNflWeekGames(), fetchActionNetworkBoard("nfl").catch(() => [] as any[])]);
+      let upcoming = wkGames.filter(g => !g.completed);
+      if (slate === "today") {
+        const ctDay = (d: string) => new Date(d).toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+        const today = ctDay(new Date().toISOString());
+        upcoming = upcoming.filter(g => ctDay(g.date) === today);
+      }
+      if (upcoming.length || wkGames.length) {
+        const prior = new Map(games.map(g => [`${g.awayTeam}@${g.homeTeam}`.replace(/WSH/g, "WAS"), g]));
+        games.length = 0;
+        for (const g of upcoming) {
+          const an = anBoard.find((x: any) => x.home === g.home && x.away === g.away);
+          const old = prior.get(`${g.away}@${g.home}`);
+          const spread = an?.cur?.spreadHome ?? old?.spread ?? 0;
+          const total = an?.cur?.total ?? (old && old.total !== 44 ? old.total : 44);
+          games.push({ gameId: g.id, homeTeam: g.home, awayTeam: g.away, spread, total, gameTime: g.date, weather: null });
+        }
+      }
+    } catch (e: any) { console.warn("[NFL Props] upcoming-week schedule failed:", e.message); }
+
     // 2b. Filter games by day-of-week for Sunday/MNF/TNF slates so each tab
     // actually differs from the full "week" list. Times from ESPN are UTC;
     // convert to US/Eastern (NFL's scheduling reference zone) before reading
@@ -17421,7 +17470,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
             onDraftKings: qbDk.onDraftKings,
-            notes: `Pick: ${qbPick.pickSide.toUpperCase()} ${qbDk.line}. ${roster.qb} averaged ${Math.round(qbMean)} pass yds over the last ${qbYds.length} real games (2025 season). The model gives the ${qbPick.pickSide.toLowerCase()} a ${qbPick.modelPct}% chance versus the book's ${qbPick.bookPct}% at the ${qbDk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
+            notes: `Pick: ${qbPick.pickSide.toUpperCase()} ${qbDk.line}. ${roster.qb} averaged ${Math.round(qbMean)} pass yds over the last ${qbYds.length} real games. The model gives the ${qbPick.pickSide.toLowerCase()} a ${qbPick.modelPct}% chance versus the book's ${qbPick.bookPct}% at the ${qbDk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
           } as any);
         }
 
@@ -17446,7 +17495,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
             redZoneShare: null, targetShare: null, defRank: null,
             weather: game.weather, gameTime: game.gameTime, homeAway: side,
             onDraftKings: rb1Dk.onDraftKings,
-            notes: `Pick: ${rb1Pick.pickSide.toUpperCase()} ${rb1Dk.line}. ${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over the last ${rb1Yds.length} real games (2025 season). The model gives the ${rb1Pick.pickSide.toLowerCase()} a ${rb1Pick.modelPct}% chance versus the book's ${rb1Pick.bookPct}% at the ${rb1Dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
+            notes: `Pick: ${rb1Pick.pickSide.toUpperCase()} ${rb1Dk.line}. ${roster.rb1} averaged ${Math.round(rb1Mean)} rush yds over the last ${rb1Yds.length} real games. The model gives the ${rb1Pick.pickSide.toLowerCase()} a ${rb1Pick.modelPct}% chance versus the book's ${rb1Pick.bookPct}% at the ${rb1Dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
           } as any);
 
           // ── RB1 Anytime TD (real L5 TD rate via Poisson, DraftKings odds) ───
@@ -17495,7 +17544,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: dk.onDraftKings,
-              notes: `Pick: ${pick.pickSide.toUpperCase()} ${dk.line}. ${playerName} (${tag}) averaged ${Math.round(mean)} receiving yds over the last ${recYds.length} real games (2025 season). The model gives the ${pick.pickSide.toLowerCase()} a ${pick.modelPct}% chance versus the book's ${pick.bookPct}% at the ${dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
+              notes: `Pick: ${pick.pickSide.toUpperCase()} ${dk.line}. ${playerName} (${tag}) averaged ${Math.round(mean)} receiving yds over the last ${recYds.length} real games. The model gives the ${pick.pickSide.toLowerCase()} a ${pick.modelPct}% chance versus the book's ${pick.bookPct}% at the ${dk.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
             } as any);
           }
           if (recs.length >= 2) {
@@ -17515,7 +17564,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
               redZoneShare: null, targetShare: null, defRank: null,
               weather: game.weather, gameTime: game.gameTime, homeAway: side,
               onDraftKings: dkR.onDraftKings,
-              notes: `Pick: ${pickR.pickSide.toUpperCase()} ${dkR.line}. ${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over the last ${recs.length} real games (2025 season). The model gives the ${pickR.pickSide.toLowerCase()} a ${pickR.modelPct}% chance versus the book's ${pickR.bookPct}% at the ${dkR.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
+              notes: `Pick: ${pickR.pickSide.toUpperCase()} ${dkR.line}. ${playerName} (${tag}) averaged ${meanR.toFixed(1)} receptions over the last ${recs.length} real games. The model gives the ${pickR.pickSide.toLowerCase()} a ${pickR.modelPct}% chance versus the book's ${pickR.bookPct}% at the ${dkR.onDraftKings ? "DraftKings" : "model-estimated"} line.`,
             } as any);
           }
           if (tds.length >= 2) {
@@ -17935,6 +17984,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── GET /api/nfl/waiver-radar ────────────────────────────────────────────
   app.get("/api/nfl/waiver-radar", async (req: Request, res: Response) => {
     try {
+      await refreshNflDefRanksLite().catch(() => {});
       const TTL = 30 * 60 * 1000; // 30 min
       const now = Date.now();
       if (_nflWaiverCache && (now - _nflWaiverCache.ts) < TTL) {
@@ -18539,6 +18589,24 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       // in advance, not just this week's opponent.
       const { byTeam: scheduleByTeam, weeks: weekNumbersMH } = await getForwardSchedule(3);
 
+      // Replace the hand-written table with this season's real defense-vs-position
+      // numbers (Sleeper weekly stats + ESPN results). The static table is only
+      // kept for teams/positions the live calculation can't cover.
+      const liveDvp = await computeNflDvp().catch(() => null);
+      let dvpSource = "static";
+      if (liveDvp) {
+        dvpSource = `live: ${liveDvp.season} weeks ${liveDvp.weeks[0]}-${liveDvp.weeks[liveDvp.weeks.length - 1]}`;
+        for (const [team, byPos] of Object.entries(liveDvp.teams)) {
+          const d = MATCHUP_DATA[team]; if (!d) continue;
+          for (const pos of ["QB", "RB", "WR", "TE"] as const) {
+            const L = byPos[pos]; if (!L) continue;
+            d[pos] = { rank: L.rank, allowedYpg: L.ydsPg, allowedTdPg: L.tdPg, recentTrend: L.trend,
+              keyPlayers: L.keyDefenders.length ? L.keyDefenders : d[pos].keyPlayers, why: L.why };
+            (d[pos] as any).ptsPg = L.ptsPg; (d[pos] as any).topScorers = L.topScorers; (d[pos] as any).games = L.games;
+          }
+        }
+      }
+
       const result = Object.entries(MATCHUP_DATA).map(([team, d]) => ({
         team,
         QB: d.QB.rank, gradeQB: gradeRank(d.QB.rank),
@@ -18551,6 +18619,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           WR: { allowedYpg: d.WR.allowedYpg, allowedTdPg: d.WR.allowedTdPg, trend: trendLabel(d.WR.recentTrend), keyPlayers: d.WR.keyPlayers, why: d.WR.why },
           TE: { allowedYpg: d.TE.allowedYpg, allowedTdPg: d.TE.allowedTdPg, trend: trendLabel(d.TE.recentTrend), keyPlayers: d.TE.keyPlayers, why: d.TE.why },
         },
+        ptsAllowed: { QB: (d.QB as any).ptsPg ?? null, RB: (d.RB as any).ptsPg ?? null, WR: (d.WR as any).ptsPg ?? null, TE: (d.TE as any).ptsPg ?? null },
         // For an offense on this team, how good/bad are its next matchups —
         // i.e. the opponent defense's grade at the position you're rostering.
         upcomingOpponents: (scheduleByTeam[team] ?? []).slice(0, 3).map(g => {
@@ -18570,7 +18639,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       result.sort((a, b) => (b as any)[sortPos] - (a as any)[sortPos]);
 
       _nflMatchupCache = { data: result, ts: now };
-      return res.json({ data: result, forecastWeeks: weekNumbersMH, cachedAt: new Date(now).toISOString(), count: result.length });
+      return res.json({ data: result, forecastWeeks: weekNumbersMH, cachedAt: new Date(now).toISOString(), count: result.length, source: dvpSource });
     } catch (e: any) {
       console.error("[EndZone] /api/nfl/matchup-heatmap error:", e.message);
       res.status(500).json({ error: e.message });
@@ -18723,80 +18792,25 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // for both the full game ("event") and first half ("firsthalf").
   // Replaces The Odds API here — that key expired, and this endpoint used to
   // invent opening lines and public % with Math.random().
-  let _anNflBoardCache: { data: any[]; ts: number } | null = null;
-  const AN_NFL_ABBR: Record<string, string> = { JAC: "JAX", LA: "LAR" };
+  // Shared module: pregame main lines only (Action Network also returns live + alt lines).
   async function fetchActionNetworkNflBoard(): Promise<any[]> {
-    if (_anNflBoardCache && Date.now() - _anNflBoardCache.ts < 3 * 60 * 1000) return _anNflBoardCache.data;
-    const { data } = await axios.get(
-      "https://api.actionnetwork.com/web/v2/scoreboard/nfl?bookIds=15,30&periods=event,firsthalf",
-      { timeout: 10000, headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Accept": "application/json", "Referer": "https://www.actionnetwork.com/",
-      } },
-    );
-    const out: any[] = [];
-    for (const g of (data?.games ?? [])) {
-      const status = String(g.status ?? "").toLowerCase();
-      if (["complete", "closed", "final", "cancelled", "postponed"].includes(status)) continue;
-      const abbrById: Record<number, string> = {};
-      for (const t of (g.teams ?? [])) abbrById[t.id] = AN_NFL_ABBR[t.abbr] ?? t.abbr;
-      const away = abbrById[g.away_team_id] ?? "Away", home = abbrById[g.home_team_id] ?? "Home";
-      const read = (book: string, period: string) => {
-        const m = g.markets?.[book]?.[period] ?? {};
-        const side = (typ: string, sd: string) => (m[typ] ?? []).find((o: any) => o.side === sd) ?? null;
-        const pctOf = (o: any, k: "tickets" | "money") => (o?.bet_info?.[k]?.percent ?? null);
-        const sh = side("spread", "home"), sa = side("spread", "away");
-        const to = side("total", "over"), tu = side("total", "under");
-        const mh = side("moneyline", "home"), ma = side("moneyline", "away");
-        return {
-          spreadHome: sh?.value ?? (sa?.value != null ? -sa.value : null),
-          total: to?.value ?? tu?.value ?? null,
-          mlHome: mh?.odds ?? null, mlAway: ma?.odds ?? null,
-          spreadHomeTickets: pctOf(sh, "tickets"), spreadHomeMoney: pctOf(sh, "money"),
-          spreadAwayTickets: pctOf(sa, "tickets"), spreadAwayMoney: pctOf(sa, "money"),
-          overTickets: pctOf(to, "tickets"), overMoney: pctOf(to, "money"),
-          underTickets: pctOf(tu, "tickets"), underMoney: pctOf(tu, "money"),
-        };
-      };
-      out.push({
-        id: g.id, away, home, start: g.start_time, status, week: g.week,
-        cur: read("15", "event"), open: read("30", "event"),
-        h1Cur: read("15", "firsthalf"), h1Open: read("30", "firsthalf"),
-      });
-    }
-    out.sort((x, y) => String(x.start).localeCompare(String(y.start)));
-    _anNflBoardCache = { data: out, ts: Date.now() };
-    return out;
+    return fetchActionNetworkBoard("nfl");
   }
   // Season first-half scoring profile per team from ESPN quarter-by-quarter scores
   let _nflHalfShareCache: { data: any; ts: number } | null = null;
   async function fetchNflHalfShares(): Promise<{ teams: Record<string, any>; league: { h1: number; full: number; games: number } }> {
     if (_nflHalfShareCache && Date.now() - _nflHalfShareCache.ts < 6 * 60 * 60 * 1000) return _nflHalfShareCache.data;
-    const ESPN_FIX: Record<string, string> = { WSH: "WAS" };
     const teams: Record<string, { g: number; h1For: number; fullFor: number; h1Against: number; fullAgainst: number }> = {};
     const league = { h1: 0, full: 0, games: 0 };
-    const yr = new Date().getFullYear();
-    const weeks = await Promise.allSettled(Array.from({ length: 18 }, (_, i) => i + 1).map(w =>
-      axios.get(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${w}&dates=${yr}`, { timeout: 8000 })));
-    for (const r of weeks) {
-      if (r.status !== "fulfilled") continue;
-      for (const ev of (r.value.data?.events ?? [])) {
-        if (!ev?.status?.type?.completed) continue;
-        const comp = ev.competitions?.[0]; const cs = comp?.competitors ?? [];
-        if (cs.length !== 2) continue;
-        const line = (c: any) => (c.linescores ?? []).map((l: any) => Number(l.value) || 0);
-        const [a, b] = cs; const la = line(a), lb = line(b);
-        if (la.length < 4 || lb.length < 4) continue;
-        const h1a = la[0] + la[1], h1b = lb[0] + lb[1];
-        const fa = Number(a.score) || la.reduce((x: number, y: number) => x + y, 0);
-        const fb = Number(b.score) || lb.reduce((x: number, y: number) => x + y, 0);
-        const ab = (c: any) => { const x = c.team?.abbreviation ?? ""; return ESPN_FIX[x] ?? x; };
-        for (const [me, h1me, fme, h1op, fop] of [[ab(a), h1a, fa, h1b, fb], [ab(b), h1b, fb, h1a, fa]] as [string, number, number, number, number][]) {
-          const t = teams[me] ??= { g: 0, h1For: 0, fullFor: 0, h1Against: 0, fullAgainst: 0 };
-          t.g++; t.h1For += h1me; t.fullFor += fme; t.h1Against += h1op; t.fullAgainst += fop;
-        }
-        league.h1 += h1a + h1b; league.full += fa + fb; league.games++;
+    for (const g of await fetchEspnNflSeason()) {
+      if (!g.completed || g.homeLines.length < 4 || g.awayLines.length < 4) continue;
+      const h1h = g.homeLines[0] + g.homeLines[1], h1a = g.awayLines[0] + g.awayLines[1];
+      const fh = g.homeScore ?? 0, fa = g.awayScore ?? 0;
+      for (const [me, h1me, fme, h1op, fop] of [[g.home, h1h, fh, h1a, fa], [g.away, h1a, fa, h1h, fh]] as [string, number, number, number, number][]) {
+        const t = teams[me] ??= { g: 0, h1For: 0, fullFor: 0, h1Against: 0, fullAgainst: 0 };
+        t.g++; t.h1For += h1me; t.fullFor += fme; t.h1Against += h1op; t.fullAgainst += fop;
       }
+      league.h1 += h1h + h1a; league.full += fh + fa; league.games++;
     }
     const data = { teams, league };
     _nflHalfShareCache = { data, ts: Date.now() };
@@ -19013,42 +19027,61 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         "ATL": { lat: 33.755, lon: -84.401, name: "Mercedes-Benz Stadium", dome: true  },
       };
 
-      // Fetch weather for outdoor stadiums via Open-Meteo (free, no key)
-      const outdoorStadiums = Object.entries(STADIUMS).filter(([, s]) => !s.dome);
+      // Forecast AT KICKOFF for this week's outdoor games (Open-Meteo hourly, free/no key).
       const weatherResults: any[] = [];
-
+      let weekGames: any[] = [];
+      try { weekGames = (await getNflWeekGames()).filter(g => !g.completed); } catch { /* none */ }
+      const fmtKick = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/Chicago", weekday: "short", hour: "numeric", minute: "2-digit" }) + " CT";
       await Promise.allSettled(
-        outdoorStadiums.map(async ([team, stadium]) => {
+        weekGames.map(async (g: any) => {
+          let stadium = STADIUMS[g.home];
+          if (!stadium) return;
+          // Neutral-site games (London, Germany, Brazil…): geocode the real venue city.
+          if (g.neutral && g.city) {
+            try {
+              const gr = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(g.city)}&count=5`, { signal: AbortSignal.timeout(5000) });
+              const gd: any = gr.ok ? await gr.json() : null;
+              const hit = (gd?.results ?? []).find((x: any) => !g.country || String(x.country ?? "").toLowerCase().includes(String(g.country).toLowerCase().replace("england", "united kingdom"))) ?? gd?.results?.[0];
+              if (!hit) return;
+              stadium = { lat: hit.latitude, lon: hit.longitude, name: g.venue ?? g.city, dome: g.indoor === true };
+            } catch { return; }
+          }
+          if (stadium.dome || g.indoor === true) {
+            weatherResults.push({ team: g.home, stadium: g.venue ?? stadium.name, away: g.away, home: g.home, gameTime: fmtKick(g.date), kickoff: g.date,
+              tempF: 72, windSpeed: 0, precipitation: 0, condition: "Indoors", isDome: true, hasConcern: false, bettingNote: null });
+            return;
+          }
           try {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${stadium.lat}&longitude=${stadium.lon}&current=temperature_2m,wind_speed_10m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+            const kick = new Date(g.date); const day = kick.toISOString().slice(0, 10);
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${stadium.lat}&longitude=${stadium.lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=UTC&start_date=${day}&end_date=${day}`;
             const wr = await fetch(url, { signal: AbortSignal.timeout(6000) });
             if (!wr.ok) return;
             const wd: any = await wr.json();
-            const cur = wd?.current ?? {};
-            const tempF = Math.round(cur.temperature_2m ?? 55);
-            const windSpeed = Math.round(cur.wind_speed_10m ?? 5);
-            const precipitation = cur.precipitation_probability ?? 0;
-            const wCode = cur.weather_code ?? 0;
-            const condition = wCode >= 95 ? "Thunderstorm" : wCode >= 61 ? "Rain" : wCode >= 51 ? "Drizzle" : wCode >= 45 ? "Fog" : wCode >= 1 ? "Partly Cloudy" : "Clear";
-
+            const times: string[] = wd?.hourly?.time ?? [];
+            const want = kick.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+            let idx = times.findIndex(t => t.slice(0, 13) === want); if (idx < 0) idx = Math.min(times.length - 1, kick.getUTCHours());
+            if (idx < 0) return;
+            const hv = (k: string) => wd.hourly?.[k]?.[idx];
+            const tempF = Math.round(hv("temperature_2m") ?? 55);
+            const windSpeed = Math.round(hv("wind_speed_10m") ?? 5);
+            const gusts = Math.round(hv("wind_gusts_10m") ?? windSpeed);
+            const precipitation = hv("precipitation_probability") ?? 0;
+            const wCode = hv("weather_code") ?? 0;
+            const condition = wCode >= 95 ? "Thunderstorm" : wCode >= 71 && wCode <= 77 ? "Snow" : wCode >= 61 ? "Rain" : wCode >= 51 ? "Drizzle" : wCode >= 45 ? "Fog" : wCode >= 1 ? "Partly Cloudy" : "Clear";
             const hasConcern = windSpeed >= 15 || tempF <= 32 || precipitation > 30;
             let bettingNote = "";
-            if (windSpeed >= 20) bettingNote = `⚠️ ${windSpeed}mph winds will severely limit passing game — strong Under play`;
-            else if (windSpeed >= 15) bettingNote = `Wind (${windSpeed}mph) will reduce deep passing — lean Under on team totals`;
+            if (windSpeed >= 20) bettingNote = `⚠️ ${windSpeed}mph winds (gusts ${gusts}) will severely limit passing game — strong Under play`;
+            else if (windSpeed >= 15) bettingNote = `Wind (${windSpeed}mph, gusts ${gusts}) will reduce deep passing — lean Under on team totals`;
             if (tempF <= 20) bettingNote += (bettingNote ? " · " : "") + `Extreme cold (${tempF}°F) favors ground game and Under`;
             else if (tempF <= 32) bettingNote += (bettingNote ? " · " : "") + `Freezing temps (${tempF}°F) adds ~1.5 pts to Under`;
-            if (precipitation > 50) bettingNote += (bettingNote ? " · " : "") + `${precipitation}% rain chance — wet ball reduces passing efficiency`;
-
-            weatherResults.push({
-              team, stadium: stadium.name,
-              away: "TBD", home: team,
-              gameTime: "Upcoming",
-              tempF, windSpeed, precipitation, condition,
-              isDome: false, hasConcern, bettingNote: bettingNote || null,
-            });
+            if (precipitation > 50) bettingNote += (bettingNote ? " · " : "") + `${precipitation}% rain chance at kickoff — wet ball reduces passing efficiency`;
+            weatherResults.push({ team: g.home, stadium: g.venue ?? stadium.name, away: g.away, home: g.home, gameTime: fmtKick(g.date), kickoff: g.date,
+              tempF, windSpeed, windGusts: gusts, precipitation, condition, isDome: false, hasConcern, bettingNote: bettingNote || null, forecastFor: "kickoff" });
           } catch { /* ignore individual failures */ }
         })
       );
+      // Indoor games last; within outdoor, concerns first then kickoff time.
+      weatherResults.sort((a, b) => (a.isDome ? 1 : 0) - (b.isDome ? 1 : 0) || String(a.kickoff).localeCompare(String(b.kickoff)));
 
       // Sort: weather concerns first
       weatherResults.sort((a, b) => (b.hasConcern ? 1 : 0) - (a.hasConcern ? 1 : 0));
@@ -19061,7 +19094,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { team: "PHI", stadium: "Lincoln Financial", away: "DAL", home: "PHI", gameTime: "Sun 8:20 PM", tempF: 44, windSpeed: 10, precipitation: 10, condition: "Clear",         isDome: false, hasConcern: false, bettingNote: null },
       ];
 
-      const result = { games: weatherResults.length >= 3 ? weatherResults : fallback, fetchedAt: new Date().toISOString(), liveWeather: weatherResults.length >= 3 };
+      void fallback; // static sample games are no longer shown
+      const result = { games: weatherResults, fetchedAt: new Date().toISOString(), liveWeather: weatherResults.length > 0, source: "Open-Meteo forecast at kickoff · ESPN schedule" };
       _nflWeatherCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -19127,6 +19161,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // ── GET /api/nfl/game-script ─────────────────────────────────────────────────
   app.get("/api/nfl/game-script", async (req: Request, res: Response) => {
     try {
+      await refreshNflDefRanksLite().catch(() => {});
       const TTL = 15 * 60 * 1000;
       const now = Date.now();
       if (_nflGameScriptCache && (now - _nflGameScriptCache.ts) < TTL) {
@@ -19163,7 +19198,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const teamPaceMap: Record<string, { passAtt: number; rushAtt: number; pace: string }> = {};
       try {
         const espnStats = await fetch(
-          "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/leaders?limit=32",
+          `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${nflSeasonYear()}/types/2/leaders?limit=32`,
           { signal: AbortSignal.timeout(6000) }
         );
         // This endpoint is sometimes unavailable — silently skip on error
@@ -19487,6 +19522,16 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { playerName: "Daniel Bellinger",   position: "TE", team: "NYG", rzTargetShare: 15, rzTargetsPerGame: 1.0, tdsPerGame: 0.38, overallTargetPct: 15, note: "NYG's primary TE entering 2026 with expanded red zone role as offense rebuilds." },
       ];
 
+      // Live: this season's red-zone usage from Sleeper box scores.
+      try {
+        const live = await computeNflRedZone(40);
+        if (live.length >= 10) {
+          const result = { players: live, fetchedAt: new Date().toISOString(), source: `live: ${nflSeasonYear()} season (Sleeper red-zone targets)` };
+          _nflRedZoneCache = { data: result, ts: now };
+          return res.json(result);
+        }
+      } catch (e: any) { console.warn("[EndZone] live red-zone failed:", e.message); }
+
       // Resolve live teams from Sleeper
       const sleeperRosterRZ = await getSleeperRoster();
       const rzWithLiveTeams = await resolveTeams(RED_ZONE_PLAYERS, sleeperRosterRZ);
@@ -19547,7 +19592,34 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         { team: "TB",  QB: { grade: "B", last4Grade: "B" }, RB: { grade: "C", last4Grade: "D" }, WR: { grade: "B", last4Grade: "C" }, TE: { grade: "B", last4Grade: "B" }, homeWeakness: "RB",  trendingWorse: "RB" },
       ];
 
-      const result = { defenses: DVP_DATA, fetchedAt: new Date().toISOString() };
+      // Live: this season's defense-vs-position from real box scores.
+      // Grade is from the DEFENSE's view (A = stingiest, D = most generous).
+      let defenses: any[] = DVP_DATA; let source = "static";
+      const live = await computeNflDvp().catch(() => null);
+      if (live && Object.keys(live.teams).length >= 28) {
+        const g = (r: number) => r <= 8 ? "A" : r <= 16 ? "B" : r <= 24 ? "C" : "D";
+        const gi = (x: string) => "ABCD".indexOf(x);
+        defenses = Object.entries(live.teams).map(([team, byPos]) => {
+          const row: any = { team };
+          let homeWeak: { pos: string; ratio: number } | null = null; let worse: { pos: string; drop: number } | null = null;
+          for (const pos of ["QB", "RB", "WR", "TE"] as const) {
+            const L = byPos[pos];
+            row[pos] = { grade: g(L.rank), last4Grade: g(L.last4Rank), rank: L.rank, last4Rank: L.last4Rank, ptsPg: L.ptsPg, last4PtsPg: L.last4PtsPg,
+              homePtsPg: L.homePtsPg, awayPtsPg: L.awayPtsPg };
+            if (L.homePtsPg != null && L.awayPtsPg != null && L.awayPtsPg > 0) {
+              const ratio = L.homePtsPg / L.awayPtsPg;
+              if (ratio >= 1.15 && (!homeWeak || ratio > homeWeak.ratio)) homeWeak = { pos, ratio };
+            }
+            const drop = gi(g(L.last4Rank)) - gi(g(L.rank));
+            if (drop >= 2 && (!worse || drop > worse.drop)) worse = { pos, drop };
+          }
+          row.homeWeakness = homeWeak?.pos ?? null; row.trendingWorse = worse?.pos ?? null;
+          row.avgRank = (row.QB.rank + row.RB.rank + row.WR.rank + row.TE.rank) / 4;
+          return row;
+        }).sort((a, b) => b.avgRank - a.avgRank);
+        source = `live: ${live.season} weeks ${live.weeks[0]}-${live.weeks[live.weeks.length - 1]} (Sleeper box scores)`;
+      }
+      const result = { defenses, fetchedAt: new Date().toISOString(), source };
       _nflDvpSplitsCache = { data: result, ts: now };
       return res.json(result);
     } catch (e: any) {
@@ -19777,6 +19849,17 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         return res.json(_nflAdpValueCache.data);
       }
 
+      // Live: Sleeper ADP vs. this season's PPR production, within position.
+      try {
+        const live = await computeNflAdpValue(30);
+        if (live.players.length >= 8) {
+          const result = { players: live.players, fetchedAt: new Date().toISOString(), fpDataAvailable: false, live: true,
+            source: `live: Sleeper PPR ADP vs ${nflSeasonYear()} PPR points/game (weeks 1-${live.weeks})` };
+          _nflAdpValueCache = { data: result, ts: now };
+          return res.json(result);
+        }
+      } catch (e: any) { console.warn("[EndZone] live ADP value failed:", e.message); }
+
       // Fetch FantasyPros ADP data (free endpoint)
       let fpAdpPlayers: Array<{ name: string; adpRank: number }> = [];
       try {
@@ -19841,8 +19924,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       let BYE_WEEKS: Record<number, string[]> = {};
       let byeSource = "seed";
       try {
-        const sleeperState = await fetch("https://api.sleeper.app/v1/state/nfl", { signal: AbortSignal.timeout(5000) });
-        if (sleeperState.ok) {
+        const espnByes = await getNflByeWeeks();
+        if (Object.keys(espnByes).length >= 6) { BYE_WEEKS = espnByes; byeSource = `espn-${nflSeasonYear()}`; }
+      } catch { /* fall through to Sleeper */ }
+      try {
+        const sleeperState = Object.keys(BYE_WEEKS).length ? null : await fetch("https://api.sleeper.app/v1/state/nfl", { signal: AbortSignal.timeout(5000) });
+        if (sleeperState?.ok) {
           const stateData: any = await sleeperState.json();
           const season = stateData?.season ?? getNFLSeasonYear().toString();
           // Fetch the NFL schedule for the season to derive bye weeks
@@ -19915,7 +20002,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         TEN: 30, CAR: 31, LV: 29, JAX: 28, WAS: 24, CLE: 23, CHI: 22,
         IND: 22, DEN: 21, NYG: 27, NE: 26, NO: 25, ARI: 20, ATL: 19,
       };
-      const currentWeek = getCurrentNFLWeek() || 1;
+      // Real offense ranks (points per game this season, 1 = best offense).
+      try {
+        const scoring = await getNflTeamScoring();
+        if (Object.keys(scoring).length >= 28) for (const [t, x] of Object.entries(scoring)) OFFENSE_RANK[t] = x.offRank;
+      } catch { /* keep defaults */ }
+      const currentWeek = (await getNflWeekState().then(s => s.currentWeek).catch(() => 0)) || getCurrentNFLWeek() || 1;
       const FORECAST_SPAN = 3; // current week + next 2
       const weekNumbers = Array.from({ length: FORECAST_SPAN }, (_, i) => currentWeek + i).filter(w => w >= 1 && w <= 18);
 
@@ -20451,6 +20543,14 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
         } catch (e: any) {
           console.error("[MLB pick] Odds API error:", e.message);
         }
+      }
+
+      // Consensus lines from Action Network (free, no key) when the Odds API is unavailable.
+      if (mlbGames.length === 0) {
+        try {
+          mlbGames = await actionNetworkAsOddsApi("mlb", { date: todayStr.replace(/-/g, "") });
+          console.log(`[MLB pick] Action Network → ${mlbGames.length} games for ${todayStr}`);
+        } catch (e: any) { console.warn("[MLB pick] Action Network failed:", e.message); }
       }
 
       // Keep only today CT games
@@ -21485,6 +21585,18 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
         }
       } catch (e: any) { console.warn("[TeamWin] Odds API error:", e.message); }
+      // Fallback: Action Network consensus moneylines (free, no key).
+      if (Object.keys(oddsMap).length === 0) {
+        try {
+          for (const game of await actionNetworkAsOddsApi("mlb")) {
+            const market = (game.bookmakers?.[0]?.markets ?? []).find((m: any) => m.key === "h2h");
+            for (const outcome of (market?.outcomes ?? [])) {
+              const name = (outcome.name ?? "").toLowerCase(); const price = outcome.price ?? 0;
+              if (name && price) oddsMap[name] = { ml: price, impliedProb: impliedProbFromML(price) };
+            }
+          }
+        } catch (e: any) { console.warn("[TeamWin] Action Network error:", e.message); }
+      }
 
       // ── 4. Score each game ───────────────────────────────────────────────
       const scoredGames: any[] = [];
@@ -22091,7 +22203,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // Helper: get NFL week label based on actual 2026 NFL season dates
   // Week 1 = Sept 9, 2026 (Wednesday kickoff). Each week runs Wed–Tue.
   function getNflWeekLabel(): string {
-    const NFL_SEASON_START = new Date("2026-09-09T00:00:00Z"); // Week 1 Wednesday
+    const NFL_SEASON_START = new Date("2026-09-08T10:00:00Z"); // Week 1 Tuesday (rolls after MNF)
     const NFL_SEASON_WEEKS = 18;
     const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
     const now = new Date();
@@ -22184,7 +22296,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       async function fetchNflTeamStats(teamId: number, teamName: string): Promise<NflTeamStats | null> {
         try {
           const r = await fetch(
-            `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/types/2/teams/${teamId}/statistics`,
+            `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${nflSeasonYear()}/types/2/teams/${teamId}/statistics`,
             { signal: AbortSignal.timeout(7000) }
           );
           if (!r.ok) return null;
@@ -22348,6 +22460,23 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           }
         }
       } catch { /* non-fatal — skip cross-validation if ESPN down */ }
+      // Upcoming-week schedule (first week with unplayed games). ESPN's default
+      // scoreboard keeps showing last week's finals until midweek.
+      try {
+        const wkGames = (await getNflWeekGames()).filter(g => !g.completed);
+        if (wkGames.length) {
+          espnScheduledPairs = new Set();
+          for (const g of wkGames) {
+            const hs = [g.homeName, g.home, g.homeName.split(" ").pop() ?? ""].filter(Boolean).map(x => x.toLowerCase());
+            const as = [g.awayName, g.away, g.awayName.split(" ").pop() ?? ""].filter(Boolean).map(x => x.toLowerCase());
+            for (const h of hs) for (const a of as) espnScheduledPairs.add(`${h}|${a}`);
+          }
+        }
+      } catch { /* keep scoreboard pairs */ }
+      // Consensus lines from Action Network (free, no key) when the Odds API is unavailable.
+      if (nflGames.length === 0) {
+        try { nflGames = await actionNetworkAsOddsApi("nfl"); } catch { /* fall through */ }
+      }
       // ESPN exposes DraftKings' current straight-bet market. Use it when the
       // multi-book feed is unavailable; these are main lines, never alternates.
       if (nflGames.length === 0) nflGames = espnMainLineGames;
@@ -22446,6 +22575,7 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // Helper to get defensive matchup rank for a team (look up by team display name)
+      const liveDvpPow = await computeNflDvp().catch(() => null);
       function getNflDefRanks(teamName: string) {
         const TEAM_NAME_TO_ABBR: Record<string, string> = {
           "Kansas City Chiefs": "KC", "Buffalo Bills": "BUF", "Baltimore Ravens": "BAL",
@@ -22464,7 +22594,15 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
           Object.entries(TEAM_NAME_TO_ABBR).find(([k]) => teamName.includes(k.split(" ").pop()!))?.at(1) as string | undefined ??
           null;
         if (!abbr) return null;
-        return NFL_DEF_RANKS[abbr] ?? null;
+        const base = NFL_DEF_RANKS[abbr]; const L = liveDvpPow?.teams?.[abbr];
+        if (!L) return base ?? null;
+        // Real season numbers replace the hand-written ranks / yards / notes.
+        const o: any = { ...(base ?? {}) };
+        for (const pos of ["QB", "RB", "WR", "TE"] as const) {
+          o[pos] = L[pos].rank; o[`${pos}_ypg`] = L[pos].ydsPg; o[`${pos}_why`] = L[pos].why;
+          o[`${pos}_keys`] = L[pos].keyDefenders.length ? L[pos].keyDefenders.map(k => k.replace(/ \(.*\)$/, "")) : (base as any)?.[`${pos}_keys`] ?? [];
+        }
+        return o;
       }
 
       const scoredNfl: any[] = [];
