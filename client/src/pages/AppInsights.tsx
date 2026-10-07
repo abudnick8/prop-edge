@@ -539,7 +539,7 @@ function ApiHealthPanel() {
   const totalErrors = health.reduce((sum, h) => sum + (h.errors_24h ?? 0), 0);
 
   const services = [
-    { key: "odds_api",       label: "Odds API",        desc: "Player props + lines",    note: null },
+    { key: "odds_api",       label: "Game Odds",       desc: "DK / FD / BetMGM lines",  note: "Free Action Network multi-book feed — no key needed." },
     { key: "espn",           label: "ESPN",            desc: "Scores + schedules",      note: null },
     { key: "mlb_stats",      label: "MLB Stats API",   desc: "Game logs + stats",       note: null },
     { key: "action_network", label: "Action Network",  desc: "Sharp money data",        note: "Sharp money + public betting percentages." },
@@ -853,17 +853,6 @@ function SystemSettingsPanel() {
         <div>
           <p className="text-xs font-bold text-foreground mb-3 flex items-center gap-1.5"><Shield size={12} />API Keys</p>
           <div className="space-y-2">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Odds API Key</label>
-              <div className="flex gap-2">
-                <input value={oddsKey} onChange={e=>setOddsKey(e.target.value)}
-                  placeholder={apiKeys?.odds_api_key ?? "Not set"}
-                  className="flex-1 px-3 py-2 rounded-xl border text-xs font-mono outline-none"
-                  style={{background:"#F6F1E7",borderColor:"rgba(19,35,58,0.2)",color:"#131A24"}} />
-                <button onClick={() => oddsKey && keysMut.mutate({odds_api_key:oddsKey})}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-white" style={{background:"#131A24"}}><Save size={12}/></button>
-              </div>
-            </div>
             <div>
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Action Network Key</label>
               <div className="flex gap-2">

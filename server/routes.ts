@@ -32,6 +32,7 @@ import {
   computeAnalyticsBoost,
 } from "./mlb-analytics";
 import { registerPlayerIntelRoutes } from "./player-intel-routes";
+import { fetchFreeOdds, freeOddsStatus } from "./free-odds";
 import {
   fetchEspnNflSeason, getNflWeekState, getNflWeekGames, getNflByeWeeks, getNflTeamScoring,
   computeNflDvp, computeNflRedZone, computeNflAdpValue, fetchActionNetworkBoard, actionNetworkAsOddsApi,
@@ -5504,38 +5505,9 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // ─── API Quota Check ─────────────────────────────────────────────────────
   // TEMP DEBUG — remove after Underdog fix confirmed
 
-  app.get("/api/quota", async (req, res) => {
-    try {
-      const settings = await storage.getSettings();
-      const apiKey = settings.oddsApiKey;
-      if (!apiKey) return res.json({ status: "no_key", used: null, remaining: null, resets: null });
-
-      const axios = (await import("axios")).default;
-      const response = await axios.head(
-        `https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`,
-        { timeout: 8000 }
-      );
-      const used = parseInt(response.headers["x-requests-used"] ?? "0");
-      const remaining = parseInt(response.headers["x-requests-remaining"] ?? "0");
-
-      // The Odds API resets on the 1st of each month UTC
-      const now = new Date();
-      const resetDate = new Date(Date.UTC(
-        now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear(),
-        now.getUTCMonth() === 11 ? 0 : now.getUTCMonth() + 1,
-        1
-      ));
-
-      res.json({
-        status: remaining > 0 ? "ok" : "exhausted",
-        used,
-        remaining,
-        resets: resetDate.toISOString(),
-        plan: remaining > 5000 ? "paid_20000" : "free_500",
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
+  // Odds now come from a free, keyless source — there is no request quota.
+  app.get("/api/quota", async (_req, res) => {
+    res.json({ status: "ok", free: true, used: null, remaining: null, resets: null, ...freeOddsStatus() });
   });
 
   // ─── User Preferences ────────────────────────────────────────────────────────
@@ -6443,20 +6415,12 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
     }
 
-    // 3. Odds API
-    const oddsKey = process.env.ODDS_API_KEY;
-    if (!oddsKey) {
-      results.oddsApi = { ok: false, error: "ODDS_API_KEY not set" };
-    } else {
-      try {
-        const { data } = await axios.get(
-          `https://api.the-odds-api.com/v4/sports/basketball_nba/odds?apiKey=${oddsKey}&regions=us&markets=h2h&bookmakers=draftkings&oddsFormat=american`,
-          { timeout: 15000 }
-        );
-        results.oddsApi = { ok: true, games: data.length };
-      } catch (e: any) {
-        results.oddsApi = { ok: false, error: e.message, code: e.response?.status };
-      }
+    // 3. Game odds (free multi-book feed, replaces The Odds API)
+    try {
+      const g = await fetchFreeOdds("nba");
+      results.oddsApi = { ok: true, games: g.length, source: "Action Network (free)" };
+    } catch (e: any) {
+      results.oddsApi = { ok: false, error: e.message };
     }
 
     // 4. ActionNetwork
@@ -14444,9 +14408,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
   // POST /api/admin/api-health/ping — ping a specific service and record result
   app.post("/api/admin/api-health/ping", requireOwner, async (req: Request, res: Response) => {
     const { service } = req.body ?? {};
-    const oddsApiKey = process.env.ODDS_API_KEY || "15c62ebc-0905-4858-87e4-87160b253149";
     const SERVICES: Record<string, { url: string; headers?: any }> = {
-      odds_api:       { url: `https://api.the-odds-api.com/v4/sports?apiKey=${oddsApiKey}` },
+      odds_api:       { url: `https://api.actionnetwork.com/web/v2/scoreboard/nfl?bookIds=68,69&periods=event`, headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.actionnetwork.com/' } },
       espn:           { url: `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard` },
       mlb_stats:      { url: `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${new Date().toISOString().split('T')[0]}` },
       action_network: { url: `https://api.actionnetwork.com/web/v1/scoreboard/mlb?date=${new Date().toISOString().split('T')[0].replace(/-/g,'')}`, headers: { 'x-api-key': process.env.ACTION_NETWORK_KEY || '95d975972c05aa2f9ea5c3688ffc327c8afdbfe3dbd59f3545715d8e3bf7bee2', 'User-Agent': 'Mozilla/5.0 (compatible; ClubhouseIQ/1.0)', 'Referer': 'https://www.actionnetwork.com/' } },
@@ -14681,20 +14644,11 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
     };
     const sportKey = sportMap[sport.toLowerCase()];
     if (!sportKey) return [];
-    const apiKey = await getOddsApiKey();
-    if (!apiKey) return [];
+    // Free multi-book lines (DraftKings / FanDuel / BetMGM) — no API key needed.
     try {
-      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&bookmakers=draftkings,fanduel,betmgm&oddsFormat=american`;
-      const resp = await axios.get(url, { timeout: 8000 });
-      const now = Date.now();
-      // Only return games that have NOT started yet (commence_time in the future)
-      const games: any[] = resp.data ?? [];
-      return games.filter(g => {
-        const ct = g.commence_time ? new Date(g.commence_time).getTime() : 0;
-        return ct > now;
-      });
+      return await fetchFreeOdds(sportKey, { bookmakers: ["draftkings", "fanduel", "betmgm"] });
     } catch (e: any) {
-      console.warn(`[Book] DraftKings odds fetch error (${sport}):`, e.message);
+      console.warn(`[Book] game odds fetch error (${sport}):`, e.message);
       return [];
     }
   }
@@ -15604,46 +15558,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       const debug     = req.query.debug === "1";
       if (!eventId) return res.status(400).json({ error: "eventId required" });
 
-      // Debug: show what key is resolved
       if (debug) {
-        const k = await getOddsApiKey();
-        const hasEnv = !!process.env.ODDS_API_KEY;
-        const dbSettings = await storage.getSettings();
-        const hasDb = !!dbSettings?.oddsApiKey;
-        // Live API test — bulk endpoint for player props
-        let apiTestResult: any = {};
-        const sportKey = sport.toLowerCase() === "mlb" ? "baseball_mlb" :
-                         sport.toLowerCase() === "nba" ? "basketball_nba" :
-                         sport.toLowerCase() === "nhl" ? "icehockey_nhl" : "basketball_nba";
-        if (k) {
-          try {
-            const testUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${k}&regions=us&markets=player_points,player_hits&bookmakers=draftkings,fanduel&oddsFormat=american`;
-            const testResp = await axios.get(testUrl, { timeout: 10000 });
-            const events: any[] = Array.isArray(testResp.data) ? testResp.data : [];
-            const propEvents = events.filter((e: any) =>
-              e.bookmakers?.some((b: any) => b.markets?.length > 0)
-            );
-            apiTestResult = {
-              ok: true,
-              totalEvents: events.length,
-              eventsWithProps: propEvents.length,
-              sampleEventIds: propEvents.slice(0, 3).map((e: any) => e.id),
-              remainingRequests: testResp.headers["x-requests-remaining"],
-              usedRequests: testResp.headers["x-requests-used"],
-              rawSample: propEvents[0] ? {
-                id: propEvents[0].id,
-                teams: `${propEvents[0].away_team} @ ${propEvents[0].home_team}`,
-                bookmakers: propEvents[0].bookmakers?.map((b: any) => ({
-                  key: b.key,
-                  markets: b.markets?.map((m: any) => `${m.key}(${m.outcomes?.length})`)
-                }))
-              } : null
-            };
-          } catch (e: any) {
-            apiTestResult = { ok: false, error: e.response?.data?.message ?? e.message, status: e.response?.status };
-          }
-        }
-        return res.json({ debug: true, hasEnvKey: hasEnv, hasDbKey: hasDb, keyFirst8: k ? k.slice(0,8) : "NONE", apiTest: apiTestResult });
+        return res.json({ debug: true, gameOdds: freeOddsStatus(), props: "Linemate (DraftKings / FanDuel props, free)" });
       }
 
       const allMarkets = await fetchDraftKingsProps(sport, eventId);
@@ -19214,14 +19130,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch { /* fall back to Odds API below */ }
       // ── Fallback: The Odds API (only if Action Network returned nothing) ──
       try {
-        const oddsKey = process.env.ODDS_API_KEY ?? "";
-        if (oddsKey && liveGames.length === 0) {
-          const oddsResp = await fetch(
-            `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`,
-            { signal: AbortSignal.timeout(8000) }
-          );
-          if (oddsResp.ok) {
-            const oddsData: any[] = await oddsResp.json();
+        if (liveGames.length === 0) {
+          {
+            const oddsData: any[] = await fetchFreeOdds("nfl", { includeStarted: true });
             for (const game of oddsData) {
               const homeFullName = game.home_team ?? "";
               const awayFullName = game.away_team ?? "";
@@ -20517,33 +20428,9 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       }
 
       // ── Fetch all data in parallel ─────────────────────────────────────
-      const oddsKey = process.env.ODDS_API_KEY ?? "";
-      let mlbGames: any[] = [];
-      if (oddsKey) {
-        try {
-          // Use explicit commenceTimeFrom/To — far more reliable than daysFrom
-          const todayMidnightUTC = new Date(todayStr + "T00:00:00");
-          const ctOffset = 5 * 60 * 60 * 1000; // CDT = UTC-5 (close enough for midnight boundary)
-          const fromISO = new Date(todayMidnightUTC.getTime() + ctOffset).toISOString();
-          const toISO   = new Date(todayMidnightUTC.getTime() + ctOffset + 24 * 60 * 60 * 1000).toISOString();
-          const oddsUrl = `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&commenceTimeFrom=${encodeURIComponent(fromISO)}&commenceTimeTo=${encodeURIComponent(toISO)}`;
-          const r = await fetch(oddsUrl, { signal: AbortSignal.timeout(10000) });
-          if (r.ok) {
-            const raw = await r.json();
-            if (Array.isArray(raw)) {
-              mlbGames = raw;
-              console.log(`[MLB pick] Odds API → ${mlbGames.length} games for ${todayStr}`);
-            } else {
-              // Key invalid or quota exhausted — raw is an error object
-              console.warn(`[MLB pick] Odds API error response: ${JSON.stringify(raw).slice(0,120)} — will use ESPN fallback`);
-            }
-          } else {
-            console.warn(`[MLB pick] Odds API ${r.status} — will try ESPN fallback`);
-          }
-        } catch (e: any) {
-          console.error("[MLB pick] Odds API error:", e.message);
-        }
-      }
+      // Free multi-book lines (DraftKings / FanDuel / BetMGM / Caesars) — no key needed.
+      let mlbGames: any[] = await fetchFreeOdds("mlb", { date: todayStr, includeStarted: true }).catch(() => [] as any[]);
+      console.log(`[MLB pick] free odds → ${mlbGames.length} games for ${todayStr}`);
 
       // Consensus lines from Action Network (free, no key) when the Odds API is unavailable.
       if (mlbGames.length === 0) {
@@ -21564,15 +21451,10 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch (e: any) { console.warn("[TeamWin] Savant CSV error:", e.message); }
 
       // ── 3. Odds API moneylines ────────────────────────────────────────────
-      const oddsApiKey = process.env.ODDS_API_KEY ?? "";
       let oddsMap: Record<string, { ml: number | null; impliedProb: number }> = {};
       try {
-        if (oddsApiKey) {
-          const oddsResp = await axios.get(
-            `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&oddsFormat=american&apiKey=${oddsApiKey}`,
-            { timeout: 8000 }
-          );
-          for (const game of (oddsResp.data ?? [])) {
+        {
+          for (const game of await fetchFreeOdds("mlb")) {
             const bookmaker = (game.bookmakers ?? [])[0];
             if (!bookmaker) continue;
             const market = (bookmaker.markets ?? []).find((m: any) => m.key === "h2h");
@@ -22379,22 +22261,8 @@ Answer their question exactly as asked. Include specific bet titles, confidence 
       } catch { /* non-fatal */ }
 
       // ── Fetch odds ──────────────────────────────────────────────────────
-      const oddsKey = process.env.ODDS_API_KEY ?? "";
-      let nflGames: any[] = [];
-      if (oddsKey) {
-        try {
-          const r = await fetch(
-            // Before season: look 120 days ahead. During season: 10 days covers the full NFL week window.
-            (() => {
-              const NFL_START = new Date("2026-09-09T00:00:00Z");
-              const daysAhead = Date.now() < NFL_START.getTime() ? 120 : 10;
-              return `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${oddsKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&daysFrom=${daysAhead}`;
-            })(),
-            { signal: AbortSignal.timeout(10000) }
-          );
-          if (r.ok) nflGames = await r.json();
-        } catch { /* non-fatal */ }
-      }
+      // Free multi-book lines (DraftKings / FanDuel / BetMGM / Caesars) — no key needed.
+      let nflGames: any[] = await fetchFreeOdds("nfl").catch(() => [] as any[]);
 
       const nflSharp = await fetchSharpMoneyBySport("NFL").catch(() => [] as any[]);
 

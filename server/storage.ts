@@ -152,7 +152,7 @@ export class MemStorage implements IStorage {
     emailNotificationsEnabled: true,
     notificationEmail: "adam.budnick@gdrh.org",
     scanIntervalMinutes: 30,
-    oddsApiKey: "4134e9d0ec483414517b0ae8dea7437c", // hardcoded — Railway env var has wrong key, never use process.env here
+    oddsApiKey: null, // no longer used — game odds come from a free, keyless feed
     kalshiApiKey: null,
   };
   private notifications: Map<string, Notification> = new Map();

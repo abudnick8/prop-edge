@@ -14,7 +14,7 @@
  */
 
 import axios from "axios";
-import { actionNetworkAsOddsApi } from "./nfl-live-data";
+import { fetchFreeOdds } from "./free-odds";
 import { broadcast } from "./ws";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -286,63 +286,21 @@ function impliedProb(ml: number): number {
   return Math.abs(ml) / (Math.abs(ml) + 100);
 }
 
-async function fetchOddsFromActionNetwork(): Promise<boolean> {
+// Free multi-book moneylines (DraftKings first) — replaces The Odds API, no key needed.
+async function fetchOdds(): Promise<void> {
   try {
-    const games = await actionNetworkAsOddsApi("mlb");
+    const games = await fetchFreeOdds("mlb", { includeStarted: true });
     const newMap: Record<string, { homeML: number; awayML: number }> = {};
     for (const g of games) {
       const m = g.bookmakers?.[0]?.markets?.find((x: any) => x.key === "h2h");
       const h = m?.outcomes?.find((o: any) => o.name === g.home_team), a = m?.outcomes?.find((o: any) => o.name === g.away_team);
       if (h?.price != null && a?.price != null) newMap[g.home_team] = { homeML: h.price, awayML: a.price };
     }
-    if (!Object.keys(newMap).length) return false;
-    oddsMap = newMap; lastOddsTs = Date.now();
-    console.log(`[TriggerEngine] odds refreshed from Action Network — ${Object.keys(newMap).length} games`);
-    return true;
-  } catch (e: any) { console.warn("[TriggerEngine] Action Network odds failed:", e.message); return false; }
-}
-
-async function fetchOdds(): Promise<void> {
-  const key = process.env.ODDS_API_KEY;
-  if (!key) {
-    if (await fetchOddsFromActionNetwork()) return;
-    console.warn("[TriggerEngine] no odds source available — running model-only mode");
-    lastOddsTs = Date.now(); // prevent repeated log spam
-    return;
-  }
-  try {
-    const r = await axios.get(
-      `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american`,
-      { timeout: 10000 }
-    );
-    if (!Array.isArray(r.data)) {
-      console.warn("[TriggerEngine] odds API unexpected response:", JSON.stringify(r.data).slice(0, 200));
-      if (await fetchOddsFromActionNetwork()) return;
-      lastOddsTs = Date.now();
-      return;
-    }
-    const newMap: Record<string, { homeML: number; awayML: number }> = {};
-    for (const game of r.data) {
-      const homeTeam: string = game.home_team ?? "";
-      const bk = game.bookmakers?.[0];
-      if (!bk) continue;
-      const market = bk.markets?.find((m: any) => m.key === "h2h");
-      if (!market) continue;
-      const homeOutcome = market.outcomes?.find((o: any) => o.name === homeTeam);
-      const awayOutcome = market.outcomes?.find((o: any) => o.name !== homeTeam);
-      if (homeOutcome && awayOutcome) {
-        newMap[homeTeam] = { homeML: homeOutcome.price, awayML: awayOutcome.price };
-      }
-    }
-    const count = Object.keys(newMap).length;
-    console.log(`[TriggerEngine] odds refreshed — ${count} games with ML lines`);
-    oddsMap = newMap;
+    if (Object.keys(newMap).length) oddsMap = newMap;
     lastOddsTs = Date.now();
+    console.log(`[TriggerEngine] odds refreshed — ${Object.keys(newMap).length} games with ML lines (free feed)`);
   } catch (e: any) {
     console.warn("[TriggerEngine] odds fetch failed:", e.message, "| remaining map:", Object.keys(oddsMap).length, "entries");
-    if (await fetchOddsFromActionNetwork()) return;
-    // Keep lastOddsTs stale so UI shows orange freshness warning
-    // but don't clear existing odds — they degrade gracefully
   }
 }
 

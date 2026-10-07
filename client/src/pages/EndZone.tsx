@@ -1667,7 +1667,7 @@ function FantasyToolsPanel({
               { label: "Target players", desc: "WRs and TEs benefit most from negative scripts (more attempts). Highlighted in green — prioritize these in DFS/fantasy." },
               { label: "Fade players", desc: "RBs on teams with negative scripts lose opportunity in pass-heavy situations. Highlighted in red — downgrade or bench." },
               { label: "Snap Note", desc: "Per-team context line explaining projected pass rate and which role players benefit most from the game script." },
-              { label: "Inputs", desc: "Vegas spread + game total (Odds API), active roster from Sleeper, injury status from ESPN injury feed (Out/Doubtful filtered), and snap trend context to rank role importance." },
+              { label: "Inputs", desc: "Vegas spread + game total (Action Network consensus), active roster from Sleeper, injury status from ESPN injury feed (Out/Doubtful filtered), and snap trend context to rank role importance." },
             ]}
           />
           {(() => {

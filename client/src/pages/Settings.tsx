@@ -335,28 +335,12 @@ export default function Settings() {
       </SettingsSection>
 
       {/* API Keys */}
-      <SettingsSection icon={<Key size={16} />} title="API Keys" description="Optional: add keys to unlock live data from more sources">
+      <SettingsSection icon={<Key size={16} />} title="API Keys" description="All odds sources are free — no keys required">
         <div className="space-y-4">
-          <div>
-            <Label className="mb-1.5 block">The Odds API Key</Label>
-            <Input
-              type="password"
-              value={oddsKey}
-              onChange={(e) => setOddsKey(e.target.value)}
-              placeholder="Enter your The Odds API key..."
-              className="bg-muted border-border font-mono"
-              data-testid="input-odds-api-key"
-            />
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Unlocks live DraftKings lines, player props, MMA, boxing, college sports, and season futures. Free tier at{" "}
-              <a href="https://the-odds-api.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                the-odds-api.com
-              </a>{" "}
-              (500 requests/month free).
-            </p>
-          </div>
           <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-1 border border-border">
             <p className="font-semibold text-foreground">Sources Without API Keys (Always Active)</p>
+            <p>• <span className="text-primary">Action Network</span> — DraftKings, FanDuel, BetMGM and Caesars game lines, no key needed</p>
+            <p>• <span className="text-primary">Linemate</span> — DraftKings / FanDuel player props, no key needed</p>
             <p>• <span className="text-primary">Kalshi</span> — Public API, no key needed</p>
             <p>• <span className="text-purple-400">Polymarket</span> — Public API, no key needed</p>
           </div>
